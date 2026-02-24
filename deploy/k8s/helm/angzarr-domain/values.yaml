@@ -24,10 +24,19 @@ coordinator:
   image: ""
   env: {}
 
-# gRPC gateway sidecar (optional)
+# gRPC gateway sidecar (optional REST proxy)
 grpcGateway:
   enabled: false
-  image: ""
+  image: "ghcr.io/angzarr-io/angzarr-grpc-gateway:latest"
+  port: 8080
+  nodePort: 31808  # For dev access (pattern: 318xx)
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
 
 # Resource limits
 resources:

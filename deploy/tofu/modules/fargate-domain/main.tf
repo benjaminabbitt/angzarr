@@ -25,6 +25,39 @@ locals {
   common_tags = merge(var.labels, {
     "angzarr-domain" = var.domain
   })
+
+  # Optional gRPC Gateway container for REST API exposure
+  grpc_gateway_container = var.grpc_gateway.enabled ? [{
+    name      = "grpc-gateway"
+    image     = var.coordinator_images.grpc_gateway
+    essential = false
+
+    portMappings = [{
+      containerPort = var.grpc_gateway.port
+      protocol      = "tcp"
+    }]
+
+    environment = [
+      { name = "GRPC_TARGET", value = "localhost:1310" }
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = var.log_group
+        "awslogs-region"        = var.region
+        "awslogs-stream-prefix" = "${var.domain}-grpc-gateway"
+      }
+    }
+
+    healthCheck = {
+      command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.grpc_gateway.port}/health || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 10
+    }
+  }] : []
 }
 
 #------------------------------------------------------------------------------
@@ -41,6 +74,16 @@ resource "aws_security_group" "domain" {
     to_port     = 1310
     protocol    = "tcp"
     cidr_blocks = var.allowed_cidr_blocks
+  }
+
+  dynamic "ingress" {
+    for_each = var.grpc_gateway.enabled ? [1] : []
+    content {
+      from_port   = var.grpc_gateway.port
+      to_port     = var.grpc_gateway.port
+      protocol    = "tcp"
+      cidr_blocks = var.allowed_cidr_blocks
+    }
   }
 
   egress {
@@ -68,7 +111,7 @@ resource "aws_ecs_task_definition" "aggregate" {
   execution_role_arn       = var.execution_role_arn
   task_role_arn            = var.task_role_arn
 
-  container_definitions = jsonencode([
+  container_definitions = jsonencode(concat([
     {
       name      = "coordinator"
       image     = var.coordinator_images.aggregate
@@ -114,7 +157,7 @@ resource "aws_ecs_task_definition" "aggregate" {
         }
       }
     }
-  ])
+  ], local.grpc_gateway_container))
 
   tags = merge(local.common_tags, {
     "angzarr-component" = "aggregate"

@@ -8,6 +8,7 @@ option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
 import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
 
 // SagaService: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
@@ -21,9 +22,19 @@ service SagaService {
 // SagaCoordinatorService: orchestrates saga execution
 service SagaCoordinatorService {
   // Async processing - fire and forget
-  rpc Execute (SagaExecuteRequest) returns (SagaResponse);
+  rpc Execute (SagaExecuteRequest) returns (SagaResponse) {
+    option (google.api.http) = {
+      post: "/v1/saga/execute"
+      body: "*"
+    };
+  }
   // Speculative execution - returns commands without side effects
-  rpc ExecuteSpeculative (SpeculateSagaRequest) returns (SagaResponse);
+  rpc ExecuteSpeculative (SpeculateSagaRequest) returns (SagaResponse) {
+    option (google.api.http) = {
+      post: "/v1/saga/execute/speculative"
+      body: "*"
+    };
+  }
 }
 
 // Request for speculative saga execution at a point in time.

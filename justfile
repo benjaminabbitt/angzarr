@@ -164,6 +164,30 @@ buf-docs:
     # Add frontmatter for Docusaurus
     sed -i '1i ---\ntitle: Protocol Buffer API\ndescription: Auto-generated documentation for Angzarr protobuf definitions\n---\n' "{{TOP}}/docs/docs/api/proto/index.md"
 
+# === gRPC Gateway ===
+
+# Generate gRPC-Gateway and OpenAPI code from protos
+gateway-gen:
+    cd "{{TOP}}/gateway" && buf generate
+
+# Build gRPC-Gateway binary (for local testing)
+gateway-build: gateway-gen
+    cd "{{TOP}}/gateway" && go build -o /tmp/angzarr-grpc-gateway .
+
+# Run gRPC-Gateway locally (connects to local coordinator)
+gateway-dev: gateway-gen
+    cd "{{TOP}}/gateway" && go run . --grpc-target=localhost:1310
+
+# Build gRPC-Gateway container image
+gateway-image:
+    podman build -t ghcr.io/angzarr-io/angzarr-grpc-gateway:latest -f gateway/Containerfile .
+
+# Generate OpenAPI spec and copy to docs
+openapi: gateway-gen
+    mkdir -p "{{TOP}}/docs/openapi"
+    cp "{{TOP}}/gateway/api/angzarr.swagger.json" "{{TOP}}/docs/openapi/angzarr.swagger.json"
+    @echo "OpenAPI spec generated at docs/openapi/angzarr.swagger.json"
+
 # === Build ===
 
 # Build the project (debug)

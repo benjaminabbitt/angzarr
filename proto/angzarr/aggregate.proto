@@ -8,7 +8,7 @@ option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
 import "google/protobuf/any.proto";
-import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
 
 // AggregateService: client logic that processes commands and emits events
 // Also known as Command Handler in CQRS terminology
@@ -35,14 +35,34 @@ message ReplayResponse {
 // AggregateCoordinatorService: orchestrates command processing for aggregates
 service AggregateCoordinatorService {
   // Async processing - fire and forget
-  rpc Handle (CommandBook) returns (CommandResponse);
+  rpc Handle (CommandBook) returns (CommandResponse) {
+    option (google.api.http) = {
+      post: "/v1/aggregate/{cover.domain}/commands"
+      body: "*"
+    };
+  }
   // Sync processing - waits for completion based on sync_mode
-  rpc HandleSync (SyncCommandBook) returns (CommandResponse);
+  rpc HandleSync (SyncCommandBook) returns (CommandResponse) {
+    option (google.api.http) = {
+      post: "/v1/aggregate/{command.cover.domain}/commands/sync"
+      body: "*"
+    };
+  }
   // Speculative execution - execute against temporal state without persisting
-  rpc HandleSyncSpeculative (SpeculateAggregateRequest) returns (CommandResponse);
+  rpc HandleSyncSpeculative (SpeculateAggregateRequest) returns (CommandResponse) {
+    option (google.api.http) = {
+      post: "/v1/aggregate/{command.cover.domain}/commands/speculative"
+      body: "*"
+    };
+  }
   // Compensation flow - returns BusinessResponse for saga compensation handling.
   // If business returns events, persists them. Caller handles revocation flags.
-  rpc HandleCompensation (CommandBook) returns (BusinessResponse);
+  rpc HandleCompensation (CommandBook) returns (BusinessResponse) {
+    option (google.api.http) = {
+      post: "/v1/aggregate/{cover.domain}/compensation"
+      body: "*"
+    };
+  }
 }
 
 // Response from entity - aggregate events + sync projector results

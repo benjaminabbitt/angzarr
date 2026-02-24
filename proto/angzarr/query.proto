@@ -9,13 +9,28 @@ option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
 import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
 
 // EventQueryService: query interface for retrieving events
 service EventQueryService {
   // Get a single EventBook (unary) - use for explicit queries with gRPC tooling
-  rpc GetEventBook (Query) returns (EventBook);
-  // Stream EventBooks matching query - use for bulk retrieval
-  rpc GetEvents (Query) returns (stream EventBook);
+  rpc GetEventBook (Query) returns (EventBook) {
+    option (google.api.http) = {
+      get: "/v1/query/{cover.domain}/events"
+    };
+  }
+  // Stream EventBooks matching query - use for bulk retrieval (SSE)
+  rpc GetEvents (Query) returns (stream EventBook) {
+    option (google.api.http) = {
+      get: "/v1/query/{cover.domain}/events/stream"
+    };
+  }
+  // Bidirectional sync - not exposed via REST (use gRPC directly)
   rpc Synchronize (stream Query) returns (stream EventBook);
-  rpc GetAggregateRoots (google.protobuf.Empty) returns (stream AggregateRoot);
+  // List all aggregate roots (SSE)
+  rpc GetAggregateRoots (google.protobuf.Empty) returns (stream AggregateRoot) {
+    option (google.api.http) = {
+      get: "/v1/query/aggregates"
+    };
+  }
 }

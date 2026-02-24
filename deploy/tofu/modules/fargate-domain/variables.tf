@@ -177,3 +177,12 @@ variable "scaling" {
   })
   default = {}
 }
+
+variable "grpc_gateway" {
+  description = "gRPC Gateway (REST proxy) configuration"
+  type = object({
+    enabled = optional(bool, false)
+    port    = optional(number, 8080)
+  })
+  default = {}
+}

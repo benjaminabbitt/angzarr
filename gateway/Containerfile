@@ -1,0 +1,37 @@
+# Build stage
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# Install buf
+RUN go install github.com/bufbuild/buf/cmd/buf@latest
+
+# Copy proto files for generation
+COPY proto/ /proto/
+
+# Copy gateway module
+COPY gateway/go.mod gateway/go.sum* ./
+RUN go mod download
+
+COPY gateway/buf.gen.yaml ./
+COPY gateway/main.go ./
+
+# Generate protobuf code
+RUN buf generate --path /proto
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /grpc-gateway .
+
+# Runtime stage
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=builder /grpc-gateway /app/grpc-gateway
+COPY --from=builder /app/api/ /app/api/
+
+WORKDIR /app
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/grpc-gateway"]

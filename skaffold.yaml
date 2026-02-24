@@ -68,6 +68,11 @@ build:
         dockerfile: Containerfile
         target: angzarr-stream-dev
 
+    - image: ghcr.io/angzarr-io/angzarr-grpc-gateway
+      context: .
+      docker:
+        dockerfile: gateway/Containerfile
+
 profiles:
   # Release profile - slow musl builds, minimal images
   - name: release
@@ -114,3 +119,8 @@ profiles:
           docker:
             dockerfile: Containerfile
             target: angzarr-stream
+
+        - image: ghcr.io/angzarr-io/angzarr-grpc-gateway
+          context: .
+          docker:
+            dockerfile: gateway/Containerfile

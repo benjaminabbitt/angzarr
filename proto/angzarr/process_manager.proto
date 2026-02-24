@@ -7,6 +7,7 @@ option csharp_namespace = "Angzarr";
 option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
+import "google/api/annotations.proto";
 
 // ProcessManagerService: stateful coordinator for long-running workflows across multiple aggregates.
 //
@@ -36,7 +37,12 @@ service ProcessManagerService {
 // ProcessManagerCoordinatorService: orchestrates PM execution
 service ProcessManagerCoordinatorService {
   // Speculative execution - returns commands and events without persisting
-  rpc HandleSpeculative (SpeculatePmRequest) returns (ProcessManagerHandleResponse);
+  rpc HandleSpeculative (SpeculatePmRequest) returns (ProcessManagerHandleResponse) {
+    option (google.api.http) = {
+      post: "/v1/pm/speculative"
+      body: "*"
+    };
+  }
 }
 
 // Request for speculative PM execution at a point in time.

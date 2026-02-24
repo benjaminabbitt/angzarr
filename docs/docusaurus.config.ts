@@ -78,6 +78,14 @@ const config: Config = {
   ],
 
   plugins: [
+    // Terminology plugin for glossary with tooltips
+    [
+      '@lunaticmuch/docusaurus-terminology',
+      {
+        termsDir: 'docs/glossary',
+        glossaryFilepath: 'docs/glossary.mdx',
+      },
+    ],
     // Client redirects for URL stability
     [
       '@docusaurus/plugin-client-redirects',
@@ -88,7 +96,7 @@ const config: Config = {
         ],
       },
     ],
-    // OpenAPI documentation (spec files to be added)
+    // OpenAPI documentation
     [
       'docusaurus-plugin-openapi-docs',
       {
@@ -98,6 +106,13 @@ const config: Config = {
           topology: {
             specPath: 'openapi/topology.yaml',
             outputDir: 'docs/api/topology',
+            sidebarOptions: {
+              groupPathsBy: 'tag',
+            },
+          },
+          restapi: {
+            specPath: 'openapi/angzarr.swagger.json',
+            outputDir: 'docs/api/rest',
             sidebarOptions: {
               groupPathsBy: 'tag',
             },
@@ -222,6 +237,12 @@ const config: Config = {
         {
           to: '/blog',
           label: 'Blog',
+          position: 'left',
+        },
+        {
+          type: 'doc',
+          docId: 'glossary',
+          label: 'Glossary',
           position: 'left',
         },
         {

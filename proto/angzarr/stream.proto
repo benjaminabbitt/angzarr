@@ -7,12 +7,18 @@ option csharp_namespace = "Angzarr";
 option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
+import "google/api/annotations.proto";
 
 // docs:start:event_stream_service
 // EventStreamService: streams events to registered subscribers
 service EventStreamService {
   // Subscribe to events matching correlation ID (required)
   // Returns INVALID_ARGUMENT if correlation_id is empty
-  rpc Subscribe (EventStreamFilter) returns (stream EventBook);
+  // REST: Server-Sent Events (SSE) stream
+  rpc Subscribe (EventStreamFilter) returns (stream EventBook) {
+    option (google.api.http) = {
+      get: "/v1/stream/{correlation_id}"
+    };
+  }
 }
 // docs:end:event_stream_service

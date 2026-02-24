@@ -100,24 +100,31 @@ spec:
             {{- include "angzarr-domain.containerSecurityContext" . | nindent 12 }}
 
         {{- if .Values.grpcGateway.enabled }}
-        # gRPC Gateway sidecar (optional)
+        # gRPC Gateway sidecar (REST proxy)
         - name: grpc-gateway
           image: {{ .Values.grpcGateway.image | quote }}
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ .Values.grpcGateway.port }}
               protocol: TCP
           env:
             - name: GRPC_TARGET
               value: "localhost:{{ .Values.service.port }}"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
           resources:
-            requests:
-              cpu: "50m"
-              memory: "64Mi"
-            limits:
-              cpu: "200m"
-              memory: "128Mi"
+            {{- toYaml .Values.grpcGateway.resources | nindent 12 }}
           securityContext:
             {{- include "angzarr-domain.containerSecurityContext" . | nindent 12 }}
         {{- end }}

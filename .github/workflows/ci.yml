@@ -5,1049 +5,116 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Build type for core images'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - release
-      force_rebuild:
-        description: 'Force rebuild all images'
-        required: false
-        default: false
-        type: boolean
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
-  CARGO_TERM_COLOR: always
-
-permissions:
-  contents: read
-  packages: write
+  IMAGE_PREFIX: ghcr.io/angzarr-io
 
 jobs:
-  # ==========================================================================
-  # Phase 1: Detect changes to determine what to build
-  # ==========================================================================
-  changes:
+  lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
-    outputs:
-      base: ${{ steps.filter.outputs.base }}
-      rust: ${{ steps.filter.outputs.rust }}
-      go: ${{ steps.filter.outputs.go }}
-      python: ${{ steps.filter.outputs.python }}
-      java: ${{ steps.filter.outputs.java }}
-      csharp: ${{ steps.filter.outputs.csharp }}
-      cpp: ${{ steps.filter.outputs.cpp }}
-      core: ${{ steps.filter.outputs.core }}
-      client-rust: ${{ steps.filter.outputs.client-rust }}
-      client-python: ${{ steps.filter.outputs.client-python }}
-      client-go: ${{ steps.filter.outputs.client-go }}
-      client-java: ${{ steps.filter.outputs.client-java }}
-      client-csharp: ${{ steps.filter.outputs.client-csharp }}
-      client-cpp: ${{ steps.filter.outputs.client-cpp }}
-      examples-rust: ${{ steps.filter.outputs.examples-rust }}
-      examples-python: ${{ steps.filter.outputs.examples-python }}
-      examples-go: ${{ steps.filter.outputs.examples-go }}
-      examples-java: ${{ steps.filter.outputs.examples-java }}
-      examples-csharp: ${{ steps.filter.outputs.examples-csharp }}
-      examples-cpp: ${{ steps.filter.outputs.examples-cpp }}
-      tofu: ${{ steps.filter.outputs.tofu }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for changes
-        uses: dorny/paths-filter@v3
-        id: filter
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Buf lint
+        run: just buf-lint
+
+      - name: Buf build
+        run: just buf-build
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
-          filters: |
-            base:
-              - 'build/images/base/**'
-            rust:
-              - 'build/images/rust/**'
-            go:
-              - 'build/images/go/**'
-            python:
-              - 'build/images/python/**'
-            java:
-              - 'build/images/java/**'
-            csharp:
-              - 'build/images/csharp/**'
-            cpp:
-              - 'build/images/cpp/**'
-            core:
-              - 'src/**'
-              - 'client/rust/**'
-              - 'proto/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'Containerfile'
-            client-rust:
-              - 'client/rust/**'
-              - 'proto/**'
-            client-python:
-              - 'client/python/**'
-              - 'proto/**'
-            client-go:
-              - 'client/go/**'
-              - 'proto/**'
-            client-java:
-              - 'client/java/**'
-              - 'proto/**'
-            client-csharp:
-              - 'client/csharp/**'
-              - 'proto/**'
-            client-cpp:
-              - 'client/cpp/**'
-              - 'proto/**'
-            examples-rust:
-              - 'examples/rust/**'
-              - 'examples/features/**'
-              - 'client/rust/**'
-              - 'proto/**'
-            examples-python:
-              - 'examples/python/**'
-              - 'examples/features/**'
-              - 'client/python/**'
-              - 'proto/**'
-            examples-go:
-              - 'examples/go/**'
-              - 'examples/features/**'
-              - 'client/go/**'
-              - 'proto/**'
-            examples-java:
-              - 'examples/java/**'
-              - 'examples/features/**'
-              - 'client/java/**'
-              - 'proto/**'
-            examples-csharp:
-              - 'examples/csharp/**'
-              - 'examples/features/**'
-              - 'client/csharp/**'
-              - 'proto/**'
-            examples-cpp:
-              - 'examples/cpp/**'
-              - 'examples/features/**'
-              - 'client/cpp/**'
-              - 'proto/**'
-            tofu:
-              - 'deploy/tofu/**'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-  # ==========================================================================
-  # OpenTofu Module Tests (runs in parallel with builds)
-  # ==========================================================================
-  test-tofu:
-    needs: changes
-    if: |
-      needs.changes.outputs.tofu == 'true' ||
-      github.event.inputs.force_rebuild == 'true' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      - name: Run tests
+        run: cargo test --workspace
+
+  gateway:
+    name: Build gRPC Gateway
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          tofu_version: 1.9.0
+          go-version: '1.23'
 
-      - name: Run stack module tests
-        working-directory: deploy/tofu/modules/stack
-        run: |
-          tofu init -backend=false
-          tofu test
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
 
-      - name: Check formatting
-        run: tofu fmt -check -recursive deploy/tofu
+      - name: Generate gateway code
+        run: just gateway-gen
 
-  # ==========================================================================
-  # Phase 2: Build support images (base first, then language-specific)
-  # ==========================================================================
-  build-base:
-    needs: changes
-    if: |
-      needs.changes.outputs.base == 'true' ||
-      github.event.inputs.force_rebuild == 'true' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      - name: Build gateway binary
+        run: just gateway-build
+
+      - name: Generate OpenAPI spec
+        run: just openapi
+
+      - name: Upload OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: docs/static/openapi.json
+
+  images:
+    name: Build Images
     runs-on: ubuntu-latest
+    needs: [lint, test, gateway]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Install just
+        uses: extractions/setup-just@v2
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
-      - name: Login to GHCR
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image tags
-        id: tags
+      - name: Build and push gateway image
         run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          # Sanitize branch name for docker tag (replace / with -)
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          echo "branch=$BRANCH_TAG" >> $GITHUB_OUTPUT
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ github.sha }}" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ github.sha }}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push base image
-        uses: docker/build-push-action@v5
-        with:
-          context: build/images/base
-          file: build/images/base/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
-
-  build-rust:
-    needs: [changes, build-base]
-    if: |
-      always() &&
-      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
-      (
-        needs.changes.outputs.rust == 'true' ||
-        needs.changes.outputs.base == 'true' ||
-        needs.changes.outputs.core == 'true' ||
-        github.event.inputs.force_rebuild == 'true' ||
-        (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      )
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          echo "branch=$BRANCH_TAG" >> $GITHUB_OUTPUT
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=latest" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push rust image
-        uses: docker/build-push-action@v5
-        with:
-          context: build/images/rust
-          file: build/images/rust/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ steps.tags.outputs.base_tag }}
-          cache-from: type=gha,scope=rust
-          cache-to: type=gha,mode=max,scope=rust
-
-  # Build other language images in parallel (only if changed)
-  build-go:
-    needs: [changes, build-base]
-    if: |
-      always() &&
-      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
-      (needs.changes.outputs.go == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=latest" >> $GITHUB_OUTPUT
-          fi
-      - uses: docker/build-push-action@v5
-        with:
-          context: build/images/go
-          file: build/images/go/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ steps.tags.outputs.base_tag }}
-          cache-from: type=gha,scope=go
-          cache-to: type=gha,mode=max,scope=go
-
-  build-python:
-    needs: [changes, build-base]
-    if: |
-      always() &&
-      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
-      (needs.changes.outputs.python == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=latest" >> $GITHUB_OUTPUT
-          fi
-      - uses: docker/build-push-action@v5
-        with:
-          context: build/images/python
-          file: build/images/python/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ steps.tags.outputs.base_tag }}
-          cache-from: type=gha,scope=python
-          cache-to: type=gha,mode=max,scope=python
-
-  build-java:
-    needs: [changes, build-base]
-    if: |
-      always() &&
-      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
-      (needs.changes.outputs.java == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=latest" >> $GITHUB_OUTPUT
-          fi
-      - uses: docker/build-push-action@v5
-        with:
-          context: build/images/java
-          file: build/images/java/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ steps.tags.outputs.base_tag }}
-          cache-from: type=gha,scope=java
-          cache-to: type=gha,mode=max,scope=java
-
-  build-csharp:
-    needs: [changes, build-base]
-    if: |
-      always() &&
-      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
-      (needs.changes.outputs.csharp == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=latest" >> $GITHUB_OUTPUT
-          fi
-      - uses: docker/build-push-action@v5
-        with:
-          context: build/images/csharp
-          file: build/images/csharp/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ steps.tags.outputs.base_tag }}
-          cache-from: type=gha,scope=csharp
-          cache-to: type=gha,mode=max,scope=csharp
-
-  build-cpp:
-    needs: [changes, build-base]
-    if: |
-      always() &&
-      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
-      (needs.changes.outputs.cpp == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:pr-$BRANCH_TAG,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "base_tag=latest" >> $GITHUB_OUTPUT
-          fi
-      - uses: docker/build-push-action@v5
-        with:
-          context: build/images/cpp
-          file: build/images/cpp/Containerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ steps.tags.outputs.base_tag }}
-          cache-from: type=gha,scope=cpp
-          cache-to: type=gha,mode=max,scope=cpp
-
-  # ==========================================================================
-  # Phase 3: Test core code (requires rust image to be ready)
-  # ==========================================================================
-  fmt:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.lock') }}
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  clippy:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run clippy
-        run: cargo clippy --all-targets --features test-utils -- -D warnings
-
-  test-unit:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run unit tests
-        run: cargo test --lib
-
-  test-integration:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run standalone integration tests
-        run: cargo test --test standalone_integration --features sqlite
-
-  # Contract tests - verify storage/bus implementations fulfill trait contracts (requires Docker socket)
-  test-contract:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-      options: --user root
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: postgres
-            target: test-contract-postgres
-          - name: redis
-            target: test-contract-redis
-          - name: nats-bus
-            target: test-contract-nats-bus
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-contract-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Run ${{ matrix.name }} contract tests
-        run: just --justfile justfile.container ${{ matrix.target }}
-
-  # Contract tests (Gherkin) - interface contract verification with bus backend matrix
-  test-contract-interfaces:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-      options: --user root
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Channel backend (no container, fast)
-          - name: channel
-            bus_backend: channel
-            features: sqlite,channel,test-utils
-          # AMQP/RabbitMQ
-          - name: amqp
-            bus_backend: amqp
-            features: sqlite,amqp,test-utils
-          # Kafka (Redpanda)
-          - name: kafka
-            bus_backend: kafka
-            features: sqlite,kafka,test-utils
-          # NATS JetStream
-          - name: nats
-            bus_backend: nats
-            features: sqlite,nats,test-utils
-          # Google Pub/Sub emulator
-          - name: pubsub
-            bus_backend: pubsub
-            features: sqlite,pubsub,test-utils
-          # AWS SNS/SQS (LocalStack)
-          - name: sns-sqs
-            bus_backend: sns-sqs
-            features: sqlite,sns-sqs,test-utils
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-contract-interface-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Run contract tests (${{ matrix.name }} bus)
-        run: cargo test --test interfaces --features ${{ matrix.features }}
-        env:
-          BUS_BACKEND: ${{ matrix.bus_backend }}
-
-  # ==========================================================================
-  # Phase 4: Build and package core binaries into runtime images
-  # ==========================================================================
-  build-core:
-    needs: [changes, build-rust, fmt, clippy, test-unit, test-integration]
-    if: |
-      always() &&
-      needs.fmt.result == 'success' &&
-      needs.clippy.result == 'success' &&
-      needs.test-unit.result == 'success' &&
-      needs.test-integration.result == 'success' &&
-      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Determine build type
-        id: build-type
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "type=${{ inputs.build_type }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "type=release" >> $GITHUB_OUTPUT
-          else
-            echo "type=dev" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set build variables
-        id: vars
-        run: |
-          if [ "${{ steps.build-type.outputs.type }}" = "release" ]; then
-            echo "suffix=" >> $GITHUB_OUTPUT
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-          else
-            echo "suffix=-dev" >> $GITHUB_OUTPUT
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Compute image tags
-        id: tags
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-          SUFFIX="${{ steps.vars.outputs.suffix }}"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tag_prefix=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-            echo "rust_tag=pr-$BRANCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tag_prefix=latest" >> $GITHUB_OUTPUT
-            echo "rust_tag=latest" >> $GITHUB_OUTPUT
-          fi
-
-      # Build all images sequentially from shared builder cache
-      - name: Build and push aggregate
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-aggregate${{ steps.vars.outputs.suffix }}
-          platforms: ${{ steps.vars.outputs.platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate${{ steps.vars.outputs.suffix }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate${{ steps.vars.outputs.suffix }}:${{ steps.tags.outputs.tag_prefix }}
-          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ steps.tags.outputs.rust_tag }}
-          cache-from: type=gha,scope=core-builder
-          cache-to: type=gha,mode=max,scope=core-builder
-
-      - name: Build and push projector
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-projector${{ steps.vars.outputs.suffix }}
-          platforms: ${{ steps.vars.outputs.platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector${{ steps.vars.outputs.suffix }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector${{ steps.vars.outputs.suffix }}:${{ steps.tags.outputs.tag_prefix }}
-          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ steps.tags.outputs.rust_tag }}
-          cache-from: type=gha,scope=core-builder
-          cache-to: type=gha,mode=max,scope=core-builder
-
-      - name: Build and push saga
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-saga${{ steps.vars.outputs.suffix }}
-          platforms: ${{ steps.vars.outputs.platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga${{ steps.vars.outputs.suffix }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga${{ steps.vars.outputs.suffix }}:${{ steps.tags.outputs.tag_prefix }}
-          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ steps.tags.outputs.rust_tag }}
-          cache-from: type=gha,scope=core-builder
-          cache-to: type=gha,mode=max,scope=core-builder
-
-      - name: Build and push process-manager
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-process-manager${{ steps.vars.outputs.suffix }}
-          platforms: ${{ steps.vars.outputs.platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager${{ steps.vars.outputs.suffix }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager${{ steps.vars.outputs.suffix }}:${{ steps.tags.outputs.tag_prefix }}
-          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ steps.tags.outputs.rust_tag }}
-          cache-from: type=gha,scope=core-builder
-          cache-to: type=gha,mode=max,scope=core-builder
-
-      - name: Build and push log
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-log${{ steps.vars.outputs.suffix }}
-          platforms: ${{ steps.vars.outputs.platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log${{ steps.vars.outputs.suffix }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log${{ steps.vars.outputs.suffix }}:${{ steps.tags.outputs.tag_prefix }}
-          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ steps.tags.outputs.rust_tag }}
-          cache-from: type=gha,scope=core-builder
-          cache-to: type=gha,mode=max,scope=core-builder
-
-      - name: Build and push stream
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-stream${{ steps.vars.outputs.suffix }}
-          platforms: ${{ steps.vars.outputs.platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream${{ steps.vars.outputs.suffix }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream${{ steps.vars.outputs.suffix }}:${{ steps.tags.outputs.tag_prefix }}
-          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ steps.tags.outputs.rust_tag }}
-          cache-from: type=gha,scope=core-builder
-          cache-to: type=gha,mode=max,scope=core-builder
-
-  # ==========================================================================
-  # Phase 5: Build and test client libraries (in language containers)
-  # ==========================================================================
-  client-rust:
-    needs: [changes, build-rust]
-    if: |
-      always() &&
-      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
-      (needs.changes.outputs.client-rust == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: client/rust
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: client/rust
-        run: just --justfile justfile.container test
-
-  client-python:
-    needs: [changes, build-python]
-    if: |
-      always() &&
-      (needs.build-python.result == 'success' || needs.build-python.result == 'skipped') &&
-      (needs.changes.outputs.client-python == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-python:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: client/python
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: client/python
-        run: just --justfile justfile.container test
-
-  client-go:
-    needs: [changes, build-go]
-    if: |
-      always() &&
-      (needs.build-go.result == 'success' || needs.build-go.result == 'skipped') &&
-      (needs.changes.outputs.client-go == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-go:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: client/go
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: client/go
-        run: just --justfile justfile.container test
-
-  client-java:
-    needs: [changes, build-java]
-    if: |
-      always() &&
-      (needs.build-java.result == 'success' || needs.build-java.result == 'skipped') &&
-      (needs.changes.outputs.client-java == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-java:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: client/java
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: client/java
-        run: just --justfile justfile.container test
-
-  client-csharp:
-    needs: [changes, build-csharp]
-    if: |
-      always() &&
-      (needs.build-csharp.result == 'success' || needs.build-csharp.result == 'skipped') &&
-      (needs.changes.outputs.client-csharp == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-csharp:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: client/csharp
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: client/csharp
-        run: just --justfile justfile.container test
-
-  client-cpp:
-    needs: [changes, build-cpp]
-    if: |
-      always() &&
-      (needs.build-cpp.result == 'success' || needs.build-cpp.result == 'skipped') &&
-      (needs.changes.outputs.client-cpp == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-cpp:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: client/cpp
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: client/cpp
-        run: just --justfile justfile.container test
-
-  # ==========================================================================
-  # Phase 6: Build and test examples (depends on client libraries)
-  # ==========================================================================
-  examples-rust:
-    needs: [changes, client-rust]
-    if: |
-      always() &&
-      (needs.client-rust.result == 'success' || needs.client-rust.result == 'skipped') &&
-      (needs.changes.outputs.examples-rust == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: examples/rust
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: examples/rust
-        run: just --justfile justfile.container test
-
-  examples-python:
-    needs: [changes, client-python]
-    if: |
-      always() &&
-      (needs.client-python.result == 'success' || needs.client-python.result == 'skipped') &&
-      (needs.changes.outputs.examples-python == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-python:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: examples/python
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: examples/python
-        run: just --justfile justfile.container test
-
-  examples-go:
-    needs: [changes, client-go]
-    if: |
-      always() &&
-      (needs.client-go.result == 'success' || needs.client-go.result == 'skipped') &&
-      (needs.changes.outputs.examples-go == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-go:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: examples/go
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: examples/go
-        run: just --justfile justfile.container test
-
-  examples-java:
-    needs: [changes, client-java]
-    if: |
-      always() &&
-      (needs.client-java.result == 'success' || needs.client-java.result == 'skipped') &&
-      (needs.changes.outputs.examples-java == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-java:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: examples/java
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: examples/java
-        run: just --justfile justfile.container test
-
-  examples-csharp:
-    needs: [changes, client-csharp]
-    if: |
-      always() &&
-      (needs.client-csharp.result == 'success' || needs.client-csharp.result == 'skipped') &&
-      (needs.changes.outputs.examples-csharp == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-csharp:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: examples/csharp
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: examples/csharp
-        run: just --justfile justfile.container test
-
-  examples-cpp:
-    needs: [changes, client-cpp]
-    if: |
-      always() &&
-      (needs.client-cpp.result == 'success' || needs.client-cpp.result == 'skipped') &&
-      (needs.changes.outputs.examples-cpp == 'true' || github.event.inputs.force_rebuild == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository_owner }}/angzarr-cpp:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fix git ownership
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Build
-        working-directory: examples/cpp
-        run: just --justfile justfile.container build
-      - name: Test
-        working-directory: examples/cpp
-        run: just --justfile justfile.container test
+          just gateway-gen
+          docker build -t ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }} -f gateway/Containerfile .
+          docker tag ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }} ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:latest
+          docker push ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }}
+          docker push ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:latest
