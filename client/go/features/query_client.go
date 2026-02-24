@@ -450,6 +450,10 @@ func (c *QueryClientContext) theSnapshotShouldBeAtSequence(seq int) error {
 	return nil
 }
 
+func (c *QueryClientContext) theReturnedSnapshotShouldBeAtSequence(seq int) error {
+	return c.theSnapshotShouldBeAtSequence(seq)
+}
+
 func InitQueryClientSteps(ctx *godog.ScenarioContext) {
 	c := newQueryClientContext()
 
@@ -501,5 +505,5 @@ func InitQueryClientSteps(ctx *godog.ScenarioContext) {
 	// Snapshot
 	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)" has a snapshot at sequence (\d+) and (\d+) events$`, c.anAggregateWithRootHasASnapshotAtSequenceAndEvents)
 	ctx.Step(`^the EventBook should include the snapshot$`, c.theEventBookShouldIncludeTheSnapshot)
-	// NOTE: "the snapshot should be at sequence (\d+)$" is registered by RouterContext (registered first)
+	ctx.Step(`^the returned snapshot should be at sequence (\d+)$`, c.theReturnedSnapshotShouldBeAtSequence)
 }

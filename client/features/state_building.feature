@@ -35,11 +35,11 @@ Feature: State Building - Aggregate State Reconstruction
       | 2        | ItemAdded   |
     When I build state from the EventBook
     Then the state should reflect all 3 events
-    And the state should have 2 items
+    And the built state should have 2 items
 
   Scenario: Events are applied in sequence order
     Given an EventBook with events in order: A, B, C
-    When I build state
+    When I build state from the EventBook
     Then events should be applied as A, then B, then C
     And final state should reflect the correct order
 

@@ -38,11 +38,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Router steps
 	InitRouterSteps(ctx)
 
+	// Event decoding steps (before state building - order matters for shared step patterns)
+	InitEventDecodingSteps(ctx)
+
 	// State building steps
 	InitStateBuildingSteps(ctx)
-
-	// Event decoding steps
-	InitEventDecodingSteps(ctx)
 
 	// Error handling steps
 	InitErrorHandlingSteps(ctx)

@@ -110,7 +110,7 @@ Feature: QueryClient - Event Retrieval
     Given an aggregate "orders" with root "order-010" has a snapshot at sequence 5 and 10 events
     When I query events for "orders" root "order-010"
     Then the EventBook should include the snapshot
-    And the snapshot should be at sequence 5
+    And the returned snapshot should be at sequence 5
 
   # ==========================================================================
   # Error Handling

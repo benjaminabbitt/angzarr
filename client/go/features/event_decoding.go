@@ -35,7 +35,7 @@ func InitEventDecodingSteps(ctx *godog.ScenarioContext) {
 	dc := newDecodeContext()
 
 	// Given steps
-	// NOTE: "an event with type_url" is registered by StateContext (registered first)
+	ctx.Step(`^an event with type_url "([^"]*)"$`, dc.givenEventTypeURL)
 	ctx.Step(`^valid protobuf bytes for OrderCreated$`, dc.givenValidProtoBytes)
 	ctx.Step(`^an event with type_url ending in "([^"]*)"$`, dc.givenEventSuffix)
 	ctx.Step(`^an EventPage at sequence (\d+)$`, dc.givenEventAtSeq)
@@ -245,7 +245,9 @@ func (d *DecodeContext) givenMixedEvents() error {
 func (d *DecodeContext) whenDecodeAsOrder() error {
 	if d.Event != nil {
 		if event, ok := d.Event.Payload.(*pb.EventPage_Event); ok {
-			if len(event.Event.TypeUrl) > 12 && event.Event.TypeUrl[len(event.Event.TypeUrl)-12:] == "OrderCreated" {
+			suffix := "OrderCreated"
+			typeURL := event.Event.TypeUrl
+			if len(typeURL) >= len(suffix) && typeURL[len(typeURL)-len(suffix):] == suffix {
 				d.Decoded = struct{}{}
 			}
 		}

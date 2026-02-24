@@ -62,7 +62,7 @@ Feature: QueryBuilder - Fluent Query Construction
   Scenario: Build query with invalid timestamp fails
     When I build a query for domain "orders"
       And I set as_of_time to "not-a-timestamp"
-    Then building should fail
+    Then query building should fail
     And the error should indicate invalid timestamp
 
   # ==========================================================================
@@ -107,8 +107,8 @@ Feature: QueryBuilder - Fluent Query Construction
         .range(10)
         .build()
       """
-    Then the build should succeed
-    And all chained values should be preserved
+    Then the query build should succeed
+    And all chained query values should be preserved
 
   Scenario: Last selection wins
     When I build a query with:

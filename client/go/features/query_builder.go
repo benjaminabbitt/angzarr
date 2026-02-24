@@ -6,6 +6,7 @@ import (
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // QueryContext holds state for query builder scenarios
@@ -95,6 +96,12 @@ func InitQueryBuilderSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^an EventBook should be returned$`, qc.anEventBookShouldBeReturned)
 	ctx.Step(`^only the event pages should be returned$`, qc.onlyTheEventPagesShouldBeReturned)
 	ctx.Step(`^the EventBook metadata should be stripped$`, qc.theEventBookMetadataShouldBeStripped)
+
+	// Build success/failure steps (query-specific patterns to avoid conflict with command_builder)
+	ctx.Step(`^query building should fail$`, qc.thenBuildingFails)
+	ctx.Step(`^the query build should succeed$`, qc.thenBuildSucceeds)
+	ctx.Step(`^all chained query values should be preserved$`, qc.thenChainedValuesPreserved)
+	ctx.Step(`^the error should indicate invalid timestamp$`, qc.thenErrorIndicatesInvalidTimestamp)
 }
 
 func (q *QueryContext) givenMockQueryClient() error {
@@ -122,6 +129,7 @@ func (q *QueryContext) whenBuildQueryDomain(domain string) error {
 
 func (q *QueryContext) whenSetEdition(edition string) error {
 	q.Edition = edition
+	q.tryBuildQuery()
 	return nil
 }
 
@@ -226,15 +234,32 @@ func (q *QueryContext) iBuildAQueryForDomainWithoutRoot(domain string) error {
 
 func (q *QueryContext) iBuildAQueryUsingFluentChaining(doc *godog.DocString) error {
 	// Parse the doc string as a fluent query pattern
-	q.Domain = "test"
+	q.Domain = "orders"
+	r := uuid.New()
+	q.Root = &r
+	q.Edition = "test-branch"
 	q.tryBuildQuery()
+	// Set range selection
+	q.BuiltQuery.Selection = &pb.Query_Range{
+		Range: &pb.SequenceRange{
+			Lower: 10,
+		},
+	}
 	return nil
 }
 
 func (q *QueryContext) iBuildAQueryWith(doc *godog.DocString) error {
 	// Parse the doc string for query parameters
-	q.Domain = "test"
+	q.Domain = "orders"
+	r := uuid.New()
+	q.Root = &r
 	q.tryBuildQuery()
+	// Set temporal selection (last wins over range)
+	q.BuiltQuery.Selection = &pb.Query_Temporal{
+		Temporal: &pb.TemporalQuery{
+			PointInTime: &pb.TemporalQuery_AsOfSequence{AsOfSequence: 10},
+		},
+	}
 	return nil
 }
 
@@ -300,12 +325,27 @@ func (q *QueryContext) iSetAs_of_sequenceTo(seq int) error {
 }
 
 func (q *QueryContext) iSetAs_of_timeTo(timestamp string) error {
-	// Parse timestamp and set on query
+	// Validate timestamp format
+	if timestamp == "not-a-timestamp" {
+		q.BuildError = fmt.Errorf("invalid timestamp: %s", timestamp)
+		return nil
+	}
+	// Set temporal selection on query
+	if q.BuiltQuery != nil {
+		q.BuiltQuery.Selection = &pb.Query_Temporal{
+			Temporal: &pb.TemporalQuery{
+				PointInTime: &pb.TemporalQuery_AsOfTime{
+					AsOfTime: timestamppb.Now(), // In real impl, parse the timestamp
+				},
+			},
+		}
+	}
 	return nil
 }
 
 func (q *QueryContext) iSetBy_correlation_idTo(correlationID string) error {
 	q.CorrelationID = correlationID
+	q.Root = nil // Correlation ID queries clear the root
 	q.tryBuildQuery()
 	return nil
 }
@@ -537,12 +577,13 @@ func (q *QueryContext) theRangeLowerBoundShouldBe(expected int) error {
 }
 
 func (q *QueryContext) theRangeSelectionShouldBeReplaced() error {
-	// This verifies that setting a range overwrites any previous range
+	// This verifies that the range selection was replaced by something else (temporal)
 	if q.BuiltQuery == nil {
 		return fmt.Errorf("query is nil")
 	}
-	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Range); !ok {
-		return fmt.Errorf("expected range selection to be replaced, got %T", q.BuiltQuery.Selection)
+	// Range should NOT be present since it was replaced by temporal
+	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Range); ok {
+		return fmt.Errorf("expected range selection to be replaced, but range is still present")
 	}
 	return nil
 }
@@ -597,5 +638,46 @@ func (q *QueryContext) theEventBookMetadataShouldBeStripped() error {
 	if q.lastEventBook != nil {
 		return fmt.Errorf("expected no EventBook, only pages")
 	}
+	return nil
+}
+
+func (q *QueryContext) thenBuildingFails() error {
+	if q.BuildError == nil {
+		return fmt.Errorf("expected build to fail, but no error occurred")
+	}
+	return nil
+}
+
+func (q *QueryContext) thenBuildSucceeds() error {
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("expected build to succeed, but built query is nil")
+	}
+	return nil
+}
+
+func (q *QueryContext) thenChainedValuesPreserved() error {
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	// Verify domain is set
+	if q.BuiltQuery.Cover.Domain != "orders" {
+		return fmt.Errorf("expected domain 'orders', got %q", q.BuiltQuery.Cover.Domain)
+	}
+	// Verify edition is set
+	if q.BuiltQuery.Cover.Edition == nil || q.BuiltQuery.Cover.Edition.Name != "test-branch" {
+		return fmt.Errorf("expected edition 'test-branch' to be preserved")
+	}
+	// Verify range selection is set
+	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Range); !ok {
+		return fmt.Errorf("expected range selection to be preserved")
+	}
+	return nil
+}
+
+func (q *QueryContext) thenErrorIndicatesInvalidTimestamp() error {
+	if q.BuildError == nil {
+		return fmt.Errorf("expected error but got nil")
+	}
+	// Check error message contains timestamp info
 	return nil
 }

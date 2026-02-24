@@ -154,6 +154,11 @@ func (c *CompensationContext) givenCompensationHandlingContext() error {
 func (c *CompensationContext) givenSagaCommandRejected() error {
 	c.RejectedCommand = c.makeCommandBook("orders", "", nil)
 	c.RejectionReason = "precondition_failed"
+	c.SagaOrigin = &SagaOrigin{
+		SagaName:                "test-saga",
+		TriggeringAggregate:     "orders",
+		TriggeringEventSequence: 0,
+	}
 	return nil
 }
 
@@ -184,7 +189,7 @@ func (c *CompensationContext) givenCommandRejected() error {
 
 func (c *CompensationContext) givenCompensationCtxForRejected() error {
 	if c.RejectedCommand == nil {
-		c.RejectedCommand = c.makeCommandBook("orders", "", nil)
+		c.RejectedCommand = c.makeCommandBook("orders", uuid.New().String(), nil)
 	}
 	if c.RejectionReason == "" {
 		c.RejectionReason = "rejected"
@@ -194,6 +199,10 @@ func (c *CompensationContext) givenCompensationCtxForRejected() error {
 			SagaName:            "test-saga",
 			TriggeringAggregate: "orders",
 		}
+	}
+	// Ensure correlation ID is set if not already
+	if c.RejectedCommand.Cover.CorrelationId == "" {
+		c.RejectedCommand.Cover.CorrelationId = uuid.New().String()
 	}
 	c.CompensationCtx = &CompensationCtx{
 		RejectedCommand: c.RejectedCommand,

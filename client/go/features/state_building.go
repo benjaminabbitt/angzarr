@@ -86,7 +86,7 @@ func InitStateBuildingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the state should reflect the OrderCreated event$`, sc.thenStateReflectsOrder)
 	ctx.Step(`^the state should have order_id set$`, sc.thenStateHasOrderID)
 	ctx.Step(`^the state should reflect all (\d+) events$`, sc.thenStateReflectsCount)
-	// NOTE: "the state should have (\d+) items$" is registered by RouterContext (registered first)
+	ctx.Step(`^the built state should have (\d+) items$`, sc.thenBuiltStateHasItems)
 	ctx.Step(`^events should be applied as A, then B, then C$`, sc.thenEventsAppliedOrder)
 	ctx.Step(`^final state should reflect the correct order$`, sc.thenFinalStateOrder)
 	ctx.Step(`^the state should equal the snapshot state$`, sc.thenStateEqualsSnapshot)
@@ -140,10 +140,13 @@ func (s *StateContext) makeEventBook(domain string, events []*pb.EventPage, snap
 		Pages:    events,
 		Snapshot: snapshot,
 	}
-	if snapshot != nil {
+	// NextSequence is the sequence after the last event, or after snapshot if no events
+	if len(events) > 0 {
+		book.NextSequence = events[len(events)-1].Sequence + 1
+	} else if snapshot != nil {
 		book.NextSequence = snapshot.Sequence + 1
 	} else {
-		book.NextSequence = uint32(len(events))
+		book.NextSequence = 0
 	}
 	return book
 }
@@ -468,6 +471,10 @@ func (s *StateContext) thenStateHasItems(count int) error {
 		return fmt.Errorf("expected state to have %d items, got %d", count, len(s.State.Items))
 	}
 	return nil
+}
+
+func (s *StateContext) thenBuiltStateHasItems(count int) error {
+	return s.thenStateHasItems(count)
 }
 
 func (s *StateContext) thenEventsAppliedOrder() error {

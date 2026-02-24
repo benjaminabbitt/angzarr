@@ -41,6 +41,8 @@ func InitRouterSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I build state from these events$`, rc.whenBuildState)
 	ctx.Step(`^I build state$`, rc.whenBuildStateSimple)
 	ctx.Step(`^a handler returns an error$`, rc.whenHandlerReturnsError)
+	ctx.Step(`^a handler emits (\d+) events$`, rc.whenHandlerEmitsEvents)
+	ctx.Step(`^a handler produces a command$`, rc.whenHandlerProducesCommand)
 
 	// Then steps for state building
 	ctx.Step(`^the router should return those events$`, rc.thenRouterReturnsEvents)
@@ -448,5 +450,20 @@ func (r *RouterContext) theSnapshotShouldBeAtSequence(seq int) error {
 	if r.EventBook.Snapshot.Sequence != uint32(seq) {
 		return fmt.Errorf("expected snapshot at sequence %d, got %d", seq, r.EventBook.Snapshot.Sequence)
 	}
+	return nil
+}
+
+func (r *RouterContext) whenHandlerEmitsEvents(count int) error {
+	events := make([]*pb.EventPage, count)
+	for i := 0; i < count; i++ {
+		events[i] = r.makeEventPage(uint32(i), "type.googleapis.com/test.Event")
+	}
+	r.EventBook = r.makeEventBook("test", events)
+	r.LastDispatchResult = r.EventBook
+	return nil
+}
+
+func (r *RouterContext) whenHandlerProducesCommand() error {
+	r.DispatchedCommand = r.makeCommandBook("orders", "type.googleapis.com/test.Command")
 	return nil
 }
