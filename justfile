@@ -145,6 +145,21 @@ buf-lint:
 buf-push:
     cd "{{TOP}}/proto" && buf push
 
+# Generate proto documentation (outputs to docs/docs/api/proto/)
+buf-docs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{TOP}}/docs/docs/api/proto"
+    # List proto files (exclude health which is internal)
+    PROTOS=$(find "{{TOP}}/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
+    podman run --rm \
+        -v "{{TOP}}/proto:/protos:Z" \
+        -v "{{TOP}}/docs/docs/api/proto:/out:Z" \
+        docker.io/pseudomuto/protoc-gen-doc \
+        --proto_path=/protos \
+        --doc_opt=markdown,index.md \
+        $PROTOS
+
 # === Build ===
 
 # Build the project (debug)

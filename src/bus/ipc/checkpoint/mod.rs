@@ -219,8 +219,8 @@ impl Checkpoint {
         Ok(())
     }
 
-    /// Get checkpoint statistics.
-    #[allow(dead_code)]
+    /// Get checkpoint statistics (test-only).
+    #[cfg(test)]
     pub async fn stats(&self) -> CheckpointStats {
         let data = self.data.read().await;
         let dirty = *self.dirty.read().await;
@@ -234,9 +234,9 @@ impl Checkpoint {
     }
 }
 
-/// Checkpoint statistics for monitoring.
+/// Checkpoint statistics for monitoring (test-only).
+#[cfg(test)]
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CheckpointStats {
     /// Number of tracked positions.
     pub position_count: usize,
