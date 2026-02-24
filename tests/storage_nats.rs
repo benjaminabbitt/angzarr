@@ -1,8 +1,9 @@
-//! NATS JetStream storage integration tests using testcontainers.
+//! NATS JetStream storage contract tests using testcontainers.
 //!
 //! Run with: cargo test --test storage_nats --features nats -- --nocapture
 //!
-//! These tests spin up NATS with JetStream in a container using testcontainers-rs.
+//! These tests verify that NATS JetStream storage implementations correctly
+//! fulfill their trait contracts. Uses testcontainers-rs to spin up NATS.
 //! No manual NATS setup required.
 
 mod storage;

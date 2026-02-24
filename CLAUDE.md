@@ -105,23 +105,26 @@ Clients connect directly to per-domain aggregate coordinators via K8s DNS (e.g.,
 
 ## Testing
 
-Three levels of testing:
+Four levels of testing:
 
 ### Unit Tests
 
-Two categories:
-
-**Pure unit tests**: No external dependencies. Tests interact only with the system under test. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.
+No external dependencies. Tests interact only with the system under test. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.
 
 - Angzarr core: inline `#[cfg(test)]` modules
 - Examples: `test_*_logic.py`, `*_test.go`, inline Rust tests
-- Run with: `cargo test --lib`
+- Run with: `cargo test --lib` or `just test`
+- **Execution**: Continuous via bacon, pre-commit hooks
 
-**Backend unit tests**: Storage and bus backend tests using **testcontainers** to automatically provision real databases/message brokers in Docker containers. Tests the actual backend implementations against real services.
+### Contract Tests
 
-- Storage: `tests/storage_postgres.rs`, `tests/storage_redis.rs`, `tests/storage_immudb.rs`
+Verify that storage and bus implementations correctly fulfill their trait contracts. Uses **testcontainers** to provision real databases/message brokers in Docker containers.
+
+- Storage: `tests/storage_postgres.rs`, `tests/storage_redis.rs`, `tests/storage_immudb.rs`, etc.
 - Bus: `tests/bus_nats.rs`, `tests/bus_amqp.rs`, `tests/bus_kafka.rs`, etc.
-- Run with: `cargo test --test storage_postgres --features postgres`
+- Interface tests (Gherkin): `tests/interfaces/` — same contracts, BDD-style
+- Run with: `just test-interfaces` (SQLite, fast) or `just test-interfaces-postgres` (containers)
+- **Execution**: CI/CD only (containers are slow), but runnable locally via just targets
 
 ### Integration Tests
 
@@ -139,7 +142,8 @@ Uses `RuntimeBuilder` in-process with real SQLite, real channels, real named pip
 
 - Location: `tests/standalone_integration/`
 - Scope: Angzarr framework only, not example business domains
-- Run with: `cargo test --test standalone_integration --features sqlite`
+- Run with: `just test-local` or `cargo test --test standalone_integration --features sqlite`
+- **Execution**: CI/CD mandatory, manual local (takes time)
 
 ### Writing Documentation
 
@@ -147,13 +151,17 @@ Feature files and READMEs are living documentation. They explain *why*, not *how
 
 ### Acceptance Tests
 
-Test **business behavior** through the full stack. Written in Gherkin, describing what the system does from a business perspective. Exercise real domain logic (cart, order, customer, inventory, fulfillment) through sagas, process managers, and projectors.
+Test **business behavior** through the full stack. Written in Gherkin, describing what the system does from a business perspective. Exercise real domain logic through sagas, process managers, and projectors.
 
-- Location: `examples/rust/e2e/tests/` (runner), `examples/rust/e2e/tests/features/` (Gherkin)
+- Location: `examples/features/` (Gherkin), `examples/{lang}/` (runners)
 - Same Gherkin feature files validate all language implementations (Rust, Python, Go)
-- Two execution modes via `Backend` trait abstraction:
-  - **Standalone** (default): in-process `RuntimeBuilder` with SQLite
-  - **Direct** (`ANGZARR_TEST_MODE=direct`): remote gRPC against deployed per-domain aggregate coordinators
+- **Backing**: Channel bus + SQLite storage (standalone mode) — no containers needed
+- Run with: `just test-acceptance` (in examples directory)
+- **Execution**: CI/CD + manual local
+
+Two execution modes via `Backend` trait abstraction:
+- **Standalone** (default): in-process `RuntimeBuilder` with SQLite + channel bus
+- **Direct** (`ANGZARR_TEST_MODE=direct`): remote gRPC against deployed cluster
 
 ### Gherkin Authoring
 

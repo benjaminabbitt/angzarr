@@ -1,8 +1,9 @@
-//! NATS JetStream EventBus integration tests using testcontainers.
+//! NATS JetStream EventBus contract tests using testcontainers.
 //!
 //! Run with: cargo test --test bus_nats --features nats -- --nocapture
 //!
-//! These tests spin up NATS with JetStream in a container using testcontainers-rs.
+//! These tests verify that the NATS JetStream bus implementation correctly
+//! fulfills the EventBus trait contract. Uses testcontainers-rs to spin up NATS.
 
 mod bus;
 

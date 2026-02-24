@@ -24,9 +24,30 @@ lint:
 test:
     cargo test --lib
 
-# === Interface Contract Tests ===
-# These tests verify that all storage backend implementations conform to the same contract.
-# Written in Gherkin/Cucumber for readable, executable specifications.
+# === Contract Tests ===
+# These tests verify that storage and bus implementations correctly fulfill their trait contracts.
+
+# --- Direct Contract Tests (macro-based) ---
+# Fast verification of specific backend implementations.
+
+# Run PostgreSQL storage contract tests (requires podman socket)
+test-contract-postgres:
+    cargo test --test storage_postgres --features postgres -- --nocapture
+
+# Run Redis storage contract tests (requires podman socket)
+test-contract-redis:
+    cargo test --test storage_redis --features redis -- --nocapture
+
+# Run NATS storage contract tests (requires podman socket)
+test-contract-nats-storage:
+    cargo test --test storage_nats --features nats -- --nocapture
+
+# Run NATS bus contract tests (requires podman socket)
+test-contract-nats-bus:
+    cargo test --test bus_nats --features nats,test-utils -- --nocapture
+
+# --- Interface Contract Tests (Gherkin/Cucumber) ---
+# Comprehensive contract verification with readable specifications.
 
 # Run interface tests against SQLite (in-memory, no containers)
 test-interfaces:
@@ -40,25 +61,25 @@ test-interfaces-postgres:
 test-interfaces-redis:
     STORAGE_BACKEND=redis cargo test --test interfaces --features redis
 
-# === Event Bus Tests ===
-# These tests verify event bus implementations using testcontainers.
+# --- Bus Contract Tests (direct) ---
+# These tests verify event bus implementations correctly fulfill the EventBus trait contract.
 
-# Run AMQP/RabbitMQ bus tests (requires podman socket)
+# Run AMQP/RabbitMQ bus contract tests (requires podman socket)
 # Uses --test-threads=1 to avoid parallel container starts causing resource contention
 test-bus-amqp:
     cargo test --test bus_amqp --features amqp -- --test-threads=1
 
-# Run Kafka bus tests (requires podman socket)
+# Run Kafka bus contract tests (requires podman socket)
 # Uses --test-threads=1 to avoid parallel container starts causing resource contention
 test-bus-kafka:
     cargo test --test bus_kafka --features kafka -- --test-threads=1
 
-# Run GCP Pub/Sub bus tests (requires podman socket)
+# Run GCP Pub/Sub bus contract tests (requires podman socket)
 # Uses --test-threads=1 because tests share PUBSUB_EMULATOR_HOST env var
 test-bus-pubsub:
     cargo test --test bus_pubsub --features pubsub -- --test-threads=1
 
-# Run AWS SNS/SQS bus tests (requires podman socket)
+# Run AWS SNS/SQS bus contract tests (requires podman socket)
 # Uses --test-threads=1 because tests start LocalStack containers with port bindings
 test-bus-sns-sqs:
     cargo test --test bus_sns_sqs --features sns-sqs -- --test-threads=1

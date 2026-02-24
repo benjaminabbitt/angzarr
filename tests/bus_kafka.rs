@@ -1,8 +1,9 @@
-//! Kafka event bus integration tests using testcontainers.
+//! Kafka event bus contract tests using testcontainers.
 //!
 //! Run with: cargo test --test bus_kafka --features "kafka test-utils" -- --nocapture
 //!
-//! Uses Apache Kafka with KRaft mode (no Zookeeper) for simpler setup.
+//! These tests verify that the Kafka bus implementation correctly fulfills
+//! the EventBus trait contract. Uses Apache Kafka with KRaft mode (no Zookeeper).
 
 #![cfg(feature = "kafka")]
 

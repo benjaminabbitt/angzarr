@@ -1,8 +1,9 @@
-//! ImmuDB storage integration tests using testcontainers.
+//! ImmuDB storage contract tests using testcontainers.
 //!
 //! Run with: cargo test --test storage_immudb --features immudb -- --nocapture
 //!
-//! These tests spin up immudb in a container using testcontainers-rs,
+//! These tests verify that ImmuDB storage implementations correctly fulfill
+//! their trait contracts. Uses testcontainers-rs to spin up immudb,
 //! enabling the PostgreSQL wire protocol for sqlx connectivity.
 
 mod storage;

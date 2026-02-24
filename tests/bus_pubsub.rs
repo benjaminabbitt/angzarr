@@ -1,8 +1,9 @@
-//! GCP Pub/Sub event bus integration tests using testcontainers.
+//! GCP Pub/Sub event bus contract tests using testcontainers.
 //!
 //! Run with: cargo test --test bus_pubsub --features "pubsub test-utils" -- --nocapture
 //!
-//! Uses the GCP Pub/Sub emulator for local testing.
+//! These tests verify that the GCP Pub/Sub bus implementation correctly
+//! fulfills the EventBus trait contract. Uses the Pub/Sub emulator via testcontainers.
 
 #![cfg(feature = "pubsub")]
 

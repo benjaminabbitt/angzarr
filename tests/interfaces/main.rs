@@ -1,6 +1,6 @@
-//! Interface tests for storage and bus backends using Cucumber.
+//! Contract tests for storage and bus backends using Cucumber/Gherkin.
 //!
-//! These tests verify that all implementations conform to the same contract.
+//! These tests verify that all implementations correctly fulfill their trait contracts.
 //! Select a backend via environment variable:
 //!
 //! ## Storage Tests

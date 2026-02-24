@@ -1,8 +1,9 @@
-//! SQLite storage integration tests.
+//! SQLite storage contract tests.
 //!
 //! Run with: cargo test --test storage_sqlite --features sqlite
 //!
-//! Uses in-memory database by default, no external dependencies required.
+//! These tests verify that SQLite storage implementations correctly fulfill
+//! their trait contracts. Uses in-memory database, no external dependencies.
 
 mod storage;
 

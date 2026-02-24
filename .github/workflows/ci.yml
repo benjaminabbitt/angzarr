@@ -554,8 +554,8 @@ jobs:
       - name: Run standalone integration tests
         run: cargo test --test standalone_integration --features sqlite
 
-  # Backend unit tests using testcontainers (requires Docker socket access)
-  test-unit-backends:
+  # Contract tests - verify storage/bus implementations fulfill trait contracts (requires Docker socket)
+  test-contract:
     needs: [changes, build-rust]
     if: |
       always() &&
@@ -572,14 +572,11 @@ jobs:
       matrix:
         include:
           - name: postgres
-            test: storage_postgres
-            features: postgres
+            target: test-contract-postgres
           - name: redis
-            test: storage_redis
-            features: redis
-          - name: nats
-            test: bus_nats
-            features: nats,test-utils
+            target: test-contract-redis
+          - name: nats-bus
+            target: test-contract-nats-bus
     steps:
       - uses: actions/checkout@v4
 
@@ -590,13 +587,13 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-backend-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-contract-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run ${{ matrix.name }} tests
-        run: cargo test --test ${{ matrix.test }} --features ${{ matrix.features }} -- --nocapture
+      - name: Run ${{ matrix.name }} contract tests
+        run: just --justfile justfile.container ${{ matrix.target }}
 
-  # Interface tests (Gherkin) with bus backend matrix
-  test-interface-bus:
+  # Contract tests (Gherkin) - interface contract verification with bus backend matrix
+  test-contract-interfaces:
     needs: [changes, build-rust]
     if: |
       always() &&
@@ -646,9 +643,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-interface-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-contract-interface-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run interface tests (${{ matrix.name }} bus)
+      - name: Run contract tests (${{ matrix.name }} bus)
         run: cargo test --test interfaces --features ${{ matrix.features }}
         env:
           BUS_BACKEND: ${{ matrix.bus_backend }}

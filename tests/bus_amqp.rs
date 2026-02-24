@@ -1,8 +1,9 @@
-//! AMQP/RabbitMQ event bus integration tests using testcontainers.
+//! AMQP/RabbitMQ event bus contract tests using testcontainers.
 //!
 //! Run with: cargo test --test bus_amqp --features "amqp test-utils" -- --nocapture
 //!
-//! These tests spin up RabbitMQ in a container using testcontainers-rs.
+//! These tests verify that the AMQP bus implementation correctly fulfills
+//! the EventBus trait contract. Uses testcontainers-rs to spin up RabbitMQ.
 //! No manual RabbitMQ setup required.
 
 #![cfg(feature = "amqp")]

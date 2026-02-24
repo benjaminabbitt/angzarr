@@ -1,9 +1,10 @@
-//! PostgreSQL storage integration tests using testcontainers.
+//! PostgreSQL storage contract tests using testcontainers.
 //!
 //! Run with: cargo test --test storage_postgres --features postgres -- --nocapture
 //!
-//! These tests spin up PostgreSQL in a container using testcontainers-rs,
-//! run migrations, and test all storage interfaces.
+//! These tests verify that PostgresEventStore, PostgresSnapshotStore, and
+//! PostgresPositionStore correctly implement their respective trait contracts.
+//! Uses testcontainers-rs to spin up PostgreSQL and run migrations.
 
 mod storage;
 

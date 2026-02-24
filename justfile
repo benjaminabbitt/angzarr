@@ -171,43 +171,66 @@ lint:
 test:
     just _container test
 
+# === Contract Tests ===
+# Verify storage and bus implementations fulfill their trait contracts.
+
+# --- Direct Contract Tests (macro-based, fast) ---
+
+# Run PostgreSQL storage contract tests (uses testcontainers)
+test-contract-postgres:
+    just _container-dind test-contract-postgres
+
+# Run Redis storage contract tests (uses testcontainers)
+test-contract-redis:
+    just _container-dind test-contract-redis
+
+# Run NATS storage contract tests (uses testcontainers)
+test-contract-nats-storage:
+    just _container-dind test-contract-nats-storage
+
+# Run NATS bus contract tests (uses testcontainers)
+test-contract-nats-bus:
+    just _container-dind test-contract-nats-bus
+
+# --- Interface Contract Tests (Gherkin, comprehensive) ---
+
 # Run interface contract tests (SQLite - no containers needed)
 test-interfaces:
     just _container test-interfaces
 
-# Run interface tests against PostgreSQL (uses testcontainers)
+# Run interface contract tests against PostgreSQL (uses testcontainers)
 test-interfaces-postgres:
     just _container-dind test-interfaces-postgres
 
-# Run interface tests against Redis (uses testcontainers)
+# Run interface contract tests against Redis (uses testcontainers)
 test-interfaces-redis:
     just _container-dind test-interfaces-redis
 
-# Run interface tests against all backends
+# Run interface contract tests against all backends
 test-interfaces-all:
     just _container test-interfaces
     just _container-dind test-interfaces-postgres
     just _container-dind test-interfaces-redis
 
-# === Event Bus Tests ===
+# --- Bus Contract Tests ---
 
-# Run AMQP/RabbitMQ bus tests (uses testcontainers)
+# Run AMQP/RabbitMQ bus contract tests (uses testcontainers)
 test-bus-amqp:
     just _container-dind test-bus-amqp
 
-# Run Kafka bus tests (uses testcontainers)
+# Run Kafka bus contract tests (uses testcontainers)
 test-bus-kafka:
     just _container-dind test-bus-kafka
 
-# Run GCP Pub/Sub bus tests (uses testcontainers)
+# Run GCP Pub/Sub bus contract tests (uses testcontainers)
 test-bus-pubsub:
     just _container-dind test-bus-pubsub
 
-# Run AWS SNS/SQS bus tests (uses testcontainers)
+# Run AWS SNS/SQS bus contract tests (uses testcontainers)
 test-bus-sns-sqs:
     just _container-dind test-bus-sns-sqs
 
-# Run all bus tests
+# Run all bus contract tests
 test-bus-all:
     just _container-dind test-bus-amqp
     just _container-dind test-bus-kafka
@@ -246,17 +269,17 @@ test-local:
 test-local-full: test-local
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Interface Tests (PostgreSQL - testcontainers) ==="
+    @echo "=== Contract Tests - PostgreSQL (testcontainers) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just test-interfaces-postgres
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Interface Tests (Redis - testcontainers) ==="
+    @echo "=== Contract Tests - Redis (testcontainers) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just test-interfaces-redis
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Bus Tests (testcontainers) ==="
+    @echo "=== Contract Tests - Bus Backends (testcontainers) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just test-bus-all
     @echo ""

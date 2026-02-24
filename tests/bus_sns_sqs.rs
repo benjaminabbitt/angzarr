@@ -1,8 +1,9 @@
-//! AWS SNS/SQS event bus integration tests using testcontainers.
+//! AWS SNS/SQS event bus contract tests using testcontainers.
 //!
 //! Run with: cargo test --test bus_sns_sqs --features "sns-sqs test-utils" -- --nocapture
 //!
-//! Uses LocalStack to emulate AWS SNS/SQS locally.
+//! These tests verify that the SNS/SQS bus implementation correctly fulfills
+//! the EventBus trait contract. Uses LocalStack to emulate AWS SNS/SQS locally.
 //! Tests share a single LocalStack container to avoid rootless port conflicts.
 
 #![cfg(feature = "sns-sqs")]

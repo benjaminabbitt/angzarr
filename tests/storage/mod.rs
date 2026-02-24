@@ -1,7 +1,7 @@
-//! Shared storage integration tests.
+//! Shared storage contract test suites.
 //!
-//! Tests the EventStore and SnapshotStore interfaces against all implementations.
-//! Each implementation module imports these test functions and runs them.
+//! Defines reusable test suites for EventStore, SnapshotStore, and PositionStore
+//! trait contracts. Each backend test module imports and runs these via macros.
 
 pub mod event_store_tests;
 pub mod position_store_tests;
