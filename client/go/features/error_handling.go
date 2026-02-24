@@ -2,6 +2,7 @@ package features
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cucumber/godog"
 	"google.golang.org/grpc/codes"
@@ -201,58 +202,83 @@ func (e *ErrorContext) whenTimeoutOccurs() error {
 
 func (e *ErrorContext) thenErrorHasCode() error {
 	if e.Error == nil {
-		return godog.ErrPending
+		return fmt.Errorf("no error set")
 	}
 	switch err := e.Error.(type) {
 	case *ClientError:
 		if err.Code == "" {
-			return godog.ErrPending
+			return fmt.Errorf("error has empty code")
 		}
+	case *CommandRejectedError:
+		// CommandRejectedError doesn't have a code, but it's still valid
+		return nil
 	default:
-		return godog.ErrPending
+		return fmt.Errorf("unknown error type: %T", e.Error)
 	}
 	return nil
 }
 
 func (e *ErrorContext) thenErrorHasMessage() error {
 	if e.Error == nil {
-		return godog.ErrPending
+		return fmt.Errorf("no error set")
+	}
+	switch err := e.Error.(type) {
+	case *ClientError:
+		if err.Message == "" {
+			return fmt.Errorf("error has empty message")
+		}
+	case *CommandRejectedError:
+		if err.Reason == "" {
+			return fmt.Errorf("error has empty reason")
+		}
 	}
 	return nil
 }
 
 func (e *ErrorContext) thenErrorRetryable() error {
 	if !e.IsRetryable {
-		return godog.ErrPending
+		return fmt.Errorf("expected error to be retryable")
 	}
 	return nil
 }
 
 func (e *ErrorContext) thenErrorNotRetryable() error {
 	if e.IsRetryable {
-		return godog.ErrPending
+		return fmt.Errorf("expected error to NOT be retryable")
 	}
 	return nil
 }
 
 func (e *ErrorContext) thenErrorCodeEquals(expected string) error {
 	if e.Error == nil {
-		return godog.ErrPending
+		return fmt.Errorf("no error set")
 	}
 	switch err := e.Error.(type) {
 	case *ClientError:
 		if err.Code != expected {
-			return godog.ErrPending
+			return fmt.Errorf("expected error code %q, got %q", expected, err.Code)
 		}
 	default:
-		return godog.ErrPending
+		return fmt.Errorf("unknown error type: %T", e.Error)
 	}
 	return nil
 }
 
 func (e *ErrorContext) thenErrorMessageContains(expected string) error {
 	if e.Error == nil {
-		return godog.ErrPending
+		return fmt.Errorf("no error set")
+	}
+	var msg string
+	switch err := e.Error.(type) {
+	case *ClientError:
+		msg = err.Message
+	case *CommandRejectedError:
+		msg = err.Reason
+	default:
+		return fmt.Errorf("unknown error type: %T", e.Error)
+	}
+	if !strings.Contains(msg, expected) {
+		return fmt.Errorf("expected message to contain %q, got %q", expected, msg)
 	}
 	return nil
 }

@@ -1,6 +1,8 @@
 package features
 
 import (
+	"fmt"
+
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
@@ -241,63 +243,63 @@ func (r *RouterContext) whenBuildStateSimple() error {
 }
 
 func (r *RouterContext) whenHandlerReturnsError() error {
-	r.LastError = godog.ErrPending
+	r.LastError = fmt.Errorf("handler error: simulated failure")
 	r.LastDispatchResult = nil
 	return nil
 }
 
 func (r *RouterContext) thenHandlerInvoked(handler string) error {
 	if !r.HandlerInvoked {
-		return godog.ErrPending
+		return fmt.Errorf("expected handler %q to be invoked", handler)
 	}
 	return nil
 }
 
 func (r *RouterContext) thenHandlerNotInvoked(handler string) error {
 	if r.OtherHandlerInvoked {
-		return godog.ErrPending
+		return fmt.Errorf("expected handler %q to NOT be invoked", handler)
 	}
 	return nil
 }
 
 func (r *RouterContext) thenRouterReturnsEvents() error {
 	if r.LastDispatchResult == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected router to return events, got nil result")
 	}
 	return nil
 }
 
 func (r *RouterContext) thenRouterReturnsError() error {
 	if r.LastError == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected router to return error, got nil")
 	}
 	return nil
 }
 
 func (r *RouterContext) thenErrorUnknownCommand() error {
 	if r.LastError == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected unknown command error, got nil")
 	}
 	return nil
 }
 
 func (r *RouterContext) thenStateReflectsEvents() error {
 	if r.BuiltState["exists"] != true {
-		return godog.ErrPending
+		return fmt.Errorf("expected state to reflect events (exists=true), got %v", r.BuiltState["exists"])
 	}
 	return nil
 }
 
 func (r *RouterContext) thenStateHasItems(count int) error {
 	if r.BuiltState["item_count"] != count {
-		return godog.ErrPending
+		return fmt.Errorf("expected state to have %d items, got %v", count, r.BuiltState["item_count"])
 	}
 	return nil
 }
 
 func (r *RouterContext) thenStateIsDefault() error {
 	if r.BuiltState["exists"] == true {
-		return godog.ErrPending
+		return fmt.Errorf("expected state to be default (exists=false), got exists=true")
 	}
 	return nil
 }
@@ -316,7 +318,7 @@ func (r *RouterContext) iReceiveAnEventThatTriggersCommandTo(domain string) erro
 }
 
 func (r *RouterContext) iReceiveAnEventWithInvalidPayload() error {
-	r.LastError = godog.ErrPending
+	r.LastError = fmt.Errorf("invalid payload: failed to decode protobuf message")
 	return nil
 }
 
@@ -360,12 +362,12 @@ func (r *RouterContext) iProcessTwoEventsWithSameType() error {
 }
 
 func (r *RouterContext) iSendCommandToNonexistentAggregate() error {
-	r.LastError = godog.ErrPending
+	r.LastError = fmt.Errorf("aggregate not found")
 	return nil
 }
 
 func (r *RouterContext) iSendCommandWithInvalidData() error {
-	r.LastError = godog.ErrPending
+	r.LastError = fmt.Errorf("invalid command data: missing required fields")
 	return nil
 }
 
@@ -409,7 +411,7 @@ func (r *RouterContext) theRouterShouldFetchInventoryAggregateState() error {
 
 func (r *RouterContext) theRouterShouldPropagateTheError() error {
 	if r.LastError == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected router to propagate error, got nil")
 	}
 	return nil
 }
@@ -421,7 +423,7 @@ func (r *RouterContext) theRouterShouldRejectWithSequenceMismatch() error {
 
 func (r *RouterContext) theRouterShouldReturnTheCommand() error {
 	if r.DispatchedCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected router to return command, got nil")
 	}
 	return nil
 }
@@ -437,10 +439,14 @@ func (r *RouterContext) theRouterShouldTrackThatPositionWasProcessed(position in
 }
 
 func (r *RouterContext) theSnapshotShouldBeAtSequence(seq int) error {
-	if r.EventBook != nil && r.EventBook.Snapshot != nil {
-		if r.EventBook.Snapshot.Sequence == uint32(seq) {
-			return nil
-		}
+	if r.EventBook == nil {
+		return fmt.Errorf("no event book set")
 	}
-	return godog.ErrPending
+	if r.EventBook.Snapshot == nil {
+		return fmt.Errorf("no snapshot in event book")
+	}
+	if r.EventBook.Snapshot.Sequence != uint32(seq) {
+		return fmt.Errorf("expected snapshot at sequence %d, got %d", seq, r.EventBook.Snapshot.Sequence)
+	}
+	return nil
 }
