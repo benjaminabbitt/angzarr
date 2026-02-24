@@ -156,7 +156,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            # Transport port — single gRPC server hosts both coordinator + query
+            # Transport — bind to all interfaces, single gRPC server hosts both coordinator + query
+            - name: ANGZARR__TRANSPORT__TCP__HOST
+              value: "0.0.0.0"
             - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ $.Values.service.aggregatePort }}"
             # Target configuration
@@ -370,7 +372,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            # Server ports (ANGZARR__ prefix with __ separator)
+            # Server config — bind to all interfaces
+            - name: ANGZARR__SERVER__HOST
+              value: "0.0.0.0"
             - name: ANGZARR__SERVER__EVENT_QUERY_PORT
               value: "{{ $.Values.service.queryPort }}"
             # Projector sidecar target address
@@ -565,7 +569,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            # Server ports (ANGZARR__ prefix with __ separator)
+            # Server config — bind to all interfaces
+            - name: ANGZARR__SERVER__HOST
+              value: "0.0.0.0"
             - name: ANGZARR__SERVER__AGGREGATE_PORT
               value: "{{ $.Values.service.aggregatePort }}"
             - name: ANGZARR__SERVER__EVENT_QUERY_PORT
@@ -735,6 +741,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            # Server config — bind to all interfaces
+            - name: ANGZARR__SERVER__HOST
+              value: "0.0.0.0"
             - name: ANGZARR__SERVER__AGGREGATE_PORT
               value: "{{ $.Values.service.aggregatePort }}"
             - name: ANGZARR__SERVER__EVENT_QUERY_PORT
@@ -861,7 +870,9 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Transport port — single gRPC server hosts both projector + event stream
+            # Transport — bind to all interfaces, single gRPC server hosts both projector + event stream
+            - name: ANGZARR__TRANSPORT__TCP__HOST
+              value: "0.0.0.0"
             - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ .Values.infrastructure.stream.port }}"
             {{- include "angzarr.otel-env" (dict "root" . "service" "stream") | nindent 12 }}
@@ -972,7 +983,9 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Transport port — projector gRPC service
+            # Transport — bind to all interfaces, projector gRPC service
+            - name: ANGZARR__TRANSPORT__TCP__HOST
+              value: "0.0.0.0"
             - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ .Values.infrastructure.log.port | default 50051 }}"
             {{- include "angzarr.otel-env" (dict "root" . "service" "log" "domain" "projector") | nindent 12 }}
