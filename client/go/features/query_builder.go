@@ -151,22 +151,28 @@ func (q *QueryContext) tryBuildQuery() {
 }
 
 func (q *QueryContext) thenQueryHasDomain(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.Domain != expected {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.Domain != expected {
+		return fmt.Errorf("expected domain %q, got %q", expected, q.BuiltQuery.Cover.Domain)
 	}
 	return nil
 }
 
 func (q *QueryContext) thenQueryHasRoot(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.Root == nil {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.Root == nil {
+		return fmt.Errorf("expected root to be set, but it is nil")
 	}
 	return nil
 }
 
 func (q *QueryContext) thenQuerySelectAll() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	// Empty selection means all events
 	return nil
@@ -174,31 +180,37 @@ func (q *QueryContext) thenQuerySelectAll() error {
 
 func (q *QueryContext) thenQuerySucceeds() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected query to succeed, but query is nil")
 	}
 	return nil
 }
 
 func (q *QueryContext) thenQueryFails() error {
 	if q.BuildError == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected query to fail, but no build error occurred")
 	}
 	return nil
 }
 
 func (q *QueryContext) thenQueryHasEdition(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.Edition == nil {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.Edition == nil {
+		return fmt.Errorf("edition is nil")
 	}
 	if q.BuiltQuery.Cover.Edition.Name != expected {
-		return godog.ErrPending
+		return fmt.Errorf("expected edition %q, got %q", expected, q.BuiltQuery.Cover.Edition.Name)
 	}
 	return nil
 }
 
 func (q *QueryContext) thenQueryHasCorrelationID(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.CorrelationId != expected {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.CorrelationId != expected {
+		return fmt.Errorf("expected correlation ID %q, got %q", expected, q.BuiltQuery.Cover.CorrelationId)
 	}
 	return nil
 }
@@ -311,7 +323,7 @@ func (q *QueryContext) iSetRangeFrom(start int) error {
 
 func (q *QueryContext) iQueryEventsWithEmptyDomain() error {
 	q.Domain = ""
-	q.BuildError = godog.ErrPending // Empty domain should fail
+	q.BuildError = fmt.Errorf("empty domain is not allowed")
 	return nil
 }
 
@@ -344,124 +356,139 @@ func (q *QueryContext) iCanChainByCorrelationID() error {
 
 func (q *QueryContext) iShouldReceiveAQueryBuilderForThatDomainAndRoot() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
-	if q.BuiltQuery.Cover.Domain == "" || q.BuiltQuery.Cover.Root == nil {
-		return godog.ErrPending
+	if q.BuiltQuery.Cover.Domain == "" {
+		return fmt.Errorf("expected domain to be set")
+	}
+	if q.BuiltQuery.Cover.Root == nil {
+		return fmt.Errorf("expected root to be set")
 	}
 	return nil
 }
 
 func (q *QueryContext) iShouldReceiveAQueryBuilderWithNoRootSet() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if q.BuiltQuery.Cover.Root != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no root, but root is set")
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveCorrelationID(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.CorrelationId != expected {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.CorrelationId != expected {
+		return fmt.Errorf("expected correlation ID %q, got %q", expected, q.BuiltQuery.Cover.CorrelationId)
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveDomain(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.Domain != expected {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.Domain != expected {
+		return fmt.Errorf("expected domain %q, got %q", expected, q.BuiltQuery.Cover.Domain)
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveEdition(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.Edition == nil {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.Edition == nil {
+		return fmt.Errorf("edition is nil")
 	}
 	if q.BuiltQuery.Cover.Edition.Name != expected {
-		return godog.ErrPending
+		return fmt.Errorf("expected edition %q, got %q", expected, q.BuiltQuery.Cover.Edition.Name)
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveNoEdition() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if q.BuiltQuery.Cover.Edition != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no edition, but edition is set")
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveNoRoot() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if q.BuiltQuery.Cover.Root != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no root, but root is set")
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveRangeSelection() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Range); !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected range selection, got %T", q.BuiltQuery.Selection)
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveRoot(expected string) error {
-	if q.BuiltQuery == nil || q.BuiltQuery.Cover.Root == nil {
-		return godog.ErrPending
+	if q.BuiltQuery == nil {
+		return fmt.Errorf("query is nil")
+	}
+	if q.BuiltQuery.Cover.Root == nil {
+		return fmt.Errorf("expected root to be set, but it is nil")
 	}
 	return nil
 }
 
 func (q *QueryContext) theBuiltQueryShouldHaveTemporalSelection() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Temporal); !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected temporal selection, got %T", q.BuiltQuery.Selection)
 	}
 	return nil
 }
 
 func (q *QueryContext) thePointInTimeShouldBeSequence(seq int) error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	temporal, ok := q.BuiltQuery.Selection.(*pb.Query_Temporal)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected temporal selection, got %T", q.BuiltQuery.Selection)
 	}
 	seqVal, ok := temporal.Temporal.PointInTime.(*pb.TemporalQuery_AsOfSequence)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected AsOfSequence point in time, got %T", temporal.Temporal.PointInTime)
 	}
 	if seqVal.AsOfSequence != uint32(seq) {
-		return godog.ErrPending
+		return fmt.Errorf("expected sequence %d, got %d", seq, seqVal.AsOfSequence)
 	}
 	return nil
 }
 
 func (q *QueryContext) thePointInTimeShouldBeTheParsedTimestamp() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	temporal, ok := q.BuiltQuery.Selection.(*pb.Query_Temporal)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected temporal selection, got %T", q.BuiltQuery.Selection)
 	}
 	_, ok = temporal.Temporal.PointInTime.(*pb.TemporalQuery_AsOfTime)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected AsOfTime point in time, got %T", temporal.Temporal.PointInTime)
 	}
 	return nil
 }
@@ -476,35 +503,35 @@ func (q *QueryContext) theQueryShouldBeSentToTheQueryService() error {
 
 func (q *QueryContext) theQueryShouldHaveTemporalSelectionLastSet() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Temporal); !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected temporal selection (last set), got %T", q.BuiltQuery.Selection)
 	}
 	return nil
 }
 
 func (q *QueryContext) theQueryShouldTargetMainTimeline() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	// Main timeline means no edition is set
 	if q.BuiltQuery.Cover.Edition != nil && q.BuiltQuery.Cover.Edition.Name != "" {
-		return godog.ErrPending
+		return fmt.Errorf("expected main timeline (no edition), but edition %q is set", q.BuiltQuery.Cover.Edition.Name)
 	}
 	return nil
 }
 
 func (q *QueryContext) theRangeLowerBoundShouldBe(expected int) error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	rangeSelection, ok := q.BuiltQuery.Selection.(*pb.Query_Range)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected range selection, got %T", q.BuiltQuery.Selection)
 	}
 	if rangeSelection.Range.Lower != uint32(expected) {
-		return godog.ErrPending
+		return fmt.Errorf("expected lower bound %d, got %d", expected, rangeSelection.Range.Lower)
 	}
 	return nil
 }
@@ -512,38 +539,41 @@ func (q *QueryContext) theRangeLowerBoundShouldBe(expected int) error {
 func (q *QueryContext) theRangeSelectionShouldBeReplaced() error {
 	// This verifies that setting a range overwrites any previous range
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	if _, ok := q.BuiltQuery.Selection.(*pb.Query_Range); !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected range selection to be replaced, got %T", q.BuiltQuery.Selection)
 	}
 	return nil
 }
 
 func (q *QueryContext) theRangeUpperBoundShouldBe(expected int) error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	rangeSelection, ok := q.BuiltQuery.Selection.(*pb.Query_Range)
-	if !ok || rangeSelection.Range.Upper == nil {
-		return godog.ErrPending
+	if !ok {
+		return fmt.Errorf("expected range selection, got %T", q.BuiltQuery.Selection)
+	}
+	if rangeSelection.Range.Upper == nil {
+		return fmt.Errorf("expected upper bound to be set, but it is nil")
 	}
 	if *rangeSelection.Range.Upper != uint32(expected) {
-		return godog.ErrPending
+		return fmt.Errorf("expected upper bound %d, got %d", expected, *rangeSelection.Range.Upper)
 	}
 	return nil
 }
 
 func (q *QueryContext) theRangeUpperBoundShouldBeEmpty() error {
 	if q.BuiltQuery == nil {
-		return godog.ErrPending
+		return fmt.Errorf("query is nil")
 	}
 	rangeSelection, ok := q.BuiltQuery.Selection.(*pb.Query_Range)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected range selection, got %T", q.BuiltQuery.Selection)
 	}
 	if rangeSelection.Range.Upper != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected upper bound to be empty, but got %d", *rangeSelection.Range.Upper)
 	}
 	return nil
 }

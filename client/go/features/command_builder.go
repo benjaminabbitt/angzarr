@@ -1,6 +1,8 @@
 package features
 
 import (
+	"fmt"
+
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
@@ -252,7 +254,7 @@ func (c *CommandContext) whenCallCommandNewMethod(domain string) error {
 
 func (c *CommandContext) tryBuild() {
 	if !c.TypeURLSet || !c.PayloadSet {
-		c.BuildError = godog.ErrPending
+		c.BuildError = fmt.Errorf("missing required fields: typeURL=%v, payload=%v", c.TypeURLSet, c.PayloadSet)
 		return
 	}
 
@@ -288,74 +290,83 @@ func (c *CommandContext) tryBuild() {
 
 func (c *CommandContext) thenCommandHasDomain(expected string) error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	if c.BuiltCommand.Cover.Domain != expected {
-		return godog.ErrPending
+		return fmt.Errorf("expected domain %q, got %q", expected, c.BuiltCommand.Cover.Domain)
 	}
 	return nil
 }
 
 func (c *CommandContext) thenCommandHasRoot(expected string) error {
-	if c.BuiltCommand == nil || c.BuiltCommand.Cover.Root == nil {
-		return godog.ErrPending
+	if c.BuiltCommand == nil {
+		return fmt.Errorf("built command is nil")
+	}
+	if c.BuiltCommand.Cover.Root == nil {
+		return fmt.Errorf("expected root to be set, but it is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenCommandHasNoRoot() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	if c.BuiltCommand.Cover.Root != nil && len(c.BuiltCommand.Cover.Root.Value) > 0 {
-		return godog.ErrPending
+		return fmt.Errorf("expected no root, but root is set")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenCommandHasTypeURL(expected string) error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	// For now, we use test command type
 	return nil
 }
 
 func (c *CommandContext) thenCommandHasNonEmptyCorrelationID() error {
-	if c.BuiltCommand == nil || c.BuiltCommand.Cover.CorrelationId == "" {
-		return godog.ErrPending
+	if c.BuiltCommand == nil {
+		return fmt.Errorf("built command is nil")
+	}
+	if c.BuiltCommand.Cover.CorrelationId == "" {
+		return fmt.Errorf("expected non-empty correlation ID, but it is empty")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenCorrelationIDIsUUID() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	_, err := uuid.Parse(c.BuiltCommand.Cover.CorrelationId)
 	return err
 }
 
 func (c *CommandContext) thenCommandHasCorrelationID(expected string) error {
-	if c.BuiltCommand == nil || c.BuiltCommand.Cover.CorrelationId != expected {
-		return godog.ErrPending
+	if c.BuiltCommand == nil {
+		return fmt.Errorf("built command is nil")
+	}
+	if c.BuiltCommand.Cover.CorrelationId != expected {
+		return fmt.Errorf("expected correlation ID %q, got %q", expected, c.BuiltCommand.Cover.CorrelationId)
 	}
 	return nil
 }
 
 func (c *CommandContext) thenCommandHasSequence(expected int) error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	if c.BuiltCommand.Pages[0].Sequence != uint32(expected) {
-		return godog.ErrPending
+		return fmt.Errorf("expected sequence %d, got %d", expected, c.BuiltCommand.Pages[0].Sequence)
 	}
 	return nil
 }
 
 func (c *CommandContext) thenBuildingFails() error {
 	if c.BuildError == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected build to fail, but no error occurred")
 	}
 	return nil
 }
@@ -372,58 +383,67 @@ func (c *CommandContext) thenErrorMissingPayload() error {
 
 func (c *CommandContext) thenBuildSucceeds() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected build to succeed, but built command is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenChainedValuesPreserved() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	if c.BuiltCommand.Cover.CorrelationId != "trace-456" {
-		return godog.ErrPending
+		return fmt.Errorf("expected correlation ID 'trace-456', got %q", c.BuiltCommand.Cover.CorrelationId)
 	}
 	if c.BuiltCommand.Pages[0].Sequence != 3 {
-		return godog.ErrPending
+		return fmt.Errorf("expected sequence 3, got %d", c.BuiltCommand.Pages[0].Sequence)
 	}
 	return nil
 }
 
 func (c *CommandContext) thenCommandSentToGateway() error {
-	if c.MockClient == nil || c.MockClient.LastCommand == nil {
-		return godog.ErrPending
+	if c.MockClient == nil {
+		return fmt.Errorf("mock client is nil")
+	}
+	if c.MockClient.LastCommand == nil {
+		return fmt.Errorf("expected command to be sent to gateway, but last command is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenResponseReturned() error {
 	if c.Response == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected response to be returned, but response is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenBuiltAndExecuted() error {
-	if c.Response == nil || c.MockClient == nil || c.MockClient.LastCommand == nil {
-		return godog.ErrPending
+	if c.Response == nil {
+		return fmt.Errorf("response is nil")
+	}
+	if c.MockClient == nil {
+		return fmt.Errorf("mock client is nil")
+	}
+	if c.MockClient.LastCommand == nil {
+		return fmt.Errorf("expected command to be built and executed, but last command is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenMergeCommutative() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	if c.BuiltCommand.Pages[0].MergeStrategy != pb.MergeStrategy_MERGE_COMMUTATIVE {
-		return godog.ErrPending
+		return fmt.Errorf("expected MERGE_COMMUTATIVE strategy, got %v", c.BuiltCommand.Pages[0].MergeStrategy)
 	}
 	return nil
 }
 
 func (c *CommandContext) thenMergeStrict() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	// For now, we use COMMUTATIVE as default
 	return nil
@@ -431,31 +451,34 @@ func (c *CommandContext) thenMergeStrict() error {
 
 func (c *CommandContext) thenEachCommandOwnRoot() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenNoCrossContamination() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenReceiveCommandBuilder() error {
-	if c.BuiltCommand == nil || c.BuiltCommand.Cover.Domain == "" {
-		return godog.ErrPending
+	if c.BuiltCommand == nil {
+		return fmt.Errorf("built command is nil")
+	}
+	if c.BuiltCommand.Cover.Domain == "" {
+		return fmt.Errorf("expected command builder for domain, but domain is empty")
 	}
 	return nil
 }
 
 func (c *CommandContext) thenReceiveBuilderNoRoot() error {
 	if c.BuiltCommand == nil {
-		return godog.ErrPending
+		return fmt.Errorf("built command is nil")
 	}
 	if c.BuiltCommand.Cover.Root != nil && len(c.BuiltCommand.Cover.Root.Value) > 0 {
-		return godog.ErrPending
+		return fmt.Errorf("expected command builder with no root set, but root is set")
 	}
 	return nil
 }

@@ -1,6 +1,8 @@
 package features
 
 import (
+	"fmt"
+
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
@@ -356,7 +358,7 @@ func (c *CompensationContext) whenBuildNotificationCmdBook() error {
 }
 
 func (c *CompensationContext) whenPreconditionError() error {
-	c.Error = godog.ErrPending
+	c.Error = fmt.Errorf("precondition error: simulated failure")
 	return nil
 }
 
@@ -372,113 +374,164 @@ func (c *CompensationContext) whenPMRejected() error {
 }
 
 func (c *CompensationContext) thenCtxHasCommand() error {
-	if c.CompensationCtx == nil || c.CompensationCtx.RejectedCommand == nil {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.RejectedCommand == nil {
+		return fmt.Errorf("rejected command is nil")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCtxHasReason() error {
-	if c.CompensationCtx == nil || c.CompensationCtx.RejectionReason == "" {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.RejectionReason == "" {
+		return fmt.Errorf("rejection reason is empty")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCtxHasOrigin() error {
-	if c.CompensationCtx == nil || c.CompensationCtx.SagaOrigin == nil {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.SagaOrigin == nil {
+		return fmt.Errorf("saga origin is nil")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenSagaName(expected string) error {
-	if c.CompensationCtx == nil || c.CompensationCtx.SagaOrigin.SagaName != expected {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.SagaOrigin == nil {
+		return fmt.Errorf("saga origin is nil")
+	}
+	if c.CompensationCtx.SagaOrigin.SagaName != expected {
+		return fmt.Errorf("expected saga name %q, got %q", expected, c.CompensationCtx.SagaOrigin.SagaName)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenTriggeringAgg(expected string) error {
-	if c.CompensationCtx == nil || c.CompensationCtx.SagaOrigin.TriggeringAggregate != expected {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.SagaOrigin == nil {
+		return fmt.Errorf("saga origin is nil")
+	}
+	if c.CompensationCtx.SagaOrigin.TriggeringAggregate != expected {
+		return fmt.Errorf("expected triggering aggregate %q, got %q", expected, c.CompensationCtx.SagaOrigin.TriggeringAggregate)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenTriggeringSeq(expected int) error {
-	if c.CompensationCtx == nil || c.CompensationCtx.SagaOrigin.TriggeringEventSequence != uint32(expected) {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.SagaOrigin == nil {
+		return fmt.Errorf("saga origin is nil")
+	}
+	if c.CompensationCtx.SagaOrigin.TriggeringEventSequence != uint32(expected) {
+		return fmt.Errorf("expected triggering sequence %d, got %d", expected, c.CompensationCtx.SagaOrigin.TriggeringEventSequence)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCtxCID(expected string) error {
-	if c.CompensationCtx == nil || c.CompensationCtx.CorrelationID != expected {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.CorrelationID != expected {
+		return fmt.Errorf("expected correlation ID %q, got %q", expected, c.CompensationCtx.CorrelationID)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenNotifHasCommand() error {
-	if c.RejectionNotification == nil || c.RejectionNotification.RejectedCommand == nil {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.RejectedCommand == nil {
+		return fmt.Errorf("rejected command in notification is nil")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenNotifHasReason() error {
-	if c.RejectionNotification == nil || c.RejectionNotification.RejectionReason == "" {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.RejectionReason == "" {
+		return fmt.Errorf("rejection reason in notification is empty")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenNotifIssuerType(expected string) error {
-	if c.RejectionNotification == nil || c.RejectionNotification.IssuerType != expected {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.IssuerType != expected {
+		return fmt.Errorf("expected issuer type %q, got %q", expected, c.RejectionNotification.IssuerType)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenSourceDomain(expected string) error {
-	if c.RejectionNotification == nil || c.RejectionNotification.SourceAggregate != expected {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.SourceAggregate != expected {
+		return fmt.Errorf("expected source aggregate %q, got %q", expected, c.RejectionNotification.SourceAggregate)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenSourceSeq(expected int) error {
-	if c.RejectionNotification == nil || c.RejectionNotification.SourceEventSequence != uint32(expected) {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.SourceEventSequence != uint32(expected) {
+		return fmt.Errorf("expected source sequence %d, got %d", expected, c.RejectionNotification.SourceEventSequence)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenIssuerName(expected string) error {
-	if c.RejectionNotification == nil || c.RejectionNotification.IssuerName != expected {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.IssuerName != expected {
+		return fmt.Errorf("expected issuer name %q, got %q", expected, c.RejectionNotification.IssuerName)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenIssuerType(expected string) error {
-	if c.RejectionNotification == nil || c.RejectionNotification.IssuerType != expected {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.IssuerType != expected {
+		return fmt.Errorf("expected issuer type %q, got %q", expected, c.RejectionNotification.IssuerType)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenNotifHasCover() error {
 	if c.Notification == nil {
-		return godog.ErrPending
+		return fmt.Errorf("notification is nil")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenPayloadHasRejection() error {
 	if c.RejectionNotification == nil {
-		return godog.ErrPending
+		return fmt.Errorf("rejection notification is nil")
 	}
 	return nil
 }
@@ -489,7 +542,7 @@ func (c *CompensationContext) thenPayloadTypeURL(expected string) error {
 
 func (c *CompensationContext) thenHasTimestamp() error {
 	if c.Notification == nil {
-		return godog.ErrPending
+		return fmt.Errorf("notification is nil")
 	}
 	return nil
 }
@@ -499,74 +552,104 @@ func (c *CompensationContext) thenTimestampRecent() error {
 }
 
 func (c *CompensationContext) thenCmdTargetsSource() error {
-	if c.CommandBook == nil || c.CommandBook.Cover.Domain == "" {
-		return godog.ErrPending
+	if c.CommandBook == nil {
+		return fmt.Errorf("command book is nil")
+	}
+	if c.CommandBook.Cover.Domain == "" {
+		return fmt.Errorf("command book domain is empty")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCmdCommutative() error {
-	if c.CommandBook == nil || c.CommandBook.Pages[0].MergeStrategy != pb.MergeStrategy_MERGE_COMMUTATIVE {
-		return godog.ErrPending
+	if c.CommandBook == nil {
+		return fmt.Errorf("command book is nil")
+	}
+	if c.CommandBook.Pages[0].MergeStrategy != pb.MergeStrategy_MERGE_COMMUTATIVE {
+		return fmt.Errorf("expected MERGE_COMMUTATIVE strategy, got %v", c.CommandBook.Pages[0].MergeStrategy)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCmdPreservesCID() error {
-	if c.CommandBook == nil || c.CommandBook.Cover.CorrelationId == "" {
-		return godog.ErrPending
+	if c.CommandBook == nil {
+		return fmt.Errorf("command book is nil")
+	}
+	if c.CommandBook.Cover.CorrelationId == "" {
+		return fmt.Errorf("command book correlation ID is empty")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCmdDomain(expected string) error {
-	if c.CommandBook == nil || c.CommandBook.Cover.Domain != expected {
-		return godog.ErrPending
+	if c.CommandBook == nil {
+		return fmt.Errorf("command book is nil")
+	}
+	if c.CommandBook.Cover.Domain != expected {
+		return fmt.Errorf("expected domain %q, got %q", expected, c.CommandBook.Cover.Domain)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenCmdRoot(expected string) error {
-	if c.CommandBook == nil || c.CommandBook.Cover.Root == nil {
-		return godog.ErrPending
+	if c.CommandBook == nil {
+		return fmt.Errorf("command book is nil")
+	}
+	if c.CommandBook.Cover.Root == nil {
+		return fmt.Errorf("command book root is nil")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenRejectionReason(expected string) error {
-	if c.RejectionNotification == nil || c.RejectionNotification.RejectionReason != expected {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.RejectionReason != expected {
+		return fmt.Errorf("expected rejection reason %q, got %q", expected, c.RejectionNotification.RejectionReason)
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenRejectionDetails() error {
-	if c.RejectionNotification == nil || c.RejectionNotification.RejectionReason == "" {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.RejectionReason == "" {
+		return fmt.Errorf("rejection reason is empty, expected full error details")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenOriginalCommand() error {
-	if c.RejectionNotification == nil || c.RejectionNotification.RejectedCommand == nil {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.RejectedCommand == nil {
+		return fmt.Errorf("rejected command is nil, expected original command")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenFieldsPreserved() error {
-	if c.RejectionNotification == nil || c.RejectionNotification.RejectedCommand == nil {
-		return godog.ErrPending
+	if c.RejectionNotification == nil {
+		return fmt.Errorf("rejection notification is nil")
+	}
+	if c.RejectionNotification.RejectedCommand == nil {
+		return fmt.Errorf("rejected command is nil")
 	}
 	if c.RejectionNotification.RejectedCommand.Cover == nil {
-		return godog.ErrPending
+		return fmt.Errorf("rejected command cover is nil, expected all fields preserved")
 	}
 	return nil
 }
 
 func (c *CompensationContext) thenChainPreserved() error {
-	if c.CompensationCtx == nil || c.CompensationCtx.SagaOrigin == nil {
-		return godog.ErrPending
+	if c.CompensationCtx == nil {
+		return fmt.Errorf("compensation context is nil")
+	}
+	if c.CompensationCtx.SagaOrigin == nil {
+		return fmt.Errorf("saga origin is nil, expected full chain preserved")
 	}
 	return nil
 }

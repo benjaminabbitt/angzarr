@@ -1,6 +1,8 @@
 package features
 
 import (
+	"fmt"
+
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -348,14 +350,14 @@ func (d *DecodeContext) whenFilterEvents(eventType string) error {
 
 func (d *DecodeContext) thenDecodeSuccess() error {
 	if d.Decoded == nil && !d.MatchSuccess {
-		return godog.ErrPending
+		return fmt.Errorf("decoding did not succeed: decoded is nil and match not successful")
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenGetOrderCreated() error {
 	if d.Decoded == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected OrderCreated message, but decoded is nil")
 	}
 	return nil
 }
@@ -366,28 +368,34 @@ func (d *DecodeContext) thenPrefixIgnored() error {
 
 func (d *DecodeContext) thenDecodeNone() error {
 	if d.Decoded != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected decoding to return None/null, but got %v", d.Decoded)
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenNoError() error {
 	if d.Error != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no error, but got: %v", d.Error)
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenSequenceIs(expected int) error {
-	if d.Event == nil || d.Event.Sequence != uint32(expected) {
-		return godog.ErrPending
+	if d.Event == nil {
+		return fmt.Errorf("event is nil")
+	}
+	if d.Event.Sequence != uint32(expected) {
+		return fmt.Errorf("expected sequence %d, got %d", expected, d.Event.Sequence)
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenValidTimestamp() error {
-	if d.Event == nil || d.Event.CreatedAt == nil {
-		return godog.ErrPending
+	if d.Event == nil {
+		return fmt.Errorf("event is nil")
+	}
+	if d.Event.CreatedAt == nil {
+		return fmt.Errorf("event.created_at is nil")
 	}
 	return nil
 }
@@ -398,22 +406,25 @@ func (d *DecodeContext) thenTimestampParseable() error {
 
 func (d *DecodeContext) thenEventVariant() error {
 	if d.Event == nil {
-		return godog.ErrPending
+		return fmt.Errorf("event is nil")
 	}
 	_, ok := d.Event.Payload.(*pb.EventPage_Event)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected Event payload variant, got %T", d.Event.Payload)
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenContainsAny() error {
 	if d.Event == nil {
-		return godog.ErrPending
+		return fmt.Errorf("event is nil")
 	}
 	if event, ok := d.Event.Payload.(*pb.EventPage_Event); ok {
-		if event.Event == nil || event.Event.TypeUrl == "" {
-			return godog.ErrPending
+		if event.Event == nil {
+			return fmt.Errorf("event.Event (Any wrapper) is nil")
+		}
+		if event.Event.TypeUrl == "" {
+			return fmt.Errorf("event.Event.TypeUrl is empty")
 		}
 	}
 	return nil
@@ -421,22 +432,25 @@ func (d *DecodeContext) thenContainsAny() error {
 
 func (d *DecodeContext) thenReferenceVariant() error {
 	if d.Event == nil {
-		return godog.ErrPending
+		return fmt.Errorf("event is nil")
 	}
 	_, ok := d.Event.Payload.(*pb.EventPage_External)
 	if !ok {
-		return godog.ErrPending
+		return fmt.Errorf("expected PayloadReference variant, got %T", d.Event.Payload)
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenStorageDetails() error {
 	if d.Event == nil {
-		return godog.ErrPending
+		return fmt.Errorf("event is nil")
 	}
 	if ext, ok := d.Event.Payload.(*pb.EventPage_External); ok {
-		if ext.External == nil || ext.External.Uri == "" {
-			return godog.ErrPending
+		if ext.External == nil {
+			return fmt.Errorf("external payload reference is nil")
+		}
+		if ext.External.Uri == "" {
+			return fmt.Errorf("external payload Uri is empty")
 		}
 	}
 	return nil
@@ -444,21 +458,21 @@ func (d *DecodeContext) thenStorageDetails() error {
 
 func (d *DecodeContext) thenMatchSuccess() error {
 	if !d.MatchSuccess {
-		return godog.ErrPending
+		return fmt.Errorf("expected match to succeed, but it failed")
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenMatchFail() error {
 	if d.MatchSuccess {
-		return godog.ErrPending
+		return fmt.Errorf("expected match to fail, but it succeeded")
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenDeserializeCorrect() error {
 	if d.Decoded == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected protobuf message to deserialize, but decoded is nil")
 	}
 	return nil
 }
@@ -469,14 +483,14 @@ func (d *DecodeContext) thenFieldsPopulated() error {
 
 func (d *DecodeContext) thenDefaultValues() error {
 	if d.Decoded == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected message with default values, but decoded is nil")
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenNoErrorEmpty() error {
 	if d.Error != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no error (empty protobuf is valid), but got: %v", d.Error)
 	}
 	return nil
 }
@@ -495,35 +509,35 @@ func (d *DecodeContext) thenNoCrash() error {
 
 func (d *DecodeContext) thenDefaultMessage() error {
 	if d.Decoded == nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected default message, but decoded is nil")
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenNoErrorSimple() error {
 	if d.Error != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no error, but got: %v", d.Error)
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenGetEventsList() error {
 	if len(d.Events) == 0 {
-		return godog.ErrPending
+		return fmt.Errorf("expected a slice/list of EventPages, but got empty list")
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenEmptyList() error {
 	if len(d.Events) > 0 {
-		return godog.ErrPending
+		return fmt.Errorf("expected empty slice/list, but got %d events", len(d.Events))
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenAllDecode(count int) error {
 	if len(d.DecodedList) != count {
-		return godog.ErrPending
+		return fmt.Errorf("expected %d events to decode, but got %d", count, len(d.DecodedList))
 	}
 	return nil
 }
@@ -546,17 +560,17 @@ func (d *DecodeContext) thenShippedDecodes() error {
 
 func (d *DecodeContext) thenGetCount(count int) error {
 	if len(d.Filtered) != count {
-		return godog.ErrPending
+		return fmt.Errorf("expected %d filtered events, but got %d", count, len(d.Filtered))
 	}
 	return nil
 }
 
 func (d *DecodeContext) thenBothItemAdded() error {
-	for _, e := range d.Filtered {
+	for i, e := range d.Filtered {
 		if event, ok := e.Payload.(*pb.EventPage_Event); ok {
 			typeURL := event.Event.TypeUrl
 			if len(typeURL) < 9 || typeURL[len(typeURL)-9:] != "ItemAdded" {
-				return godog.ErrPending
+				return fmt.Errorf("expected filtered event %d to be ItemAdded, got %s", i, typeURL)
 			}
 		}
 	}
