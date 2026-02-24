@@ -159,6 +159,10 @@ buf-docs:
         --proto_path=/protos \
         --doc_opt=markdown,index.md \
         $PROTOS
+    # Escape curly braces for MDX compatibility (wrap in backticks)
+    sed -i 's/{\([^}]*\)}/`{\1}`/g' "{{TOP}}/docs/docs/api/proto/index.md"
+    # Add frontmatter for Docusaurus
+    sed -i '1i ---\ntitle: Protocol Buffer API\ndescription: Auto-generated documentation for Angzarr protobuf definitions\n---\n' "{{TOP}}/docs/docs/api/proto/index.md"
 
 # === Build ===
 

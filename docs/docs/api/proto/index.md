@@ -1,3 +1,8 @@
+---
+title: Protocol Buffer API
+description: Auto-generated documentation for Angzarr protobuf definitions
+---
+
 # Protocol Documentation
 <a name="top"></a>
 
@@ -378,8 +383,8 @@ proto message that omits sensitive fields.
 | extensions | [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry) | repeated | Custom extension attributes. Keys should follow CloudEvents naming (lowercase, no dots). Framework adds correlationid automatically if present in Cover. |
 | id | [string](#string) | optional | Optional overrides. Framework uses Cover/EventPage values if not set.
 
-Default: {domain}:{root_id}:{sequence} |
-| source | [string](#string) | optional | Default: angzarr/{domain} |
+Default: `{domain}`:`{root_id}`:`{sequence}` |
+| source | [string](#string) | optional | Default: angzarr/`{domain}` |
 | subject | [string](#string) | optional | Default: aggregate root ID |
 
 
@@ -912,7 +917,7 @@ EventStreamService: streams events to registered subscribers
 ### AngzarrDeadLetter
 docs:start:dead_letter
 Dead letter queue entry for failed messages requiring manual intervention.
-Per-domain topics: angzarr.dlq.{domain}
+Per-domain topics: angzarr.dlq.`{domain}`
 
 
 | Field | Type | Label | Description |
@@ -1206,7 +1211,7 @@ Used when event/command payloads exceed message bus size limits.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | storage_type | [PayloadStorageType](#angzarr-PayloadStorageType) |  |  |
-| uri | [string](#string) |  | Location URI: - file:///var/angzarr/payloads/{hash}.bin - gs://bucket/prefix/{hash}.bin - s3://bucket/prefix/{hash}.bin |
+| uri | [string](#string) |  | Location URI: - file:///var/angzarr/payloads/`{hash}`.bin - gs://bucket/prefix/`{hash}`.bin - s3://bucket/prefix/`{hash}`.bin |
 | content_hash | [bytes](#bytes) |  | Content hash for integrity verification and deduplication (SHA-256) |
 | original_size | [uint64](#uint64) |  | Original serialized payload size in bytes |
 | stored_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Timestamp when payload was stored (for TTL cleanup) |
@@ -1262,7 +1267,7 @@ Contains information about why an externally stored payload couldn&#39;t be retr
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| cover | [Cover](#angzarr-Cover) |  | Cover identifies the aggregate: domain &#43; (root | correlation_id | both) Query by root: Cover { domain, root } Query by correlation: Cover { domain, correlation_id } |
+| cover | [Cover](#angzarr-Cover) |  | Cover identifies the aggregate: domain &#43; (root | correlation_id | both) Query by root: Cover `{ domain, root }` Query by correlation: Cover `{ domain, correlation_id }` |
 | range | [SequenceRange](#angzarr-SequenceRange) |  |  |
 | sequences | [SequenceSet](#angzarr-SequenceSet) |  |  |
 | temporal | [TemporalQuery](#angzarr-TemporalQuery) |  |  |

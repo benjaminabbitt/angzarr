@@ -13,6 +13,47 @@ use backon::{BackoffBuilder, ExponentialBuilder};
 use tonic::{Code, Status};
 use tracing::{error, warn};
 
+// ============================================================================
+// Logging Helpers
+// ============================================================================
+
+/// Log a retryable failure with backoff delay.
+///
+/// Used by both `run_with_retry` and manual retry loops (PM orchestration).
+pub fn log_retry_attempt(operation: &str, attempt: u32, error: &impl std::fmt::Display, delay: std::time::Duration) {
+    warn!(
+        operation = %operation,
+        attempt = attempt,
+        error = %error,
+        delay = ?delay,
+        "Operation failed, retrying after backoff"
+    );
+}
+
+/// Log when retry limit is exhausted.
+pub fn log_retry_exhausted(operation: &str, attempts: u32, error: &impl std::fmt::Display) {
+    error!(
+        operation = %operation,
+        attempts = attempts,
+        error = %error,
+        "Operation failed and retry limit exhausted"
+    );
+}
+
+/// Log a fatal (non-retryable) error.
+pub fn log_fatal_error(operation: &str, attempt: u32, error: &impl std::fmt::Display) {
+    error!(
+        operation = %operation,
+        attempt = attempt,
+        error = %error,
+        "Operation failed with fatal error"
+    );
+}
+
+// ============================================================================
+// Backoff Builders
+// ============================================================================
+
 /// Standard backoff for saga/PM command retries (sequence conflicts).
 ///
 /// - Min delay: 10ms
@@ -145,13 +186,7 @@ where
             RetryOutcome::Success(success) => return Ok(success),
             RetryOutcome::Retryable(failure) => {
                 if let Some(delay) = delays.next() {
-                    warn!(
-                        operation = %operation.name(),
-                        attempt = attempt,
-                        error = %failure,
-                        delay = ?delay,
-                        "Operation failed, retrying after backoff"
-                    );
+                    log_retry_attempt(operation.name(), attempt, &failure, delay);
                     if let Err(fatal_failure) = operation.prepare_for_retry(&failure).await {
                         error!(
                             operation = %operation.name(),
@@ -162,21 +197,12 @@ where
                     }
                     tokio::time::sleep(delay).await;
                 } else {
-                    error!(
-                        operation = %operation.name(),
-                        attempts = attempt,
-                        "Operation failed and retry limit exhausted"
-                    );
+                    log_retry_exhausted(operation.name(), attempt, &failure);
                     return Err(failure);
                 }
             }
             RetryOutcome::Fatal(failure) => {
-                error!(
-                    operation = %operation.name(),
-                    attempt = attempt,
-                    error = %failure,
-                    "Operation failed with fatal error"
-                );
+                log_fatal_error(operation.name(), attempt, &failure);
                 return Err(failure);
             }
         }

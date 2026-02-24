@@ -274,27 +274,30 @@ pub async fn orchestrate_pm(
                     }
                     CommandOutcome::Retryable { reason, .. } => match delays.next() {
                         Some(delay) => {
-                            warn!(
+                            crate::utils::retry::log_retry_attempt(
+                                &format!("pm:{pm_name}"),
                                 attempt,
-                                error = %reason,
-                                "Sequence conflict persisting PM events, retrying"
+                                &reason,
+                                delay,
                             );
                             tokio::time::sleep(delay).await;
                             attempt += 1;
                             continue;
                         }
                         None => {
-                            error!(
-                                error = %reason,
-                                "Failed to persist PM events (retries exhausted)"
+                            crate::utils::retry::log_retry_exhausted(
+                                &format!("pm:{pm_name}"),
+                                attempt,
+                                &reason,
                             );
                             return Err(BusError::Publish(reason));
                         }
                     },
                     CommandOutcome::Rejected(reason) => {
-                        error!(
-                            error = %reason,
-                            "Failed to persist PM events"
+                        crate::utils::retry::log_fatal_error(
+                            &format!("pm:{pm_name}"),
+                            attempt,
+                            &reason,
                         );
                         return Err(BusError::Publish(reason));
                     }
