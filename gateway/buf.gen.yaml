@@ -4,6 +4,9 @@ managed:
   override:
     - file_option: go_package_prefix
       value: github.com/angzarr-io/angzarr/gateway/gen
+  disable:
+    - file_option: go_package_prefix
+      module: buf.build/googleapis/googleapis
 plugins:
   # Generate Go protobuf code
   - remote: buf.build/protocolbuffers/go
