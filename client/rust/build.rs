@@ -1,4 +1,11 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Read version from VERSION file and inject as environment variable
+    let version = std::fs::read_to_string("VERSION")
+        .map(|v| v.trim().to_string())
+        .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+    println!("cargo:rustc-env=ANGZARR_CLIENT_VERSION={}", version);
+    println!("cargo:rerun-if-changed=VERSION");
+
     // Use main proto directory (../../proto relative to client/rust)
     // This ensures client uses the same protos as the server
     let proto_root = "../../proto";

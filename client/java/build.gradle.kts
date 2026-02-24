@@ -3,9 +3,12 @@ plugins {
     `maven-publish`
 }
 
+// Read version from VERSION file
+val versionFromFile = file("VERSION").takeIf { it.exists() }?.readText()?.trim() ?: "0.1.0"
+
 allprojects {
     group = "dev.angzarr"
-    version = "0.1.0"
+    version = versionFromFile
 
     repositories {
         mavenCentral()

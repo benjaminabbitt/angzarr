@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-project(angzarr-client VERSION 0.1.0 LANGUAGES CXX)
+
+# Read version from VERSION file
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" PROJECT_VERSION_STRING)
+string(STRIP "${PROJECT_VERSION_STRING}" PROJECT_VERSION_STRING)
+
+project(angzarr-client VERSION ${PROJECT_VERSION_STRING} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,6 +97,12 @@ target_link_libraries(angzarr-client
         protobuf::libprotobuf
         gRPC::grpc++
         absl::strings
+)
+
+# Inject version as compile definition
+target_compile_definitions(angzarr-client
+    PUBLIC
+        ANGZARR_VERSION="${PROJECT_VERSION}"
 )
 
 # Install

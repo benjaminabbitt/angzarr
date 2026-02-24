@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "angzarr-client"
-version = "0.1.4"
+dynamic = ["version"]
 description = "Python client library for Angzarr gRPC services"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -43,6 +43,10 @@ dev = [
     "mutmut>=2.5.0",
     "sqlalchemy>=2.0.0",
 ]
+
+[tool.hatch.version]
+path = "VERSION"
+pattern = "(?P<version>.+)"
 
 [tool.hatch.build.targets.wheel]
 packages = ["angzarr_client"]

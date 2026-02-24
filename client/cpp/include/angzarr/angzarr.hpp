@@ -6,6 +6,9 @@
  * Main include file - includes all public headers.
  */
 
+// Version
+#include "version.hpp"
+
 // Error types
 #include "errors.hpp"
 

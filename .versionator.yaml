@@ -1,0 +1,21 @@
+# Versionator Configuration for angzarr
+# See: versionator --help
+
+# Version prefix for git tags (v1.2.3)
+prefix: "v"
+
+# Pre-release configuration
+prerelease:
+  enabled: false
+  template: "alpha-{{CommitsSinceTag}}"
+
+# Build metadata configuration
+metadata:
+  enabled: false
+  type: "git"
+  template: "{{BuildDateTimeCompact}}.{{MediumHash}}"
+  git:
+    hashLength: 12
+
+logging:
+  output: "console"

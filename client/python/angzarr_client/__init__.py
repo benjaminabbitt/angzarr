@@ -1,5 +1,9 @@
 """Angzarr Python client library for gRPC services."""
 
+from importlib.metadata import version as _version
+
+__version__ = _version("angzarr-client")
+
 from .aggregate import Aggregate, applies, handles
 from .aggregate_handler import AggregateHandler, run_aggregate_server
 from .builder import CommandBuilder, QueryBuilder

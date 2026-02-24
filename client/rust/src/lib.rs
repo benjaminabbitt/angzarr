@@ -53,6 +53,9 @@
 //! }
 //! ```
 
+/// Version of the angzarr-client crate, injected at build time from VERSION file.
+pub const VERSION: &str = env!("ANGZARR_CLIENT_VERSION");
+
 pub mod builder;
 pub mod client;
 pub mod convert;

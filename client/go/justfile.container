@@ -5,6 +5,8 @@
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
+VERSION := `cat VERSION 2>/dev/null || echo "dev"`
+LDFLAGS := "-X github.com/benjaminabbitt/angzarr/client/go.Version=" + VERSION
 
 default:
     @just --list
@@ -13,7 +15,7 @@ proto:
     cd {{TOP}}/proto && buf generate --template buf.gen.go.yaml
 
 build: proto
-    go build ./...
+    go build -ldflags '{{LDFLAGS}}' ./...
 
 test:
     go test -v ./...
