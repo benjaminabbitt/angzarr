@@ -1,6 +1,17 @@
 //! Backend factory for interface tests.
 //!
 //! Provides a unified interface to create storage backends based on environment configuration.
+//!
+//! # Supported Backends
+//!
+//! - **SQLite** (default): In-memory, no containers needed
+//! - **PostgreSQL**: Uses testcontainers
+//!
+//! # Excluded Backends
+//!
+//! - **Redis**: Only supports SnapshotStore (caching), not EventStore or PositionStore
+//! - **immudb**: Only supports EventStore (immutable by design). Snapshots/positions don't
+//!   belong in immudb. Test immudb EventStore via `tests/storage_immudb.rs` instead.
 
 use std::env;
 use std::sync::Arc;
@@ -13,12 +24,6 @@ use angzarr::storage::postgres::{
     PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore,
 };
 
-#[cfg(feature = "redis")]
-use angzarr::storage::redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
-
-#[cfg(feature = "immudb")]
-use angzarr::storage::immudb::{ImmudbEventStore, ImmudbPositionStore, ImmudbSnapshotStore};
-
 use angzarr::storage::{EventStore, PositionStore, SnapshotStore};
 
 #[cfg(feature = "postgres")]
@@ -28,27 +33,16 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 
-#[cfg(feature = "redis")]
-use testcontainers::{
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-    GenericImage, ImageExt,
-};
-
-#[cfg(feature = "immudb")]
-use testcontainers::{
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-    GenericImage, ImageExt,
-};
-
-/// Storage backend type.
+/// Storage backend type for interface tests.
+///
+/// Only backends that support all three stores (EventStore, SnapshotStore, PositionStore)
+/// are included here. Backends with partial support are tested separately:
+/// - Redis: Only SnapshotStore → `tests/storage_redis.rs`
+/// - immudb: Only EventStore → `tests/storage_immudb.rs`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageBackend {
     Sqlite,
     Postgres,
-    Redis,
-    Immudb,
 }
 
 impl StorageBackend {
@@ -59,8 +53,12 @@ impl StorageBackend {
             .as_str()
         {
             "postgres" => StorageBackend::Postgres,
-            "redis" => StorageBackend::Redis,
-            "immudb" => StorageBackend::Immudb,
+            "redis" => {
+                panic!("Redis only supports SnapshotStore. Use tests/storage_redis.rs for Redis testing.")
+            }
+            "immudb" => {
+                panic!("immudb only supports EventStore. Use tests/storage_immudb.rs for immudb testing.")
+            }
             _ => StorageBackend::Sqlite,
         }
     }
@@ -69,8 +67,6 @@ impl StorageBackend {
         match self {
             StorageBackend::Sqlite => "sqlite",
             StorageBackend::Postgres => "postgres",
-            StorageBackend::Redis => "redis",
-            StorageBackend::Immudb => "immudb",
         }
     }
 }
@@ -82,10 +78,6 @@ pub enum ContainerHandle {
     None,
     #[cfg(feature = "postgres")]
     Postgres(testcontainers::ContainerAsync<GenericImage>),
-    #[cfg(feature = "redis")]
-    Redis(testcontainers::ContainerAsync<GenericImage>),
-    #[cfg(feature = "immudb")]
-    Immudb(testcontainers::ContainerAsync<GenericImage>),
 }
 
 /// Holds the storage implementations for a backend.
@@ -115,8 +107,6 @@ impl StorageContext {
         match backend {
             StorageBackend::Sqlite => Self::create_sqlite().await,
             StorageBackend::Postgres => Self::create_postgres().await,
-            StorageBackend::Redis => Self::create_redis().await,
-            StorageBackend::Immudb => Self::create_immudb().await,
         }
     }
 
@@ -204,110 +194,5 @@ impl StorageContext {
     #[cfg(not(feature = "postgres"))]
     async fn create_postgres() -> Self {
         panic!("PostgreSQL feature not enabled. Build with --features postgres");
-    }
-
-    #[cfg(feature = "redis")]
-    async fn create_redis() -> Self {
-        let image = GenericImage::new("redis", "7")
-            .with_exposed_port(6379.tcp())
-            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
-
-        let container = image
-            .with_startup_timeout(Duration::from_secs(60))
-            .start()
-            .await
-            .expect("Failed to start Redis container");
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        let host_port = container
-            .get_host_port_ipv4(6379)
-            .await
-            .expect("Failed to get port");
-
-        let host = container.get_host().await.expect("Failed to get host");
-
-        let redis_url = format!("redis://{}:{}", host, host_port);
-
-        StorageContext {
-            event_store: Arc::new(
-                RedisEventStore::new(&redis_url, None)
-                    .await
-                    .expect("Failed to create RedisEventStore"),
-            ),
-            snapshot_store: Arc::new(
-                RedisSnapshotStore::new(&redis_url, None)
-                    .await
-                    .expect("Failed to create RedisSnapshotStore"),
-            ),
-            position_store: Arc::new(
-                RedisPositionStore::new(&redis_url, None)
-                    .await
-                    .expect("Failed to create RedisPositionStore"),
-            ),
-            container: ContainerHandle::Redis(container),
-        }
-    }
-
-    #[cfg(not(feature = "redis"))]
-    async fn create_redis() -> Self {
-        panic!("Redis feature not enabled. Build with --features redis");
-    }
-
-    #[cfg(feature = "immudb")]
-    async fn create_immudb() -> Self {
-        use angzarr::storage::immudb::ImmudbConfig;
-
-        let image = GenericImage::new("codenotary/immudb", "1.9")
-            .with_exposed_port(3322.tcp())
-            .with_wait_for(WaitFor::message_on_stdout("Web API server enabled"));
-
-        let container = image
-            .with_env_var("IMMUDB_ADDRESS", "0.0.0.0")
-            .with_startup_timeout(Duration::from_secs(60))
-            .start()
-            .await
-            .expect("Failed to start immudb container");
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        let host_port = container
-            .get_host_port_ipv4(3322)
-            .await
-            .expect("Failed to get port");
-
-        let host = container.get_host().await.expect("Failed to get host");
-
-        let config = ImmudbConfig {
-            host: host.to_string(),
-            port: host_port,
-            username: "immudb".to_string(),
-            password: "immudb".to_string(),
-            database: "defaultdb".to_string(),
-        };
-
-        let event_store = ImmudbEventStore::new(config.clone())
-            .await
-            .expect("Failed to create event store");
-
-        let snapshot_store = ImmudbSnapshotStore::new(config.clone())
-            .await
-            .expect("Failed to create snapshot store");
-
-        let position_store = ImmudbPositionStore::new(config)
-            .await
-            .expect("Failed to create position store");
-
-        StorageContext {
-            event_store: Arc::new(event_store),
-            snapshot_store: Arc::new(snapshot_store),
-            position_store: Arc::new(position_store),
-            container: ContainerHandle::Immudb(container),
-        }
-    }
-
-    #[cfg(not(feature = "immudb"))]
-    async fn create_immudb() -> Self {
-        panic!("immudb feature not enabled. Build with --features immudb");
     }
 }
