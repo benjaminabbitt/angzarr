@@ -14,6 +14,7 @@ var opts = godog.Options{
 	Paths:       []string{"../../features"},
 	Randomize:   0,
 	Concurrency: 1,
+	Strict:      false, // Allow pending scenarios without failing
 }
 
 func TestFeatures(t *testing.T) {
