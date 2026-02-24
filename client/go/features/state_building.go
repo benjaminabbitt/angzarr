@@ -417,64 +417,79 @@ func (s *StateContext) whenCallApplyEvent() error {
 }
 
 func (s *StateContext) thenStateIsDefault() error {
-	if s.State == nil || s.State.Exists {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if s.State.Exists {
+		return fmt.Errorf("expected default state (exists=false), got exists=true")
 	}
 	return nil
 }
 
 func (s *StateContext) thenNoEventsApplied() error {
 	if len(s.EventsApplied) > 0 {
-		return godog.ErrPending
+		return fmt.Errorf("expected no events applied, got %d", len(s.EventsApplied))
 	}
 	return nil
 }
 
 func (s *StateContext) thenStateReflectsOrder() error {
-	if s.State == nil || !s.State.Exists {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if !s.State.Exists {
+		return fmt.Errorf("expected state to reflect order (exists=true), got exists=false")
 	}
 	return nil
 }
 
 func (s *StateContext) thenStateHasOrderID() error {
-	if s.State == nil || s.State.OrderID == "" {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if s.State.OrderID == "" {
+		return fmt.Errorf("expected state to have order ID, got empty")
 	}
 	return nil
 }
 
 func (s *StateContext) thenStateReflectsCount(count int) error {
 	if len(s.EventsApplied) != count {
-		return godog.ErrPending
+		return fmt.Errorf("expected %d events applied, got %d", count, len(s.EventsApplied))
 	}
 	return nil
 }
 
 func (s *StateContext) thenStateHasItems(count int) error {
-	if s.State == nil || len(s.State.Items) != count {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if len(s.State.Items) != count {
+		return fmt.Errorf("expected state to have %d items, got %d", count, len(s.State.Items))
 	}
 	return nil
 }
 
 func (s *StateContext) thenEventsAppliedOrder() error {
 	if len(s.EventsApplied) != 3 {
-		return godog.ErrPending
+		return fmt.Errorf("expected 3 events applied in order, got %d", len(s.EventsApplied))
 	}
 	return nil
 }
 
 func (s *StateContext) thenFinalStateOrder() error {
 	if s.State == nil {
-		return godog.ErrPending
+		return fmt.Errorf("state is nil")
 	}
 	return nil
 }
 
 func (s *StateContext) thenStateEqualsSnapshot() error {
-	if s.State == nil || !s.State.Exists {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if !s.State.Exists {
+		return fmt.Errorf("expected state to equal snapshot (exists=true)")
 	}
 	return nil
 }
@@ -484,8 +499,11 @@ func (s *StateContext) thenNoEvents() error {
 }
 
 func (s *StateContext) thenStateStartsSnapshot() error {
-	if s.State == nil || !s.State.Exists {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if !s.State.Exists {
+		return fmt.Errorf("expected state to start from snapshot (exists=true)")
 	}
 	return nil
 }
@@ -496,35 +514,44 @@ func (s *StateContext) thenUnknownSkipped() error {
 
 func (s *StateContext) thenNoError() error {
 	if s.Error != nil {
-		return godog.ErrPending
+		return fmt.Errorf("expected no error, got: %v", s.Error)
 	}
 	return nil
 }
 
 func (s *StateContext) thenOtherEventsApplied() error {
-	if s.State == nil || !s.State.Exists {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if !s.State.Exists {
+		return fmt.Errorf("expected other events applied (exists=true)")
 	}
 	return nil
 }
 
 func (s *StateContext) thenFieldEquals(value int) error {
-	if s.State == nil || s.State.FieldValue != value {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if s.State.FieldValue != value {
+		return fmt.Errorf("expected field value %d, got %d", value, s.State.FieldValue)
 	}
 	return nil
 }
 
 func (s *StateContext) thenAnyUnpacked() error {
 	if len(s.EventsApplied) == 0 {
-		return godog.ErrPending
+		return fmt.Errorf("expected any to be unpacked, got no events applied")
 	}
 	return nil
 }
 
 func (s *StateContext) thenTypedEventApplied() error {
-	if s.State == nil || !s.State.Exists {
-		return godog.ErrPending
+	if s.State == nil {
+		return fmt.Errorf("state is nil")
+	}
+	if !s.State.Exists {
+		return fmt.Errorf("expected typed event applied (exists=true)")
 	}
 	return nil
 }
@@ -543,35 +570,41 @@ func (s *StateContext) thenDeserializationError() error {
 
 func (s *StateContext) thenNextSequence(expected int) error {
 	if s.NextSequence != uint32(expected) {
-		return godog.ErrPending
+		return fmt.Errorf("expected next sequence %d, got %d", expected, s.NextSequence)
 	}
 	return nil
 }
 
 func (s *StateContext) thenEventBookUnchanged() error {
 	if s.EventBook == nil {
-		return godog.ErrPending
+		return fmt.Errorf("event book is nil")
 	}
 	return nil
 }
 
 func (s *StateContext) thenEventsPresent() error {
-	if s.EventBook == nil || len(s.EventBook.Pages) != s.OriginalEventBook {
-		return godog.ErrPending
+	if s.EventBook == nil {
+		return fmt.Errorf("event book is nil")
+	}
+	if len(s.EventBook.Pages) != s.OriginalEventBook {
+		return fmt.Errorf("expected %d events present, got %d", s.OriginalEventBook, len(s.EventBook.Pages))
 	}
 	return nil
 }
 
 func (s *StateContext) thenNewStateReturned() error {
 	if s.State == s.InitialState {
-		return godog.ErrPending
+		return fmt.Errorf("expected new state, got same reference as initial")
 	}
 	return nil
 }
 
 func (s *StateContext) thenOriginalUnchanged() error {
-	if s.InitialState == nil || s.InitialState.FieldValue != 42 {
-		return godog.ErrPending
+	if s.InitialState == nil {
+		return fmt.Errorf("initial state is nil")
+	}
+	if s.InitialState.FieldValue != 42 {
+		return fmt.Errorf("expected original field value 42, got %d", s.InitialState.FieldValue)
 	}
 	return nil
 }
@@ -660,7 +693,7 @@ func (s *StateContext) thenOnlyEventsApplied(e1, e2, e3, e4 int) error {
 
 func (s *StateContext) thenOnlyEventsAtSeqApplied(seq1, seq2 int) error {
 	if len(s.EventsApplied) < 2 {
-		return godog.ErrPending
+		return fmt.Errorf("expected at least 2 events applied at sequences %d and %d, got %d", seq1, seq2, len(s.EventsApplied))
 	}
 	return nil
 }
