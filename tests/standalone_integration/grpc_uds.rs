@@ -100,6 +100,37 @@ impl AggregateCoordinatorService for MockAggregateService {
         let cmd = speculate.command.unwrap_or_default();
         self.handle(Request::new(cmd)).await
     }
+
+    async fn handle_compensation(
+        &self,
+        request: Request<CommandBook>,
+    ) -> Result<Response<angzarr::proto::BusinessResponse>, Status> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        let cmd = request.into_inner();
+
+        // Echo command as compensation event
+        let event = cmd.pages.first().and_then(|p| {
+            if let Some(command_page::Payload::Command(c)) = &p.payload {
+                Some(c.clone())
+            } else {
+                None
+            }
+        });
+        let events = EventBook {
+            cover: cmd.cover,
+            pages: vec![EventPage {
+                sequence: 0,
+                payload: event.map(event_page::Payload::Event),
+                created_at: None,
+            }],
+            snapshot: None,
+            ..Default::default()
+        };
+
+        Ok(Response::new(angzarr::proto::BusinessResponse {
+            result: Some(angzarr::proto::business_response::Result::Events(events)),
+        }))
+    }
 }
 
 #[tokio::test]

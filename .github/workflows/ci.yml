@@ -615,27 +615,27 @@ jobs:
           # Channel backend (no container, fast)
           - name: channel
             bus_backend: channel
-            features: sqlite,channel
+            features: sqlite,channel,test-utils
           # AMQP/RabbitMQ
           - name: amqp
             bus_backend: amqp
-            features: sqlite,amqp
+            features: sqlite,amqp,test-utils
           # Kafka (Redpanda)
           - name: kafka
             bus_backend: kafka
-            features: sqlite,kafka
+            features: sqlite,kafka,test-utils
           # NATS JetStream
           - name: nats
             bus_backend: nats
-            features: sqlite,nats
+            features: sqlite,nats,test-utils
           # Google Pub/Sub emulator
           - name: pubsub
             bus_backend: pubsub
-            features: sqlite,pubsub
+            features: sqlite,pubsub,test-utils
           # AWS SNS/SQS (LocalStack)
           - name: sns-sqs
             bus_backend: sns-sqs
-            features: sqlite,sns-sqs
+            features: sqlite,sns-sqs,test-utils
     steps:
       - uses: actions/checkout@v4
 
