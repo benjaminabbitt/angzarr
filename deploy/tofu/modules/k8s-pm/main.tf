@@ -11,7 +11,7 @@ terraform {
 }
 
 locals {
-  chart_path = "${path.module}/../../../helm/angzarr-pm"
+  chart_path = "${path.module}/../../../k8s/helm/angzarr-pm"
 
   # Common coordinator environment variables
   coordinator_env = {
