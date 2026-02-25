@@ -34,7 +34,7 @@
 //!     &command,
 //!     expected,
 //!     actual,
-//!     MergeStrategy::MergeManual,  // TODO: Add this enum value to proto
+//!     MergeStrategy::MergeManual,
 //! );
 //! dlq_publisher.publish(dead_letter).await?;
 //! ```
@@ -440,7 +440,7 @@ impl DeadLetterPublisher for ChannelDeadLetterPublisher {
 
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{
+            use crate::advice::metrics::{
                 self, backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
                 DLQ_PUBLISH_TOTAL,
             };
@@ -583,7 +583,7 @@ impl DeadLetterPublisher for AmqpDeadLetterPublisher {
 
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{
+            use crate::advice::metrics::{
                 backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
                 DLQ_PUBLISH_TOTAL,
             };
@@ -688,7 +688,7 @@ impl DeadLetterPublisher for KafkaDeadLetterPublisher {
 
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{
+            use crate::advice::metrics::{
                 backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
                 DLQ_PUBLISH_TOTAL,
             };
@@ -841,7 +841,7 @@ impl DeadLetterPublisher for PubSubDeadLetterPublisher {
 
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{
+            use crate::advice::metrics::{
                 backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
                 DLQ_PUBLISH_TOTAL,
             };
@@ -1017,7 +1017,7 @@ impl DeadLetterPublisher for SnsSqsDeadLetterPublisher {
 
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{
+            use crate::advice::metrics::{
                 backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
                 DLQ_PUBLISH_TOTAL,
             };

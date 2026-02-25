@@ -387,7 +387,7 @@ pub async fn handle_business_response(
             );
             #[cfg(feature = "otel")]
             {
-                use crate::utils::metrics::{self, SAGA_COMPENSATION_TOTAL};
+                use crate::advice::metrics::{self, SAGA_COMPENSATION_TOTAL};
                 SAGA_COMPENSATION_TOTAL
                     .add(1, &[metrics::name_attr(&context.saga_origin.saga_name)]);
             }
@@ -477,7 +477,7 @@ async fn process_revocation_flags(
         let event_book = build_compensation_failed_event_book(context, &revocation.reason, config);
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{self, SAGA_COMPENSATION_TOTAL};
+            use crate::advice::metrics::{self, SAGA_COMPENSATION_TOTAL};
             SAGA_COMPENSATION_TOTAL.add(1, &[metrics::name_attr(&context.saga_origin.saga_name)]);
         }
         return Ok(CompensationOutcome::EmitSystemRevocation(event_book));

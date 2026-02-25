@@ -194,8 +194,8 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         // Record retry metric
         #[cfg(feature = "otel")]
         {
-            use crate::utils::metrics::{self, SAGA_RETRY_TOTAL};
-            SAGA_RETRY_TOTAL.add(1, &[metrics::name_attr(self.saga_name)]);
+            use crate::advice::metrics::{name_attr, SAGA_RETRY_TOTAL};
+            SAGA_RETRY_TOTAL.add(1, &[name_attr(self.saga_name)]);
         }
 
         // Re-prepare: get fresh destination covers from the saga.
@@ -357,9 +357,6 @@ pub async fn orchestrate_saga(
     output_domain_validator: Option<&OutputDomainValidator>,
     backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
-    #[cfg(feature = "otel")]
-    let start = std::time::Instant::now();
-
     // Phase 1: Prepare — get destination covers
     let destination_covers = ctx
         .prepare_destinations()
@@ -432,18 +429,6 @@ pub async fn orchestrate_saga(
         .backoff(backoff)
         .execute()
         .await;
-
-    #[cfg(feature = "otel")]
-    {
-        use crate::utils::metrics::{self, SAGA_DURATION};
-        SAGA_DURATION.record(
-            start.elapsed().as_secs_f64(),
-            &[
-                metrics::component_attr("saga"),
-                metrics::name_attr(saga_name),
-            ],
-        );
-    }
 
     Ok(())
 }

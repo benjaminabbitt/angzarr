@@ -14,7 +14,8 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
 use crate::proto::{
-    CommandBook, EventBook, MergeStrategy, Projection, Snapshot, SnapshotRetention, SyncEventBook,
+    CommandBook, Cover, EventBook, MergeStrategy, Projection, Snapshot, SnapshotRetention,
+    SyncEventBook, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
@@ -200,7 +201,7 @@ impl AggregateContext for GrpcAggregateContext {
         domain: &str,
         edition: &str,
         root: Uuid,
-        _correlation_id: &str,
+        correlation_id: &str,
     ) -> Result<EventBook, Status> {
         // Compute new pages: those in received but not in prior
         let prior_max_seq = prior.pages.iter().map(|p| p.sequence_num()).max();
@@ -233,8 +234,19 @@ impl AggregateContext for GrpcAggregateContext {
 
         // Persist new events if any
         if !new_pages.is_empty() {
+            // Build cover from parameters if client didn't provide one
+            let cover = received.cover.clone().or_else(|| {
+                Some(Cover {
+                    domain: domain.to_string(),
+                    root: Some(ProtoUuid {
+                        value: root.as_bytes().to_vec(),
+                    }),
+                    correlation_id: correlation_id.to_string(),
+                    edition: None,
+                })
+            });
             let events_to_persist = EventBook {
-                cover: received.cover.clone(),
+                cover,
                 pages: new_pages.clone(),
                 snapshot: None,
                 ..Default::default()
@@ -278,9 +290,19 @@ impl AggregateContext for GrpcAggregateContext {
             }
         }
 
-        // Return with only new pages
+        // Return with only new pages - ensure cover is set
+        let result_cover = received.cover.clone().or_else(|| {
+            Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: correlation_id.to_string(),
+                edition: None,
+            })
+        });
         Ok(EventBook {
-            cover: received.cover.clone(),
+            cover: result_cover,
             pages: new_pages,
             snapshot: received.snapshot.clone(),
             ..Default::default()
@@ -297,41 +319,8 @@ impl AggregateContext for GrpcAggregateContext {
         };
 
         // Publish events to bus — cover.domain stays bare, bus computes routing key
-        #[cfg(feature = "otel")]
-        let publish_start = std::time::Instant::now();
-
         let bus_events = Arc::new(events.clone());
-
-        #[cfg(feature = "otel")]
-        let routing_key = bus_events.routing_key();
-
         let publish_result = self.event_bus.publish(bus_events).await;
-
-        #[cfg(feature = "otel")]
-        {
-            use crate::utils::metrics::{self, BUS_PUBLISH_DURATION, BUS_PUBLISH_TOTAL};
-            let outcome = if publish_result.is_ok() {
-                "success"
-            } else {
-                "error"
-            };
-            BUS_PUBLISH_DURATION.record(
-                publish_start.elapsed().as_secs_f64(),
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&routing_key),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-            BUS_PUBLISH_TOTAL.add(
-                1,
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&routing_key),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-        }
 
         if let Err(e) = publish_result {
             warn!(

@@ -184,9 +184,6 @@ pub async fn orchestrate_pm(
     correlation_id: &str,
     backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
-    #[cfg(feature = "otel")]
-    let start = std::time::Instant::now();
-
     let trigger_domain = trigger
         .cover
         .as_ref()
@@ -333,18 +330,6 @@ pub async fn orchestrate_pm(
         // Exit retry loop. PM events are persisted, commands are dispatched.
         // The workflow continues asynchronously via Notifications.
         break;
-    }
-
-    #[cfg(feature = "otel")]
-    {
-        use crate::utils::metrics::{self, PM_DURATION};
-        PM_DURATION.record(
-            start.elapsed().as_secs_f64(),
-            &[
-                metrics::component_attr("process_manager"),
-                metrics::name_attr(pm_domain),
-            ],
-        );
     }
 
     Ok(())

@@ -148,9 +148,6 @@ impl EventHandler for ProjectorEventHandler {
 
         Box::pin(
             async move {
-                #[cfg(feature = "otel")]
-                let start = std::time::Instant::now();
-
                 let book_owned = (*book).clone();
 
                 let result: Result<(), BusError> = async {
@@ -188,19 +185,6 @@ impl EventHandler for ProjectorEventHandler {
                     Ok(())
                 }
                 .await;
-
-                #[cfg(feature = "otel")]
-                {
-                    use crate::utils::metrics::{self, PROJECTOR_DURATION};
-                    PROJECTOR_DURATION.record(
-                        start.elapsed().as_secs_f64(),
-                        &[
-                            metrics::component_attr("projector"),
-                            metrics::name_attr(&projector_name),
-                            metrics::domain_attr(&domain),
-                        ],
-                    );
-                }
 
                 result
             }

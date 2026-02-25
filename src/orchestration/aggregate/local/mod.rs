@@ -370,41 +370,8 @@ impl AggregateContext for LocalAggregateContext {
         );
 
         // Publish events to bus — cover.domain stays bare, bus computes routing key
-        #[cfg(feature = "otel")]
-        let publish_start = std::time::Instant::now();
-
         let bus_events = Arc::new(events.clone());
-
-        #[cfg(feature = "otel")]
-        let routing_key = bus_events.routing_key();
-
         let publish_result = self.event_bus.publish(bus_events).await;
-
-        #[cfg(feature = "otel")]
-        {
-            use crate::utils::metrics::{self, BUS_PUBLISH_DURATION, BUS_PUBLISH_TOTAL};
-            let outcome = if publish_result.is_ok() {
-                "success"
-            } else {
-                "error"
-            };
-            BUS_PUBLISH_DURATION.record(
-                publish_start.elapsed().as_secs_f64(),
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&routing_key),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-            BUS_PUBLISH_TOTAL.add(
-                1,
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&routing_key),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-        }
 
         if let Err(e) = publish_result {
             warn!(

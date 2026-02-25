@@ -12,7 +12,7 @@
 //! let store = SqliteEventStore::new(pool);
 //!
 //! // Apply advice layers
-//! let store = Instrumented::new(store);
+//! let store = Instrumented::new(store, "sqlite");
 //!
 //! // Use as normal - metrics are transparent
 //! store.add(domain, root, events, correlation_id).await?;
@@ -20,11 +20,24 @@
 //!
 //! # Available Advice
 //!
-//! - [`Instrumented`] - Adds metrics (counters, histograms) for all operations
+//! - [`Instrumented`] - Adds metrics (counters, histograms) for storage operations
+//! - [`InstrumentedBus`] - Adds metrics for event bus operations
+//!
+//! # Metrics
+//!
+//! All metrics are feature-gated behind `otel`. When disabled, wrappers pass
+//! through with no overhead. See [`metrics`] module for metric definitions.
 
 mod instrumented;
+mod instrumented_bus;
+mod instrumented_handlers;
+pub mod metrics;
 
 pub use instrumented::Instrumented;
+pub use instrumented_bus::{InstrumentedBus, InstrumentedDynBus};
+pub use instrumented_handlers::{
+    InstrumentedPMHandler, InstrumentedProjectorHandler, InstrumentedSagaHandler,
+};
 
 // Re-export metric constants for external dashboards/alerting
 pub use instrumented::{

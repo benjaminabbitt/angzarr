@@ -6,6 +6,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::advice::{
+    InstrumentedDynBus, InstrumentedPMHandler, InstrumentedProjectorHandler,
+    InstrumentedSagaHandler,
+};
 use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, MessagingType};
 use crate::config::ResourceLimits;
 use crate::storage::{SqliteConfig, StorageConfig, StorageType};
@@ -267,8 +271,10 @@ impl RuntimeBuilder {
     where
         H: ProjectorHandler,
     {
+        let name = name.into();
+        let instrumented = InstrumentedProjectorHandler::new(handler, &name);
         self.projectors
-            .insert(name.into(), (Arc::new(handler), config));
+            .insert(name, (Arc::new(instrumented), config));
         self
     }
 
@@ -285,7 +291,9 @@ impl RuntimeBuilder {
     where
         H: SagaHandler,
     {
-        self.sagas.insert(name.into(), (Arc::new(handler), config));
+        let name = name.into();
+        let instrumented = InstrumentedSagaHandler::new(handler, &name);
+        self.sagas.insert(name, (Arc::new(instrumented), config));
         self
     }
 
@@ -305,8 +313,10 @@ impl RuntimeBuilder {
     where
         H: ProcessManagerHandler,
     {
+        let name = name.into();
+        let instrumented = InstrumentedPMHandler::new(handler, &name);
         self.process_managers
-            .insert(name.into(), (Arc::new(handler), config));
+            .insert(name, (Arc::new(instrumented), config));
         self
     }
 
@@ -340,10 +350,18 @@ impl RuntimeBuilder {
         }
 
         // Use custom event bus if provided, otherwise create a default channel bus.
+        // Wrap with instrumentation for metrics.
         let event_bus: Arc<dyn EventBus> = self
             .custom_event_bus
-            .unwrap_or_else(|| Arc::new(ChannelEventBus::new(ChannelConfig::publisher())));
+            .map(|bus| InstrumentedDynBus::wrap(bus, "custom"))
+            .unwrap_or_else(|| {
+                InstrumentedDynBus::wrap(
+                    Arc::new(ChannelEventBus::new(ChannelConfig::publisher())),
+                    "channel",
+                )
+            });
 
+        // Handlers are already wrapped with instrumentation during registration
         Runtime::new(
             self.storage,
             self.domain_storage,

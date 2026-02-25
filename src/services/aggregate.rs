@@ -135,38 +135,10 @@ impl AggregateCoordinatorService for AggregateService {
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let command_book = request.into_inner();
-
-        #[cfg(feature = "otel")]
-        let domain = command_book.domain().to_string();
-        #[cfg(feature = "otel")]
-        let start = std::time::Instant::now();
-
         let ctx = self.create_async_context();
 
         let result =
             execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
-
-        #[cfg(feature = "otel")]
-        {
-            use crate::utils::metrics::{self, COMMAND_DURATION, COMMAND_TOTAL};
-            let outcome = if result.is_ok() { "success" } else { "error" };
-            COMMAND_DURATION.record(
-                start.elapsed().as_secs_f64(),
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&domain),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-            COMMAND_TOTAL.add(
-                1,
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&domain),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-        }
 
         Ok(Response::new(result?))
     }
@@ -184,37 +156,10 @@ impl AggregateCoordinatorService for AggregateService {
             .command
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
 
-        #[cfg(feature = "otel")]
-        let domain = command_book.domain().to_string();
-        #[cfg(feature = "otel")]
-        let start = std::time::Instant::now();
-
         let ctx = self.create_sync_context(sync_mode);
 
         let result =
             execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
-
-        #[cfg(feature = "otel")]
-        {
-            use crate::utils::metrics::{self, COMMAND_DURATION, COMMAND_TOTAL};
-            let outcome = if result.is_ok() { "success" } else { "error" };
-            COMMAND_DURATION.record(
-                start.elapsed().as_secs_f64(),
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&domain),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-            COMMAND_TOTAL.add(
-                1,
-                &[
-                    metrics::component_attr("aggregate"),
-                    metrics::domain_attr(&domain),
-                    metrics::outcome_attr(outcome),
-                ],
-            );
-        }
 
         Ok(Response::new(result?))
     }
