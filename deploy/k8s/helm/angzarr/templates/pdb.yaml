@@ -16,7 +16,7 @@ Strategy:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}-pdb
+  name: {{ include "angzarr.aggregate-service-name" (dict "domain" .domain) }}-pdb
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: aggregate
@@ -31,7 +31,7 @@ spec:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
       app.kubernetes.io/component: aggregate
-      angzarr.io/app: {{ .name }}
+      angzarr.io/domain: {{ .domain }}
 {{- end }}
 {{- end }}
 
@@ -42,18 +42,18 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}-pdb
+  name: {{ include "angzarr.saga-service-name" (dict "name" .name) }}-pdb
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: saga
-    angzarr.io/domain: {{ .sourceDomain }}
+    angzarr.io/saga: {{ .name }}
 spec:
   maxUnavailable: {{ $.Values.podDisruptionBudget.sagaMaxUnavailable | default 1 }}
   selector:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
       app.kubernetes.io/component: saga
-      angzarr.io/app: {{ .name }}
+      angzarr.io/saga: {{ .name }}
 {{- end }}
 {{- end }}
 
@@ -64,11 +64,11 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}-pdb
+  name: {{ include "angzarr.projector-service-name" (dict "name" .name) }}-pdb
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: projector
-    angzarr.io/domain: {{ .domain }}
+    angzarr.io/app: {{ .name }}
 spec:
   maxUnavailable: {{ $.Values.podDisruptionBudget.projectorMaxUnavailable | default 1 }}
   selector:
@@ -86,17 +86,18 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}-pdb
+  name: {{ include "angzarr.pm-service-name" (dict "name" .name) }}-pdb
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
-    app.kubernetes.io/component: processManager
+    app.kubernetes.io/component: process-manager
+    angzarr.io/pm: {{ .name }}
 spec:
   maxUnavailable: {{ $.Values.podDisruptionBudget.processManagerMaxUnavailable | default 1 }}
   selector:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
-      app.kubernetes.io/component: processManager
-      angzarr.io/app: {{ .name }}
+      app.kubernetes.io/component: process-manager
+      angzarr.io/pm: {{ .name }}
 {{- end }}
 {{- end }}
 

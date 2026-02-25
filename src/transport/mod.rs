@@ -188,10 +188,11 @@ impl UdsConfig {
 
     /// Get the socket path for a service with a qualifier (e.g., domain name).
     ///
-    /// Example: `socket_path_qualified("aggregate", "orders")` -> `aggregate-orders.sock`
+    /// Uses `{qualifier}-{service_name}` order to match K8s service naming convention.
+    /// Example: `socket_path_qualified("aggregate", "orders")` -> `orders-aggregate.sock`
     pub fn socket_path_qualified(&self, service_name: &str, qualifier: &str) -> PathBuf {
         self.base_path
-            .join(format!("{}-{}.sock", service_name, qualifier))
+            .join(format!("{}-{}.sock", qualifier, service_name))
     }
 }
 
@@ -324,8 +325,9 @@ where
     ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     F: Future<Output = ()> + Send,
 {
+    // Use {qualifier}-{service_name} order to match K8s naming convention
     let display_name = match qualifier {
-        Some(q) => format!("{}-{}", service_name, q),
+        Some(q) => format!("{}-{}", q, service_name),
         None => service_name.to_string(),
     };
 
@@ -483,8 +485,9 @@ pub async fn connect_with_transport(
     qualifier: Option<&str>,
     tcp_address: &str,
 ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    // Use {qualifier}-{service_name} order to match K8s naming convention
     let display_name = match qualifier {
-        Some(q) => format!("{}-{}", service_name, q),
+        Some(q) => format!("{}-{}", q, service_name),
         None => service_name.to_string(),
     };
 
@@ -531,8 +534,9 @@ async fn connect_with_transport_once(
     qualifier: Option<&str>,
     tcp_address: &str,
 ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    // Use {qualifier}-{service_name} order to match K8s naming convention
     let display_name = match qualifier {
-        Some(q) => format!("{}-{}", service_name, q),
+        Some(q) => format!("{}-{}", q, service_name),
         None => service_name.to_string(),
     };
 
@@ -721,13 +725,14 @@ mod tests {
         let uds = UdsConfig {
             base_path: PathBuf::from("/tmp/angzarr"),
         };
+        // Uses {qualifier}-{service_name} order to match K8s naming convention
         assert_eq!(
             uds.socket_path_qualified("aggregate", "orders"),
-            PathBuf::from("/tmp/angzarr/aggregate-orders.sock")
+            PathBuf::from("/tmp/angzarr/orders-aggregate.sock")
         );
         assert_eq!(
             uds.socket_path_qualified("projector", "accounting"),
-            PathBuf::from("/tmp/angzarr/projector-accounting.sock")
+            PathBuf::from("/tmp/angzarr/accounting-projector.sock")
         );
     }
 

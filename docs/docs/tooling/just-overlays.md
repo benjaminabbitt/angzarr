@@ -61,29 +61,7 @@ When running on Linux, `just build` uses the overlay definition. On other platfo
 
 ## Container Overlay
 
-The container overlay handles devcontainer environments where paths differ:
-
-```just
-# justfile.container
-TOP := "/workspace"
-
-deploy:
-    skaffold run -f {{TOP}}/skaffold.yaml
-```
-
-The container overlay sets absolute paths that work inside containers, overriding the host's relative paths.
-
-### Detection
-
-The overlay is imported when `DEVCONTAINER=true` is set:
-
-```just
-# justfile
-TOP := `git rev-parse --show-toplevel`
-
-# Container-aware import
-import? 'justfile.container'
-```
+For containerized builds where the same command should work on host and inside containers, see the **[Container Overlay Pattern](/docs/tooling/container-overlay)**. This technique mounts a container-specific build file over the host file, eliminating conditionals entirely.
 
 ---
 
@@ -150,5 +128,6 @@ registry := "ghcr.io/angzarr-io"
 
 ## Next Steps
 
-- **[just](/tooling/just)** — Core just commands
-- **[Getting Started](/getting-started)** — Full development setup
+- **[just](/docs/tooling/just)** — Core just commands
+- **[Container Overlay Pattern](/docs/tooling/container-overlay)** — Mount-based build file swapping
+- **[Getting Started](/docs/getting-started)** — Full development setup

@@ -14,7 +14,6 @@ from handlers.state import PlayerState, build_state
 
 from angzarr_client import CommandRouter, run_aggregate_server
 from angzarr_client.proto.examples import player_pb2 as player
-from angzarr_client.protoname import name
 from handlers import (
     handle_deposit_funds,
     handle_register_player,
@@ -48,14 +47,15 @@ structlog.configure(
 logger = structlog.get_logger()
 
 # docs:start:command_router
+# Use proto class directly - router extracts full_name (examples.RegisterPlayer)
 router = (
     CommandRouter("player", state_from_event_book)
-    .on(name(player.RegisterPlayer), handle_register_player)
-    .on(name(player.DepositFunds), handle_deposit_funds)
-    .on(name(player.WithdrawFunds), handle_withdraw_funds)
-    .on(name(player.ReserveFunds), handle_reserve_funds)
-    .on(name(player.ReleaseFunds), handle_release_funds)
-    .on(name(player.RequestAction), handle_request_action)
+    .on(player.RegisterPlayer, handle_register_player)
+    .on(player.DepositFunds, handle_deposit_funds)
+    .on(player.WithdrawFunds, handle_withdraw_funds)
+    .on(player.ReserveFunds, handle_reserve_funds)
+    .on(player.ReleaseFunds, handle_release_funds)
+    .on(player.RequestAction, handle_request_action)
 )
 # docs:end:command_router
 

@@ -1,12 +1,13 @@
 {{- /* Generate deployments for each application type with angzarr as sidecar */}}
 
 {{- /* client logic deployments */}}
+{{- /* Naming convention: {domain}-aggregate → player-aggregate */}}
 {{- range .Values.applications.business }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.aggregate-service-name" (dict "domain" .domain) }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: aggregate
@@ -23,7 +24,7 @@ spec:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
       app.kubernetes.io/component: aggregate
-      angzarr.io/app: {{ .name }}
+      angzarr.io/domain: {{ .domain }}
   template:
     metadata:
       annotations:
@@ -36,7 +37,6 @@ spec:
       labels:
         {{- include "angzarr.labels" $ | nindent 8 }}
         app.kubernetes.io/component: aggregate
-        angzarr.io/app: {{ .name }}
         angzarr.io/domain: {{ .domain }}
     spec:
       {{- with $.Values.imagePullSecrets }}
@@ -181,7 +181,7 @@ spec:
               value: {{ $.Values.storage.postgres.uri | quote }}
             {{- end }}
             {{- end }}
-            # AMQP configuration
+            # AMQP configuration for event publishing
             {{- if $.Values.amqp.enabled }}
             - name: ANGZARR__MESSAGING__TYPE
               value: "amqp"
@@ -194,6 +194,14 @@ spec:
               {{- else }}
               value: {{ $.Values.amqp.url }}
               {{- end }}
+            {{- end }}
+            # Command bus configuration (async command delivery)
+            # Aggregates can receive commands via bus in addition to gRPC
+            {{- if and $.Values.amqp.enabled $.Values.commandBus.enabled }}
+            - name: ANGZARR__COMMAND_BUS__ENABLED
+              value: "true"
+            - name: ANGZARR__COMMAND_BUS__TOPIC
+              value: "commands.{{ .domain }}"
             {{- end }}
             # Upcaster configuration (client implements UpcasterService on same server)
             {{- if $.Values.upcaster.enabled }}
@@ -226,12 +234,13 @@ spec:
 {{- end }}
 
 {{- /* Projector deployments */}}
+{{- /* Naming convention: {name}-projector → order-projector */}}
 {{- range .Values.applications.projectors }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.projector-service-name" (dict "name" .name) }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: projector
@@ -431,12 +440,13 @@ spec:
 {{- end }}
 
 {{- /* Saga deployments */}}
+{{- /* Naming convention: {name}-saga → order-fulfillment-saga */}}
 {{- range .Values.applications.sagas }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.saga-service-name" (dict "name" .name) }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: saga
@@ -452,7 +462,7 @@ spec:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
       app.kubernetes.io/component: saga
-      angzarr.io/app: {{ .name }}
+      angzarr.io/saga: {{ .name }}
   template:
     metadata:
       annotations:
@@ -465,7 +475,7 @@ spec:
       labels:
         {{- include "angzarr.labels" $ | nindent 8 }}
         app.kubernetes.io/component: saga
-        angzarr.io/app: {{ .name }}
+        angzarr.io/saga: {{ .name }}
     spec:
       {{- with $.Values.imagePullSecrets }}
       imagePullSecrets:
@@ -582,8 +592,9 @@ spec:
             - name: ANGZARR__TARGET__DOMAIN
               value: {{ .domain | quote }}
             # Static endpoints for two-phase saga command routing
+            # Uses new naming convention: {domain}-aggregate
             - name: ANGZARR_STATIC_ENDPOINTS
-              value: "{{ range $i, $app := $.Values.applications.business }}{{ if $i }},{{ end }}{{ $app.domain }}={{ include "angzarr.fullname" $ }}-{{ $app.name }}:{{ $.Values.service.aggregatePort }}{{ end }}"
+              value: "{{ include "angzarr.static-endpoints" (dict "root" $ "port" $.Values.service.aggregatePort) }}"
             # Storage configuration - from secret if provided
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
@@ -634,12 +645,13 @@ spec:
 {{- end }}
 
 {{- /* Process Manager deployments */}}
+{{- /* Naming convention: {name}-pm → hand-flow-pm */}}
 {{- range .Values.applications.processManagers }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.pm-service-name" (dict "name" .name) }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: process-manager
@@ -655,7 +667,7 @@ spec:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
       app.kubernetes.io/component: process-manager
-      angzarr.io/app: {{ .name }}
+      angzarr.io/pm: {{ .name }}
   template:
     metadata:
       annotations:
@@ -668,7 +680,7 @@ spec:
       labels:
         {{- include "angzarr.labels" $ | nindent 8 }}
         app.kubernetes.io/component: process-manager
-        angzarr.io/app: {{ .name }}
+        angzarr.io/pm: {{ .name }}
     spec:
       {{- with $.Values.imagePullSecrets }}
       imagePullSecrets:
@@ -754,8 +766,9 @@ spec:
               value: {{ .domain | quote }}
             # Static endpoints for multi-domain command routing (business aggregates only)
             # PM state persistence is handled directly by the sidecar (no self-reference needed)
+            # Uses new naming convention: {domain}-aggregate
             - name: ANGZARR_STATIC_ENDPOINTS
-              value: "{{ range $i, $app := $.Values.applications.business }}{{ if $i }},{{ end }}{{ $app.domain }}={{ include "angzarr.fullname" $ }}-{{ $app.name }}:{{ $.Values.service.aggregatePort }}{{ end }}"
+              value: "{{ include "angzarr.static-endpoints" (dict "root" $ "port" $.Values.service.aggregatePort) }}"
             # Storage configuration
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
@@ -787,6 +800,10 @@ spec:
             - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: {{ .topics | join "," | quote }}
             {{- end }}
+            # Multi-domain subscriptions for process manager routing
+            # Convert topics (table.*, hand.*) to subscriptions format (table;hand)
+            - name: ANGZARR_SUBSCRIPTIONS
+              value: "{{ range $i, $topic := .topics }}{{ if $i }};{{ end }}{{ $topic | trimSuffix ".*" }}{{ end }}"
             {{- include "angzarr.otel-env" (dict "root" $ "service" "process-manager" "domain" .domain) | nindent 12 }}
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}

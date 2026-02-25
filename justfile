@@ -146,13 +146,20 @@ buf-push:
     cd "{{TOP}}/proto" && buf push
 
 # Generate proto documentation (outputs to docs/docs/api/proto/)
+# Uses podman locally, docker in CI (auto-detects)
 buf-docs:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Auto-detect container runtime (prefer podman, fall back to docker)
+    CONTAINER_CMD=${CONTAINER_CMD:-$(command -v podman 2>/dev/null || command -v docker 2>/dev/null)}
+    if [ -z "$CONTAINER_CMD" ]; then
+        echo "Error: neither podman nor docker found" >&2
+        exit 1
+    fi
     mkdir -p "{{TOP}}/docs/docs/api/proto"
     # List proto files (exclude health which is internal)
     PROTOS=$(find "{{TOP}}/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
-    podman run --rm \
+    $CONTAINER_CMD run --rm \
         -v "{{TOP}}/proto:/protos:Z" \
         -v "{{TOP}}/docs/docs/api/proto:/out:Z" \
         docker.io/pseudomuto/protoc-gen-doc \
@@ -179,8 +186,18 @@ gateway-dev: gateway-gen
     cd "{{TOP}}/gateway" && go run . --grpc-target=localhost:1310
 
 # Build gRPC-Gateway container image
-gateway-image:
+gateway-image: gateway-gen
     podman build -t ghcr.io/angzarr-io/angzarr-grpc-gateway:latest -f gateway/Containerfile .
+
+# Build and push gRPC-Gateway container image (for CI)
+gateway-image-push TAG="latest": gateway-gen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IMAGE="ghcr.io/angzarr-io/angzarr-grpc-gateway"
+    docker build -t "$IMAGE:{{TAG}}" -f gateway/Containerfile .
+    docker tag "$IMAGE:{{TAG}}" "$IMAGE:latest"
+    docker push "$IMAGE:{{TAG}}"
+    docker push "$IMAGE:latest"
 
 # Generate OpenAPI spec and copy to docs
 openapi: gateway-gen
@@ -432,6 +449,21 @@ operators-delete:
 # === Infrastructure ===
 
 HELM_K8S := TOP + "/deploy/k8s/helm"
+
+# Deploy lightweight infrastructure for CI (no operators, single-replica)
+infra-ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Deploying CI infrastructure ==="
+    kubectl create namespace angzarr --dry-run=client -o yaml | kubectl apply -f -
+    # Redis (simple)
+    helm upgrade --install angzarr-redis "{{HELM_K8S}}/redis" \
+        -n angzarr --set auth.password=angzarr --wait --timeout 2m
+    # RabbitMQ (simple, no operator)
+    helm upgrade --install angzarr-mq "{{HELM_K8S}}/rabbitmq" \
+        -n angzarr --set auth.password=angzarr --wait --timeout 2m
+    echo "=== CI Infrastructure deployed ==="
+    kubectl get pods -n angzarr
 
 # Deploy infrastructure to angzarr namespace (requires operators installed first)
 infra: _cluster-ready

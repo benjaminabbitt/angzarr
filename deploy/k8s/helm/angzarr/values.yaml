@@ -169,18 +169,27 @@ infrastructure:
         cpu: 100m
         memory: 128Mi
 
-  # Gateway service - API gateway for external access
+  # gRPC Gateway - REST proxy for aggregate coordinators
   gateway:
     enabled: false
     replicas: 1
     port: 8080
+    image:
+      repository: ghcr.io/angzarr-io/angzarr-grpc-gateway
+      tag: latest
+      pullPolicy: IfNotPresent
+    # Target gRPC coordinator (aggregate service)
+    grpcTarget: ""  # e.g., "angzarr-player:1310"
+    # ConfigMap containing types.bin for proto type discovery
+    # Create with: kubectl create configmap gateway-descriptor --from-file=types.bin=examples/types.bin
+    descriptorConfigMap: "gateway-descriptor"
     resources:
       limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
+        cpu: 200m
         memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
 
 # Mock services for testing
 mockServices:
@@ -273,6 +282,14 @@ upcaster:
   # Optional: separate address for upcaster service (if not on same server as client logic)
   # If not set, uses the same address as client logic (default and recommended)
   # address: "localhost:50053"
+
+# Command bus configuration (async command delivery)
+# When enabled, aggregates subscribe to a command topic for async commands
+# in addition to accepting gRPC commands directly.
+commandBus:
+  enabled: true
+  # Topic pattern: commands.{domain} (e.g., commands.player)
+  # Commands wrapped in EventBook format, extracted by aggregate handler
 
 # Messaging configuration
 messaging:

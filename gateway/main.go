@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/angzarr-io/angzarr/gateway/discovery"
 	gw "github.com/angzarr-io/angzarr/gateway/gen/angzarr"
 )
 
@@ -24,8 +26,9 @@ import (
 var apiFS embed.FS
 
 var (
-	grpcTarget = flag.String("grpc-target", "", "gRPC server endpoint (default: GRPC_TARGET env or localhost:1310)")
-	httpPort   = flag.Int("http-port", 8080, "HTTP server port")
+	grpcTarget     = flag.String("grpc-target", "", "gRPC server endpoint (default: GRPC_TARGET env or localhost:1310)")
+	httpPort       = flag.Int("http-port", 8080, "HTTP server port")
+	descriptorFile = flag.String("descriptor-file", "", "Proto descriptor file for type discovery (default: DESCRIPTOR_PATH env)")
 )
 
 func main() {
@@ -72,6 +75,22 @@ func main() {
 		log.Fatalf("Failed to register ProcessManagerCoordinatorService handler: %v", err)
 	}
 
+	// Load base OpenAPI spec
+	apiContent, err := fs.Sub(apiFS, "api")
+	if err != nil {
+		log.Fatalf("Failed to access embedded API files: %v", err)
+	}
+	baseSpec, err := fs.ReadFile(apiContent, "angzarr.swagger.json")
+	if err != nil {
+		log.Fatalf("Failed to read OpenAPI spec: %v", err)
+	}
+
+	// Initialize discovery service (loads types from descriptor file)
+	discoverySvc, err := discovery.NewService(baseSpec, *descriptorFile)
+	if err != nil {
+		log.Fatalf("Failed to initialize discovery: %v", err)
+	}
+
 	// Create main HTTP mux
 	mux := http.NewServeMux()
 
@@ -83,18 +102,26 @@ func main() {
 
 	// OpenAPI spec endpoint
 	mux.HandleFunc("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
-		apiContent, err := fs.Sub(apiFS, "api")
-		if err != nil {
-			http.Error(w, "OpenAPI spec not found", http.StatusNotFound)
-			return
-		}
-		data, err := fs.ReadFile(apiContent, "angzarr.swagger.json")
-		if err != nil {
-			http.Error(w, "OpenAPI spec not found", http.StatusNotFound)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		w.Write(discoverySvc.GetSpec())
+	})
+
+	// Discovery info endpoint
+	mux.HandleFunc("/discovery/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(discoverySvc.GetInfo())
+	})
+
+	// Discovery types endpoint
+	mux.HandleFunc("/discovery/types", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(discoverySvc.GetTypes())
+	})
+
+	// Collisions endpoint
+	mux.HandleFunc("/discovery/collisions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(discoverySvc.GetCollisions())
 	})
 
 	// Mount gRPC-Gateway at root

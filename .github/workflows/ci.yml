@@ -48,7 +48,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
-        run: cargo test --workspace
+        run: just test
 
   gateway:
     name: Build gRPC Gateway
@@ -112,9 +112,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push gateway image
-        run: |
-          just gateway-gen
-          docker build -t ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }} -f gateway/Containerfile .
-          docker tag ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }} ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:latest
-          docker push ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }}
-          docker push ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:latest
+        run: just gateway-image-push ${{ github.sha }}

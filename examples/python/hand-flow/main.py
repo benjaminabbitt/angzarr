@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from hand_process import HandProcessManager
 
 from angzarr_client.client import AggregateClient
+from angzarr_client.helpers import destination_map, next_sequence
 from angzarr_client.process_manager_handler import (
     ProcessManagerHandler,
     run_process_manager_server,
@@ -83,13 +84,16 @@ class HandFlowProcessManager:
     ) -> list[types.Cover]:
         """Phase 1: Declare additional destinations needed."""
         # Hand flow PM needs to fetch hand aggregate state
-        # when triggered by table events
+        # when triggered by table or hand events
         destinations = []
+
+        # Check trigger domain - if it's hand domain, we need its state
+        trigger_domain = trigger.cover.domain if trigger.cover else ""
 
         for page in trigger.pages:
             type_url = page.event.type_url
             if "HandStarted" in type_url:
-                # Need hand aggregate state
+                # Table event - extract hand_root from event payload
                 event = table.HandStarted()
                 page.event.Unpack(event)
                 destinations.append(
@@ -98,6 +102,17 @@ class HandFlowProcessManager:
                         domain="hand",
                     )
                 )
+            elif trigger_domain == "hand":
+                # Hand domain events - use trigger's root directly
+                # Need state for sequence numbers on subsequent commands
+                if trigger.cover and trigger.cover.root:
+                    destinations.append(
+                        types.Cover(
+                            root=trigger.cover.root,
+                            domain="hand",
+                        )
+                    )
+                    break  # Only need one destination per hand
 
         return destinations
 
@@ -110,6 +125,15 @@ class HandFlowProcessManager:
         """Phase 2: Process events and produce commands."""
         commands = []
 
+        # Get correlation_id from trigger - used as process key
+        correlation_id = trigger.cover.correlation_id if trigger.cover else ""
+        table_root = (
+            trigger.cover.root.value if trigger.cover and trigger.cover.root else b""
+        )
+
+        # Build destination map for sequence lookup
+        dest_map = destination_map(destinations)
+
         for page in trigger.pages:
             event_any = page.event
             type_url = event_any.type_url
@@ -117,56 +141,66 @@ class HandFlowProcessManager:
             if "HandStarted" in type_url:
                 event = table.HandStarted()
                 event_any.Unpack(event)
-                cmd = self._manager.start_hand(event)
-                if cmd:
-                    commands.append(cmd)
+                # start_hand initializes the process using correlation_id as key
+                self._manager.start_hand(event, table_root, correlation_id)
 
             elif "CardsDealt" in type_url:
                 event = hand.CardsDealt()
                 event_any.Unpack(event)
-                cmd = self._manager.handle_cards_dealt(event)
+                cmd = self._manager.handle_cards_dealt(correlation_id, event)
                 if cmd:
                     commands.append(cmd)
 
             elif "BlindPosted" in type_url:
                 event = hand.BlindPosted()
                 event_any.Unpack(event)
-                cmd = self._manager.handle_blind_posted(event)
+                cmd = self._manager.handle_blind_posted(correlation_id, event)
                 if cmd:
                     commands.append(cmd)
 
             elif "ActionTaken" in type_url:
                 event = hand.ActionTaken()
                 event_any.Unpack(event)
-                cmd = self._manager.handle_action_taken(event)
+                cmd = self._manager.handle_action_taken(correlation_id, event)
                 if cmd:
                     commands.append(cmd)
 
             elif "BettingRoundComplete" in type_url:
                 event = hand.BettingRoundComplete()
                 event_any.Unpack(event)
-                cmd = self._manager.handle_betting_round_complete(event)
+                cmd = self._manager.handle_betting_round_complete(correlation_id, event)
                 if cmd:
                     commands.append(cmd)
 
             elif "CommunityCardsDealt" in type_url:
                 event = hand.CommunityCardsDealt()
                 event_any.Unpack(event)
-                cmd = self._manager.handle_community_cards_dealt(event)
+                cmd = self._manager.handle_community_cards_dealt(correlation_id, event)
                 if cmd:
                     commands.append(cmd)
 
             elif "ShowdownStarted" in type_url:
                 event = hand.ShowdownStarted()
                 event_any.Unpack(event)
-                cmd = self._manager.handle_showdown_started(event)
+                cmd = self._manager.handle_showdown_started(correlation_id, event)
                 if cmd:
                     commands.append(cmd)
 
             elif "PotAwarded" in type_url:
                 event = hand.PotAwarded()
                 event_any.Unpack(event)
-                self._manager.handle_pot_awarded(event)
+                self._manager.handle_pot_awarded(correlation_id, event)
+
+        # Set sequences and correlation_id on commands from destination state
+        for cmd in commands:
+            if cmd.cover:
+                cmd.cover.correlation_id = correlation_id
+                if cmd.cover.root and cmd.cover.root.value:
+                    root_hex = cmd.cover.root.value.hex()
+                    dest = dest_map.get(root_hex)
+                    seq = next_sequence(dest)
+                    for cmd_page in cmd.pages:
+                        cmd_page.sequence = seq
 
         # No PM-specific events to emit for now
         return commands, None
@@ -176,23 +210,10 @@ def main():
     """Run the hand flow process manager gRPC service."""
     pm = HandFlowProcessManager()
 
+    # Subscriptions configured via ANGZARR__MESSAGING__AMQP__DOMAIN env var
+    # The coordinator routes: table.HandStarted, table.HandEnded, hand.*
     handler = (
         ProcessManagerHandler("hand-flow")
-        .listen_to("table", "HandStarted", "HandEnded")
-        .listen_to(
-            "hand",
-            "CardsDealt",
-            "BlindPosted",
-            "ActionTaken",
-            "BettingRoundComplete",
-            "CommunityCardsDealt",
-            "DrawCompleted",
-            "ShowdownStarted",
-            "CardsRevealed",
-            "CardsMucked",
-            "PotAwarded",
-            "HandComplete",
-        )
         .with_prepare(pm.prepare)
         .with_handle(pm.handle)
     )
@@ -203,9 +224,8 @@ def main():
     )
 
     run_process_manager_server(
-        name="hand-flow",
-        default_port="50491",
         handler=handler,
+        default_port="50391",
         logger=logger,
     )
 

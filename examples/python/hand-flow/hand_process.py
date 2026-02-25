@@ -127,12 +127,14 @@ class HandProcessManager:
         self,
         event: table.HandStarted,
         table_root: bytes,
+        correlation_id: str = "",
         action_timeout: int = 30,
     ) -> HandProcess:
         """
         Initialize process for a new hand.
 
         Called when HandStarted event is received from table domain.
+        The correlation_id is used as the key for process lookup.
         """
         hand_id = f"{table_root.hex()}_{event.hand_number}"
 
@@ -160,27 +162,33 @@ class HandProcessManager:
             process.active_positions.append(player.position)
 
         process.active_positions.sort()
-        self._processes[hand_id] = process
+        # Use correlation_id as key (matches Go implementation)
+        key = correlation_id if correlation_id else hand_id
+        self._processes[key] = process
 
         return process
 
-    def handle_cards_dealt(self, hand_id: str, event: hand.CardsDealt):
+    def handle_cards_dealt(
+        self, correlation_id: str, event: hand.CardsDealt
+    ) -> Optional[types.CommandBook]:
         """Handle CardsDealt event - transition to blind posting."""
-        process = self._processes.get(hand_id)
+        process = self._processes.get(correlation_id)
         if not process:
-            return
+            return None
 
         process.phase = HandPhase.POSTING_BLINDS
         process.min_raise = process.big_blind
 
-        # Issue post blind commands
-        self._post_next_blind(process)
+        # Return post blind command
+        return self._build_post_blind_command(process)
 
-    def handle_blind_posted(self, hand_id: str, event: hand.BlindPosted):
+    def handle_blind_posted(
+        self, correlation_id: str, event: hand.BlindPosted
+    ) -> Optional[types.CommandBook]:
         """Handle BlindPosted event - continue blind posting or start betting."""
-        process = self._processes.get(hand_id)
+        process = self._processes.get(correlation_id)
         if not process:
-            return
+            return None
 
         # Update player state
         for pos, player in process.players.items():
@@ -195,20 +203,25 @@ class HandProcessManager:
         if event.blind_type == "small":
             process.small_blind_posted = True
             process.current_bet = event.amount
-            self._post_next_blind(process)
+            return self._build_post_blind_command(process)
         elif event.blind_type == "big":
             process.big_blind_posted = True
             process.current_bet = event.amount
             self._start_betting(process)
+            # Betting started - no command to return (players act)
+            return None
+        return None
 
-    def handle_action_taken(self, hand_id: str, event: hand.ActionTaken):
+    def handle_action_taken(
+        self, correlation_id: str, event: hand.ActionTaken
+    ) -> Optional[types.CommandBook]:
         """Handle ActionTaken event - advance to next player or phase."""
-        process = self._processes.get(hand_id)
+        process = self._processes.get(correlation_id)
         if not process:
-            return
+            return None
 
         # Cancel any pending timeout
-        self._cancel_timeout(hand_id)
+        self._cancel_timeout(correlation_id)
 
         # Update player state
         for pos, player in process.players.items():
@@ -254,45 +267,79 @@ class HandProcessManager:
 
         # Check if betting round is complete
         if self._is_betting_complete(process):
-            self._end_betting_round(process)
+            return self._end_betting_round_cmd(process)
         else:
-            # Move to next player
+            # Move to next player (no command - waiting for player action)
             self._advance_action(process)
+            return None
 
-    def handle_community_dealt(self, hand_id: str, event: hand.CommunityCardsDealt):
+    def handle_community_cards_dealt(
+        self, correlation_id: str, event: hand.CommunityCardsDealt
+    ) -> Optional[types.CommandBook]:
         """Handle CommunityCardsDealt event - start new betting round."""
-        process = self._processes.get(hand_id)
+        process = self._processes.get(correlation_id)
         if not process:
-            return
+            return None
 
         process.community_card_count = len(event.all_community_cards)
         process.betting_phase = event.phase
         self._start_betting(process)
+        # Betting started - no command (waiting for player action)
+        return None
 
-    def handle_pot_awarded(self, hand_id: str, event: hand.PotAwarded):
+    def handle_betting_round_complete(
+        self, correlation_id: str, event: hand.BettingRoundComplete
+    ) -> Optional[types.CommandBook]:
+        """Handle BettingRoundComplete event - advance phase."""
+        process = self._processes.get(correlation_id)
+        if not process:
+            return None
+
+        # End betting round and return next phase command
+        return self._end_betting_round_cmd(process)
+
+    def handle_showdown_started(
+        self, correlation_id: str, event: hand.ShowdownStarted
+    ) -> Optional[types.CommandBook]:
+        """Handle ShowdownStarted event - award pot."""
+        process = self._processes.get(correlation_id)
+        if not process:
+            return None
+
+        process.phase = HandPhase.SHOWDOWN
+        return self._build_auto_award_command(process)
+
+    def handle_pot_awarded(self, correlation_id: str, event: hand.PotAwarded) -> None:
         """Handle PotAwarded event - hand is complete."""
-        process = self._processes.get(hand_id)
+        process = self._processes.get(correlation_id)
         if not process:
             return
 
         process.phase = HandPhase.COMPLETE
-        self._cancel_timeout(hand_id)
+        self._cancel_timeout(correlation_id)
+        # Clean up completed process
+        del self._processes[correlation_id]
 
-    def _post_next_blind(self, process: HandProcess):
-        """Post the next required blind."""
+    def _build_post_blind_command(
+        self, process: HandProcess
+    ) -> Optional[types.CommandBook]:
+        """Build the next PostBlind command."""
         if not process.small_blind_posted:
             player = process.players.get(process.small_blind_position)
             if player:
-                self._send_post_blind(process, player, "small", process.small_blind)
+                return self._build_post_blind(
+                    process, player, "small", process.small_blind
+                )
         elif not process.big_blind_posted:
             player = process.players.get(process.big_blind_position)
             if player:
-                self._send_post_blind(process, player, "big", process.big_blind)
+                return self._build_post_blind(process, player, "big", process.big_blind)
+        return None
 
-    def _send_post_blind(
+    def _build_post_blind(
         self, process: HandProcess, player: PlayerState, blind_type: str, amount: int
-    ):
-        """Send PostBlind command."""
+    ) -> types.CommandBook:
+        """Build PostBlind command."""
         cmd = hand.PostBlind(
             player_root=player.player_root,
             blind_type=blind_type,
@@ -303,18 +350,16 @@ class HandProcessManager:
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
-        self._command_sender(
-            types.CommandBook(
-                cover=types.Cover(
-                    root=types.UUID(value=hand_root),
-                    domain="hand",
-                ),
-                pages=[
-                    types.CommandPage(
-                        command=cmd_any,
-                    )
-                ],
-            )
+        return types.CommandBook(
+            cover=types.Cover(
+                root=types.UUID(value=hand_root),
+                domain="hand",
+            ),
+            pages=[
+                types.CommandPage(
+                    command=cmd_any,
+                )
+            ],
         )
 
     def _start_betting(self, process: HandProcess):
@@ -390,40 +435,47 @@ class HandProcessManager:
 
         return True
 
-    def _end_betting_round(self, process: HandProcess):
-        """End the current betting round and advance to next phase."""
+    def _end_betting_round_cmd(
+        self, process: HandProcess
+    ) -> Optional[types.CommandBook]:
+        """End the current betting round and return next phase command."""
         # Count active players
         players_in_hand = [p for p in process.players.values() if not p.has_folded]
         active_players = [p for p in players_in_hand if not p.is_all_in]
 
-        # If only one player left, skip to showdown
+        # If only one player left, award pot
         if len(players_in_hand) == 1:
-            self._award_pot_to_last_player(process, players_in_hand[0])
-            return
+            return self._build_award_pot_command(process, players_in_hand[0])
 
         # Determine next phase based on game variant
         if process.game_variant == poker_types.TEXAS_HOLDEM:
-            self._advance_holdem_phase(process, len(active_players))
+            return self._advance_holdem_phase_cmd(process, len(active_players))
         elif process.game_variant == poker_types.OMAHA:
-            self._advance_holdem_phase(process, len(active_players))
+            return self._advance_holdem_phase_cmd(process, len(active_players))
         elif process.game_variant == poker_types.FIVE_CARD_DRAW:
-            self._advance_draw_phase(process, len(active_players))
+            return self._advance_draw_phase_cmd(process, len(active_players))
+        return None
 
-    def _advance_holdem_phase(self, process: HandProcess, active_count: int):
-        """Advance to next phase for Hold'em/Omaha."""
+    def _advance_holdem_phase_cmd(
+        self, process: HandProcess, active_count: int
+    ) -> Optional[types.CommandBook]:
+        """Advance to next phase for Hold'em/Omaha and return command."""
         if process.betting_phase == poker_types.PREFLOP:
             process.phase = HandPhase.DEALING_COMMUNITY
-            self._deal_community(process, 3)  # Flop
+            return self._build_deal_community_command(process, 3)  # Flop
         elif process.betting_phase == poker_types.FLOP:
             process.phase = HandPhase.DEALING_COMMUNITY
-            self._deal_community(process, 1)  # Turn
+            return self._build_deal_community_command(process, 1)  # Turn
         elif process.betting_phase == poker_types.TURN:
             process.phase = HandPhase.DEALING_COMMUNITY
-            self._deal_community(process, 1)  # River
+            return self._build_deal_community_command(process, 1)  # River
         elif process.betting_phase == poker_types.RIVER:
-            self._start_showdown(process)
+            return self._build_start_showdown_command(process)
+        return None
 
-    def _advance_draw_phase(self, process: HandProcess, active_count: int):
+    def _advance_draw_phase_cmd(
+        self, process: HandProcess, active_count: int
+    ) -> Optional[types.CommandBook]:
         """Advance to next phase for draw games.
 
         Five Card Draw structure:
@@ -434,47 +486,54 @@ class HandProcessManager:
         if process.betting_phase == poker_types.PREFLOP:
             process.phase = HandPhase.DRAW
             # Draw phase handled by player commands
+            return None
         elif process.betting_phase == poker_types.DRAW:
             if process.phase == HandPhase.DRAW:
                 # Coming from draw phase, start final betting
                 process.betting_phase = poker_types.DRAW
                 self._start_betting(process)
+                return None
             else:
                 # Coming from final betting, go to showdown
-                self._start_showdown(process)
+                return self._build_start_showdown_command(process)
+        return None
 
-    def _deal_community(self, process: HandProcess, count: int):
-        """Send DealCommunityCards command."""
+    def _build_deal_community_command(
+        self, process: HandProcess, count: int
+    ) -> types.CommandBook:
+        """Build DealCommunityCards command."""
         cmd = hand.DealCommunityCards(count=count)
 
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
-        self._command_sender(
-            types.CommandBook(
-                cover=types.Cover(
-                    root=types.UUID(value=hand_root),
-                    domain="hand",
-                ),
-                pages=[
-                    types.CommandPage(
-                        command=cmd_any,
-                    )
-                ],
-            )
+        return types.CommandBook(
+            cover=types.Cover(
+                root=types.UUID(value=hand_root),
+                domain="hand",
+            ),
+            pages=[
+                types.CommandPage(
+                    command=cmd_any,
+                )
+            ],
         )
 
-    def _start_showdown(self, process: HandProcess):
-        """Start the showdown phase."""
+    def _build_start_showdown_command(
+        self, process: HandProcess
+    ) -> Optional[types.CommandBook]:
+        """Start showdown and award pot (simplified - auto-awards)."""
         process.phase = HandPhase.SHOWDOWN
         process.betting_phase = poker_types.SHOWDOWN
 
-        # Auto-award to best hand (simplified)
-        self._auto_award_pot(process)
+        # Auto-award pot (simplified - real implementation would evaluate hands)
+        return self._build_auto_award_command(process)
 
-    def _award_pot_to_last_player(self, process: HandProcess, winner: PlayerState):
-        """Award pot to the last remaining player."""
+    def _build_award_pot_command(
+        self, process: HandProcess, winner: PlayerState
+    ) -> types.CommandBook:
+        """Build AwardPot command for last remaining player."""
         process.phase = HandPhase.COMPLETE
 
         awards = [
@@ -492,26 +551,26 @@ class HandProcessManager:
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
-        self._command_sender(
-            types.CommandBook(
-                cover=types.Cover(
-                    root=types.UUID(value=hand_root),
-                    domain="hand",
-                ),
-                pages=[
-                    types.CommandPage(
-                        command=cmd_any,
-                    )
-                ],
-            )
+        return types.CommandBook(
+            cover=types.Cover(
+                root=types.UUID(value=hand_root),
+                domain="hand",
+            ),
+            pages=[
+                types.CommandPage(
+                    command=cmd_any,
+                )
+            ],
         )
 
-    def _auto_award_pot(self, process: HandProcess):
-        """Auto-award pot (simplified - in reality would evaluate hands)."""
+    def _build_auto_award_command(
+        self, process: HandProcess
+    ) -> Optional[types.CommandBook]:
+        """Build auto-award pot command (simplified - in reality would evaluate hands)."""
         players_in_hand = [p for p in process.players.values() if not p.has_folded]
 
         if not players_in_hand:
-            return
+            return None
 
         # For now, split pot evenly (real implementation would evaluate hands)
         split = process.pot_total // len(players_in_hand)
@@ -535,18 +594,16 @@ class HandProcessManager:
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
-        self._command_sender(
-            types.CommandBook(
-                cover=types.Cover(
-                    root=types.UUID(value=hand_root),
-                    domain="hand",
-                ),
-                pages=[
-                    types.CommandPage(
-                        command=cmd_any,
-                    )
-                ],
-            )
+        return types.CommandBook(
+            cover=types.Cover(
+                root=types.UUID(value=hand_root),
+                domain="hand",
+            ),
+            pages=[
+                types.CommandPage(
+                    command=cmd_any,
+                )
+            ],
         )
 
     def _request_action(self, process: HandProcess):

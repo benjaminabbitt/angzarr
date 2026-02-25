@@ -29,6 +29,13 @@ mod java "java/justfile"
 default:
     @just --list
 
+# Generate proto descriptor file for type discovery
+# Used by gateway and angzarr coordinators for proto reflection
+descriptor:
+    cd "{{TOP}}/proto" && buf build -o "{{TOP}}/examples/types.bin" --path examples/
+    @echo "Descriptor generated: examples/types.bin"
+    @echo "Set DESCRIPTOR_PATH=examples/types.bin for gateway and coordinators"
+
 # Run unit tests for all languages
 test-unit:
     @echo "=== Unit Testing Python ==="

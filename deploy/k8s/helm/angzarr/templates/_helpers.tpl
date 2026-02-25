@@ -82,9 +82,64 @@ Usage: {{- include "angzarr.otel-env" (dict "root" $ "service" "aggregate" "doma
 {{/*
 Whether topology service is enabled.
 Auto-enables when observability is enabled (Grafana stack implies topology visualization).
+Returns empty string if disabled (falsy in Helm), "true" if enabled.
 */}}
 {{- define "angzarr.topology-enabled" -}}
-{{- or .Values.infrastructure.topology.enabled .Values.observability.enabled -}}
+{{- if or .Values.infrastructure.topology.enabled .Values.observability.enabled -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Component naming convention: {domain}-{type}
+Per-domain aggregate coordinator names follow the pattern: player-aggregate, order-aggregate
+This enables consistent DNS routing: player-aggregate.angzarr.svc.cluster.local:1310
+*/}}
+
+{{/*
+Aggregate service name: {domain}-aggregate
+Usage: {{ include "angzarr.aggregate-service-name" (dict "domain" .domain) }}
+*/}}
+{{- define "angzarr.aggregate-service-name" -}}
+{{- printf "%s-aggregate" .domain }}
+{{- end }}
+
+{{/*
+Saga service name: {name}-saga
+Usage: {{ include "angzarr.saga-service-name" (dict "name" .name) }}
+*/}}
+{{- define "angzarr.saga-service-name" -}}
+{{- printf "%s-saga" .name }}
+{{- end }}
+
+{{/*
+Projector service name: {name}-projector
+Usage: {{ include "angzarr.projector-service-name" (dict "name" .name) }}
+*/}}
+{{- define "angzarr.projector-service-name" -}}
+{{- printf "%s-projector" .name }}
+{{- end }}
+
+{{/*
+Process manager service name: {name}-pm
+Usage: {{ include "angzarr.pm-service-name" (dict "name" .name) }}
+*/}}
+{{- define "angzarr.pm-service-name" -}}
+{{- printf "%s-pm" .name }}
+{{- end }}
+
+{{/*
+Static endpoints for command routing to aggregates.
+Builds a comma-separated list of domain=address pairs.
+Usage: {{ include "angzarr.static-endpoints" (dict "root" $ "port" $.Values.service.aggregatePort) }}
+*/}}
+{{- define "angzarr.static-endpoints" -}}
+{{- $endpoints := list -}}
+{{- range .root.Values.applications.business -}}
+{{- $serviceName := printf "%s-aggregate" .domain -}}
+{{- $endpoints = append $endpoints (printf "%s=%s:%d" .domain $serviceName (int $.port)) -}}
+{{- end -}}
+{{- join "," $endpoints -}}
 {{- end }}
 
 {{/*

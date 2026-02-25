@@ -23,6 +23,7 @@
 
 mod builder;
 mod client;
+mod dispatcher;
 pub mod grpc_handlers;
 mod router;
 mod runtime;
@@ -32,6 +33,7 @@ mod traits;
 
 pub use builder::RuntimeBuilder;
 pub use client::{CommandBuilder, CommandClient, SpeculativeClient, StandaloneQueryClient};
+pub use dispatcher::CommandDispatcher;
 pub use grpc_handlers::{AggregateHandlerAdapter, GrpcProjectorHandler};
 pub use router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 pub use runtime::Runtime;

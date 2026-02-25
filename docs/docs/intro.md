@@ -9,6 +9,18 @@ slug: /
 
 The symbol ⍼ (U+237C, "angzarr") has existed in Unicode since 2002 without a defined purpose. The right angle represents the origin point—your event store. The zigzag arrow represents events cascading through your system. We gave it meaning.
 
+:::caution Project Status
+
+This codebase uses **AI-generated code under human supervision**. The implementation has been reviewed, but with an emphasis on velocity over thoroughness.
+
+This is not AI slop. The gRPC/protobuf definitions were hand-written and have evolved with heavy oversight. The architecture and code derive from an earlier human-written Go codebase—ported to Rust and used as the starting point—when the author switched for performance, binary size, and cleaner deployment mechanisms. Polyglot support has always been a core design goal—world domination requires meeting developers where they are. Architecturally, it's sound—the framework design reflects years of thinking about CQRS/ES patterns.
+
+**Approaching production-ready, but not there yet.** The code is stabilizing and mostly working, but plan for additional testing and hardening before production deployment.
+
+Contributors are welcome. There are a few rough edges, but mostly the project needs code review, test coverage expansion, and developers willing to build on it and report what breaks. If you're interested in CQRS/ES tooling and want to be an early adopter, jump in.
+
+:::
+
 ---
 
 ## The Problem

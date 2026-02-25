@@ -12,6 +12,10 @@ build:
 build-release:
     cargo build --release
 
+# Build standalone binary with all features needed for integration tests
+build-standalone:
+    cargo build --release --bin angzarr-standalone --features "standalone,amqp"
+
 check:
     cargo check
 
@@ -51,15 +55,15 @@ test-contract-nats-bus:
 
 # Run interface tests against SQLite (in-memory, no containers)
 test-interfaces:
-    cargo test --test interfaces --features sqlite
+    cargo test --test interfaces --features "sqlite test-utils"
 
 # Run interface tests against PostgreSQL (requires podman socket)
 test-interfaces-postgres:
-    STORAGE_BACKEND=postgres cargo test --test interfaces --features postgres
+    STORAGE_BACKEND=postgres cargo test --test interfaces --features "postgres test-utils"
 
 # Run interface tests against Redis (requires podman socket)
 test-interfaces-redis:
-    STORAGE_BACKEND=redis cargo test --test interfaces --features redis
+    STORAGE_BACKEND=redis cargo test --test interfaces --features "redis test-utils"
 
 # --- Bus Contract Tests (direct) ---
 # These tests verify event bus implementations correctly fulfill the EventBus trait contract.

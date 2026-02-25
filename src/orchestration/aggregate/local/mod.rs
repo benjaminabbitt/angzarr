@@ -21,7 +21,7 @@ use crate::proto_ext::{calculate_set_next_seq, CoverExt};
 use crate::standalone::DomainStorage;
 use crate::storage::StorageError;
 
-use super::{AggregateContext, TemporalQuery};
+use super::{AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery};
 
 /// Build an EventBook with proper next_sequence set.
 fn build_event_book(
@@ -411,5 +411,66 @@ impl AggregateContext for LocalAggregateContext {
                 "Failed to publish to DLQ"
             );
         }
+    }
+}
+
+/// Factory that produces `LocalAggregateContext` for standalone mode.
+///
+/// One factory per aggregate domain, capturing storage and infrastructure.
+/// Matches the saga/PM factory pattern for architectural consistency.
+pub struct LocalAggregateContextFactory {
+    domain: String,
+    storage: DomainStorage,
+    discovery: Arc<dyn ServiceDiscovery>,
+    event_bus: Arc<dyn EventBus>,
+    client_logic: Arc<dyn ClientLogic>,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+}
+
+impl LocalAggregateContextFactory {
+    /// Create a new factory for the given domain.
+    pub fn new(
+        domain: String,
+        storage: DomainStorage,
+        discovery: Arc<dyn ServiceDiscovery>,
+        event_bus: Arc<dyn EventBus>,
+        client_logic: Arc<dyn ClientLogic>,
+    ) -> Self {
+        Self {
+            domain,
+            storage,
+            discovery,
+            event_bus,
+            client_logic,
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
+        }
+    }
+
+    /// Set the DLQ publisher for MERGE_MANUAL handling.
+    pub fn with_dlq_publisher(mut self, publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        self.dlq_publisher = publisher;
+        self
+    }
+}
+
+impl AggregateContextFactory for LocalAggregateContextFactory {
+    fn create(&self) -> Arc<dyn AggregateContext> {
+        Arc::new(
+            LocalAggregateContext::new(
+                self.storage.clone(),
+                self.discovery.clone(),
+                self.event_bus.clone(),
+            )
+            .with_dlq_publisher(self.dlq_publisher.clone())
+            .with_component_name(&self.domain),
+        )
+    }
+
+    fn domain(&self) -> &str {
+        &self.domain
+    }
+
+    fn client_logic(&self) -> Arc<dyn ClientLogic> {
+        self.client_logic.clone()
     }
 }

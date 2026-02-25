@@ -20,7 +20,12 @@ use tracing::{error, warn};
 /// Log a retryable failure with backoff delay.
 ///
 /// Used by both `run_with_retry` and manual retry loops (PM orchestration).
-pub fn log_retry_attempt(operation: &str, attempt: u32, error: &impl std::fmt::Display, delay: std::time::Duration) {
+pub fn log_retry_attempt(
+    operation: &str,
+    attempt: u32,
+    error: &impl std::fmt::Display,
+    delay: std::time::Duration,
+) {
     warn!(
         operation = %operation,
         attempt = attempt,

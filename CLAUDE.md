@@ -47,10 +47,28 @@ just qdrant-stop   # Stop Qdrant container
 
 Rebuild the index after significant changes with `just reindex`.
 
+### Local Kubernetes: k3s
+Use k3s for local development, not Kind. k3s runs as a systemd service on the host.
+
+```bash
+# k3s management
+just k3s status               # Check cluster status
+just k3s up                   # Deploy infrastructure (RabbitMQ, PostgreSQL, Redis)
+just k3s down                 # Tear down infrastructure
+
+# First-time setup (requires sudo)
+just k3s setup                # Configure registry + deploy infra
+
+# Kubeconfig
+export KUBECONFIG=~/.kube/k3s.yaml
+```
+
+k3s uses a local HTTP registry at `localhost:30500` for image distribution.
+
 ### Skaffold (CRITICAL)
 **ALL image builds and deployments MUST go through skaffold.** Never bypass with manual `podman build` + `helm upgrade` workflows.
 
-Why: Kind nodes cache images by tag at the containerd level. If you push a new image with the same tag (e.g., `:latest`), the node continues serving the old cached image even after `kubectl rollout restart`. Skaffold uses content-addressable tags (git commit SHA), ensuring each build gets a unique tag with no cache collisions.
+Why: k3s nodes cache images by tag at the containerd level. If you push a new image with the same tag (e.g., `:latest`), the node continues serving the old cached image even after `kubectl rollout restart`. Skaffold uses content-addressable tags (git commit SHA), ensuring each build gets a unique tag with no cache collisions.
 
 ```bash
 # CORRECT - always use skaffold

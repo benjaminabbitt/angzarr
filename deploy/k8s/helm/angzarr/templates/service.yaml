@@ -1,18 +1,19 @@
 {{- /* Services for aggregate (client logic) applications */}}
+{{- /* Naming convention: {domain}-aggregate → player-aggregate.angzarr.svc.cluster.local */}}
 {{- range .Values.applications.business }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.aggregate-service-name" (dict "domain" .domain) }}
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: aggregate
     angzarr.io/domain: {{ .domain }}
   annotations:
-    # DNS: {{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local
-    angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
+    # DNS: {domain}-aggregate.{namespace}.svc.cluster.local
+    angzarr.io/dns-name: "{{ include "angzarr.aggregate-service-name" (dict "domain" .domain) }}.{{ $.Release.Namespace }}.svc.cluster.local"
 spec:
   type: ClusterIP
   ports:
@@ -50,16 +51,17 @@ spec:
   selector:
     {{- include "angzarr.selectorLabels" $ | nindent 4 }}
     app.kubernetes.io/component: aggregate
-    angzarr.io/app: {{ .name }}
+    angzarr.io/domain: {{ .domain }}
 {{- end }}
 
 {{- /* Services for projector applications */}}
+{{- /* Naming convention: {name}-projector → order-projector.angzarr.svc.cluster.local */}}
 {{- range .Values.applications.projectors }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.projector-service-name" (dict "name" .name) }}
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
@@ -68,7 +70,7 @@ metadata:
     angzarr.io/domain: {{ .domain }}
     {{- end }}
   annotations:
-    angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
+    angzarr.io/dns-name: "{{ include "angzarr.projector-service-name" (dict "name" .name) }}.{{ $.Release.Namespace }}.svc.cluster.local"
 spec:
   type: ClusterIP
   ports:
@@ -98,12 +100,13 @@ spec:
 {{- end }}
 
 {{- /* Services for saga applications */}}
+{{- /* Naming convention: {name}-saga → order-fulfillment-saga.angzarr.svc.cluster.local */}}
 {{- range .Values.applications.sagas }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  name: {{ include "angzarr.saga-service-name" (dict "name" .name) }}
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
@@ -115,7 +118,7 @@ metadata:
     angzarr.io/domain: {{ .domain }}
     {{- end }}
   annotations:
-    angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
+    angzarr.io/dns-name: "{{ include "angzarr.saga-service-name" (dict "name" .name) }}.{{ $.Release.Namespace }}.svc.cluster.local"
 spec:
   type: ClusterIP
   ports:
@@ -141,7 +144,44 @@ spec:
   selector:
     {{- include "angzarr.selectorLabels" $ | nindent 4 }}
     app.kubernetes.io/component: saga
-    angzarr.io/app: {{ .name }}
+    angzarr.io/saga: {{ .name }}
+{{- end }}
+
+{{- /* Services for process manager applications */}}
+{{- /* Naming convention: {name}-pm → hand-flow-pm.angzarr.svc.cluster.local */}}
+{{- range .Values.applications.processManagers }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.pm-service-name" (dict "name" .name) }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: process-manager
+    angzarr.io/pm: {{ .name }}
+    {{- if .domain }}
+    angzarr.io/domain: {{ .domain }}
+    {{- end }}
+  annotations:
+    angzarr.io/dns-name: "{{ include "angzarr.pm-service-name" (dict "name" .name) }}.{{ $.Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    # Process manager coordinator gRPC service
+    - port: {{ $.Values.service.aggregatePort }}
+      targetPort: aggregate
+      protocol: TCP
+      name: grpc
+    # Event query port
+    - port: {{ $.Values.service.queryPort }}
+      targetPort: query
+      protocol: TCP
+      name: query
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: process-manager
+    angzarr.io/pm: {{ .name }}
 {{- end }}
 
 {{- /* Headless service for service discovery (optional) */}}
@@ -255,12 +295,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ $app.name }}-debug
+  name: {{ include "angzarr.aggregate-service-name" (dict "domain" $app.domain) }}-debug
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: aggregate-debug
-    angzarr.io/app: {{ $app.name }}
+    angzarr.io/domain: {{ $app.domain }}
 spec:
   type: NodePort
   ports:
@@ -274,7 +314,7 @@ spec:
   selector:
     {{- include "angzarr.selectorLabels" $ | nindent 4 }}
     app.kubernetes.io/component: aggregate
-    angzarr.io/app: {{ $app.name }}
+    angzarr.io/domain: {{ $app.domain }}
 {{- end }}
 {{- end }}
 
@@ -285,7 +325,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ $app.name }}-debug
+  name: {{ include "angzarr.projector-service-name" (dict "name" $app.name) }}-debug
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
@@ -315,12 +355,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" $ }}-{{ $app.name }}-debug
+  name: {{ include "angzarr.saga-service-name" (dict "name" $app.name) }}-debug
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: saga-debug
-    angzarr.io/app: {{ $app.name }}
+    angzarr.io/saga: {{ $app.name }}
 spec:
   type: NodePort
   ports:
@@ -334,6 +374,6 @@ spec:
   selector:
     {{- include "angzarr.selectorLabels" $ | nindent 4 }}
     app.kubernetes.io/component: saga
-    angzarr.io/app: {{ $app.name }}
+    angzarr.io/saga: {{ $app.name }}
 {{- end }}
 {{- end }}

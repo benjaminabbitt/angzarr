@@ -132,6 +132,19 @@ pull-core-image IMAGE:
         podman pull "$REGISTRY/angzarr-$IMAGE:latest"
     fi
 
+# Load image into Kind cluster
+load IMAGE CLUSTER="angzarr":
+    kind load docker-image {{REGISTRY}}/angzarr-{{IMAGE}}:latest --name {{CLUSTER}}
+
+# Load all language images into Kind cluster
+load-all CLUSTER="angzarr":
+    #!/usr/bin/env bash
+    set -e
+    for lang in rust go python java csharp cpp; do
+        echo "=== Loading $lang image into Kind ==="
+        just load "$lang" "{{CLUSTER}}"
+    done
+
 # List all local angzarr images
 list:
     @podman images --filter "reference={{REGISTRY}}/angzarr-*" --format "table {{{{.Repository}}}}:{{{{.Tag}}}}\t{{{{.Size}}}}\t{{{{.Created}}}}"

@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
     "grpcio>=1.60.0",
     "grpcio-health-checking>=1.60.0",
+    "googleapis-common-protos>=1.62.0",
     "protobuf>=4.25.0",
     "structlog>=24.0.0",
 ]

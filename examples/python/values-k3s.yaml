@@ -33,6 +33,28 @@ images:
 podSecurityContext: {}
 securityContext: {}
 
+# Infrastructure services
+infrastructure:
+  topology:
+    enabled: false  # Using OTel-based topology from monitoring stack
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 8080
+    image:
+      repository: localhost:30500/angzarr-grpc-gateway
+      tag: dev
+      pullPolicy: Always
+    grpcTarget: "poker-python-angzarr-poker-player:1310"  # Default target; routes to other domains via path
+    descriptorConfigMap: "gateway-descriptor"
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
 # Storage: PostgreSQL (deployed by tofu)
 # Credentials from tofu-managed secret (key: uri)
 storage:

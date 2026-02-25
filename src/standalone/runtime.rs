@@ -11,7 +11,11 @@ use tracing::info;
 use crate::bus::{EventBus, MessagingConfig};
 use crate::discovery::k8s::K8sServiceDiscovery;
 use crate::discovery::ServiceDiscovery;
-use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
+use crate::handlers::core::{
+    AggregateCommandHandler, ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler,
+    SyncProjectorEntry as HandlerSyncProjectorEntry,
+};
+use crate::orchestration::aggregate::local::LocalAggregateContextFactory;
 use crate::orchestration::aggregate::ClientLogic;
 use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
@@ -23,6 +27,7 @@ use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
 
 use super::client::CommandClient;
+use super::dispatcher::CommandDispatcher;
 use super::grpc_handlers::{AggregateHandlerAdapter, ProcessManagerHandlerAdapter};
 use super::router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 use super::server::ServerInfo;
@@ -45,8 +50,10 @@ pub struct Runtime {
     domain_stores: HashMap<String, DomainStorage>,
     /// Event bus for publishing and subscriber creation.
     event_bus: Arc<dyn EventBus>,
-    /// Command router for dispatching commands to aggregates.
+    /// Command router for dispatching commands to aggregates (legacy).
     router: Arc<CommandRouter>,
+    /// Command dispatcher using per-domain handlers (new pattern).
+    dispatcher: Arc<CommandDispatcher>,
     /// Speculative executor for dry-run of projectors, sagas, and PMs.
     speculative: Arc<SpeculativeExecutor>,
     /// Background task handles.
@@ -196,15 +203,52 @@ impl Runtime {
             })
             .collect();
 
-        // Create command router with in-process sync projectors.
+        // Create command router with in-process sync projectors (legacy).
         let router = Arc::new(CommandRouter::new(
-            business,
+            business.clone(),
             domain_stores.clone(),
             discovery.clone(),
             event_bus.clone(),
-            sync_projector_entries,
+            sync_projector_entries.clone(),
             None,
         ));
+
+        // Create per-domain handlers using factory pattern (new architecture).
+        // This creates AggregateCommandHandler per domain, each with its own factory.
+        let mut aggregate_handlers: HashMap<String, Arc<AggregateCommandHandler>> = HashMap::new();
+        for (domain, client_logic) in &business {
+            if let Some(storage) = domain_stores.get(domain) {
+                // Create factory for this domain
+                let factory = Arc::new(LocalAggregateContextFactory::new(
+                    domain.clone(),
+                    storage.clone(),
+                    discovery.clone(),
+                    event_bus.clone(),
+                    client_logic.clone(),
+                ));
+
+                // Convert sync projector entries to handler format
+                let handler_sync_projectors: Vec<HandlerSyncProjectorEntry> =
+                    sync_projector_entries
+                        .iter()
+                        .map(|e| HandlerSyncProjectorEntry {
+                            name: e.name.clone(),
+                            handler: e.handler.clone(),
+                        })
+                        .collect();
+
+                // Create handler with factory and sync projectors
+                let handler = Arc::new(
+                    AggregateCommandHandler::new(factory)
+                        .with_sync_projectors(handler_sync_projectors),
+                );
+
+                aggregate_handlers.insert(domain.clone(), handler);
+            }
+        }
+
+        // Create dispatcher with per-domain handlers
+        let dispatcher = Arc::new(CommandDispatcher::new(aggregate_handlers));
 
         // Start event distribution for sagas, PMs, and async projectors
         let executor = Arc::new(LocalCommandExecutor::new(router.clone()));
@@ -284,6 +328,7 @@ impl Runtime {
             domain_stores,
             event_bus,
             router,
+            dispatcher,
             speculative,
             tasks: Vec::new(),
             servers,
@@ -335,9 +380,14 @@ impl Runtime {
         self.event_bus.clone()
     }
 
-    /// Get the command router.
+    /// Get the command router (legacy).
     pub fn router(&self) -> Arc<CommandRouter> {
         self.router.clone()
+    }
+
+    /// Get the command dispatcher (new per-domain handler architecture).
+    pub fn dispatcher(&self) -> Arc<CommandDispatcher> {
+        self.dispatcher.clone()
     }
 
     /// Get the speculative executor for dry-run of projectors, sagas, and PMs.

@@ -111,6 +111,16 @@ spec:
           env:
             - name: GRPC_TARGET
               value: "localhost:{{ .Values.service.port }}"
+            {{- if .Values.grpcGateway.descriptorConfigMap }}
+            - name: DESCRIPTOR_PATH
+              value: "/config/types.bin"
+            {{- end }}
+          {{- if .Values.grpcGateway.descriptorConfigMap }}
+          volumeMounts:
+            - name: descriptor
+              mountPath: /config
+              readOnly: true
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -128,6 +138,12 @@ spec:
           securityContext:
             {{- include "angzarr-domain.containerSecurityContext" . | nindent 12 }}
         {{- end }}
+      {{- if and .Values.grpcGateway.enabled .Values.grpcGateway.descriptorConfigMap }}
+      volumes:
+        - name: descriptor
+          configMap:
+            name: {{ .Values.grpcGateway.descriptorConfigMap }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

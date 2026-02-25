@@ -2,6 +2,7 @@ package angzarr
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -9,6 +10,74 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+// TransportMode specifies how to connect to angzarr services.
+type TransportMode string
+
+const (
+	// TransportStandalone uses Unix Domain Sockets for local process communication.
+	TransportStandalone TransportMode = "standalone"
+	// TransportDistributed uses TCP via Kubernetes DNS for cluster communication.
+	TransportDistributed TransportMode = "distributed"
+)
+
+// Default configuration values.
+const (
+	DefaultUDSBase       = "/tmp/angzarr"
+	DefaultNamespace     = "angzarr"
+	DefaultAggregatePort = 1310
+	DefaultTransportMode = TransportDistributed
+)
+
+// Environment variable names.
+const (
+	EnvMode          = "ANGZARR_MODE"
+	EnvUDSBase       = "ANGZARR_UDS_BASE"
+	EnvNamespace     = "ANGZARR_NAMESPACE"
+	EnvAggregatePort = "ANGZARR_AGGREGATE_PORT"
+)
+
+// ResolveAggregateEndpoint resolves a domain name to an aggregate coordinator endpoint.
+//
+// In standalone mode, returns a Unix Domain Socket path.
+// In distributed mode, returns a Kubernetes DNS name with port.
+//
+// Both modes use the {domain}-aggregate naming convention for consistency.
+//
+// The mode is detected from ANGZARR_MODE env var if not specified.
+// Other env vars: ANGZARR_UDS_BASE, ANGZARR_NAMESPACE, ANGZARR_AGGREGATE_PORT.
+func ResolveAggregateEndpoint(domain string, mode TransportMode) string {
+	if mode == "" {
+		modeStr := os.Getenv(EnvMode)
+		if modeStr == "" {
+			mode = DefaultTransportMode
+		} else {
+			mode = TransportMode(modeStr)
+		}
+	}
+
+	if mode == TransportStandalone {
+		base := os.Getenv(EnvUDSBase)
+		if base == "" {
+			base = DefaultUDSBase
+		}
+		return fmt.Sprintf("%s/%s-aggregate.sock", base, domain)
+	}
+
+	// Distributed mode - K8s DNS
+	namespace := os.Getenv(EnvNamespace)
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+	portStr := os.Getenv(EnvAggregatePort)
+	port := DefaultAggregatePort
+	if portStr != "" {
+		if p, err := fmt.Sscanf(portStr, "%d", &port); p != 1 || err != nil {
+			port = DefaultAggregatePort
+		}
+	}
+	return fmt.Sprintf("%s-aggregate.%s.svc:%d", domain, namespace, port)
+}
 
 // formatEndpoint converts an endpoint to gRPC target format.
 // Supports both TCP (host:port) and Unix Domain Sockets (file paths).
@@ -288,6 +357,26 @@ func DomainClientFromConn(conn *grpc.ClientConn) *DomainClient {
 		Query:     QueryClientFromConn(conn),
 		conn:      conn,
 	}
+}
+
+// DomainClientForDomain connects to a domain's aggregate coordinator.
+//
+// Resolves the domain name to the appropriate endpoint based on transport mode.
+// Pass an empty string for mode to auto-detect from ANGZARR_MODE env var.
+//
+// Examples:
+//
+//	// Auto-detect mode from ANGZARR_MODE env var
+//	player, err := DomainClientForDomain("player", "")
+//
+//	// Explicitly use standalone mode (Unix Domain Sockets)
+//	player, err := DomainClientForDomain("player", TransportStandalone)
+//
+//	// Explicitly use distributed mode (K8s DNS)
+//	player, err := DomainClientForDomain("player", TransportDistributed)
+func DomainClientForDomain(domain string, mode TransportMode) (*DomainClient, error) {
+	endpoint := ResolveAggregateEndpoint(domain, mode)
+	return NewDomainClient(endpoint)
 }
 
 // Execute is a convenience method that delegates to Aggregate.Handle.

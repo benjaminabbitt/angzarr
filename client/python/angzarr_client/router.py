@@ -132,8 +132,8 @@ def command_handler(command_type: type):
             # Call handler with unpacked command
             result = func(cmd, state, seq)
 
-            # Pack result into EventBook
-            return _pack_events(result)
+            # Pack result into EventBook with proper sequences
+            return _pack_events(result, seq)
 
         # Preserve command type for introspection
         wrapper._command_type = command_type
@@ -142,24 +142,27 @@ def command_handler(command_type: type):
     return decorator
 
 
-def _pack_events(result) -> types.EventBook:
+def _pack_events(result, start_seq: int = 0) -> types.EventBook:
     """Pack event(s) into an EventBook.
 
     Args:
         result: Single event, tuple of events, or None.
+        start_seq: Starting sequence number for events.
 
     Returns:
-        EventBook containing packed events.
+        EventBook containing packed events with proper sequences.
     """
     pages = []
 
     if result is None:
         pass
     elif isinstance(result, tuple):
-        for event in result:
-            pages.append(types.EventPage(event=_pack_any(event)))
+        for i, event in enumerate(result):
+            pages.append(
+                types.EventPage(sequence=start_seq + i, event=_pack_any(event))
+            )
     else:
-        pages.append(types.EventPage(event=_pack_any(result)))
+        pages.append(types.EventPage(sequence=start_seq, event=_pack_any(result)))
 
     return types.EventBook(pages=pages)
 
@@ -478,9 +481,9 @@ class CommandRouter(Generic[S]):
         self._rebuild = rebuild
         self._state_router = None  # StateRouter for fluent composition
         self._handlers: list[tuple[str, Callable]] = []
-        self._rejection_handlers: dict[
-            str, Callable
-        ] = {}  # "domain/command" -> handler
+        self._rejection_handlers: dict[str, Callable] = (
+            {}
+        )  # "domain/command" -> handler
 
     def with_state(self, state_router) -> "CommandRouter[S]":
         """Compose a StateRouter for state reconstruction.
@@ -1007,9 +1010,9 @@ class UpcasterRouter:
 
     def __init__(self, domain: str) -> None:
         self.domain = domain
-        self._handlers: list[
-            tuple[str, Callable, type]
-        ] = []  # (suffix, handler, to_type)
+        self._handlers: list[tuple[str, Callable, type]] = (
+            []
+        )  # (suffix, handler, to_type)
 
     def on(self, type_or_handler, handler: Callable = None) -> UpcasterRouter:
         """Register a handler for an old event type.

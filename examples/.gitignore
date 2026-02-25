@@ -22,3 +22,5 @@ hand_log.txt
 # Temporary files
 tmp/
 *.tmp
+# Generated proto descriptor
+types.bin

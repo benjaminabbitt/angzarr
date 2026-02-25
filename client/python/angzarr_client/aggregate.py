@@ -185,9 +185,9 @@ class Aggregate(Generic[StateT], ABC):
     domain: str
     _dispatch_table: dict[str, tuple[str, type]] = {}
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
-    _applier_table: dict[
-        str, tuple[str, type]
-    ] = {}  # suffix -> (method_name, event_type)
+    _applier_table: dict[str, tuple[str, type]] = (
+        {}
+    )  # suffix -> (method_name, event_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -268,6 +268,8 @@ class Aggregate(Generic[StateT], ABC):
             event_book = types.EventBook()
         self._event_book = event_book
         self._state: StateT = None
+        # Track next sequence number from prior events
+        self._next_seq: int = len(event_book.pages)
 
     def dispatch(self, command_any: Any) -> None:
         """Dispatch command to matching @handles method.
@@ -469,8 +471,9 @@ class Aggregate(Generic[StateT], ABC):
         if self._state is not None:
             self._apply_event(self._state, event_any)
 
-        # Record in event book
-        page = types.EventPage(event=event_any)
+        # Record in event book with proper sequence
+        page = types.EventPage(sequence=self._next_seq, event=event_any)
+        self._next_seq += 1
         self._event_book.pages.append(page)
 
     @abstractmethod

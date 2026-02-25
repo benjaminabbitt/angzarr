@@ -38,6 +38,7 @@ pub struct DomainStorage {
 }
 
 /// In-process sync projector entry for standalone mode.
+#[derive(Clone)]
 pub struct SyncProjectorEntry {
     /// Projector name for logging.
     pub name: String,

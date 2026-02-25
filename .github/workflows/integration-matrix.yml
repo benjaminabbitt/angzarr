@@ -14,7 +14,6 @@ on:
           - all
           - rust
           - go
-          - python
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,7 +45,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build framework
-        run: cargo build --release --bin angzarr-standalone --features "standalone,amqp"
+        run: just build-standalone
 
       - name: Upload framework binary
         uses: actions/upload-artifact@v4
@@ -62,11 +61,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [rust, go, python]
+        # Only languages with skaffold.yaml (K8s deployment support)
+        language: [rust, go]
         exclude:
           - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
           - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'python' && 'python' || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +91,17 @@ jobs:
           chmod +x ./kubectl
           sudo mv ./kubectl /usr/local/bin/kubectl
 
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      - name: Install Skaffold
+        run: |
+          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+          chmod +x skaffold
+          sudo mv skaffold /usr/local/bin/
+
       - name: Install just
         uses: extractions/setup-just@v2
 
@@ -115,12 +125,6 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Set up Python
-        if: matrix.language == 'python'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       # Create Kind cluster
       - name: Create Kind cluster
         run: |
@@ -129,34 +133,27 @@ jobs:
 
       # Build and load images for the specific language
       - name: Build ${{ matrix.language }} images
-        run: just images-build-${{ matrix.language }}
+        run: just images build ${{ matrix.language }}
 
       - name: Load images into Kind
-        run: just images-load-${{ matrix.language }}
+        run: just images load ${{ matrix.language }}
 
       # Deploy infrastructure
       - name: Deploy infrastructure
-        run: |
-          just images-pull-infra
-          just images-load-infra
-          kubectl apply -f k8s/base/namespace.yaml
-          kubectl apply -f k8s/base/secrets.yaml
-          kubectl apply -f k8s/base/redis.yaml
-          kubectl apply -f k8s/base/rabbitmq.yaml
-          kubectl apply -f k8s/base/mongodb.yaml
+        run: just infra-ci
 
-      # Deploy language-specific services
+      # Deploy language-specific services via skaffold
       - name: Deploy ${{ matrix.language }} services
         run: |
-          just k8s-apply-${{ matrix.language }}
+          cd examples/${{ matrix.language }}
+          skaffold run --cache-artifacts=false
           kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
 
-      # Run integration tests
-      - name: Run integration tests
-        run: |
-          ANGZARR_TEST_MODE=container cargo test --test acceptance -- --test-threads=1
+      # Run acceptance tests
+      - name: Run acceptance tests
+        run: just examples ${{ matrix.language }} test-acceptance
         env:
-          TEST_LANGUAGE: ${{ matrix.language }}
+          ANGZARR_TEST_MODE: container
 
       # Collect logs on failure
       - name: Collect logs on failure

@@ -30,6 +30,9 @@ grpcGateway:
   image: "ghcr.io/angzarr-io/angzarr-grpc-gateway:latest"
   port: 8080
   nodePort: 31808  # For dev access (pattern: 318xx)
+  # ConfigMap containing types.bin for proto type discovery
+  # Create with: kubectl create configmap gateway-descriptor --from-file=types.bin=examples/types.bin
+  descriptorConfigMap: ""
   resources:
     requests:
       cpu: "50m"

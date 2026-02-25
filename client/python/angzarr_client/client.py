@@ -1,6 +1,7 @@
 """Client implementations for Angzarr gRPC services."""
 
 import os
+from enum import Enum
 from typing import Optional
 
 import grpc
@@ -25,6 +26,54 @@ from .proto.angzarr import (
     SpeculateSagaRequest,
     SyncCommandBook,
 )
+
+
+class TransportMode(Enum):
+    """Transport mode for gRPC connections."""
+
+    STANDALONE = "standalone"  # Unix Domain Sockets
+    DISTRIBUTED = "distributed"  # TCP via K8s DNS
+
+
+def resolve_aggregate_endpoint(
+    domain: str,
+    mode: TransportMode | None = None,
+    *,
+    uds_base: str = "/tmp/angzarr",
+    namespace: str = "angzarr",
+    port: int = 1310,
+) -> str:
+    """Resolve domain to aggregate coordinator endpoint.
+
+    Args:
+        domain: The domain name (e.g., "player", "table", "hand")
+        mode: Transport mode. If None, detected from ANGZARR_MODE env var.
+        uds_base: Base path for Unix Domain Sockets (standalone mode)
+        namespace: Kubernetes namespace (distributed mode)
+        port: gRPC port (distributed mode)
+
+    Returns:
+        Endpoint string suitable for _create_channel:
+        - Standalone: /tmp/angzarr/player-aggregate.sock
+        - Distributed: player-aggregate.angzarr.svc:1310
+
+    Environment Variables:
+        ANGZARR_MODE: "standalone" or "distributed" (default: "distributed")
+        ANGZARR_UDS_BASE: Override uds_base (default: /tmp/angzarr)
+        ANGZARR_NAMESPACE: Override namespace (default: angzarr)
+        ANGZARR_AGGREGATE_PORT: Override port (default: 1310)
+    """
+    if mode is None:
+        mode_str = os.environ.get("ANGZARR_MODE", "distributed")
+        mode = TransportMode(mode_str)
+
+    if mode == TransportMode.STANDALONE:
+        base = os.environ.get("ANGZARR_UDS_BASE", uds_base)
+        return f"{base}/{domain}-aggregate.sock"
+    else:
+        ns = os.environ.get("ANGZARR_NAMESPACE", namespace)
+        p = int(os.environ.get("ANGZARR_AGGREGATE_PORT", str(port)))
+        return f"{domain}-aggregate.{ns}.svc:{p}"
 
 
 def _create_channel(endpoint: str) -> grpc.Channel:
@@ -217,6 +266,35 @@ class DomainClient:
         """Connect to a domain's coordinator at the given endpoint."""
         channel = _create_channel(endpoint)
         return cls(channel)
+
+    @classmethod
+    def for_domain(
+        cls, domain: str, mode: TransportMode | None = None
+    ) -> "DomainClient":
+        """Connect to a domain's aggregate coordinator.
+
+        Resolves the domain name to the appropriate endpoint based on transport mode.
+
+        Args:
+            domain: Domain name (e.g., "player", "table")
+            mode: Transport mode (standalone=UDS, distributed=K8s DNS).
+                  If None, detected from ANGZARR_MODE env var.
+
+        Returns:
+            DomainClient connected to the domain's aggregate coordinator.
+
+        Examples:
+            # Auto-detect mode from ANGZARR_MODE env var
+            player = DomainClient.for_domain("player")
+
+            # Explicitly use standalone mode (Unix Domain Sockets)
+            player = DomainClient.for_domain("player", TransportMode.STANDALONE)
+
+            # Explicitly use distributed mode (K8s DNS)
+            player = DomainClient.for_domain("player", TransportMode.DISTRIBUTED)
+        """
+        endpoint = resolve_aggregate_endpoint(domain, mode)
+        return cls.connect(endpoint)
 
     @classmethod
     def from_env(cls, env_var: str, default: str) -> "DomainClient":
