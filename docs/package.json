@@ -22,6 +22,7 @@
     "@easyops-cn/docusaurus-search-local": "^0.46.1",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.0.0",
+    "@lunaticmuch/docusaurus-terminology": "^1.5.0",
     "docusaurus-plugin-openapi-docs": "^4.4.0",
     "docusaurus-theme-openapi-docs": "^4.4.0",
     "prism-react-renderer": "^2.3.0",

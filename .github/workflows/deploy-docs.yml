@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'proto/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
@@ -23,12 +24,25 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Generate proto documentation
+        run: |
+          mkdir -p docs/docs/api/proto
+          PROTOS=$(find proto -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
+          docker run --rm \
+            -v "${{ github.workspace }}/proto:/protos" \
+            -v "${{ github.workspace }}/docs/docs/api/proto:/out" \
+            pseudomuto/protoc-gen-doc \
+            --proto_path=/protos \
+            --doc_opt=markdown,index.md \
+            $PROTOS
+          # Escape curly braces for MDX compatibility
+          sed -i 's/{\([^}]*\)}/`{\1}`/g' docs/docs/api/proto/index.md
+          # Add frontmatter
+          sed -i '1i ---\ntitle: Protocol Buffer API\ndescription: Auto-generated documentation for Angzarr protobuf definitions\n---\n' docs/docs/api/proto/index.md
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,9 +52,11 @@ jobs:
           cache-dependency-path: docs/package-lock.json
 
       - name: Install dependencies
+        working-directory: docs
         run: npm ci
 
       - name: Build documentation
+        working-directory: docs
         run: npm run build
 
       - name: Upload artifact

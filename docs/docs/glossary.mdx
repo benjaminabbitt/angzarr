@@ -1,0 +1,99 @@
+---
+title: Glossary
+description: Key terms and concepts in Angzarr
+---
+
+# Glossary
+
+This glossary defines key terms used throughout the Angzarr documentation, organized by category.
+
+## Component Types
+
+| Term | Abbr | Description |
+|------|------|-------------|
+| [Aggregate](/glossary/aggregate) | agg | Domain logic. Commands in, events out. Single domain source of truth. |
+| [Saga](/glossary/saga) | sag | Domain bridge. Events from one domain, commands to another. Stateless. |
+| [Projector](/glossary/projector) | prj | Read model builder. Events in, external output. |
+| [Process Manager](/glossary/process-manager) | pmg | Multi-domain orchestrator. Stateful correlation via correlation ID. |
+| [Coordinator](/glossary/coordinator) | - | Angzarr sidecar handling infrastructure concerns. |
+
+## DDD & Bounded Contexts
+
+| Term | Description |
+|------|-------------|
+| [Domain](/glossary/domain) | Bounded context representing a distinct business capability. |
+| [Bounded Context](/glossary/bounded-context) | Semantic boundary within which a domain model applies. |
+| [Aggregate Root](/glossary/aggregate-root) | Entry point entity. All external references go through the root. |
+
+## Commands, Events & Notifications
+
+Understanding the differences is critical:
+
+| Term | Tense | Persisted | Can Reject | Example |
+|------|-------|-----------|------------|---------|
+| [Command](/glossary/command) | Imperative | No | Yes | `CreateOrder` |
+| [Event](/glossary/event) | Past | Yes | No | `OrderCreated` |
+| [Notification](/glossary/notification) | Present | No | N/A | `CompensationRequired` |
+
+## Event Sourcing
+
+| Term | Description |
+|------|-------------|
+| [Event Sourcing](/glossary/event-sourcing) | State derived by replaying events, not stored directly. |
+| [Event Store](/glossary/event-store) | Append-only database of events. Source of truth. |
+| [Replay](/glossary/replay) | Reconstruct state by applying events from beginning. |
+| [Snapshot](/glossary/snapshot) | Cached state checkpoint to optimize replay. |
+| [Sequence Number](/glossary/sequence) | Ordered position of event in aggregate timeline. |
+| [Upcasting](/glossary/upcasting) | Transform old event versions at read time. |
+
+## CQRS
+
+| Term | Description |
+|------|-------------|
+| [CQRS](/glossary/cqrs) | Command Query Responsibility Segregation. |
+| [Projection](/glossary/projection) | Query-optimized read model built from events. |
+
+## Angzarr Data Structures
+
+| Term | Description |
+|------|-------------|
+| [EventBook](/glossary/event-book) | Collection of events for an aggregate root. |
+| [EventPage](/glossary/event-page) | Individual event with sequence and timestamp. |
+| [CommandBook](/glossary/command-book) | Collection of commands with concurrency metadata. |
+| [Cover](/glossary/cover) | Identity/routing: domain, root, correlation, edition. |
+| [Target](/glossary/target) | Subscription filter: domain + event types. |
+
+## Concurrency & Consistency
+
+| Term | Description |
+|------|-------------|
+| [Merge Strategy](/glossary/merge-strategy) | How to handle concurrent command conflicts. |
+| [Correlation ID](/glossary/correlation-id) | Identifier for cross-domain workflows. |
+| [Edition](/glossary/edition) | Timeline branching for speculative execution. |
+
+## Patterns & Architecture
+
+| Term | Description |
+|------|-------------|
+| [Orchestration](/glossary/orchestration) | Central coordinator controls workflow vs choreography. |
+| [Compensation](/glossary/compensation) | Handling failures by emitting undo events. |
+| [Sidecar](/glossary/sidecar) | Container pattern for infrastructure concerns. |
+| [CloudEvent](/glossary/cloud-event) | Standardized event envelope for external systems. |
+
+## Error Handling
+
+| Term | Description |
+|------|-------------|
+| [Dead Letter Queue](/glossary/dlq) | Destination for unprocessable messages. |
+
+## Quick Reference: Angzarr vs Standard Terms
+
+| Standard Term | Angzarr Term | Notes |
+|---------------|--------------|-------|
+| Aggregate Root ID | `root` (in Cover) | Always UUID |
+| Event Version | Sequence | Also used for idempotency |
+| Saga | Saga | Stateless, single domain input |
+| Saga (stateful) | Process Manager | Multi-domain, correlation ID as root |
+| Read Model | Projection | Built by Projector |
+| - | Edition | Angzarr-specific: timeline branching |
+| - | Cover | Angzarr-specific: identity envelope |
