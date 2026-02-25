@@ -192,7 +192,6 @@ impl ProjectorCoordinatorService for ProjectorCoord {
         let event_book = speculate_request
             .events
             .ok_or_else(|| Status::invalid_argument("SpeculateProjectorRequest requires events"))?;
-        // TODO: use speculate_request.point_in_time for temporal queries
 
         // Repair EventBook if incomplete
         let event_book = self

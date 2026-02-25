@@ -45,10 +45,9 @@ service ProcessManagerCoordinatorService {
   }
 }
 
-// Request for speculative PM execution at a point in time.
+// Request for speculative PM execution.
 message SpeculatePmRequest {
   ProcessManagerHandleRequest request = 1;
-  TemporalQuery point_in_time = 2;
 }
 
 // Phase 1 request: PM declares additional destinations needed.

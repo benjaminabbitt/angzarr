@@ -34,3 +34,11 @@ Events are wrapped in an [EventPage](/glossary/event-page) containing:
 - Payload (or PayloadReference for large events)
 
 Events are stored in the [Event Store](/glossary/event-store) and are the source of truth for aggregate state.
+
+## Internal vs External Events
+
+Events can originate from:
+- **Internal decisions**: Aggregate processed a command and decided to emit events
+- **External facts**: Saga or external system reporting something that already happened
+
+External facts use a [fact sequence](/concepts/commands-vs-facts) (idempotency key) instead of an expected sequence number. This allows aggregates to record external reality without the validation/rejection semantics of commands.

@@ -292,10 +292,6 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
             ClientError::InvalidArgument("SpeculateProjectorRequest missing events".to_string())
         })?;
 
-        // TODO: Use point_in_time for temporal projection queries
-        // let (_as_of_sequence, _as_of_timestamp) =
-        //     extract_temporal_params(&request.point_in_time)?;
-
         // In standalone mode, use first registered projector for the domain
         let domain = events
             .cover
@@ -317,10 +313,6 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
         let source = execute_request.source.ok_or_else(|| {
             ClientError::InvalidArgument("SagaExecuteRequest missing source".to_string())
         })?;
-
-        // TODO: Use point_in_time for temporal state queries
-        // let (_as_of_sequence, _as_of_timestamp) =
-        //     extract_temporal_params(&request.point_in_time)?;
 
         // Convert destinations to domain specs (explicit state)
         let mut domain_specs = HashMap::new();
@@ -360,10 +352,6 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
         let trigger = handle_request.trigger.ok_or_else(|| {
             ClientError::InvalidArgument("ProcessManagerHandleRequest missing trigger".to_string())
         })?;
-
-        // TODO: Use point_in_time for temporal state queries
-        // let (_as_of_sequence, _as_of_timestamp) =
-        //     extract_temporal_params(&request.point_in_time)?;
 
         // Convert destinations and process_state to domain specs
         let mut domain_specs = HashMap::new();

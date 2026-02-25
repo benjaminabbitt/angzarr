@@ -8,7 +8,10 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Concepts',
-      items: ['concepts/cqrs-event-sourcing'],
+      items: [
+        'concepts/cqrs-event-sourcing',
+        'concepts/commands-vs-facts',
+      ],
     },
     {
       type: 'category',

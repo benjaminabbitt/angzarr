@@ -37,10 +37,9 @@ service SagaCoordinatorService {
   }
 }
 
-// Request for speculative saga execution at a point in time.
+// Request for speculative saga execution.
 message SpeculateSagaRequest {
   SagaExecuteRequest request = 1;
-  TemporalQuery point_in_time = 2;
 }
 
 // Response from saga - commands for other aggregates

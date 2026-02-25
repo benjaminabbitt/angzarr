@@ -44,9 +44,8 @@ service ProjectorCoordinatorService {
   }
 }
 
-// Request for speculative projector execution at a point in time.
+// Request for speculative projector execution.
 message SpeculateProjectorRequest {
   EventBook events = 1;
-  TemporalQuery point_in_time = 2;
 }
 

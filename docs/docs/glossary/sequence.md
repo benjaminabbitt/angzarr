@@ -44,3 +44,16 @@ Command arrives expecting sequence 4
 - **Timestamp:** Physical time (may have gaps, clock skew)
 
 Use sequence for state reconstruction; use timestamp for temporal queries.
+
+## Fact Sequences
+
+Not all events come from command processing. External facts (payment confirmations, delivery updates) use a **fact sequence** instead of an integer:
+
+```protobuf
+oneof sequence_type {
+  uint64 sequence = 1;        // Normal: position in stream
+  FactSequence fact = 2;      // External fact marker
+}
+```
+
+Fact sequences contain an idempotency key (`external_id`) for deduplication rather than an expected sequence for concurrency control. See [Commands vs Facts](/concepts/commands-vs-facts) for details.

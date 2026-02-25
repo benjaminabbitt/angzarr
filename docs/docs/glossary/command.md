@@ -32,3 +32,9 @@ Commands are wrapped in a [CommandBook](/glossary/command-book) containing:
 - Expected sequence number (for optimistic concurrency)
 - Merge strategy (how to handle conflicts)
 - Saga origin (for compensation tracking)
+
+## Commands vs Facts
+
+Not all messages to aggregates are rejectable requests. External realities (payments processed, packages delivered) are **facts** that must be recorded, not decided upon.
+
+Angzarr distinguishes these by allowing [fact events](/concepts/commands-vs-facts) — events sent directly to aggregates with idempotency keys instead of sequence numbers. This preserves semantic clarity: commands request decisions, facts notify of external reality.
