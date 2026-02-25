@@ -387,6 +387,9 @@ impl Runtime {
             server.shutdown();
         }
 
+        // Flush OTel buffers before exit
+        crate::utils::bootstrap::shutdown_telemetry();
+
         Ok(())
     }
 }

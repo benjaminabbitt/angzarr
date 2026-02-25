@@ -414,34 +414,61 @@ impl EventBus for KafkaEventBus {
 // OTel Trace Context Propagation
 // ============================================================================
 
+/// Kafka-specific injector that collects trace context key-value pairs.
+/// Kafka's OwnedHeaders API requires building headers incrementally,
+/// so we collect pairs first, then convert.
+#[cfg(feature = "otel")]
+struct KafkaInjector<'a>(&'a mut Vec<(String, String)>);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Injector for KafkaInjector<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.push((key.to_string(), value));
+    }
+}
+
+/// Kafka-specific extractor for W3C trace context from message headers.
+#[cfg(feature = "otel")]
+struct KafkaExtractor<'a, H: rdkafka::message::Headers>(&'a H);
+
+#[cfg(feature = "otel")]
+impl<H: rdkafka::message::Headers> opentelemetry::propagation::Extractor for KafkaExtractor<'_, H> {
+    fn get(&self, key: &str) -> Option<&str> {
+        for i in 0..self.0.count() {
+            if let Some(header) = self.0.get_as::<[u8]>(i) {
+                if header.key == key {
+                    return header.value.and_then(|v| std::str::from_utf8(v).ok());
+                }
+            }
+        }
+        None
+    }
+    fn keys(&self) -> Vec<&str> {
+        let mut keys = Vec::new();
+        for i in 0..self.0.count() {
+            if let Some(header) = self.0.get_as::<[u8]>(i) {
+                keys.push(header.key);
+            }
+        }
+        keys
+    }
+}
+
 /// Inject W3C trace context from the current span into Kafka message headers.
 #[cfg(feature = "otel")]
 fn kafka_inject_trace_context() -> rdkafka::message::OwnedHeaders {
     use rdkafka::message::OwnedHeaders;
-    use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-    let cx = tracing::Span::current().context();
+    let mut pairs = Vec::new();
+    crate::utils::tracing::inject_trace_context(&mut KafkaInjector(&mut pairs));
+
     let mut headers = OwnedHeaders::new();
-
-    opentelemetry::global::get_text_map_propagator(|propagator| {
-        struct HeaderInjector<'a>(&'a mut Vec<(String, String)>);
-        impl opentelemetry::propagation::Injector for HeaderInjector<'_> {
-            fn set(&mut self, key: &str, value: String) {
-                self.0.push((key.to_string(), value));
-            }
-        }
-
-        let mut pairs = Vec::new();
-        propagator.inject_context(&cx, &mut HeaderInjector(&mut pairs));
-
-        for (key, value) in pairs {
-            headers = std::mem::take(&mut headers).insert(rdkafka::message::Header {
-                key: &key,
-                value: Some(value.as_bytes()),
-            });
-        }
-    });
-
+    for (key, value) in pairs {
+        headers = std::mem::take(&mut headers).insert(rdkafka::message::Header {
+            key: &key,
+            value: Some(value.as_bytes()),
+        });
+    }
     headers
 }
 
@@ -449,35 +476,8 @@ fn kafka_inject_trace_context() -> rdkafka::message::OwnedHeaders {
 #[cfg(feature = "otel")]
 fn kafka_extract_trace_context<M: rdkafka::message::Message>(message: &M, span: &tracing::Span) {
     use rdkafka::message::Headers;
-    use tracing_opentelemetry::OpenTelemetrySpanExt;
-
     if let Some(headers) = message.headers() {
-        let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
-            struct KafkaExtractor<'a, H: Headers>(&'a H);
-            impl<H: Headers> opentelemetry::propagation::Extractor for KafkaExtractor<'_, H> {
-                fn get(&self, key: &str) -> Option<&str> {
-                    for i in 0..self.0.count() {
-                        if let Some(header) = self.0.get_as::<[u8]>(i) {
-                            if header.key == key {
-                                return header.value.and_then(|v| std::str::from_utf8(v).ok());
-                            }
-                        }
-                    }
-                    None
-                }
-                fn keys(&self) -> Vec<&str> {
-                    let mut keys = Vec::new();
-                    for i in 0..self.0.count() {
-                        if let Some(header) = self.0.get_as::<[u8]>(i) {
-                            keys.push(header.key);
-                        }
-                    }
-                    keys
-                }
-            }
-            propagator.extract(&KafkaExtractor(headers))
-        });
-        span.set_parent(parent_cx);
+        crate::utils::tracing::extract_trace_context(&KafkaExtractor(headers), span);
     }
 }
 

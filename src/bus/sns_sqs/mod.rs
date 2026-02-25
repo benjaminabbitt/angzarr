@@ -535,7 +535,12 @@ impl EventBus for SnsSqsEventBus {
             .message(&message)
             .set_message_attributes(Some(attrs))
             .message_group_id(&root_id) // FIFO ordering by aggregate root
-            .message_deduplication_id(&format!("{}-{}", correlation_id, root_id))
+            .message_deduplication_id(format!(
+                "{}-{}-{}",
+                domain,
+                root_id,
+                book.pages.iter().map(|p| p.sequence).max().unwrap_or(0)
+            ))
             .send()
             .await
             .map_err(|e| BusError::Publish(format!("Failed to publish to SNS: {}", e)))?;
@@ -626,50 +631,50 @@ impl EventBus for SnsSqsEventBus {
 // OTel Trace Context Propagation
 // ============================================================================
 
+/// SNS-specific injector for W3C trace context into message attributes.
+#[cfg(feature = "otel")]
+struct SnsInjector<'a>(&'a mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Injector for SnsInjector<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        if let Ok(attr) = aws_sdk_sns::types::MessageAttributeValue::builder()
+            .data_type("String")
+            .string_value(value)
+            .build()
+        {
+            self.0.insert(key.to_string(), attr);
+        }
+    }
+}
+
+/// SQS-specific extractor for W3C trace context from message attributes.
+#[cfg(feature = "otel")]
+struct SqsExtractor<'a>(&'a HashMap<String, aws_sdk_sqs::types::MessageAttributeValue>);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Extractor for SqsExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|v| v.string_value())
+    }
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|k| k.as_str()).collect()
+    }
+}
+
 /// Inject W3C trace context from the current span into SNS message attributes.
 #[cfg(feature = "otel")]
 fn sns_inject_trace_context(
     attrs: &mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>,
 ) {
-    use tracing_opentelemetry::OpenTelemetrySpanExt;
-
-    let cx = tracing::Span::current().context();
-    opentelemetry::global::get_text_map_propagator(|propagator| {
-        struct SnsInjector<'a>(&'a mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>);
-        impl opentelemetry::propagation::Injector for SnsInjector<'_> {
-            fn set(&mut self, key: &str, value: String) {
-                if let Ok(attr) = aws_sdk_sns::types::MessageAttributeValue::builder()
-                    .data_type("String")
-                    .string_value(value)
-                    .build()
-                {
-                    self.0.insert(key.to_string(), attr);
-                }
-            }
-        }
-        propagator.inject_context(&cx, &mut SnsInjector(attrs));
-    });
+    crate::utils::tracing::inject_trace_context(&mut SnsInjector(attrs));
 }
 
 /// Extract W3C trace context from SQS message attributes and set as parent on span.
 #[cfg(feature = "otel")]
 fn sqs_extract_trace_context(message: &aws_sdk_sqs::types::Message, span: &tracing::Span) {
-    use tracing_opentelemetry::OpenTelemetrySpanExt;
-
     if let Some(attrs) = message.message_attributes() {
-        let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
-            struct SqsExtractor<'a>(&'a HashMap<String, aws_sdk_sqs::types::MessageAttributeValue>);
-            impl opentelemetry::propagation::Extractor for SqsExtractor<'_> {
-                fn get(&self, key: &str) -> Option<&str> {
-                    self.0.get(key).and_then(|v| v.string_value())
-                }
-                fn keys(&self) -> Vec<&str> {
-                    self.0.keys().map(|k| k.as_str()).collect()
-                }
-            }
-            propagator.extract(&SqsExtractor(attrs))
-        });
-        span.set_parent(parent_cx);
+        crate::utils::tracing::extract_trace_context(&SqsExtractor(attrs), span);
     }
 }
 

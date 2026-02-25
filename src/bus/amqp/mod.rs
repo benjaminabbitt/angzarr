@@ -492,54 +492,52 @@ impl EventBus for AmqpEventBus {
 // OTel Trace Context Propagation
 // ============================================================================
 
+/// AMQP-specific injector for W3C trace context headers.
+#[cfg(feature = "otel")]
+struct AmqpInjector<'a>(
+    &'a mut std::collections::BTreeMap<lapin::types::ShortString, lapin::types::AMQPValue>,
+);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Injector for AmqpInjector<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        use lapin::types::AMQPValue;
+        self.0
+            .insert(key.into(), AMQPValue::LongString(value.into()));
+    }
+}
+
+/// AMQP-specific extractor for W3C trace context headers.
+#[cfg(feature = "otel")]
+struct AmqpExtractor<'a>(&'a FieldTable);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Extractor for AmqpExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        use lapin::types::AMQPValue;
+        self.0.inner().get(key).and_then(|v| match v {
+            AMQPValue::LongString(s) => std::str::from_utf8(s.as_bytes()).ok(),
+            _ => None,
+        })
+    }
+    fn keys(&self) -> Vec<&str> {
+        self.0.inner().keys().map(|k| k.as_str()).collect()
+    }
+}
+
 /// Inject W3C trace context from the current span into AMQP message headers.
 #[cfg(feature = "otel")]
 fn amqp_inject_trace_context() -> FieldTable {
-    use lapin::types::AMQPValue;
-    use tracing_opentelemetry::OpenTelemetrySpanExt;
-
-    let cx = tracing::Span::current().context();
     let mut headers = std::collections::BTreeMap::new();
-
-    opentelemetry::global::get_text_map_propagator(|propagator| {
-        struct MapInjector<'a>(
-            &'a mut std::collections::BTreeMap<lapin::types::ShortString, AMQPValue>,
-        );
-        impl opentelemetry::propagation::Injector for MapInjector<'_> {
-            fn set(&mut self, key: &str, value: String) {
-                self.0
-                    .insert(key.into(), AMQPValue::LongString(value.into()));
-            }
-        }
-        propagator.inject_context(&cx, &mut MapInjector(&mut headers));
-    });
-
+    crate::utils::tracing::inject_trace_context(&mut AmqpInjector(&mut headers));
     FieldTable::from(headers)
 }
 
 /// Extract W3C trace context from AMQP message properties and set as parent on span.
 #[cfg(feature = "otel")]
 fn amqp_extract_trace_context(properties: &BasicProperties, span: &tracing::Span) {
-    use lapin::types::AMQPValue;
-    use tracing_opentelemetry::OpenTelemetrySpanExt;
-
     if let Some(headers) = properties.headers() {
-        let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
-            struct FieldTableExtractor<'a>(&'a FieldTable);
-            impl opentelemetry::propagation::Extractor for FieldTableExtractor<'_> {
-                fn get(&self, key: &str) -> Option<&str> {
-                    self.0.inner().get(key).and_then(|v| match v {
-                        AMQPValue::LongString(s) => std::str::from_utf8(s.as_bytes()).ok(),
-                        _ => None,
-                    })
-                }
-                fn keys(&self) -> Vec<&str> {
-                    self.0.inner().keys().map(|k| k.as_str()).collect()
-                }
-            }
-            propagator.extract(&FieldTableExtractor(headers))
-        });
-        span.set_parent(parent_cx);
+        crate::utils::tracing::extract_trace_context(&AmqpExtractor(headers), span);
     }
 }
 

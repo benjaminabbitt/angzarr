@@ -138,7 +138,14 @@ pub fn init_tracing() {
 
 /// Build the OpenTelemetry resource from environment variables.
 ///
-/// Uses `OTEL_SERVICE_NAME_ENV_VAR` and `OTEL_RESOURCE_ATTRIBUTES` per OTel spec.
+/// Standard attributes:
+/// - `service.name` — from `OTEL_SERVICE_NAME` (default: "angzarr")
+/// - `service.version` — from `OTEL_SERVICE_VERSION` or Cargo package version
+/// - `service.instance.id` — from `POD_NAME` (K8s) or `HOSTNAME`
+/// - `deployment.environment` — from `OTEL_DEPLOYMENT_ENVIRONMENT` or `ENVIRONMENT`
+/// - `service.namespace` — from `POD_NAMESPACE` (K8s only)
+///
+/// See: https://opentelemetry.io/docs/specs/semconv/resource/
 #[cfg(feature = "otel")]
 fn otel_resource() -> opentelemetry_sdk::Resource {
     use crate::config::OTEL_SERVICE_NAME_ENV_VAR;
@@ -148,7 +155,31 @@ fn otel_resource() -> opentelemetry_sdk::Resource {
     let service_name =
         std::env::var(OTEL_SERVICE_NAME_ENV_VAR).unwrap_or_else(|_| "angzarr".to_string());
 
-    Resource::new(vec![KeyValue::new("service.name", service_name)])
+    let mut attrs = vec![KeyValue::new("service.name", service_name)];
+
+    // service.version: from env or compile-time package version
+    let version = std::env::var("OTEL_SERVICE_VERSION")
+        .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+    attrs.push(KeyValue::new("service.version", version));
+
+    // service.instance.id: K8s pod name or hostname
+    if let Ok(instance_id) = std::env::var("POD_NAME").or_else(|_| std::env::var("HOSTNAME")) {
+        attrs.push(KeyValue::new("service.instance.id", instance_id));
+    }
+
+    // deployment.environment: dev, staging, prod, etc.
+    if let Ok(env) =
+        std::env::var("OTEL_DEPLOYMENT_ENVIRONMENT").or_else(|_| std::env::var("ENVIRONMENT"))
+    {
+        attrs.push(KeyValue::new("deployment.environment", env));
+    }
+
+    // service.namespace: K8s namespace
+    if let Ok(namespace) = std::env::var("POD_NAMESPACE") {
+        attrs.push(KeyValue::new("service.namespace", namespace));
+    }
+
+    Resource::new(attrs)
 }
 
 /// Graceful shutdown of OpenTelemetry providers.
@@ -165,6 +196,46 @@ pub fn shutdown_telemetry() {
         }
         tracing::info!("OpenTelemetry providers shut down");
     }
+}
+
+/// Create a shutdown signal future that waits for SIGTERM (K8s) or SIGINT (Ctrl+C).
+///
+/// When the signal is received, calls `shutdown_telemetry()` to flush OTel buffers.
+/// Use this with tonic's `with_graceful_shutdown()`.
+///
+/// # Example
+/// ```ignore
+/// Server::builder()
+///     .add_service(my_service)
+///     .serve_with_shutdown(addr, shutdown_signal())
+///     .await?;
+/// ```
+pub async fn shutdown_signal() {
+    use tokio::signal;
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
+        _ = terminate => tracing::info!("Received SIGTERM, shutting down"),
+    }
+
+    shutdown_telemetry();
 }
 
 /// Parse static endpoints from a comma-separated string.

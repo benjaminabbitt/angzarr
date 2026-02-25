@@ -2,7 +2,25 @@
 //!
 //! Substitutes for Kafka/RabbitMQ in embedded mode using UDS and named pipes.
 //!
-//! Architecture (SNS/SQS-like):
+//! ## Trace Context Propagation
+//!
+//! Unlike distributed buses (AMQP, Kafka, SNS/SQS), IPC does **not** propagate
+//! W3C TraceContext headers. Rationale:
+//!
+//! 1. **Same machine**: IPC runs on a single host where all processes share
+//!    the same collector endpoint. Traces correlate via timestamps and
+//!    correlation IDs without explicit context propagation.
+//!
+//! 2. **Protocol overhead**: Adding headers to the length-prefixed pipe protocol
+//!    would require a breaking wire format change for minimal observability gain.
+//!
+//! 3. **Standalone focus**: IPC is primarily for local development and testing
+//!    where distributed tracing across services is less critical.
+//!
+//! For production distributed tracing, use AMQP, Kafka, or SNS/SQS buses which
+//! implement full W3C TraceContext propagation via [`crate::utils::tracing`].
+//!
+//! ## Architecture (SNS/SQS-like)
 //! ```text
 //! ┌─────────────┐     ┌─────────────┐
 //! │  Aggregate  │────▶│   Broker    │

@@ -10,6 +10,7 @@ pub mod retry;
 pub mod saga_compensation;
 pub mod sequence_validator;
 pub mod sidecar;
+pub mod tracing;
 
 /// Box an error into `Box<dyn std::error::Error + Send + Sync>`.
 ///

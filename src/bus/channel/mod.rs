@@ -2,6 +2,24 @@
 //!
 //! Uses tokio broadcast channels for pub/sub within a single process.
 //! Ideal for local development and testing without external dependencies.
+//!
+//! ## Trace Context Propagation
+//!
+//! Channel bus does **not** implement explicit trace context propagation.
+//! This is intentional:
+//!
+//! 1. **Same process**: All publishers and subscribers run in the same tokio
+//!    runtime. The tracing context flows naturally through the async task
+//!    hierarchy without explicit injection/extraction.
+//!
+//! 2. **No serialization boundary**: Unlike distributed buses, channel messages
+//!    are `Arc<EventBook>` passed by reference—no wire protocol to carry headers.
+//!
+//! 3. **Testing focus**: Channel bus is for unit/integration tests where
+//!    distributed tracing is not a concern.
+//!
+//! For production distributed tracing, use AMQP, Kafka, or SNS/SQS buses which
+//! implement full W3C TraceContext propagation via [`crate::utils::tracing`].
 
 use std::sync::Arc;
 
