@@ -222,11 +222,12 @@ impl RuntimeBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use angzarr::bus::{ChannelEventBus, ChannelConfig, LossyEventBus, LossyConfig};
+    /// use angzarr::advice::{LossyBus, LossyConfig};
+    /// use angzarr::bus::{ChannelEventBus, ChannelConfig};
     ///
-    /// let channel_bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
-    /// let lossy_bus = Arc::new(LossyEventBus::new(
-    ///     channel_bus.clone(),
+    /// let channel_bus = ChannelEventBus::new(ChannelConfig::publisher());
+    /// let lossy_bus = Arc::new(LossyBus::new(
+    ///     channel_bus,
     ///     LossyConfig::with_drop_rate(0.5),
     /// ));
     ///

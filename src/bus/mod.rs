@@ -25,8 +25,6 @@ mod dispatch;
 pub mod ipc;
 #[cfg(feature = "kafka")]
 pub mod kafka;
-#[cfg(feature = "lossy")]
-pub mod lossy;
 pub mod mock;
 #[cfg(feature = "nats")]
 pub mod nats;
@@ -48,8 +46,6 @@ pub use ipc::{
 };
 #[cfg(feature = "kafka")]
 pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
-#[cfg(feature = "lossy")]
-pub use lossy::{LossyConfig, LossyEventBus, LossyStats};
 pub use mock::MockEventBus;
 #[cfg(feature = "nats")]
 pub use nats::{NatsBusConfig, NatsEventBus};

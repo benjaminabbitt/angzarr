@@ -1,7 +1,7 @@
 //! Aspect-oriented advice for cross-cutting concerns.
 //!
 //! This module provides wrapper types that add orthogonal behavior
-//! (metrics, tracing, retries) without polluting core client logic.
+//! (metrics, tracing, retries, fault injection) without polluting core logic.
 //!
 //! # Architecture
 //!
@@ -22,6 +22,7 @@
 //!
 //! - [`Instrumented`] - Adds metrics (counters, histograms) for storage operations
 //! - [`InstrumentedBus`] - Adds metrics for event bus operations
+//! - [`LossyBus`] - Randomly drops messages for resilience testing (requires `lossy` feature)
 //!
 //! # Metrics
 //!
@@ -31,6 +32,8 @@
 mod instrumented;
 mod instrumented_bus;
 mod instrumented_handlers;
+#[cfg(feature = "lossy")]
+mod lossy;
 pub mod metrics;
 
 pub use instrumented::Instrumented;
@@ -38,6 +41,8 @@ pub use instrumented_bus::{InstrumentedBus, InstrumentedDynBus};
 pub use instrumented_handlers::{
     InstrumentedPMHandler, InstrumentedProjectorHandler, InstrumentedSagaHandler,
 };
+#[cfg(feature = "lossy")]
+pub use lossy::{LossyBus, LossyConfig, LossyDynBus, LossyStats};
 
 // Re-export metric constants for external dashboards/alerting
 pub use instrumented::{
