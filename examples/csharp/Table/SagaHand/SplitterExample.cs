@@ -12,7 +12,6 @@ namespace Angzarr.Examples.Table.SagaHand;
 /// Demonstrates the splitter pattern where one event triggers commands
 /// to multiple different aggregates.
 /// </summary>
-
 // docs:start:saga_splitter
 public static class SplitterExample
 {

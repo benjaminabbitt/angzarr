@@ -108,21 +108,17 @@ public class RejectionHandlerResponseTests
         private readonly Func<Notification, TestState, RejectionHandlerResponse>? _rejectionHandler;
 
         public RejectionTestHandler(
-            Func<Notification, TestState, RejectionHandlerResponse>? rejectionHandler = null)
+            Func<Notification, TestState, RejectionHandlerResponse>? rejectionHandler = null
+        )
         {
             _rejectionHandler = rejectionHandler;
         }
 
-        public IReadOnlyList<string> CommandTypes() =>
-            new[] { "angzarr.Notification" };
+        public IReadOnlyList<string> CommandTypes() => new[] { "angzarr.Notification" };
 
         public StateRouter<TestState> StateRouter() => _stateRouter;
 
-        public EventBook Handle(
-            CommandBook cmd,
-            Any payload,
-            TestState state,
-            int seq)
+        public EventBook Handle(CommandBook cmd, Any payload, TestState state, int seq)
         {
             // Handle notification commands (rejections)
             if (payload.TypeUrl.Contains("Notification") && _rejectionHandler != null)
@@ -162,8 +158,7 @@ public class RejectionHandlerResponseTests
             }
         );
 
-        var router = new AggregateRouter<TestState, RejectionTestHandler>(
-            "test", "test", handler);
+        var router = new AggregateRouter<TestState, RejectionTestHandler>("test", "test", handler);
 
         var notification = MakeNotification("inventory", "ReserveStock", "out of stock");
         var notificationAny = Any.Pack(notification);
@@ -198,8 +193,7 @@ public class RejectionHandlerResponseTests
             }
         );
 
-        var router = new AggregateRouter<TestState, RejectionTestHandler>(
-            "test", "test", handler);
+        var router = new AggregateRouter<TestState, RejectionTestHandler>("test", "test", handler);
 
         var notification = MakeNotification("payment", "Charge", "declined");
         var notificationAny = Any.Pack(notification);
@@ -221,8 +215,7 @@ public class RejectionHandlerResponseTests
         // Handler without rejection handling
         var handler = new RejectionTestHandler(null);
 
-        var router = new AggregateRouter<TestState, RejectionTestHandler>(
-            "test", "test", handler);
+        var router = new AggregateRouter<TestState, RejectionTestHandler>("test", "test", handler);
 
         var notification = MakeNotification("unknown", "UnknownCommand", "reason");
         var notificationAny = Any.Pack(notification);

@@ -46,7 +46,10 @@ public class AggregateClientSteps
         );
 
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"an aggregate router")]
@@ -67,7 +70,10 @@ public class AggregateClientSteps
         );
 
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"an aggregate with existing events")]
@@ -165,7 +171,10 @@ public class AggregateClientSteps
                 }
             );
             _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-                "test", "test", handler);
+                "test",
+                "test",
+                handler
+            );
         }
 
         try
@@ -211,7 +220,10 @@ public class AggregateClientSteps
         );
 
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
 
         var ctx = MakeContextualCommand("MultiEmit");
         _response = _aggregateRouter.Dispatch(ctx);
@@ -522,13 +534,14 @@ public class AggregateClientSteps
                     new Angzarr.EventPage
                     {
                         Sequence = (uint)seq,
-                        Event = cmdType == "CreateOrder"
-                            ? new Any
-                            {
-                                TypeUrl = "type.googleapis.com/OrderCreated",
-                                Value = new Empty().ToByteString(),
-                            }
-                            : Any.Pack(new Empty()),
+                        Event =
+                            cmdType == "CreateOrder"
+                                ? new Any
+                                {
+                                    TypeUrl = "type.googleapis.com/OrderCreated",
+                                    Value = new Empty().ToByteString(),
+                                }
+                                : Any.Pack(new Empty()),
                     }
                 );
                 return eventBook;
@@ -536,7 +549,10 @@ public class AggregateClientSteps
         );
 
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"a new aggregate root in domain ""(.*)""")]
@@ -970,7 +986,10 @@ public class AggregateClientSteps
             (cmdType, book, any, state, seq) => MakeEventBook(seq)
         );
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"an aggregate handler with validation")]
@@ -990,7 +1009,10 @@ public class AggregateClientSteps
             }
         );
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"an aggregate router with handlers for ""([^""]+)""$")]
@@ -1009,7 +1031,10 @@ public class AggregateClientSteps
             }
         );
         _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"an aggregate ""(.*)"" with root ""(.*)"" has (\d+) events")]
@@ -1759,12 +1784,20 @@ public class FlexibleAggregateHandler : IAggregateDomainHandler<TestAggregateSta
 {
     private readonly StateRouter<TestAggregateState> _stateRouter;
     private readonly string[] _commandTypes;
-    private readonly Func<string, Angzarr.CommandBook, Any, TestAggregateState, int, Angzarr.EventBook> _dispatch;
+    private readonly Func<
+        string,
+        Angzarr.CommandBook,
+        Any,
+        TestAggregateState,
+        int,
+        Angzarr.EventBook
+    > _dispatch;
 
     public FlexibleAggregateHandler(
         StateRouter<TestAggregateState> stateRouter,
         string[] commandTypes,
-        Func<string, Angzarr.CommandBook, Any, TestAggregateState, int, Angzarr.EventBook> dispatch)
+        Func<string, Angzarr.CommandBook, Any, TestAggregateState, int, Angzarr.EventBook> dispatch
+    )
     {
         _stateRouter = stateRouter;
         _commandTypes = commandTypes;
@@ -1779,7 +1812,8 @@ public class FlexibleAggregateHandler : IAggregateDomainHandler<TestAggregateSta
         Angzarr.CommandBook cmd,
         Any payload,
         TestAggregateState state,
-        int seq)
+        int seq
+    )
     {
         var typeUrl = payload.TypeUrl;
         foreach (var cmdType in _commandTypes)
@@ -1800,11 +1834,24 @@ public class FlexibleAggregateHandler : IAggregateDomainHandler<TestAggregateSta
 public class FlexibleSagaHandler : ISagaDomainHandler
 {
     private readonly string[] _eventTypes;
-    private readonly Func<string, Angzarr.EventBook, Any, IReadOnlyList<Angzarr.EventBook>, IReadOnlyList<Angzarr.CommandBook>> _dispatch;
+    private readonly Func<
+        string,
+        Angzarr.EventBook,
+        Any,
+        IReadOnlyList<Angzarr.EventBook>,
+        IReadOnlyList<Angzarr.CommandBook>
+    > _dispatch;
 
     public FlexibleSagaHandler(
         string[] eventTypes,
-        Func<string, Angzarr.EventBook, Any, IReadOnlyList<Angzarr.EventBook>, IReadOnlyList<Angzarr.CommandBook>> dispatch)
+        Func<
+            string,
+            Angzarr.EventBook,
+            Any,
+            IReadOnlyList<Angzarr.EventBook>,
+            IReadOnlyList<Angzarr.CommandBook>
+        > dispatch
+    )
     {
         _eventTypes = eventTypes;
         _dispatch = dispatch;
@@ -1812,9 +1859,7 @@ public class FlexibleSagaHandler : ISagaDomainHandler
 
     public IReadOnlyList<string> EventTypes() => _eventTypes;
 
-    public IReadOnlyList<Angzarr.Cover> Prepare(
-        Angzarr.EventBook source,
-        Any eventPayload)
+    public IReadOnlyList<Angzarr.Cover> Prepare(Angzarr.EventBook source, Any eventPayload)
     {
         return new List<Angzarr.Cover>();
     }
@@ -1822,7 +1867,8 @@ public class FlexibleSagaHandler : ISagaDomainHandler
     public IReadOnlyList<Angzarr.CommandBook> Execute(
         Angzarr.EventBook source,
         Any eventPayload,
-        IReadOnlyList<Angzarr.EventBook> destinations)
+        IReadOnlyList<Angzarr.EventBook> destinations
+    )
     {
         var typeUrl = eventPayload.TypeUrl;
         foreach (var evtType in _eventTypes)
@@ -1846,7 +1892,8 @@ public class FlexibleProjectorHandler : IProjectorDomainHandler
 
     public FlexibleProjectorHandler(
         string[] eventTypes,
-        Func<string, Angzarr.EventBook, Angzarr.Projection> dispatch)
+        Func<string, Angzarr.EventBook, Angzarr.Projection> dispatch
+    )
     {
         _eventTypes = eventTypes;
         _dispatch = dispatch;
@@ -1874,11 +1921,26 @@ public class FlexibleProjectorHandler : IProjectorDomainHandler
 public class FlexiblePMHandler : IProcessManagerDomainHandler<TestPMState>
 {
     private readonly string[] _eventTypes;
-    private readonly Func<string, Angzarr.EventBook, TestPMState, Any, IReadOnlyList<Angzarr.EventBook>, ProcessManagerResponse> _dispatch;
+    private readonly Func<
+        string,
+        Angzarr.EventBook,
+        TestPMState,
+        Any,
+        IReadOnlyList<Angzarr.EventBook>,
+        ProcessManagerResponse
+    > _dispatch;
 
     public FlexiblePMHandler(
         string[] eventTypes,
-        Func<string, Angzarr.EventBook, TestPMState, Any, IReadOnlyList<Angzarr.EventBook>, ProcessManagerResponse> dispatch)
+        Func<
+            string,
+            Angzarr.EventBook,
+            TestPMState,
+            Any,
+            IReadOnlyList<Angzarr.EventBook>,
+            ProcessManagerResponse
+        > dispatch
+    )
     {
         _eventTypes = eventTypes;
         _dispatch = dispatch;
@@ -1889,7 +1951,8 @@ public class FlexiblePMHandler : IProcessManagerDomainHandler<TestPMState>
     public IReadOnlyList<Angzarr.Cover> Prepare(
         Angzarr.EventBook trigger,
         TestPMState state,
-        Any eventPayload)
+        Any eventPayload
+    )
     {
         return new List<Angzarr.Cover>();
     }
@@ -1898,7 +1961,8 @@ public class FlexiblePMHandler : IProcessManagerDomainHandler<TestPMState>
         Angzarr.EventBook trigger,
         TestPMState state,
         Any eventPayload,
-        IReadOnlyList<Angzarr.EventBook> destinations)
+        IReadOnlyList<Angzarr.EventBook> destinations
+    )
     {
         var typeUrl = eventPayload.TypeUrl;
         foreach (var evtType in _eventTypes)

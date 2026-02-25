@@ -11,7 +11,6 @@ namespace Angzarr.Examples.PrjCloudEvents;
 /// This projector transforms internal domain events into CloudEvents 1.0 format
 /// for external consumption via HTTP webhooks or Kafka.
 /// </summary>
-
 // docs:start:cloudevents_oo
 public class PlayerCloudEventsProjector : CloudEventsProjector
 {

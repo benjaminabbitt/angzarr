@@ -10,7 +10,6 @@ namespace Angzarr.Examples.PrjOutput;
 ///
 /// Demonstrates both OO-style (class-based) and StateRouter (functional) patterns.
 /// </summary>
-
 // docs:start:projector_oo
 public class OutputProjector
 {

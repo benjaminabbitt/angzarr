@@ -71,18 +71,17 @@ public class CompensationSteps
                     {
                         Pages =
                         {
-                            new Angzarr.EventPage
-                            {
-                                Sequence = 1,
-                                Event = Any.Pack(new Empty()),
-                            },
+                            new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) },
                         },
                     },
                 };
             }
         );
         _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [When(@"I get the rejected command")]
@@ -175,7 +174,10 @@ public class CompensationSteps
             }
         );
         _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     [Given(@"a rejection handler that emits compensation events")]
@@ -208,7 +210,10 @@ public class CompensationSteps
             }
         );
         _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
-            "test", "test", handler);
+            "test",
+            "test",
+            handler
+        );
     }
 
     // Additional compensation steps
@@ -762,13 +767,18 @@ public class CompensationAggregateHandler : IAggregateDomainHandler<Compensation
     private readonly StateRouter<CompensationTestState> _stateRouter;
     private readonly string _rejectionDomain;
     private readonly string _rejectionCommandType;
-    private readonly Func<Angzarr.Notification, CompensationTestState, RejectionHandlerResponse> _rejectionHandler;
+    private readonly Func<
+        Angzarr.Notification,
+        CompensationTestState,
+        RejectionHandlerResponse
+    > _rejectionHandler;
 
     public CompensationAggregateHandler(
         StateRouter<CompensationTestState> stateRouter,
         string rejectionDomain,
         string rejectionCommandType,
-        Func<Angzarr.Notification, CompensationTestState, RejectionHandlerResponse> rejectionHandler)
+        Func<Angzarr.Notification, CompensationTestState, RejectionHandlerResponse> rejectionHandler
+    )
     {
         _stateRouter = stateRouter;
         _rejectionDomain = rejectionDomain;
@@ -784,7 +794,8 @@ public class CompensationAggregateHandler : IAggregateDomainHandler<Compensation
         Angzarr.CommandBook cmd,
         Any payload,
         CompensationTestState state,
-        int seq)
+        int seq
+    )
     {
         // Handle notification (rejection) commands
         if (payload.TypeUrl.Contains("Notification"))

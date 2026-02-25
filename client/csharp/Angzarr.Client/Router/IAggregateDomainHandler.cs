@@ -1,5 +1,5 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Angzarr.Client.Router;
 
@@ -75,12 +75,7 @@ public interface IAggregateDomainHandler<TState>
     /// <param name="state">Current aggregate state.</param>
     /// <param name="seq">Next sequence number for events.</param>
     /// <returns>EventBook containing resulting events.</returns>
-    Angzarr.EventBook Handle(
-        Angzarr.CommandBook cmd,
-        Any payload,
-        TState state,
-        int seq
-    );
+    Angzarr.EventBook Handle(Angzarr.CommandBook cmd, Any payload, TState state, int seq);
 
     /// <summary>
     /// Handle a rejection notification.

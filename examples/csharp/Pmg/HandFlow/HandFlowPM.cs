@@ -10,7 +10,6 @@ namespace Angzarr.Examples.PmgHandFlow;
 /// This PM coordinates the workflow between table and hand domains,
 /// tracking phase transitions and dispatching commands as the hand progresses.
 /// </summary>
-
 // docs:start:pm_state
 public enum HandPhase
 {

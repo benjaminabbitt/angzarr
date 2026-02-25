@@ -36,16 +36,16 @@ public class UnifiedRouterTests
 
         public PlayerHandler()
         {
-            _stateRouter = new StateRouter<PlayerState>()
-                .On<Empty>((state, evt) =>
+            _stateRouter = new StateRouter<PlayerState>().On<Empty>(
+                (state, evt) =>
                 {
                     state.Exists = true;
                     state.PlayerId = "player_1";
-                });
+                }
+            );
         }
 
-        public IReadOnlyList<string> CommandTypes() =>
-            new[] { "RegisterPlayer", "DepositFunds" };
+        public IReadOnlyList<string> CommandTypes() => new[] { "RegisterPlayer", "DepositFunds" };
 
         public StateRouter<PlayerState> StateRouter() => _stateRouter;
 
@@ -54,22 +54,18 @@ public class UnifiedRouterTests
             if (payload.TypeUrl.EndsWith("RegisterPlayer"))
             {
                 var eventBook = new EventBook { Cover = cmd.Cover };
-                eventBook.Pages.Add(new EventPage
-                {
-                    Sequence = (uint)seq,
-                    Event = Any.Pack(new Empty())
-                });
+                eventBook.Pages.Add(
+                    new EventPage { Sequence = (uint)seq, Event = Any.Pack(new Empty()) }
+                );
                 return eventBook;
             }
 
             if (payload.TypeUrl.EndsWith("DepositFunds"))
             {
                 var eventBook = new EventBook { Cover = cmd.Cover };
-                eventBook.Pages.Add(new EventPage
-                {
-                    Sequence = (uint)seq,
-                    Event = Any.Pack(new Empty())
-                });
+                eventBook.Pages.Add(
+                    new EventPage { Sequence = (uint)seq, Event = Any.Pack(new Empty()) }
+                );
                 return eventBook;
             }
 
@@ -79,8 +75,7 @@ public class UnifiedRouterTests
 
     private class OrderSagaHandler : ISagaDomainHandler
     {
-        public IReadOnlyList<string> EventTypes() =>
-            new[] { "OrderCompleted", "OrderCancelled" };
+        public IReadOnlyList<string> EventTypes() => new[] { "OrderCompleted", "OrderCancelled" };
 
         public IReadOnlyList<Cover> Prepare(EventBook source, Any eventPayload)
         {
@@ -88,11 +83,7 @@ public class UnifiedRouterTests
             {
                 return new[]
                 {
-                    new Cover
-                    {
-                        Domain = "fulfillment",
-                        Root = source.Cover?.Root
-                    }
+                    new Cover { Domain = "fulfillment", Root = source.Cover?.Root },
                 };
             }
             return Array.Empty<Cover>();
@@ -101,7 +92,8 @@ public class UnifiedRouterTests
         public IReadOnlyList<CommandBook> Execute(
             EventBook source,
             Any eventPayload,
-            IReadOnlyList<EventBook> destinations)
+            IReadOnlyList<EventBook> destinations
+        )
         {
             if (eventPayload.TypeUrl.EndsWith("OrderCompleted"))
             {
@@ -111,14 +103,16 @@ public class UnifiedRouterTests
                     {
                         Domain = "fulfillment",
                         Root = source.Cover?.Root,
-                        CorrelationId = source.Cover?.CorrelationId ?? ""
-                    }
+                        CorrelationId = source.Cover?.CorrelationId ?? "",
+                    },
                 };
-                cmd.Pages.Add(new CommandPage
-                {
-                    Sequence = 0,
-                    Command = Any.Pack(new Empty(), "type.googleapis.com/CreateFulfillment")
-                });
+                cmd.Pages.Add(
+                    new CommandPage
+                    {
+                        Sequence = 0,
+                        Command = Any.Pack(new Empty(), "type.googleapis.com/CreateFulfillment"),
+                    }
+                );
                 return new[] { cmd };
             }
             return Array.Empty<CommandBook>();
@@ -133,10 +127,13 @@ public class UnifiedRouterTests
 
     private class TablePmHandler : IProcessManagerDomainHandler<HandFlowState>
     {
-        public IReadOnlyList<string> EventTypes() =>
-            new[] { "TableSeated", "PlayerJoined" };
+        public IReadOnlyList<string> EventTypes() => new[] { "TableSeated", "PlayerJoined" };
 
-        public IReadOnlyList<Cover> Prepare(EventBook trigger, HandFlowState state, Any eventPayload)
+        public IReadOnlyList<Cover> Prepare(
+            EventBook trigger,
+            HandFlowState state,
+            Any eventPayload
+        )
         {
             return Array.Empty<Cover>();
         }
@@ -145,21 +142,21 @@ public class UnifiedRouterTests
             EventBook trigger,
             HandFlowState state,
             Any eventPayload,
-            IReadOnlyList<EventBook> destinations)
+            IReadOnlyList<EventBook> destinations
+        )
         {
             var response = new ProcessManagerResponse();
 
             if (eventPayload.TypeUrl.EndsWith("TableSeated"))
             {
                 // Emit a PM event
-                var pmEvents = new EventBook
-                {
-                    Cover = new Cover { Domain = "hand-flow" }
-                };
-                pmEvents.Pages.Add(new EventPage
-                {
-                    Event = Any.Pack(new Empty(), "type.googleapis.com/HandFlowStarted")
-                });
+                var pmEvents = new EventBook { Cover = new Cover { Domain = "hand-flow" } };
+                pmEvents.Pages.Add(
+                    new EventPage
+                    {
+                        Event = Any.Pack(new Empty(), "type.googleapis.com/HandFlowStarted"),
+                    }
+                );
                 response.ProcessEvents = pmEvents;
             }
 
@@ -169,10 +166,13 @@ public class UnifiedRouterTests
 
     private class PlayerPmHandler : IProcessManagerDomainHandler<HandFlowState>
     {
-        public IReadOnlyList<string> EventTypes() =>
-            new[] { "PlayerReady" };
+        public IReadOnlyList<string> EventTypes() => new[] { "PlayerReady" };
 
-        public IReadOnlyList<Cover> Prepare(EventBook trigger, HandFlowState state, Any eventPayload)
+        public IReadOnlyList<Cover> Prepare(
+            EventBook trigger,
+            HandFlowState state,
+            Any eventPayload
+        )
         {
             return Array.Empty<Cover>();
         }
@@ -181,7 +181,8 @@ public class UnifiedRouterTests
             EventBook trigger,
             HandFlowState state,
             Any eventPayload,
-            IReadOnlyList<EventBook> destinations)
+            IReadOnlyList<EventBook> destinations
+        )
         {
             return new ProcessManagerResponse();
         }
@@ -189,8 +190,7 @@ public class UnifiedRouterTests
 
     private class PlayerProjectorHandler : IProjectorDomainHandler
     {
-        public IReadOnlyList<string> EventTypes() =>
-            new[] { "PlayerRegistered", "FundsDeposited" };
+        public IReadOnlyList<string> EventTypes() => new[] { "PlayerRegistered", "FundsDeposited" };
 
         public Projection Project(EventBook events)
         {
@@ -200,8 +200,7 @@ public class UnifiedRouterTests
 
     private class HandProjectorHandler : IProjectorDomainHandler
     {
-        public IReadOnlyList<string> EventTypes() =>
-            new[] { "CardsDealt", "ActionTaken" };
+        public IReadOnlyList<string> EventTypes() => new[] { "CardsDealt", "ActionTaken" };
 
         public Projection Project(EventBook events)
         {
@@ -302,11 +301,7 @@ public class UnifiedRouterTests
     public void SagaRouter_Creation_SetsNameAndDomain()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         router.Name.Should().Be("saga-order-fulfillment");
         router.InputDomain.Should().Be("order");
@@ -316,11 +311,7 @@ public class UnifiedRouterTests
     public void SagaRouter_EventTypes_ReturnsHandlerTypes()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         var types = router.EventTypes();
 
@@ -332,11 +323,7 @@ public class UnifiedRouterTests
     public void SagaRouter_Subscriptions_ReturnsDomainWithTypes()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         var subs = router.Subscriptions();
 
@@ -349,11 +336,7 @@ public class UnifiedRouterTests
     public void SagaRouter_PrepareDestinations_ReturnsCovers()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         var source = CreateEventBook("order", "OrderCompleted");
 
@@ -367,11 +350,7 @@ public class UnifiedRouterTests
     public void SagaRouter_PrepareDestinations_NullSource_ReturnsEmpty()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         var destinations = router.PrepareDestinations(null);
 
@@ -382,11 +361,7 @@ public class UnifiedRouterTests
     public void SagaRouter_Dispatch_ReturnsCommands()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         var source = CreateEventBook("order", "OrderCompleted");
 
@@ -400,18 +375,13 @@ public class UnifiedRouterTests
     public void SagaRouter_Dispatch_EmptySource_Throws()
     {
         var handler = new OrderSagaHandler();
-        var router = new SagaRouter<OrderSagaHandler>(
-            "saga-order-fulfillment",
-            "order",
-            handler
-        );
+        var router = new SagaRouter<OrderSagaHandler>("saga-order-fulfillment", "order", handler);
 
         var source = new EventBook();
 
         var act = () => router.Dispatch(source);
 
-        act.Should().Throw<InvalidArgumentError>()
-            .WithMessage("*no events*");
+        act.Should().Throw<InvalidArgumentError>().WithMessage("*no events*");
     }
 
     // =========================================================================
@@ -495,8 +465,7 @@ public class UnifiedRouterTests
             "pmg-hand-flow",
             "hand-flow",
             events => new HandFlowState()
-        )
-            .Domain("table", new TablePmHandler());
+        ).Domain("table", new TablePmHandler());
 
         var trigger = CreateEventBook("table", "TableSeated");
         var processState = new EventBook();
@@ -514,16 +483,14 @@ public class UnifiedRouterTests
             "pmg-hand-flow",
             "hand-flow",
             events => new HandFlowState()
-        )
-            .Domain("table", new TablePmHandler());
+        ).Domain("table", new TablePmHandler());
 
         var trigger = CreateEventBook("unknown", "SomeEvent");
         var processState = new EventBook();
 
         var act = () => router.Dispatch(trigger, processState);
 
-        act.Should().Throw<InvalidArgumentError>()
-            .WithMessage("*No handler for domain*unknown*");
+        act.Should().Throw<InvalidArgumentError>().WithMessage("*No handler for domain*unknown*");
     }
 
     // =========================================================================
@@ -573,8 +540,10 @@ public class UnifiedRouterTests
     [Fact]
     public void ProjectorRouter_Dispatch_ReturnsProjection()
     {
-        var router = new ProjectorRouter("prj-output")
-            .Domain("player", new PlayerProjectorHandler());
+        var router = new ProjectorRouter("prj-output").Domain(
+            "player",
+            new PlayerProjectorHandler()
+        );
 
         var events = CreateEventBook("player", "PlayerRegistered");
 
@@ -586,15 +555,16 @@ public class UnifiedRouterTests
     [Fact]
     public void ProjectorRouter_Dispatch_UnknownDomain_Throws()
     {
-        var router = new ProjectorRouter("prj-output")
-            .Domain("player", new PlayerProjectorHandler());
+        var router = new ProjectorRouter("prj-output").Domain(
+            "player",
+            new PlayerProjectorHandler()
+        );
 
         var events = CreateEventBook("unknown", "SomeEvent");
 
         var act = () => router.Dispatch(events);
 
-        act.Should().Throw<InvalidArgumentError>()
-            .WithMessage("*No handler for domain*unknown*");
+        act.Should().Throw<InvalidArgumentError>().WithMessage("*No handler for domain*unknown*");
     }
 
     // =========================================================================
@@ -604,12 +574,13 @@ public class UnifiedRouterTests
     [Fact]
     public void StateRouter_WithEventBook_AppliesEvents()
     {
-        var router = new StateRouter<PlayerState>()
-            .On<Empty>((state, evt) =>
+        var router = new StateRouter<PlayerState>().On<Empty>(
+            (state, evt) =>
             {
                 state.Exists = true;
                 state.Bankroll = 100;
-            });
+            }
+        );
 
         var eventBook = new EventBook();
         eventBook.Pages.Add(new EventPage { Event = Any.Pack(new Empty()) });
@@ -623,8 +594,7 @@ public class UnifiedRouterTests
     [Fact]
     public void StateRouter_WithEventBook_NullBook_ReturnsDefault()
     {
-        var router = new StateRouter<PlayerState>()
-            .On<Empty>((state, evt) => state.Exists = true);
+        var router = new StateRouter<PlayerState>().On<Empty>((state, evt) => state.Exists = true);
 
         var state = router.WithEventBook(null);
 
@@ -635,8 +605,7 @@ public class UnifiedRouterTests
     [Fact]
     public void StateRouter_WithEventBook_EmptyBook_ReturnsDefault()
     {
-        var router = new StateRouter<PlayerState>()
-            .On<Empty>((state, evt) => state.Exists = true);
+        var router = new StateRouter<PlayerState>().On<Empty>((state, evt) => state.Exists = true);
 
         var state = router.WithEventBook(new EventBook());
 
@@ -646,19 +615,20 @@ public class UnifiedRouterTests
     [Fact]
     public void StateRouter_UnknownEventType_IsIgnored()
     {
-        var router = new StateRouter<PlayerState>()
-            .On<Empty>((state, evt) => state.Exists = true);
+        var router = new StateRouter<PlayerState>().On<Empty>((state, evt) => state.Exists = true);
 
         var eventBook = new EventBook();
         // Add an event with a different type URL
-        eventBook.Pages.Add(new EventPage
-        {
-            Event = new Any
+        eventBook.Pages.Add(
+            new EventPage
             {
-                TypeUrl = "type.googleapis.com/UnknownEvent",
-                Value = ByteString.Empty
+                Event = new Any
+                {
+                    TypeUrl = "type.googleapis.com/UnknownEvent",
+                    Value = ByteString.Empty,
+                },
             }
-        });
+        );
 
         var state = router.WithEventBook(eventBook);
 
@@ -670,11 +640,14 @@ public class UnifiedRouterTests
     public void StateRouter_WithFactory_UsesCustomInitialization()
     {
         // Use WithFactory for custom initial state
-        var router = StateRouter<PlayerState>.WithFactory(() => new PlayerState
-            {
-                Bankroll = 100, // Non-default initial value
-                PlayerId = "default_player"
-            })
+        var router = StateRouter<PlayerState>
+            .WithFactory(() =>
+                new PlayerState
+                {
+                    Bankroll = 100, // Non-default initial value
+                    PlayerId = "default_player",
+                }
+            )
             .On<Empty>((state, evt) => state.Exists = true);
 
         // With empty event book, should still have factory-initialized values
@@ -688,15 +661,15 @@ public class UnifiedRouterTests
     [Fact]
     public void StateRouter_WithFactory_AppliesEventsToCustomState()
     {
-        var router = StateRouter<PlayerState>.WithFactory(() => new PlayerState
-            {
-                Bankroll = 50
-            })
-            .On<Empty>((state, evt) =>
-            {
-                state.Exists = true;
-                state.Bankroll += 50; // Add to existing
-            });
+        var router = StateRouter<PlayerState>
+            .WithFactory(() => new PlayerState { Bankroll = 50 })
+            .On<Empty>(
+                (state, evt) =>
+                {
+                    state.Exists = true;
+                    state.Bankroll += 50; // Add to existing
+                }
+            );
 
         var eventBook = new EventBook();
         eventBook.Pages.Add(new EventPage { Event = Any.Pack(new Empty()) });
@@ -719,46 +692,35 @@ public class UnifiedRouterTests
             {
                 Domain = domain,
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        commandBook.Pages.Add(new CommandPage
-        {
-            Sequence = 0,
-            Command = new Any
+        commandBook.Pages.Add(
+            new CommandPage
             {
-                TypeUrl = $"type.googleapis.com/{commandType}",
-                Value = new Empty().ToByteString()
+                Sequence = 0,
+                Command = new Any
+                {
+                    TypeUrl = $"type.googleapis.com/{commandType}",
+                    Value = new Empty().ToByteString(),
+                },
             }
-        });
+        );
 
-        return new ContextualCommand
-        {
-            Command = commandBook,
-            Events = new EventBook()
-        };
+        return new ContextualCommand { Command = commandBook, Events = new EventBook() };
     }
 
-    private static ContextualCommand CreateContextualCommandWithNotification(Notification notification)
+    private static ContextualCommand CreateContextualCommandWithNotification(
+        Notification notification
+    )
     {
         var commandBook = new CommandBook
         {
-            Cover = new Cover
-            {
-                Domain = "player",
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+            Cover = new Cover { Domain = "player", Root = Helpers.UuidToProto(Guid.NewGuid()) },
         };
-        commandBook.Pages.Add(new CommandPage
-        {
-            Command = Any.Pack(notification)
-        });
+        commandBook.Pages.Add(new CommandPage { Command = Any.Pack(notification) });
 
-        return new ContextualCommand
-        {
-            Command = commandBook,
-            Events = new EventBook()
-        };
+        return new ContextualCommand { Command = commandBook, Events = new EventBook() };
     }
 
     private static EventBook CreateEventBook(string domain, string eventType)
@@ -769,38 +731,36 @@ public class UnifiedRouterTests
             {
                 Domain = domain,
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        eventBook.Pages.Add(new EventPage
-        {
-            Sequence = 1,
-            Event = new Any
+        eventBook.Pages.Add(
+            new EventPage
             {
-                TypeUrl = $"type.googleapis.com/{eventType}",
-                Value = new Empty().ToByteString()
+                Sequence = 1,
+                Event = new Any
+                {
+                    TypeUrl = $"type.googleapis.com/{eventType}",
+                    Value = new Empty().ToByteString(),
+                },
             }
-        });
+        );
         return eventBook;
     }
 
     private static Notification CreateNotification(string domain, string commandType, string reason)
     {
-        var rejectedCommand = new CommandBook
-        {
-            Cover = new Cover { Domain = domain }
-        };
-        rejectedCommand.Pages.Add(new CommandPage
-        {
-            Command = new Any { TypeUrl = $"type.googleapis.com/{commandType}" }
-        });
+        var rejectedCommand = new CommandBook { Cover = new Cover { Domain = domain } };
+        rejectedCommand.Pages.Add(
+            new CommandPage { Command = new Any { TypeUrl = $"type.googleapis.com/{commandType}" } }
+        );
 
         var rejection = new RejectionNotification
         {
             IssuerName = "test-saga",
             IssuerType = "saga",
             RejectionReason = reason,
-            RejectedCommand = rejectedCommand
+            RejectedCommand = rejectedCommand,
         };
 
         return new Notification { Payload = Any.Pack(rejection) };

@@ -1,26 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Table.SagaHand</RootNamespace>
+    </PropertyGroup>
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <RootNamespace>Table.SagaHand</RootNamespace>
-  </PropertyGroup>
+    <!-- Documentation example - incomplete, requires SagaContext implementation -->
+    <ItemGroup>
+        <Compile Remove="SplitterExample.cs" />
+    </ItemGroup>
 
-  <!-- Documentation example - incomplete, requires SagaContext implementation -->
-  <ItemGroup>
-    <Compile Remove="SplitterExample.cs" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../Angzarr.Proto/Angzarr.Proto.csproj" />
+        <ProjectReference Include="../../Angzarr.Client/Angzarr.Client.csproj" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../Angzarr.Proto/Angzarr.Proto.csproj" />
-    <ProjectReference Include="../../Angzarr.Client/Angzarr.Client.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" Version="2.60.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-  </ItemGroup>
-
+    <ItemGroup>
+        <PackageReference Include="Grpc.AspNetCore" Version="2.60.0" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    </ItemGroup>
 </Project>

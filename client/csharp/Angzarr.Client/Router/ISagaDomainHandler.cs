@@ -51,10 +51,7 @@ public interface ISagaDomainHandler
     /// <param name="source">Source event book.</param>
     /// <param name="eventPayload">The event payload as Any.</param>
     /// <returns>List of covers identifying destination aggregates.</returns>
-    IReadOnlyList<Angzarr.Cover> Prepare(
-        Angzarr.EventBook source,
-        Any eventPayload
-    );
+    IReadOnlyList<Angzarr.Cover> Prepare(Angzarr.EventBook source, Any eventPayload);
 
     /// <summary>
     /// Execute phase - produce commands.

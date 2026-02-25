@@ -112,7 +112,7 @@ fmt-go:
 
 # Format C# code (runs in angzarr-csharp container)
 fmt-csharp:
-    just _lang-container csharp dotnet csharpier examples/csharp client/csharp
+    just _lang-container csharp csharpier format examples/csharp client/csharp
 
 # Format Java code (runs in angzarr-java container)
 fmt-java:

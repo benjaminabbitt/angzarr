@@ -147,7 +147,10 @@ public class RouterSteps
         // Create the aggregate router with the registered command types
         var handler = new TestAggregateHandler(_stateRouter!, _registeredCommandTypes.ToArray());
         _aggregateRouter = new AggregateRouter<TestState, TestAggregateHandler>(
-            _currentDomain, _currentDomain, handler);
+            _currentDomain,
+            _currentDomain,
+            handler
+        );
     }
 
     [When(@"I dispatch a ContextualCommand with command ""(.*)""")]
@@ -621,11 +624,7 @@ public class TestAggregateHandler : IAggregateDomainHandler<TestState>
 
     public StateRouter<TestState> StateRouter() => _stateRouter;
 
-    public Angzarr.EventBook Handle(
-        Angzarr.CommandBook cmd,
-        Any payload,
-        TestState state,
-        int seq)
+    public Angzarr.EventBook Handle(Angzarr.CommandBook cmd, Any payload, TestState state, int seq)
     {
         // Check if the command type is registered
         var typeUrl = payload.TypeUrl;
@@ -634,11 +633,9 @@ public class TestAggregateHandler : IAggregateDomainHandler<TestState>
             if (typeUrl.EndsWith(cmdType))
             {
                 var eventBook = new Angzarr.EventBook { Cover = cmd.Cover };
-                eventBook.Pages.Add(new Angzarr.EventPage
-                {
-                    Sequence = (uint)seq,
-                    Event = Any.Pack(new Empty())
-                });
+                eventBook.Pages.Add(
+                    new Angzarr.EventPage { Sequence = (uint)seq, Event = Any.Pack(new Empty()) }
+                );
                 return eventBook;
             }
         }
@@ -661,9 +658,7 @@ public class TestSagaHandler : ISagaDomainHandler
 
     public IReadOnlyList<string> EventTypes() => _eventTypes;
 
-    public IReadOnlyList<Angzarr.Cover> Prepare(
-        Angzarr.EventBook source,
-        Any eventPayload)
+    public IReadOnlyList<Angzarr.Cover> Prepare(Angzarr.EventBook source, Any eventPayload)
     {
         // Return empty list - no destination fetching needed for tests
         return new List<Angzarr.Cover>();
@@ -672,7 +667,8 @@ public class TestSagaHandler : ISagaDomainHandler
     public IReadOnlyList<Angzarr.CommandBook> Execute(
         Angzarr.EventBook source,
         Any eventPayload,
-        IReadOnlyList<Angzarr.EventBook> destinations)
+        IReadOnlyList<Angzarr.EventBook> destinations
+    )
     {
         // Return empty commands for basic tests
         return new List<Angzarr.CommandBook>();
@@ -696,7 +692,8 @@ public class TestPMHandler : IProcessManagerDomainHandler<TestPMState>
     public IReadOnlyList<Angzarr.Cover> Prepare(
         Angzarr.EventBook trigger,
         TestPMState state,
-        Any eventPayload)
+        Any eventPayload
+    )
     {
         return new List<Angzarr.Cover>();
     }
@@ -705,7 +702,8 @@ public class TestPMHandler : IProcessManagerDomainHandler<TestPMState>
         Angzarr.EventBook trigger,
         TestPMState state,
         Any eventPayload,
-        IReadOnlyList<Angzarr.EventBook> destinations)
+        IReadOnlyList<Angzarr.EventBook> destinations
+    )
     {
         return new ProcessManagerResponse();
     }

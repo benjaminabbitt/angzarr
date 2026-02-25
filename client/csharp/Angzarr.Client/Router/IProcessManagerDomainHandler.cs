@@ -1,5 +1,5 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Angzarr.Client.Router;
 
@@ -53,11 +53,7 @@ public interface IProcessManagerDomainHandler<TState>
     /// <param name="state">Current PM state.</param>
     /// <param name="eventPayload">The event payload as Any.</param>
     /// <returns>List of covers identifying needed destination aggregates.</returns>
-    IReadOnlyList<Angzarr.Cover> Prepare(
-        Angzarr.EventBook trigger,
-        TState state,
-        Any eventPayload
-    );
+    IReadOnlyList<Angzarr.Cover> Prepare(Angzarr.EventBook trigger, TState state, Any eventPayload);
 
     /// <summary>
     /// Handle phase - produce commands and PM events.

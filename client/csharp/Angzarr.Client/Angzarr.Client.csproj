@@ -1,37 +1,43 @@
 <Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
+        <!-- Package metadata -->
+        <PackageId>Angzarr.Client</PackageId>
+        <!-- Read version from VERSION file -->
+        <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\VERSION').Trim())</Version>
+        <Authors>Benjamin Abbitt</Authors>
+        <Description>C# client library for Angzarr gRPC services</Description>
+        <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/benjaminabbitt/angzarr</RepositoryUrl>
+        <PackageTags>angzarr;grpc;event-sourcing;cqrs</PackageTags>
 
-    <!-- Package metadata -->
-    <PackageId>Angzarr.Client</PackageId>
-    <!-- Read version from VERSION file -->
-    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\VERSION').Trim())</Version>
-    <Authors>Benjamin Abbitt</Authors>
-    <Description>C# client library for Angzarr gRPC services</Description>
-    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/benjaminabbitt/angzarr</RepositoryUrl>
-    <PackageTags>angzarr;grpc;event-sourcing;cqrs</PackageTags>
+        <!-- Package output -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    </PropertyGroup>
 
-    <!-- Package output -->
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-  </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Google.Protobuf" Version="3.25.1" />
+        <PackageReference Include="Google.Api.CommonProtos" Version="2.14.0" />
+        <PackageReference Include="Grpc.Net.Client" Version="2.60.0" />
+        <PackageReference Include="Grpc.Tools" Version="2.60.0" PrivateAssets="All" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.25.1" />
-    <PackageReference Include="Google.Api.CommonProtos" Version="2.14.0" />
-    <PackageReference Include="Grpc.Net.Client" Version="2.60.0" />
-    <PackageReference Include="Grpc.Tools" Version="2.60.0" PrivateAssets="All" />
-  </ItemGroup>
-
-  <!-- Proto compilation -->
-  <ItemGroup>
-    <Protobuf Include="../../../proto/angzarr/*.proto" GrpcServices="Both" ProtoRoot="../../../proto" />
-    <Protobuf Include="../../../proto/examples/*.proto" GrpcServices="Both" ProtoRoot="../../../proto" />
-  </ItemGroup>
-
+    <!-- Proto compilation -->
+    <ItemGroup>
+        <Protobuf
+            Include="../../../proto/angzarr/*.proto"
+            GrpcServices="Both"
+            ProtoRoot="../../../proto"
+        />
+        <Protobuf
+            Include="../../../proto/examples/*.proto"
+            GrpcServices="Both"
+            ProtoRoot="../../../proto"
+        />
+    </ItemGroup>
 </Project>
