@@ -1,11 +1,11 @@
-"""AggregateHandler: gRPC Aggregate servicer backed by an Aggregate class or CommandRouter.
+"""AggregateHandler: gRPC Aggregate servicer backed by an Aggregate class or AggregateRouter.
 
 Maps command dispatch to the gRPC Aggregate service interface,
 translating domain errors to appropriate gRPC status codes.
 
 Supports two patterns:
 1. Aggregate class (OO approach): AggregateHandler(Player)
-2. CommandRouter (function approach): AggregateHandler(router)
+2. AggregateRouter (protocol approach): AggregateHandler(router)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from .errors import CommandRejectedError
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import aggregate_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .router import CommandRouter
+from .router import AggregateRouter
 from .server import run_server
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
-    """gRPC Aggregate servicer backed by an Aggregate class or CommandRouter.
+    """gRPC Aggregate servicer backed by an Aggregate class or AggregateRouter.
 
     Delegates command dispatch to the aggregate's handle() class method
     or the router's dispatch() method, and maps domain errors to gRPC status codes:
@@ -35,7 +35,7 @@ class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
     - ValueError -> INVALID_ARGUMENT
     """
 
-    def __init__(self, handler: Union[type[Aggregate], CommandRouter]) -> None:
+    def __init__(self, handler: Union[type[Aggregate], AggregateRouter]) -> None:
         if isinstance(handler, type) and issubclass(handler, Aggregate):
             self._handle = handler.handle
             self._replay: (
@@ -44,7 +44,7 @@ class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
             self._domain = handler.domain
         else:
             self._handle = handler.dispatch
-            self._replay = None  # CommandRouter doesn't support replay
+            self._replay = None  # AggregateRouter doesn't support replay
             self._domain = handler.domain
 
     @property
@@ -84,12 +84,12 @@ class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
     ) -> aggregate.ReplayResponse:
         """Replay events to compute state (for conflict detection).
 
-        Only available for Aggregate class handlers, not CommandRouter.
+        Only available for Aggregate class handlers, not AggregateRouter.
         """
         if self._replay is None:
             context.abort(
                 grpc.StatusCode.UNIMPLEMENTED,
-                "Replay not supported for CommandRouter-based aggregates",
+                "Replay not supported for router-based aggregates",
             )
         try:
             return self._replay(request)
@@ -98,14 +98,14 @@ class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
 
 
 def run_aggregate_server(
-    handler: Union[type[Aggregate], CommandRouter],
+    handler: Union[type[Aggregate], AggregateRouter],
     default_port: str,
     logger: structlog.BoundLogger | None = None,
 ) -> None:
     """Start a gRPC server for an aggregate.
 
     Args:
-        handler: Either an Aggregate subclass or a CommandRouter.
+        handler: Either an Aggregate subclass or an AggregateRouter.
         default_port: Default TCP port if PORT env not set.
         logger: Optional structlog logger.
     """

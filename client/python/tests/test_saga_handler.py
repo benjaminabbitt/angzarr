@@ -5,9 +5,10 @@ from unittest.mock import MagicMock
 import grpc
 from google.protobuf import any_pb2
 
+from angzarr_client.handler_protocols import SagaDomainHandler
 from angzarr_client.proto.angzarr import saga_pb2 as saga
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import EventRouter
+from angzarr_client.router import SagaRouter
 from angzarr_client.saga_handler import SagaHandler
 
 # ============================================================================
@@ -16,7 +17,6 @@ from angzarr_client.saga_handler import SagaHandler
 
 DOMAIN_SOURCE = "source"
 DOMAIN_TARGET = "target"
-# Fully qualified type names for reflection-based matching
 FULL_NAME_EVENT_A = "test.EventA"
 FULL_NAME_EVENT_B = "test.EventB"
 TYPE_URL_EVENT_A = "type.googleapis.com/test.EventA"
@@ -27,18 +27,48 @@ SAGA_NAME = "test-saga"
 
 
 # ============================================================================
-# Helpers
+# Test handler implementation
 # ============================================================================
 
 
-def saga_event_handler(event, root, correlation_id, destinations):
-    return [
-        types.CommandBook(
-            cover=types.Cover(
-                domain=DOMAIN_TARGET, root=root, correlation_id=correlation_id
+class TestSagaDomainHandler(SagaDomainHandler):
+    """Test saga handler that emits commands."""
+
+    def __init__(self, return_destinations=False):
+        self._return_destinations = return_destinations
+
+    def event_types(self) -> list[str]:
+        return ["EventA"]
+
+    def prepare(
+        self,
+        source: types.EventBook,
+        event: any_pb2.Any,
+    ) -> list[types.Cover]:
+        if self._return_destinations:
+            return [types.Cover(domain=DOMAIN_TARGET, root=source.cover.root)]
+        return []
+
+    def execute(
+        self,
+        source: types.EventBook,
+        event: any_pb2.Any,
+        destinations: list[types.EventBook],
+    ) -> list[types.CommandBook]:
+        return [
+            types.CommandBook(
+                cover=types.Cover(
+                    domain=DOMAIN_TARGET,
+                    root=source.cover.root,
+                    correlation_id=source.cover.correlation_id,
+                ),
             ),
-        ),
-    ]
+        ]
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
 
 
 def make_event_book(type_url, correlation_id, root_bytes):
@@ -63,11 +93,8 @@ def make_event_book(type_url, correlation_id, root_bytes):
 
 class TestSagaHandlerSimpleMode:
     def test_prepare_returns_empty_by_default(self):
-        router = (
-            EventRouter(SAGA_NAME)
-            .domain(DOMAIN_SOURCE)
-            .on(FULL_NAME_EVENT_A, saga_event_handler)
-        )
+        handler_impl = TestSagaDomainHandler()
+        router = SagaRouter(SAGA_NAME, DOMAIN_SOURCE, handler_impl)
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
 
@@ -77,11 +104,8 @@ class TestSagaHandlerSimpleMode:
         assert len(resp.destinations) == 0
 
     def test_execute_dispatches_matching_event(self):
-        router = (
-            EventRouter(SAGA_NAME)
-            .domain(DOMAIN_SOURCE)
-            .on(FULL_NAME_EVENT_A, saga_event_handler)
-        )
+        handler_impl = TestSagaDomainHandler()
+        router = SagaRouter(SAGA_NAME, DOMAIN_SOURCE, handler_impl)
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
 
@@ -93,17 +117,15 @@ class TestSagaHandlerSimpleMode:
         assert resp.commands[0].cover.correlation_id == CORR_ID_1
 
     def test_execute_no_match_returns_empty(self):
-        router = (
-            EventRouter(SAGA_NAME)
-            .domain(DOMAIN_SOURCE)
-            .on(FULL_NAME_EVENT_A, saga_event_handler)
-        )
+        handler_impl = TestSagaDomainHandler()
+        router = SagaRouter(SAGA_NAME, DOMAIN_SOURCE, handler_impl)
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
 
         book = make_event_book(TYPE_URL_OTHER_EVENT, CORR_ID_1, ROOT_BYTES)
         resp = handler.Execute(saga.SagaExecuteRequest(source=book), context)
 
+        # No matching event type, so empty result
         assert len(resp.commands) == 0
 
 
@@ -114,11 +136,8 @@ class TestSagaHandlerSimpleMode:
 
 class TestSagaHandlerCustomMode:
     def test_custom_prepare(self):
-        router = (
-            EventRouter(SAGA_NAME)
-            .domain(DOMAIN_SOURCE)
-            .on(FULL_NAME_EVENT_A, saga_event_handler)
-        )
+        handler_impl = TestSagaDomainHandler()
+        router = SagaRouter(SAGA_NAME, DOMAIN_SOURCE, handler_impl)
 
         def custom_prepare(source):
             return [types.Cover(domain=DOMAIN_TARGET, root=source.cover.root)]
@@ -133,11 +152,8 @@ class TestSagaHandlerCustomMode:
         assert resp.destinations[0].domain == DOMAIN_TARGET
 
     def test_custom_execute(self):
-        router = (
-            EventRouter(SAGA_NAME)
-            .domain(DOMAIN_SOURCE)
-            .on(FULL_NAME_EVENT_A, saga_event_handler)
-        )
+        handler_impl = TestSagaDomainHandler()
+        router = SagaRouter(SAGA_NAME, DOMAIN_SOURCE, handler_impl)
 
         def custom_execute(source, destinations):
             return [

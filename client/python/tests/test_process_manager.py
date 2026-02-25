@@ -1,6 +1,6 @@
 """Tests for ProcessManager ABC and @reacts_to decorator with input_domain.
 
-Tests both OO (class-based) and function-based (router) patterns.
+Tests both OO (class-based) and protocol-based (router) patterns.
 Uses consistent domains: order, inventory, fulfillment.
 """
 
@@ -9,9 +9,14 @@ from dataclasses import dataclass
 import pytest
 from google.protobuf import any_pb2
 
+from angzarr_client.handler_protocols import (
+    ProcessManagerDomainHandler,
+    ProcessManagerResponse,
+)
 from angzarr_client.process_manager import ProcessManager, reacts_to
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import EventRouter, event_handler
+from angzarr_client.router import ProcessManagerRouter
+from angzarr_client.state_builder import StateRouter
 
 from .fixtures import (
     CreateShipment,
@@ -109,55 +114,116 @@ class MultiCommandPM(ProcessManager[OrderWorkflowState]):
 
 
 # =============================================================================
-# Function-based Pattern: EventRouter with @event_handler
+# Protocol-based Pattern: ProcessManagerRouter with ProcessManagerDomainHandler
 # =============================================================================
 
 
-def build_order_workflow_router() -> EventRouter:
-    """Build function-based PM-style router.
+@dataclass
+class RouterPMState:
+    """State for protocol-based PM routers."""
+
+    order_id: str = ""
+
+
+class _FakePMEvent:
+    """Fake event type for StateRouter registration."""
+
+    DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakePMEvent"})()
+
+
+def apply_router_pm_event(state: RouterPMState, event: _FakePMEvent) -> None:
+    """Apply events to router PM state (no-op for these tests)."""
+    pass
+
+
+ROUTER_PM_STATE_ROUTER = StateRouter(RouterPMState).on(
+    _FakePMEvent, apply_router_pm_event
+)
+
+
+class OrderWorkflowPMHandler(ProcessManagerDomainHandler[RouterPMState]):
+    """Protocol-based PM handler for order domain events."""
+
+    def event_types(self) -> list[str]:
+        return ["OrderCreated"]
+
+    def state_router(self) -> StateRouter[RouterPMState]:
+        return ROUTER_PM_STATE_ROUTER
+
+    def handle(
+        self,
+        trigger: types.EventBook,
+        state: RouterPMState,
+        event: any_pb2.Any,
+        destinations: list[types.EventBook],
+    ) -> ProcessManagerResponse:
+        order_created = OrderCreated()
+        order_created.ParseFromString(event.value)
+        cmd = ReserveStock(order_id=order_created.order_id, sku="default", quantity=1)
+        cmd_any = any_pb2.Any()
+        cmd_any.Pack(cmd)
+        return ProcessManagerResponse(
+            commands=[
+                types.CommandBook(
+                    cover=types.Cover(
+                        domain="inventory",
+                        correlation_id=trigger.cover.correlation_id,
+                    ),
+                    pages=[types.CommandPage(command=cmd_any)],
+                )
+            ]
+        )
+
+
+class InventoryPMHandler(ProcessManagerDomainHandler[RouterPMState]):
+    """Protocol-based PM handler for inventory domain events."""
+
+    def event_types(self) -> list[str]:
+        return ["StockReserved"]
+
+    def state_router(self) -> StateRouter[RouterPMState]:
+        return ROUTER_PM_STATE_ROUTER
+
+    def handle(
+        self,
+        trigger: types.EventBook,
+        state: RouterPMState,
+        event: any_pb2.Any,
+        destinations: list[types.EventBook],
+    ) -> ProcessManagerResponse:
+        stock_reserved = StockReserved()
+        stock_reserved.ParseFromString(event.value)
+        cmd = CreateShipment(
+            order_id=stock_reserved.order_id, address="default-address"
+        )
+        cmd_any = any_pb2.Any()
+        cmd_any.Pack(cmd)
+        return ProcessManagerResponse(
+            commands=[
+                types.CommandBook(
+                    cover=types.Cover(
+                        domain="fulfillment",
+                        correlation_id=trigger.cover.correlation_id,
+                    ),
+                    pages=[types.CommandPage(command=cmd_any)],
+                )
+            ]
+        )
+
+
+def build_order_workflow_router() -> ProcessManagerRouter[RouterPMState]:
+    """Build protocol-based PM router.
 
     Demonstrates same logic as OrderWorkflowPM but with router pattern.
     """
-    router = EventRouter("order-workflow-fn").domain("order")
-
-    @event_handler(OrderCreated)
-    def handle_order_created(
-        event: OrderCreated, root: bytes, correlation_id: str, destinations: list
-    ) -> list[types.CommandBook]:
-        cmd = ReserveStock(order_id=event.order_id, sku="default", quantity=1)
-        cmd_any = any_pb2.Any()
-        cmd_any.Pack(cmd)
-        return [
-            types.CommandBook(
-                cover=types.Cover(domain="inventory", correlation_id=correlation_id),
-                pages=[types.CommandPage(command=cmd_any)],
-            )
-        ]
-
-    router.on(handle_order_created)
-    return router
+    handler = OrderWorkflowPMHandler()
+    return ProcessManagerRouter("order-workflow-fn", "order", handler)
 
 
-def build_inventory_router() -> EventRouter:
+def build_inventory_pm_router() -> ProcessManagerRouter[RouterPMState]:
     """Separate router for inventory domain events."""
-    router = EventRouter("order-workflow-fn").domain("inventory")
-
-    @event_handler(StockReserved)
-    def handle_stock_reserved(
-        event: StockReserved, root: bytes, correlation_id: str, destinations: list
-    ) -> list[types.CommandBook]:
-        cmd = CreateShipment(order_id=event.order_id, address="default-address")
-        cmd_any = any_pb2.Any()
-        cmd_any.Pack(cmd)
-        return [
-            types.CommandBook(
-                cover=types.Cover(domain="fulfillment", correlation_id=correlation_id),
-                pages=[types.CommandPage(command=cmd_any)],
-            )
-        ]
-
-    router.on(handle_stock_reserved)
-    return router
+    handler = InventoryPMHandler()
+    return ProcessManagerRouter("order-workflow-fn", "inventory", handler)
 
 
 # =============================================================================
@@ -341,11 +407,11 @@ class TestProcessManagerHandle:
 
 
 # =============================================================================
-# Tests for function-based pattern (router)
+# Tests for protocol-based pattern (router)
 # =============================================================================
 
 
-class TestFunctionBasedRouter:
+class TestProtocolBasedRouter:
     def test_router_dispatch_order_created(self):
         router = build_order_workflow_router()
 
@@ -353,30 +419,34 @@ class TestFunctionBasedRouter:
         event_any = any_pb2.Any()
         event_any.Pack(event)
 
-        source = types.EventBook(
+        trigger = types.EventBook(
             cover=types.Cover(domain="order", correlation_id="corr-fn-1"),
             pages=[types.EventPage(event=event_any)],
         )
+        pm_state = types.EventBook()
 
-        commands = router.dispatch(source)
+        response = router.dispatch(trigger, pm_state)
+        commands = list(response.commands)
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "inventory"
         assert commands[0].cover.correlation_id == "corr-fn-1"
 
     def test_router_dispatch_stock_reserved(self):
-        router = build_inventory_router()
+        router = build_inventory_pm_router()
 
         event = StockReserved(order_id="order-fn-456", sku="item", quantity=1)
         event_any = any_pb2.Any()
         event_any.Pack(event)
 
-        source = types.EventBook(
+        trigger = types.EventBook(
             cover=types.Cover(domain="inventory", correlation_id="corr-fn-2"),
             pages=[types.EventPage(event=event_any)],
         )
+        pm_state = types.EventBook()
 
-        commands = router.dispatch(source)
+        response = router.dispatch(trigger, pm_state)
+        commands = list(response.commands)
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "fulfillment"
@@ -388,7 +458,7 @@ class TestFunctionBasedRouter:
 
 
 class TestPatternEquivalence:
-    """Verify OO and function-based patterns produce equivalent results."""
+    """Verify OO and protocol-based patterns produce equivalent results."""
 
     def test_same_output_for_order_created(self):
         event = OrderCreated(order_id="order-eq-1", customer_id="cust-eq")
@@ -396,22 +466,28 @@ class TestPatternEquivalence:
         event_any.Pack(event)
 
         # OO pattern
-        pm = OrderWorkflowPM()
-        oo_commands = pm.dispatch(event_any, b"\x01", "corr-eq")
+        pm_instance = OrderWorkflowPM()
+        oo_commands = pm_instance.dispatch(event_any, b"\x01", "corr-eq")
 
-        # Function pattern
+        # Protocol pattern
         router = build_order_workflow_router()
-        source = types.EventBook(
+        trigger = types.EventBook(
             cover=types.Cover(domain="order", correlation_id="corr-eq"),
             pages=[types.EventPage(event=event_any)],
         )
-        fn_commands = router.dispatch(source)
+        pm_state = types.EventBook()
+        response = router.dispatch(trigger, pm_state)
+        router_commands = list(response.commands)
 
         # Both produce one command to inventory domain
-        assert len(oo_commands) == len(fn_commands) == 1
-        assert oo_commands[0].cover.domain == fn_commands[0].cover.domain == "inventory"
+        assert len(oo_commands) == len(router_commands) == 1
+        assert (
+            oo_commands[0].cover.domain
+            == router_commands[0].cover.domain
+            == "inventory"
+        )
         assert (
             oo_commands[0].cover.correlation_id
-            == fn_commands[0].cover.correlation_id
+            == router_commands[0].cover.correlation_id
             == "corr-eq"
         )

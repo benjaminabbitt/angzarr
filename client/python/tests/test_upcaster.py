@@ -1,6 +1,6 @@
 """Tests for Upcaster ABC and @upcasts decorator.
 
-Tests both OO (class-based) and function-based (router) patterns.
+Tests OO (class-based) pattern only.
 Uses consistent domains: order, player.
 Demonstrates schema evolution via event version transformation.
 """
@@ -9,7 +9,6 @@ import pytest
 from google.protobuf import any_pb2
 
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import UpcasterRouter, upcaster
 from angzarr_client.upcaster import Upcaster, upcasts
 
 from .fixtures import (
@@ -52,43 +51,6 @@ class PlayerUpcaster(Upcaster):
             display_name=old.display_name,
             registered_at="1970-01-01T00:00:00Z",  # New field with default
         )
-
-
-# =============================================================================
-# Function-based Pattern: UpcasterRouter with @upcaster
-# =============================================================================
-
-
-def build_order_upcaster_router() -> UpcasterRouter:
-    """Build function-based order upcaster."""
-    router = UpcasterRouter("order")
-
-    @upcaster(OrderCreatedV1, OrderCreated)
-    def upcast_created(old: OrderCreatedV1) -> OrderCreated:
-        return OrderCreated(
-            order_id=old.order_id,
-            customer_id=old.customer_id,
-            total=0,
-        )
-
-    router.on(upcast_created)
-    return router
-
-
-def build_player_upcaster_router() -> UpcasterRouter:
-    """Build function-based player upcaster."""
-    router = UpcasterRouter("player")
-
-    @upcaster(PlayerRegisteredV1, PlayerRegistered)
-    def upcast_registered(old: PlayerRegisteredV1) -> PlayerRegistered:
-        return PlayerRegistered(
-            player_id=old.player_id,
-            display_name=old.display_name,
-            registered_at="1970-01-01T00:00:00Z",
-        )
-
-    router.on(upcast_registered)
-    return router
 
 
 # =============================================================================
@@ -252,97 +214,6 @@ class TestPlayerUpcasterOO:
         assert new_event.player_id == "player-1"
         assert new_event.display_name == "Alice"
         assert new_event.registered_at == "1970-01-01T00:00:00Z"
-
-
-# =============================================================================
-# Tests for function-based pattern upcasting
-# =============================================================================
-
-
-class TestOrderUpcasterRouter:
-    def test_upcasts_v1_event(self):
-        router = build_order_upcaster_router()
-
-        events = [
-            types.EventPage(
-                event=_pack(OrderCreatedV1(order_id="order-1", customer_id="cust-1")),
-            ),
-        ]
-
-        result = router.upcast(events)
-
-        assert len(result) == 1
-        new_event = OrderCreated()
-        result[0].event.Unpack(new_event)
-        assert new_event.order_id == "order-1"
-        assert new_event.total == 0
-
-    def test_passthrough_current_version(self):
-        router = build_order_upcaster_router()
-
-        events = [
-            types.EventPage(
-                event=_pack(
-                    OrderCreated(order_id="order-1", customer_id="cust-1", total=100)
-                ),
-            ),
-        ]
-
-        result = router.upcast(events)
-
-        # Should pass through unchanged
-        new_event = OrderCreated()
-        result[0].event.Unpack(new_event)
-        assert new_event.total == 100
-
-
-class TestPlayerUpcasterRouter:
-    def test_upcasts_v1_event(self):
-        router = build_player_upcaster_router()
-
-        events = [
-            types.EventPage(
-                event=_pack(PlayerRegisteredV1(player_id="p1", display_name="Bob")),
-            ),
-        ]
-
-        result = router.upcast(events)
-
-        new_event = PlayerRegistered()
-        result[0].event.Unpack(new_event)
-        assert new_event.registered_at == "1970-01-01T00:00:00Z"
-
-
-# =============================================================================
-# Tests comparing both patterns produce equivalent output
-# =============================================================================
-
-
-class TestPatternEquivalence:
-    """Verify OO and function-based patterns transform events identically."""
-
-    def test_same_output_for_order_created_v1(self):
-        # OO pattern
-        oo_upcaster = OrderUpcaster()
-        old_event = OrderCreatedV1(order_id="order-eq", customer_id="cust-eq")
-        event_any = _pack(old_event)
-        oo_result = oo_upcaster.upcast(event_any)
-
-        # Function pattern
-        fn_router = build_order_upcaster_router()
-        events = [types.EventPage(event=_pack(old_event))]
-        fn_result = fn_router.upcast(events)
-
-        # Both produce identical output
-        oo_event = OrderCreated()
-        oo_result.Unpack(oo_event)
-
-        fn_event = OrderCreated()
-        fn_result[0].event.Unpack(fn_event)
-
-        assert oo_event.order_id == fn_event.order_id == "order-eq"
-        assert oo_event.customer_id == fn_event.customer_id == "cust-eq"
-        assert oo_event.total == fn_event.total == 0
 
 
 # =============================================================================

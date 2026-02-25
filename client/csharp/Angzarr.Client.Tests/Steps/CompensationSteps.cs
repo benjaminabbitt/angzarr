@@ -1,4 +1,5 @@
 using Angzarr.Client;
+using Angzarr.Client.Router;
 using FluentAssertions;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -14,7 +15,7 @@ public class CompensationSteps
     private RejectionHandlerResponse? _response;
     private Angzarr.Notification? _notification;
     private Angzarr.RejectionNotification? _rejectionNotification;
-    private CommandRouter<CompensationTestState>? _commandRouter;
+    private AggregateRouter<CompensationTestState, CompensationAggregateHandler>? _aggregateRouter;
     private Angzarr.BusinessResponse? _businessResponse;
 
     public CompensationSteps(ScenarioContext ctx) => _ctx = ctx;
@@ -58,29 +59,30 @@ public class CompensationSteps
     public void GivenCommandRouterWithRejectionHandler(string domain, string commandType)
     {
         var stateRouter = new StateRouter<CompensationTestState>();
-        _commandRouter = new CommandRouter<CompensationTestState>("test")
-            .WithState(stateRouter)
-            .OnRejected(
-                domain,
-                commandType,
-                (notification, state) =>
+        var handler = new CompensationAggregateHandler(
+            stateRouter,
+            domain,
+            commandType,
+            (notification, state) =>
+            {
+                return new RejectionHandlerResponse
                 {
-                    return new RejectionHandlerResponse
+                    Events = new Angzarr.EventBook
                     {
-                        Events = new Angzarr.EventBook
+                        Pages =
                         {
-                            Pages =
+                            new Angzarr.EventPage
                             {
-                                new Angzarr.EventPage
-                                {
-                                    Sequence = 1,
-                                    Event = Any.Pack(new Empty()),
-                                },
+                                Sequence = 1,
+                                Event = Any.Pack(new Empty()),
                             },
                         },
-                    };
-                }
-            );
+                    },
+                };
+            }
+        );
+        _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
+            "test", "test", handler);
     }
 
     [When(@"I get the rejected command")]
@@ -122,7 +124,7 @@ public class CompensationSteps
             },
             Events = new Angzarr.EventBook(),
         };
-        _businessResponse = _commandRouter!.Dispatch(contextualCommand);
+        _businessResponse = _aggregateRouter!.Dispatch(contextualCommand);
     }
 
     [Then(@"the rejected command should have domain ""(.*)""")]
@@ -163,48 +165,50 @@ public class CompensationSteps
     public void GivenRejectionHandlerThatForwardsNotification()
     {
         var stateRouter = new StateRouter<CompensationTestState>();
-        _commandRouter = new CommandRouter<CompensationTestState>("test")
-            .WithState(stateRouter)
-            .OnRejected(
-                "inventory",
-                "ReserveStock",
-                (notification, state) =>
-                {
-                    return new RejectionHandlerResponse { Notification = notification };
-                }
-            );
+        var handler = new CompensationAggregateHandler(
+            stateRouter,
+            "inventory",
+            "ReserveStock",
+            (notification, state) =>
+            {
+                return new RejectionHandlerResponse { Notification = notification };
+            }
+        );
+        _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
+            "test", "test", handler);
     }
 
     [Given(@"a rejection handler that emits compensation events")]
     public void GivenRejectionHandlerThatEmitsCompensationEvents()
     {
         var stateRouter = new StateRouter<CompensationTestState>();
-        _commandRouter = new CommandRouter<CompensationTestState>("test")
-            .WithState(stateRouter)
-            .OnRejected(
-                "inventory",
-                "ReserveStock",
-                (notification, state) =>
+        var handler = new CompensationAggregateHandler(
+            stateRouter,
+            "inventory",
+            "ReserveStock",
+            (notification, state) =>
+            {
+                return new RejectionHandlerResponse
                 {
-                    return new RejectionHandlerResponse
+                    Events = new Angzarr.EventBook
                     {
-                        Events = new Angzarr.EventBook
+                        Pages =
                         {
-                            Pages =
+                            new Angzarr.EventPage
                             {
-                                new Angzarr.EventPage
-                                {
-                                    Sequence = 1,
-                                    Event = Any.Pack(
-                                        new Empty(),
-                                        "type.googleapis.com/test.StockReservationCancelled"
-                                    ),
-                                },
+                                Sequence = 1,
+                                Event = Any.Pack(
+                                    new Empty(),
+                                    "type.googleapis.com/test.StockReservationCancelled"
+                                ),
                             },
                         },
-                    };
-                }
-            );
+                    },
+                };
+            }
+        );
+        _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
+            "test", "test", handler);
     }
 
     // Additional compensation steps
@@ -748,4 +752,48 @@ public class CompensationSteps
 public class CompensationTestState
 {
     public bool HasCompensated { get; set; }
+}
+
+/// <summary>
+/// Aggregate handler for compensation testing that supports rejection handling.
+/// </summary>
+public class CompensationAggregateHandler : IAggregateDomainHandler<CompensationTestState>
+{
+    private readonly StateRouter<CompensationTestState> _stateRouter;
+    private readonly string _rejectionDomain;
+    private readonly string _rejectionCommandType;
+    private readonly Func<Angzarr.Notification, CompensationTestState, RejectionHandlerResponse> _rejectionHandler;
+
+    public CompensationAggregateHandler(
+        StateRouter<CompensationTestState> stateRouter,
+        string rejectionDomain,
+        string rejectionCommandType,
+        Func<Angzarr.Notification, CompensationTestState, RejectionHandlerResponse> rejectionHandler)
+    {
+        _stateRouter = stateRouter;
+        _rejectionDomain = rejectionDomain;
+        _rejectionCommandType = rejectionCommandType;
+        _rejectionHandler = rejectionHandler;
+    }
+
+    public IReadOnlyList<string> CommandTypes() => new[] { "angzarr.Notification" };
+
+    public StateRouter<CompensationTestState> StateRouter() => _stateRouter;
+
+    public Angzarr.EventBook Handle(
+        Angzarr.CommandBook cmd,
+        Any payload,
+        CompensationTestState state,
+        int seq)
+    {
+        // Handle notification (rejection) commands
+        if (payload.TypeUrl.Contains("Notification"))
+        {
+            var notification = payload.Unpack<Angzarr.Notification>();
+            var response = _rejectionHandler(notification, state);
+            return response.Events ?? new Angzarr.EventBook();
+        }
+
+        throw new CommandRejectedError($"Unknown command: {payload.TypeUrl}");
+    }
 }

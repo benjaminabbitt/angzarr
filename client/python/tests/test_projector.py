@@ -1,6 +1,6 @@
 """Tests for Projector ABC and @projects decorator.
 
-Tests both OO (class-based) and function-based (router) patterns.
+Tests both OO (class-based) and protocol-based (router) patterns.
 Uses consistent domains: order, inventory, fulfillment, player.
 Includes SQLite-based projectors using SQLAlchemy Core 2.0.
 """
@@ -21,9 +21,10 @@ from sqlalchemy import (
     text,
 )
 
+from angzarr_client.handler_protocols import ProjectorDomainHandler
 from angzarr_client.projector import Projector, projects
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import EventRouter, event_handler
+from angzarr_client.router import ProjectorRouter
 
 from .fixtures import (
     PlayerRegistered,
@@ -166,46 +167,58 @@ class NoopProjector(Projector):
 
 
 # =============================================================================
-# Function-based Pattern: EventRouter with @event_handler
+# Protocol-based Pattern: ProjectorRouter with ProjectorDomainHandler
 # =============================================================================
 
 
-def build_audit_trail_router(engine: Engine) -> EventRouter:
-    """Build function-based audit trail projector."""
-    router = EventRouter("projector-audit-trail-fn").domain("inventory")
+class AuditTrailProjectorHandler(ProjectorDomainHandler):
+    """Protocol-based audit trail projector handler."""
 
-    @event_handler(StockUpdated)
-    def handle_stock_updated(
-        event: StockUpdated, root: bytes, correlation_id: str, destinations: list
-    ) -> list:
-        with engine.connect() as conn:
-            conn.execute(
-                insert(audit_trail).values(
-                    event_type="StockUpdated",
-                    aggregate_id=event.sku,
-                    payload=f"quantity={event.quantity}",
-                    occurred_at="now",
-                )
-            )
-            conn.commit()
-        return [types.Projection(projector="projector-audit-trail-fn")]
+    def __init__(self, engine: Engine):
+        self._engine = engine
 
-    router.on(handle_stock_updated)
-    return router
+    def event_types(self) -> list[str]:
+        return ["StockUpdated"]
+
+    def project(self, events: types.EventBook) -> types.Projection:
+        # Process each event in the EventBook
+        for page in events.pages:
+            if page.HasField("event") and page.event.type_url.endswith("StockUpdated"):
+                stock_updated = StockUpdated()
+                stock_updated.ParseFromString(page.event.value)
+                with self._engine.connect() as conn:
+                    conn.execute(
+                        insert(audit_trail).values(
+                            event_type="StockUpdated",
+                            aggregate_id=stock_updated.sku,
+                            payload=f"quantity={stock_updated.quantity}",
+                            occurred_at="now",
+                        )
+                    )
+                    conn.commit()
+        return types.Projection(projector="projector-audit-trail-fn")
 
 
-def build_fulfillment_projector_router() -> EventRouter:
+class FulfillmentProjectorHandler(ProjectorDomainHandler):
+    """Protocol-based fulfillment projector handler."""
+
+    def event_types(self) -> list[str]:
+        return ["ShipmentCreated"]
+
+    def project(self, events: types.EventBook) -> types.Projection:
+        return types.Projection(projector="projector-fulfillment-tracking")
+
+
+def build_audit_trail_router(engine: Engine) -> ProjectorRouter:
+    """Build protocol-based audit trail projector."""
+    handler = AuditTrailProjectorHandler(engine)
+    return ProjectorRouter("projector-audit-trail-fn", "inventory", handler)
+
+
+def build_fulfillment_projector_router() -> ProjectorRouter:
     """Projects fulfillment events (no DB, for comparison)."""
-    router = EventRouter("projector-fulfillment-tracking").domain("fulfillment")
-
-    @event_handler(ShipmentCreated)
-    def handle_shipment_created(
-        event: ShipmentCreated, root: bytes, correlation_id: str, destinations: list
-    ) -> list:
-        return [types.Projection(projector="projector-fulfillment-tracking")]
-
-    router.on(handle_shipment_created)
-    return router
+    handler = FulfillmentProjectorHandler()
+    return ProjectorRouter("projector-fulfillment-tracking", "fulfillment", handler)
 
 
 # =============================================================================
@@ -435,11 +448,11 @@ class TestPlayerStatsProjector:
 
 
 # =============================================================================
-# Tests for function-based pattern (router)
+# Tests for protocol-based pattern (router)
 # =============================================================================
 
 
-class TestFunctionBasedProjectorRouter:
+class TestProtocolBasedProjectorRouter:
     def test_router_writes_to_sqlite(self):
         engine = create_test_db()
         router = build_audit_trail_router(engine)
@@ -452,10 +465,9 @@ class TestFunctionBasedProjectorRouter:
             cover=types.Cover(domain="inventory"),
             pages=[types.EventPage(event=event_any)],
         )
-        results = router.dispatch(source)
+        projection = router.dispatch(source)
 
-        assert len(results) == 1
-        assert results[0].projector == "projector-audit-trail-fn"
+        assert projection.projector == "projector-audit-trail-fn"
 
         # Verify data in SQLite
         with engine.connect() as conn:
@@ -470,7 +482,7 @@ class TestFunctionBasedProjectorRouter:
 
 
 class TestPatternEquivalence:
-    """Verify OO and function-based patterns both write to SQLite correctly."""
+    """Verify OO and protocol-based patterns both write to SQLite correctly."""
 
     def test_same_db_state_for_stock_updated(self):
         # OO pattern
@@ -482,22 +494,22 @@ class TestPatternEquivalence:
         event_any.Pack(event)
         oo_projector.dispatch(event_any)
 
-        # Function pattern
-        fn_engine = create_test_db()
-        fn_router = build_audit_trail_router(fn_engine)
+        # Protocol pattern
+        router_engine = create_test_db()
+        router = build_audit_trail_router(router_engine)
         source = types.EventBook(
             cover=types.Cover(domain="inventory"),
             pages=[types.EventPage(event=event_any)],
         )
-        fn_router.dispatch(source)
+        router.dispatch(source)
 
         # Both produce same DB state
         with oo_engine.connect() as conn:
             oo_rows = conn.execute(select(audit_trail)).fetchall()
 
-        with fn_engine.connect() as conn:
-            fn_rows = conn.execute(select(audit_trail)).fetchall()
+        with router_engine.connect() as conn:
+            router_rows = conn.execute(select(audit_trail)).fetchall()
 
-        assert len(oo_rows) == len(fn_rows) == 1
-        assert oo_rows[0].event_type == fn_rows[0].event_type == "StockUpdated"
-        assert oo_rows[0].aggregate_id == fn_rows[0].aggregate_id == "SKU-eq"
+        assert len(oo_rows) == len(router_rows) == 1
+        assert oo_rows[0].event_type == router_rows[0].event_type == "StockUpdated"
+        assert oo_rows[0].aggregate_id == router_rows[0].aggregate_id == "SKU-eq"

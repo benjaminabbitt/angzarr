@@ -1,14 +1,15 @@
 """Tests for Saga ABC and @reacts_to decorator.
 
-Tests both OO (class-based) and function-based (router) patterns.
+Tests both OO (class-based) and protocol-based (router) patterns.
 Uses consistent domains: order, inventory, fulfillment.
 """
 
 import pytest
 from google.protobuf import any_pb2
 
+from angzarr_client.handler_protocols import SagaDomainHandler
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import EventRouter, event_handler
+from angzarr_client.router import SagaRouter
 from angzarr_client.saga import Saga, reacts_to
 
 from .fixtures import (
@@ -87,46 +88,63 @@ class NoopSaga(Saga):
 
 
 # =============================================================================
-# Function-based Pattern: EventRouter with @event_handler
+# Protocol-based Pattern: SagaRouter with SagaDomainHandler
 # =============================================================================
 
 
-def build_order_fulfillment_router() -> EventRouter:
-    """Build function-based saga-style router.
+class OrderFulfillmentHandler(SagaDomainHandler):
+    """Protocol-based saga handler bridging order → fulfillment."""
 
-    Demonstrates same logic as OrderFulfillmentSaga but with router pattern.
-    """
-    router = EventRouter("saga-order-fulfillment-fn").domain("order")
+    def event_types(self) -> list[str]:
+        return ["OrderCompleted"]
 
-    @event_handler(OrderCompleted)
-    def handle_completed(
-        event: OrderCompleted, root: bytes, correlation_id: str, destinations: list
+    def prepare(self, source: types.EventBook, event: any_pb2.Any) -> list[types.Cover]:
+        return []
+
+    def execute(
+        self,
+        source: types.EventBook,
+        event: any_pb2.Any,
+        destinations: list[types.EventBook],
     ) -> list[types.CommandBook]:
-        cmd = CreateShipment(order_id=event.order_id, address="default")
+        completed = OrderCompleted()
+        completed.ParseFromString(event.value)
+        cmd = CreateShipment(order_id=completed.order_id, address="default")
         cmd_any = any_pb2.Any()
         cmd_any.Pack(cmd)
         return [
             types.CommandBook(
-                cover=types.Cover(domain="fulfillment", correlation_id=correlation_id),
+                cover=types.Cover(
+                    domain="fulfillment", correlation_id=source.cover.correlation_id
+                ),
                 pages=[types.CommandPage(command=cmd_any)],
             )
         ]
 
-    router.on(handle_completed)
-    return router
 
+class InventorySagaHandler(SagaDomainHandler):
+    """Protocol-based saga handler for inventory events."""
 
-def build_inventory_router() -> EventRouter:
-    """Function-based router for inventory events."""
-    router = EventRouter("saga-inventory-order-fn").domain("inventory")
+    def event_types(self) -> list[str]:
+        return ["StockReserved"]
 
-    @event_handler(StockReserved)
-    def handle_reserved(
-        event: StockReserved, root: bytes, correlation_id: str, destinations: list
+    def prepare(self, source: types.EventBook, event: any_pb2.Any) -> list[types.Cover]:
+        return []
+
+    def execute(
+        self,
+        source: types.EventBook,
+        event: any_pb2.Any,
+        destinations: list[types.EventBook],
     ) -> list[types.CommandBook]:
-        # Return multiple commands
-        cmd1 = ReserveStock(order_id=f"{event.order_id}-1", sku=event.sku, quantity=1)
-        cmd2 = ReserveStock(order_id=f"{event.order_id}-2", sku=event.sku, quantity=1)
+        reserved = StockReserved()
+        reserved.ParseFromString(event.value)
+        cmd1 = ReserveStock(
+            order_id=f"{reserved.order_id}-1", sku=reserved.sku, quantity=1
+        )
+        cmd2 = ReserveStock(
+            order_id=f"{reserved.order_id}-2", sku=reserved.sku, quantity=1
+        )
 
         result = []
         for cmd in [cmd1, cmd2]:
@@ -134,14 +152,28 @@ def build_inventory_router() -> EventRouter:
             cmd_any.Pack(cmd)
             result.append(
                 types.CommandBook(
-                    cover=types.Cover(domain="order", correlation_id=correlation_id),
+                    cover=types.Cover(
+                        domain="order", correlation_id=source.cover.correlation_id
+                    ),
                     pages=[types.CommandPage(command=cmd_any)],
                 )
             )
         return result
 
-    router.on(handle_reserved)
-    return router
+
+def build_order_fulfillment_router() -> SagaRouter:
+    """Build protocol-based saga router.
+
+    Demonstrates same logic as OrderFulfillmentSaga but with router pattern.
+    """
+    handler = OrderFulfillmentHandler()
+    return SagaRouter("saga-order-fulfillment-fn", "order", handler)
+
+
+def build_inventory_router() -> SagaRouter:
+    """Protocol-based router for inventory events."""
+    handler = InventorySagaHandler()
+    return SagaRouter("saga-inventory-order-fn", "inventory", handler)
 
 
 # =============================================================================
@@ -352,11 +384,11 @@ class TestSagaExecute:
 
 # =============================================================================
 # =============================================================================
-# Tests for function-based pattern (router)
+# Tests for protocol-based pattern (SagaRouter)
 # =============================================================================
 
 
-class TestFunctionBasedRouter:
+class TestProtocolBasedRouter:
     def test_router_dispatch_order_completed(self):
         router = build_order_fulfillment_router()
 
@@ -369,7 +401,8 @@ class TestFunctionBasedRouter:
             pages=[types.EventPage(event=event_any)],
         )
 
-        commands = router.dispatch(source)
+        response = router.dispatch(source, [])
+        commands = list(response.commands)
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "fulfillment"
@@ -387,7 +420,8 @@ class TestFunctionBasedRouter:
             pages=[types.EventPage(event=event_any)],
         )
 
-        commands = router.dispatch(source)
+        response = router.dispatch(source, [])
+        commands = list(response.commands)
 
         assert len(commands) == 2
         assert commands[0].cover.domain == "order"
@@ -400,7 +434,7 @@ class TestFunctionBasedRouter:
 
 
 class TestPatternEquivalence:
-    """Verify OO and function-based patterns produce equivalent results."""
+    """Verify OO and protocol-based patterns produce equivalent results."""
 
     def test_same_output_for_order_completed(self):
         event = OrderCompleted(order_id="order-eq")
@@ -411,21 +445,24 @@ class TestPatternEquivalence:
         saga = OrderFulfillmentSaga()
         oo_commands = saga.dispatch(event_any, b"\x01", "corr-eq")
 
-        # Function pattern
+        # Protocol pattern
         router = build_order_fulfillment_router()
         source = types.EventBook(
             cover=types.Cover(domain="order", correlation_id="corr-eq"),
             pages=[types.EventPage(event=event_any)],
         )
-        fn_commands = router.dispatch(source)
+        response = router.dispatch(source, [])
+        router_commands = list(response.commands)
 
         # Both produce one command to fulfillment domain
-        assert len(oo_commands) == len(fn_commands) == 1
+        assert len(oo_commands) == len(router_commands) == 1
         assert (
-            oo_commands[0].cover.domain == fn_commands[0].cover.domain == "fulfillment"
+            oo_commands[0].cover.domain
+            == router_commands[0].cover.domain
+            == "fulfillment"
         )
         assert (
             oo_commands[0].cover.correlation_id
-            == fn_commands[0].cover.correlation_id
+            == router_commands[0].cover.correlation_id
             == "corr-eq"
         )

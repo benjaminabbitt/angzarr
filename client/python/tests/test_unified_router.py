@@ -21,25 +21,24 @@ from angzarr_client.handler_protocols import (
     SagaDomainHandler,
 )
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.state_builder import StateRouter
-from angzarr_client.unified_router import (
-    AggregateRouter,
+from angzarr_client.router import (
     NOTIFICATION_TYPE_URL,
+    AggregateRouter,
     ProcessManagerRouter,
     ProjectorRouter,
     SagaRouter,
     _extract_rejection_key,
     _next_sequence,
 )
+from angzarr_client.state_builder import StateRouter
 
 from .fixtures import (
-    PlayerRegistered,
     DepositFunds,
     FundsDeposited,
-    StockUpdated,
+    PlayerRegistered,
     StockReserved,
+    StockUpdated,
 )
-
 
 # =============================================================================
 # Test State Types

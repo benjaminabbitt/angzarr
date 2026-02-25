@@ -1,6 +1,8 @@
 using Angzarr;
 using Angzarr.Client;
+using Angzarr.Client.Router;
 using FluentAssertions;
+using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Xunit;
 
@@ -89,7 +91,7 @@ public class RejectionHandlerResponseTests
     }
 
     // =========================================================================
-    // CommandRouter OnRejected Tests
+    // AggregateRouter Rejection Handling Tests (using new unified router pattern)
     // =========================================================================
 
     private class TestState
@@ -97,12 +99,48 @@ public class RejectionHandlerResponseTests
         public int Value { get; set; }
     }
 
-    [Fact]
-    public void CommandRouter_OnRejected_ReturnsEvents()
+    /// <summary>
+    /// Handler that processes rejection notifications and returns compensation events.
+    /// </summary>
+    private class RejectionTestHandler : IAggregateDomainHandler<TestState>
     {
-        var router = new CommandRouter<TestState>("test", _ => new TestState()).OnRejected(
-            "inventory",
-            "ReserveStock",
+        private readonly StateRouter<TestState> _stateRouter = new StateRouter<TestState>();
+        private readonly Func<Notification, TestState, RejectionHandlerResponse>? _rejectionHandler;
+
+        public RejectionTestHandler(
+            Func<Notification, TestState, RejectionHandlerResponse>? rejectionHandler = null)
+        {
+            _rejectionHandler = rejectionHandler;
+        }
+
+        public IReadOnlyList<string> CommandTypes() =>
+            new[] { "angzarr.Notification" };
+
+        public StateRouter<TestState> StateRouter() => _stateRouter;
+
+        public EventBook Handle(
+            CommandBook cmd,
+            Any payload,
+            TestState state,
+            int seq)
+        {
+            // Handle notification commands (rejections)
+            if (payload.TypeUrl.Contains("Notification") && _rejectionHandler != null)
+            {
+                var notification = payload.Unpack<Notification>();
+                var response = _rejectionHandler(notification, state);
+                return response.Events ?? new EventBook();
+            }
+
+            // No handler - delegate to framework by returning empty events with revocation
+            return new EventBook();
+        }
+    }
+
+    [Fact]
+    public void AggregateRouter_WithRejectionHandler_ReturnsEvents()
+    {
+        var handler = new RejectionTestHandler(
             (notification, state) =>
             {
                 return new RejectionHandlerResponse
@@ -124,6 +162,9 @@ public class RejectionHandlerResponseTests
             }
         );
 
+        var router = new AggregateRouter<TestState, RejectionTestHandler>(
+            "test", "test", handler);
+
         var notification = MakeNotification("inventory", "ReserveStock", "out of stock");
         var notificationAny = Any.Pack(notification);
 
@@ -139,16 +180,26 @@ public class RejectionHandlerResponseTests
     }
 
     [Fact]
-    public void CommandRouter_OnRejected_ReturnsNotification()
+    public void AggregateRouter_WithRejectionHandler_HandlerReceivesNotification()
     {
-        var router = new CommandRouter<TestState>("test", _ => new TestState()).OnRejected(
-            "payment",
-            "Charge",
+        Notification? receivedNotification = null;
+
+        var handler = new RejectionTestHandler(
             (notification, state) =>
             {
-                return new RejectionHandlerResponse { Notification = notification };
+                receivedNotification = notification;
+                return new RejectionHandlerResponse
+                {
+                    Events = new EventBook
+                    {
+                        Pages = { new EventPage { Event = Any.Pack(new Empty()) } },
+                    },
+                };
             }
         );
+
+        var router = new AggregateRouter<TestState, RejectionTestHandler>(
+            "test", "test", handler);
 
         var notification = MakeNotification("payment", "Charge", "declined");
         var notificationAny = Any.Pack(notification);
@@ -158,16 +209,20 @@ public class RejectionHandlerResponseTests
             Command = new CommandBook { Pages = { new CommandPage { Command = notificationAny } } },
         };
 
-        var response = router.Dispatch(cmd);
+        router.Dispatch(cmd);
 
-        response.Notification.Should().NotBeNull();
+        receivedNotification.Should().NotBeNull();
+        receivedNotification!.Payload.TypeUrl.Should().Contain("RejectionNotification");
     }
 
     [Fact]
-    public void CommandRouter_OnRejected_NoHandler_DelegatesToFramework()
+    public void AggregateRouter_NoHandler_ReturnsEmptyEvents()
     {
-        var router = new CommandRouter<TestState>("test", _ => new TestState());
-        // No rejection handler registered
+        // Handler without rejection handling
+        var handler = new RejectionTestHandler(null);
+
+        var router = new AggregateRouter<TestState, RejectionTestHandler>(
+            "test", "test", handler);
 
         var notification = MakeNotification("unknown", "UnknownCommand", "reason");
         var notificationAny = Any.Pack(notification);
@@ -179,9 +234,9 @@ public class RejectionHandlerResponseTests
 
         var response = router.Dispatch(cmd);
 
-        // Should delegate to framework (revocation response with EmitSystemRevocation = true)
-        response.Revocation.Should().NotBeNull();
-        response.Revocation!.EmitSystemRevocation.Should().BeTrue();
+        // Should return empty events when no rejection handler is registered
+        response.Events.Should().NotBeNull();
+        response.Events!.Pages.Count.Should().Be(0);
     }
 
     // =========================================================================

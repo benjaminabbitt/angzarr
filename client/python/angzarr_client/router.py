@@ -1,12 +1,29 @@
-"""DRY dispatch via router types.
+"""Unified Router module for aggregates, sagas, process managers, and projectors.
 
-CommandRouter replaces manual if/elif chains in aggregate handlers.
-EventRouter replaces manual if/elif chains in saga event handlers.
-Both auto-derive descriptors from their .on() registrations.
+This module provides:
 
-The @command_handler decorator simplifies handler functions by:
-- Auto-unpacking commands from Any to concrete proto types
-- Auto-packing returned events into EventBook
+1. Protocol-based Routers (wrap handler objects):
+   - AggregateRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter
+   - Wrap handler protocol implementations
+   - Provide subscriptions() and dispatch() methods
+
+2. Decorators for OO-style components:
+   - @handles, @applies (for Aggregate base class - defined in aggregate.py)
+   - @reacts_to, @prepares (for Saga/ProcessManager base classes)
+   - @projects (for Projector base class)
+   - @rejected (for rejection/compensation handlers)
+
+Usage (Protocol-based):
+    router = AggregateRouter("player", "player", PlayerHandler())
+    router = SagaRouter("saga-order-fulfillment", "order", OrderHandler())
+
+Usage (OO with decorators):
+    class TableHandSaga(Saga):
+        @prepares(HandStarted)
+        def prepare_hand(self, event): ...
+
+        @reacts_to(HandStarted)
+        def handle_started(self, event, destinations): ...
 """
 
 from __future__ import annotations
@@ -14,27 +31,111 @@ from __future__ import annotations
 import inspect
 import typing
 from functools import wraps
-from typing import Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Callable, Generic, TypeVar
+from typing import Any as TypingAny
 
 from google.protobuf import any_pb2
 
+from .errors import CommandRejectedError
+from .handler_protocols import (
+    AggregateDomainHandler,
+    ProcessManagerDomainHandler,
+    ProcessManagerResponse,
+    ProjectorDomainHandler,
+    SagaDomainHandler,
+)
 from .helpers import TYPE_URL_PREFIX
 from .proto.angzarr import aggregate_pb2 as aggregate
+from .proto.angzarr import process_manager_pb2 as pm
+from .proto.angzarr import projector_pb2 as projector
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
+
+if TYPE_CHECKING:
+    from .state_builder import StateRouter
+
+S = TypeVar("S")
 
 # Type URL for Notification messages
 NOTIFICATION_TYPE_URL = TYPE_URL_PREFIX + "angzarr.Notification"
 
-S = TypeVar("S")
-
-# Error message constants.
+# Error message constants
 ERRMSG_UNKNOWN_COMMAND = "Unknown command type"
 ERRMSG_NO_COMMAND_PAGES = "No command pages"
 
 
 # ============================================================================
-# @command_handler decorator for function-based handlers
+# Helper Functions
+# ============================================================================
+
+
+def next_sequence(events: types.EventBook | None) -> int:
+    """Compute the next event sequence number from prior events."""
+    if events is None or not events.pages:
+        return 0
+    return len(events.pages)
+
+
+# Alias for internal use
+_next_sequence = next_sequence
+
+
+def _pack_any(event) -> any_pb2.Any:
+    """Pack a protobuf message into Any."""
+    event_any = any_pb2.Any()
+    event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+    return event_any
+
+
+def _pack_events(result, start_seq: int = 0) -> types.EventBook:
+    """Pack event(s) into an EventBook.
+
+    Args:
+        result: Single event, tuple of events, or None.
+        start_seq: Starting sequence number for events.
+
+    Returns:
+        EventBook containing packed events with proper sequences.
+    """
+    pages = []
+
+    if result is None:
+        pass
+    elif isinstance(result, tuple):
+        for i, event in enumerate(result):
+            pages.append(
+                types.EventPage(sequence=start_seq + i, event=_pack_any(event))
+            )
+    else:
+        pages.append(types.EventPage(sequence=start_seq, event=_pack_any(result)))
+
+    return types.EventBook(pages=pages)
+
+
+def _extract_rejection_key(
+    rejection: types.RejectionNotification,
+) -> tuple[str, str]:
+    """Extract domain and command type name from a RejectionNotification."""
+    domain = ""
+    command_type_name = ""
+
+    if rejection.HasField("rejected_command") and rejection.rejected_command.pages:
+        rejected_cmd = rejection.rejected_command
+        if rejected_cmd.HasField("cover"):
+            domain = rejected_cmd.cover.domain
+        if rejected_cmd.pages[0].HasField("command"):
+            cmd_type_url = rejected_cmd.pages[0].command.type_url
+            # Extract type name after the prefix
+            if cmd_type_url.startswith(TYPE_URL_PREFIX):
+                command_type_name = cmd_type_url[len(TYPE_URL_PREFIX) :]
+            else:
+                command_type_name = cmd_type_url
+
+    return domain, command_type_name
+
+
+# ============================================================================
+# Decorator Validation
 # ============================================================================
 
 
@@ -46,7 +147,7 @@ def validate_command_handler(
 ) -> str:
     """Validate a command handler's signature.
 
-    Shared validation logic for @handles and @command_handler decorators.
+    Shared validation logic for @handles and other decorators.
 
     Args:
         func: The function/method being decorated.
@@ -80,98 +181,6 @@ def validate_command_handler(
         )
 
     return cmd_param
-
-
-def command_handler(command_type: type):
-    """Decorator for function-based command handlers.
-
-    Simplifies handler functions by:
-    - Auto-unpacking the command from Any to the concrete proto type
-    - Auto-packing returned event(s) into EventBook
-
-    The decorated function receives the unpacked command instead of Any,
-    and can return a single event or tuple of events instead of EventBook.
-
-    Original signature (manual):
-        handler(cb: CommandBook, cmd_any: Any, state: S, seq: int) -> EventBook
-
-    Decorated signature (simplified):
-        handler(cmd: ConcreteCommand, state: S, seq: int) -> Event | tuple[Event, ...]
-
-    Example:
-        @command_handler(cart_pb2.CreateCart)
-        def handle_create(cmd: cart_pb2.CreateCart, state: CartState, seq: int):
-            return cart_pb2.CartCreated(cart_id=cmd.cart_id)
-
-        # Register with router:
-        router = CommandRouter("cart", rebuild).on("CreateCart", handle_create)
-
-    Args:
-        command_type: The protobuf command class to unpack to.
-
-    Raises:
-        TypeError: If type hint is missing or doesn't match command_type.
-    """
-
-    def decorator(func: Callable) -> Callable:
-        validate_command_handler(
-            func, command_type, cmd_param_index=0, decorator_name="command_handler"
-        )
-
-        @wraps(func)
-        def wrapper(
-            command_book: types.CommandBook,
-            command_any: any_pb2.Any,
-            state,
-            seq: int,
-        ) -> types.EventBook:
-            # Unpack command
-            cmd = command_type()
-            command_any.Unpack(cmd)
-
-            # Call handler with unpacked command
-            result = func(cmd, state, seq)
-
-            # Pack result into EventBook with proper sequences
-            return _pack_events(result, seq)
-
-        # Preserve command type for introspection
-        wrapper._command_type = command_type
-        return wrapper
-
-    return decorator
-
-
-def _pack_events(result, start_seq: int = 0) -> types.EventBook:
-    """Pack event(s) into an EventBook.
-
-    Args:
-        result: Single event, tuple of events, or None.
-        start_seq: Starting sequence number for events.
-
-    Returns:
-        EventBook containing packed events with proper sequences.
-    """
-    pages = []
-
-    if result is None:
-        pass
-    elif isinstance(result, tuple):
-        for i, event in enumerate(result):
-            pages.append(
-                types.EventPage(sequence=start_seq + i, event=_pack_any(event))
-            )
-    else:
-        pages.append(types.EventPage(sequence=start_seq, event=_pack_any(result)))
-
-    return types.EventBook(pages=pages)
-
-
-def _pack_any(event) -> any_pb2.Any:
-    """Pack a protobuf message into Any."""
-    event_any = any_pb2.Any()
-    event_any.Pack(event, type_url_prefix="type.googleapis.com/")
-    return event_any
 
 
 # ============================================================================
@@ -368,260 +377,105 @@ def projects(event_type: type):
 
 
 # ============================================================================
-# @event_handler decorator for function-based event handlers
+# Protocol-based Routers (AggregateRouter, SagaRouter, etc.)
 # ============================================================================
 
 
-def event_handler(event_type: type):
-    """Decorator for function-based event handlers (sagas, projectors).
+class AggregateRouter(Generic[S]):
+    """Router for aggregate components (commands -> events, single domain).
 
-    Simplifies handler functions by:
-    - Auto-unpacking the event from Any to the concrete proto type
-    - Storing event type for router reflection
+    Wraps an AggregateDomainHandler and provides command dispatch with
+    automatic state reconstruction and type-URL routing.
 
-    Original signature (manual):
-        handler(event_any: Any, root: bytes, correlation_id: str) -> Result
-
-    Decorated signature (simplified):
-        handler(event: ConcreteEvent, root: bytes, correlation_id: str) -> Result
+    Domain is set at construction time - no .domain() method exists,
+    enforcing single-domain constraint.
 
     Example:
-        @event_handler(OrderCompleted)
-        def handle_completed(event: OrderCompleted, root: bytes, corr_id: str):
-            return [CommandBook(...)]
+        class PlayerHandler(AggregateDomainHandler[PlayerState]):
+            def command_types(self) -> list[str]:
+                return ["RegisterPlayer", "DepositFunds"]
 
-        # Register with EventRouter:
-        router = EventRouter("saga", "order").on(handle_completed)
+            def state_router(self) -> StateRouter[PlayerState]:
+                return self._state_router
 
-    Args:
-        event_type: The protobuf event class to unpack to.
+            def handle(self, cmd_book, payload, state, seq) -> EventBook:
+                # Dispatch by type_url...
 
-    Raises:
-        TypeError: If type hint is missing or doesn't match event_type.
-    """
-
-    def decorator(func: Callable) -> Callable:
-        validate_command_handler(
-            func, event_type, cmd_param_index=0, decorator_name="event_handler"
-        )
-
-        @wraps(func)
-        def wrapper(
-            event_any: any_pb2.Any,
-            root,
-            correlation_id: str,
-            destinations: list = None,
-        ):
-            # Unpack event
-            event = event_type()
-            event_any.Unpack(event)
-
-            # Call handler with unpacked event
-            return func(event, root, correlation_id, destinations or [])
-
-        wrapper._event_type = event_type
-        return wrapper
-
-    return decorator
-
-
-# ============================================================================
-# CommandRouter — aggregate dispatch
-# ============================================================================
-
-
-class CommandRouter(Generic[S]):
-    """DRY command dispatcher for aggregates.
-
-    Matches command type_url suffixes and dispatches to registered handlers.
-    Auto-derives descriptors from registrations.
-
-    Takes a ContextualCommand, rebuilds state, matches the command's type_url
-    suffix, dispatches to the registered handler, and wraps the result in
-    a BusinessResponse.
-
-    The handler signature:
-        handler(cb: CommandBook, command_any: Any, state: S, seq: int) -> EventBook
-
-    The rejection handler signature:
-        handler(notification: Notification, state: S) -> EventBook
-
-    Two construction patterns:
-
-    1. Traditional (with rebuild function)::
-
-        router = (CommandRouter("cart", rebuild_state)
-            .on("CreateCart", handle_create_cart)
-            .on("AddItem", handle_add_item))
-
-    2. Fluent (with StateRouter composition)::
-
-        router = (CommandRouter("cart")
-            .with_state(
-                StateRouter(CartState)
-                .on(CartCreated, apply_created)
-                .on(ItemAdded, apply_item_added)
-            )
-            .on("CreateCart", handle_create_cart)
-            .on("AddItem", handle_add_item))
-
-    Example::
-
-        # In Handle():
-        response = router.dispatch(request)
-
-        # For topology:
-        desc = router.descriptor()
+        router = AggregateRouter("player", "player", PlayerHandler())
+        response = router.dispatch(contextual_command)
     """
 
     def __init__(
-        self, domain: str, rebuild: Callable[[types.EventBook | None], S] = None
+        self,
+        name: str,
+        domain: str,
+        handler: AggregateDomainHandler[S],
     ) -> None:
-        self.domain = domain
-        self._rebuild = rebuild
-        self._state_router = None  # StateRouter for fluent composition
-        self._handlers: list[tuple[str, Callable]] = []
-        self._rejection_handlers: dict[
-            str, Callable
-        ] = {}  # "domain/command" -> handler
-
-    def with_state(self, state_router) -> "CommandRouter[S]":
-        """Compose a StateRouter for state reconstruction.
-
-        Alternative to passing rebuild function to constructor.
-        The StateRouter handles event-to-state application with auto-unpacking.
+        """Create a new aggregate router.
 
         Args:
-            state_router: StateRouter instance configured with event handlers.
+            name: Router name (typically same as domain for aggregates).
+            domain: The domain this aggregate handles.
+            handler: The handler implementing AggregateDomainHandler protocol.
+        """
+        self._name = name
+        self._domain = domain
+        self._handler = handler
+
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._name
+
+    @property
+    def domain(self) -> str:
+        """Get the domain."""
+        return self._domain
+
+    def command_types(self) -> list[str]:
+        """Get command types from the handler."""
+        return self._handler.command_types()
+
+    def subscriptions(self) -> list[tuple[str, list[str]]]:
+        """Get subscriptions for this aggregate.
 
         Returns:
-            Self for chaining.
-
-        Example::
-
-            router = (CommandRouter("player")
-                .with_state(
-                    StateRouter(PlayerState)
-                    .on(PlayerRegistered, apply_registered)
-                    .on(FundsDeposited, apply_deposited)
-                )
-                .on(RegisterPlayer, handle_register))
+            List of (domain, command_types) tuples.
         """
-        self._state_router = state_router
-        return self
+        return [(self._domain, self.command_types())]
 
-    def _get_state(self, event_book: types.EventBook | None) -> S:
-        """Rebuild state using configured method.
-
-        Uses StateRouter if composed, otherwise falls back to rebuild function.
-        """
-        if self._state_router is not None:
-            return self._state_router.with_event_book(event_book)
-        elif self._rebuild is not None:
-            return self._rebuild(event_book)
-        else:
-            raise ValueError(
-                "CommandRouter requires either rebuild function in constructor "
-                "or StateRouter via .with_state()"
-            )
-
-    def on(self, type_or_handler, handler: Callable = None) -> CommandRouter[S]:
-        """Register a handler for a command type.
-
-        Three calling patterns:
-            router.on(CreateCart, handle_create)  # Proto class + handler (recommended)
-            router.on(handle_create)              # Derive from @command_handler decorator
-            router.on("examples.CreateCart", handle_create)  # Explicit string (legacy)
-
-        When passing only a handler, it must be decorated with @command_handler
-        so the command type can be derived via reflection.
-        """
-        if handler is None:
-            # Single argument: derive type name from @command_handler decorator
-            handler = type_or_handler
-            if not hasattr(handler, "_command_type"):
-                raise TypeError(
-                    f"{handler.__name__}: must be decorated with @command_handler "
-                    "to use single-argument .on()"
-                )
-            full_name = handler._command_type.DESCRIPTOR.full_name
-        elif hasattr(type_or_handler, "DESCRIPTOR"):
-            # Proto class passed - extract full_name via reflection
-            full_name = type_or_handler.DESCRIPTOR.full_name
-        else:
-            # String passed (legacy - still supported but not recommended)
-            full_name = type_or_handler
-
-        self._handlers.append((full_name, handler))
-        return self
-
-    def on_rejected(
-        self, domain: str, command: str, handler: Callable
-    ) -> CommandRouter[S]:
-        """Register a handler for rejected commands.
-
-        Called when a saga/PM command targeting the specified domain and command
-        type is rejected by the target aggregate.
-
-        The handler signature:
-            handler(notification: Notification, state: S) -> EventBook
-
-        The notification.payload contains a RejectionNotification with:
-        - rejected_command: The command that was rejected
-        - rejection_reason: Why it was rejected
-        - issuer_name: Saga/PM that issued the command
-        - issuer_type: "saga" or "process_manager"
-        - source_aggregate: Cover of triggering aggregate
-        - source_event_sequence: Event that triggered the saga/PM
-
-        Example:
-            def handle_payment_rejected(notification, state):
-                rejection = RejectionNotification()
-                notification.payload.Unpack(rejection)
-                return pack_events(FundsReleased(
-                    amount=state.reserved_amount,
-                    reason=rejection.rejection_reason,
-                ))
-
-            router.on_rejected("payment", "ProcessPayment", handle_payment_rejected)
-
-        Args:
-            domain: The target domain of the rejected command.
-            command: The type name of the rejected command.
-            handler: Function to handle the rejection.
-
-        Returns:
-            Self for chaining.
-        """
-        key = f"{domain}/{command}"
-        self._rejection_handlers[key] = handler
-        return self
+    def rebuild_state(self, events: types.EventBook | None) -> S:
+        """Rebuild state from events using the handler's state router."""
+        return self._handler.state_router().with_event_book(events)
 
     def dispatch(self, cmd: types.ContextualCommand) -> aggregate.BusinessResponse:
-        """Dispatch a ContextualCommand to the matching handler.
+        """Dispatch a ContextualCommand to the handler.
 
-        Extracts command + prior events, rebuilds state, matches type_url
-        exactly, and calls the registered handler. Detects Notification
-        and routes to rejection handlers.
+        Extracts command + prior events, rebuilds state, matches type_url,
+        and calls the handler. Detects Notification and routes to rejection handlers.
+
+        Args:
+            cmd: The contextual command containing command book and prior events.
 
         Returns:
             BusinessResponse wrapping the handler's EventBook or RevocationResponse.
 
         Raises:
-            ValueError: If no command pages or no handler matches.
+            ValueError: If no command pages.
+            CommandRejectedError: If handler rejects the command.
         """
         command_book = cmd.command
         prior_events = cmd.events if cmd.HasField("events") else None
 
-        state = self._get_state(prior_events)
-        seq = next_sequence(prior_events)
+        state = self.rebuild_state(prior_events)
+        seq = _next_sequence(prior_events)
 
         if not command_book.pages:
-            raise ValueError(ERRMSG_NO_COMMAND_PAGES)
+            raise ValueError("No command pages")
 
         command_any = command_book.pages[0].command
         if not command_any.type_url:
-            raise ValueError(ERRMSG_NO_COMMAND_PAGES)
+            raise ValueError("No command pages")
 
         type_url = command_any.type_url
 
@@ -631,451 +485,495 @@ class CommandRouter(Generic[S]):
             command_any.Unpack(notification)
             return self._dispatch_rejection(notification, state)
 
-        # Normal command dispatch
-        for full_name, handler in self._handlers:
-            if type_url == TYPE_URL_PREFIX + full_name:
-                events = handler(command_book, command_any, state, seq)
-                return aggregate.BusinessResponse(events=events)
+        # Validate command type
+        type_suffix = type_url.rsplit(".", 1)[-1] if type_url else ""
+        command_types = self._handler.command_types()
+        if type_suffix not in command_types:
+            raise ValueError(ERRMSG_UNKNOWN_COMMAND.format(type_suffix))
 
-        raise ValueError(f"{ERRMSG_UNKNOWN_COMMAND}: {type_url}")
+        # Execute handler
+        events = self._handler.handle(command_book, command_any, state, seq)
+        return aggregate.BusinessResponse(events=events)
 
     def _dispatch_rejection(
-        self, notification: types.Notification, state: S
+        self,
+        notification: types.Notification,
+        state: S,
     ) -> aggregate.BusinessResponse:
-        """Dispatch a rejection Notification to the matching handler.
-
-        Args:
-            notification: The notification containing RejectionNotification payload.
-            state: Current aggregate state.
-
-        Returns:
-            BusinessResponse with events or RevocationResponse.
-        """
+        """Dispatch a rejection Notification to the handler's on_rejected."""
         # Unpack rejection details from notification payload
         rejection = types.RejectionNotification()
         if notification.HasField("payload"):
             notification.payload.Unpack(rejection)
 
-        # Extract domain and command full type name from rejected_command
-        domain = ""
-        command_type_name = ""
+        domain, command_type_name = _extract_rejection_key(rejection)
 
-        if rejection.HasField("rejected_command") and rejection.rejected_command.pages:
-            rejected_cmd = rejection.rejected_command
-            if rejected_cmd.HasField("cover"):
-                domain = rejected_cmd.cover.domain
-            if rejected_cmd.pages[0].HasField("command"):
-                cmd_type_url = rejected_cmd.pages[0].command.type_url
-                # Extract full type name after the prefix
-                if cmd_type_url.startswith(TYPE_URL_PREFIX):
-                    command_type_name = cmd_type_url[len(TYPE_URL_PREFIX) :]
-                else:
-                    command_type_name = cmd_type_url
-
-        # Dispatch to rejection handler if found (use exact type matching)
-        for key, handler in self._rejection_handlers.items():
-            expected_domain, expected_command = key.split("/", 1)
-            if domain == expected_domain and command_type_name == expected_command:
-                events = handler(notification, state)
-                return aggregate.BusinessResponse(events=events)
-
-        # Default: delegate to framework
-        return aggregate.BusinessResponse(
-            revocation=aggregate.RevocationResponse(
-                emit_system_revocation=True,
-                reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_type_name}",
-            )
+        response = self._handler.on_rejected(
+            notification, state, domain, command_type_name
         )
 
-
-# ============================================================================
-# Helpers
-# ============================================================================
-
-
-def next_sequence(events: types.EventBook | None) -> int:
-    """Compute the next event sequence number from prior events."""
-    if events is None or not events.pages:
-        return 0
-    return len(events.pages)
-
-
-# ============================================================================
-# EventRouter — unified event dispatch for sagas, PMs, and projectors
-# ============================================================================
+        if response.events is not None:
+            return aggregate.BusinessResponse(events=response.events)
+        elif response.notification is not None:
+            return aggregate.BusinessResponse(notification=response.notification)
+        else:
+            return aggregate.BusinessResponse(
+                revocation=aggregate.RevocationResponse(
+                    emit_system_revocation=True,
+                    reason=f"Handler returned empty response for {domain}/{command_type_name}",
+                )
+            )
 
 
-class EventRouter:
-    """Unified event dispatcher for sagas, process managers, and projectors.
+class SagaRouter:
+    """Router for saga components (events -> commands, single domain, stateless).
 
-    Uses fluent `.domain().on()` pattern to register handlers with domain context.
-    Subscriptions are auto-derived from registrations.
+    Wraps a SagaDomainHandler and provides event dispatch with two-phase
+    protocol support (prepare_destinations + dispatch).
 
-    Two-phase protocol support:
-        1. prepare_destinations(source) -> list of Covers to fetch
-        2. dispatch(source, destinations) -> list of CommandBooks
+    Domain is set at construction time - no .domain() method exists,
+    enforcing single-domain constraint.
 
-    The handler signature:
-        handler(event: Any, root: UUID | None, correlation_id: str, destinations: list[EventBook]) -> list[CommandBook]
+    Example:
+        class OrderSagaHandler(SagaDomainHandler):
+            def event_types(self) -> list[str]:
+                return ["OrderCompleted"]
 
-    The prepare handler signature:
-        prepare_handler(event: Any, root: UUID | None) -> list[Cover]
+            def prepare(self, source, event) -> list[Cover]:
+                return [Cover(domain="fulfillment", root=...)]
 
-    Example (Saga - single domain)::
+            def execute(self, source, event, destinations) -> list[CommandBook]:
+                return [new_command_book(...)]
 
-        router = (EventRouter("saga-table-hand")
-            .domain("table")
-                .on("HandStarted", handle_started))
-
-    Example (Process Manager - multi-domain)::
-
-        router = (EventRouter("pmg-order-flow")
-            .domain("order")
-                .on("OrderCreated", handle_created)
-            .domain("inventory")
-                .on("StockReserved", handle_reserved))
-
-    Example (Projector - multi-domain)::
-
-        router = (EventRouter("prj-output")
-            .domain("player")
-                .on("PlayerRegistered", handle_registered)
-            .domain("hand")
-                .on("CardsDealt", handle_dealt))
-
-    Usage::
-
-        # Get auto-derived subscriptions
-        subs = router.subscriptions()  # [("player", ["PlayerRegistered", ...]), ...]
-
-        # In saga Execute:
-        commands = router.dispatch(source_event_book, destinations)
+        router = SagaRouter("saga-order-fulfillment", "order", OrderSagaHandler())
+        destinations = router.prepare_destinations(source_events)
+        response = router.dispatch(source_events, destinations)
     """
 
-    def __init__(self, name: str, input_domain: str | None = None) -> None:
-        """Create a new EventRouter.
+    def __init__(
+        self,
+        name: str,
+        input_domain: str,
+        handler: SagaDomainHandler,
+    ) -> None:
+        """Create a new saga router.
 
         Args:
-            name: Component name (e.g., "saga-order-fulfillment", "pmg-hand-flow")
-            input_domain: (Deprecated) Single input domain. Use .domain() instead.
+            name: Router name (e.g., "saga-order-fulfillment").
+            input_domain: The domain this saga subscribes to.
+            handler: The handler implementing SagaDomainHandler protocol.
         """
-        self.name = name
-        self._current_domain: str | None = None
-        # domain -> [(suffix, handler)]
-        self._handlers: dict[str, list[tuple[str, Callable]]] = {}
-        # domain -> {suffix: handler}
-        self._prepare_handlers: dict[str, dict[str, Callable]] = {}
+        self._name = name
+        self._input_domain = input_domain
+        self._handler = handler
 
-        # Backwards compatibility: if input_domain provided, set it as current context
-        if input_domain is not None:
-            self.domain(input_domain)
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._name
 
-    def domain(self, name: str) -> "EventRouter":
-        """Set the current domain context for subsequent .on() calls.
+    @property
+    def input_domain(self) -> str:
+        """Get the input domain."""
+        return self._input_domain
+
+    def event_types(self) -> list[str]:
+        """Get event types from the handler."""
+        return self._handler.event_types()
+
+    def subscriptions(self) -> list[tuple[str, list[str]]]:
+        """Get subscriptions for this saga.
+
+        Returns:
+            List of (domain, event_types) tuples.
+        """
+        return [(self._input_domain, self.event_types())]
+
+    def prepare_destinations(
+        self,
+        source: types.EventBook | None,
+    ) -> list[types.Cover]:
+        """Get destinations needed for the given source events.
+
+        Calls the handler's prepare() method for the last event in the source.
 
         Args:
-            name: Domain name (e.g., "player", "order", "inventory")
+            source: Source EventBook containing triggering events.
+
+        Returns:
+            List of Covers identifying destination aggregates to fetch.
+        """
+        if source is None or not source.pages:
+            return []
+
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        return self._handler.prepare(source, event_page.event)
+
+    def dispatch(
+        self,
+        source: types.EventBook,
+        destinations: list[types.EventBook],
+    ) -> saga.SagaResponse:
+        """Dispatch an event to the saga handler.
+
+        Args:
+            source: Source EventBook containing triggering events.
+            destinations: EventBooks for destinations declared in prepare().
+
+        Returns:
+            SagaResponse containing commands to send.
+
+        Raises:
+            ValueError: If source has no events.
+        """
+        if not source.pages:
+            raise ValueError("Source event book has no events")
+
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            raise ValueError("Missing event payload")
+
+        # Check if event type matches handler's event_types
+        event_any = event_page.event
+        type_suffix = (
+            event_any.type_url.rsplit(".", 1)[-1] if event_any.type_url else ""
+        )
+        event_types = self._handler.event_types()
+        if type_suffix not in event_types:
+            # Event type doesn't match - return empty commands
+            return saga.SagaResponse(commands=[])
+
+        commands = self._handler.execute(source, event_any, destinations)
+
+        return saga.SagaResponse(commands=commands)
+
+
+class ProcessManagerRouter(Generic[S]):
+    """Router for process manager components (events -> commands + PM events, multi-domain).
+
+    Process managers correlate events across multiple domains and maintain
+    their own state. Domains are registered via constructor or fluent .domain() calls.
+
+    Example:
+        class OrderPmHandler(ProcessManagerDomainHandler[WorkflowState]):
+            def event_types(self) -> list[str]:
+                return ["OrderCreated"]
+
+            def state_router(self) -> StateRouter[WorkflowState]:
+                return self._state_router
+
+            def handle(self, trigger, event, state):
+                return pm.ProcessManagerHandleResponse(commands=[new_command_book(...)])
+
+        # Single-domain PM (simple constructor)
+        router = ProcessManagerRouter("pmg-order-flow", "order", handler)
+
+        # Multi-domain PM (with fluent .domain())
+        router = (ProcessManagerRouter("pmg-order-flow", "order-flow", rebuild_state)
+            .domain("order", OrderPmHandler())
+            .domain("inventory", InventoryPmHandler()))
+
+        response = router.dispatch(trigger, process_state)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        pm_domain: str,
+        handler_or_rebuild: (
+            ProcessManagerDomainHandler[S] | Callable[[types.EventBook], S]
+        ),
+    ) -> None:
+        """Create a new process manager router.
+
+        Two construction patterns:
+        1. Single-domain: ProcessManagerRouter(name, domain, handler)
+        2. Multi-domain: ProcessManagerRouter(name, pm_domain, rebuild_func).domain(...)
+
+        Args:
+            name: Router name (e.g., "pmg-order-flow").
+            pm_domain: The PM's own domain for state storage (single-domain) or input domain (multi-domain).
+            handler_or_rebuild: Either a ProcessManagerDomainHandler (single-domain)
+                or a function to rebuild PM state from events (multi-domain).
+        """
+        self._name = name
+        self._pm_domain = pm_domain
+        self._domains: dict[str, ProcessManagerDomainHandler[S]] = {}
+        self._rebuild: Callable[[types.EventBook], S] | None = None
+
+        # Check if it's a handler (has event_types method) or a rebuild function
+        if hasattr(handler_or_rebuild, "event_types"):
+            # Single-domain mode: handler passed directly
+            handler = handler_or_rebuild
+            self._domains[pm_domain] = handler
+            # Use handler's state_router for state reconstruction
+            self._rebuild = lambda events: handler.state_router().with_event_book(
+                events
+            )
+        else:
+            # Multi-domain mode: rebuild function passed
+            self._rebuild = handler_or_rebuild
+
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._name
+
+    @property
+    def pm_domain(self) -> str:
+        """Get the PM's own domain (for state storage)."""
+        return self._pm_domain
+
+    def domain(
+        self,
+        name: str,
+        handler: ProcessManagerDomainHandler[S],
+    ) -> "ProcessManagerRouter[S]":
+        """Register a domain handler.
+
+        Process managers can have multiple input domains.
+
+        Args:
+            name: Domain name (e.g., "order", "inventory").
+            handler: Handler implementing ProcessManagerDomainHandler protocol.
 
         Returns:
             Self for chaining.
         """
-        self._current_domain = name
-        if name not in self._handlers:
-            self._handlers[name] = []
-        if name not in self._prepare_handlers:
-            self._prepare_handlers[name] = {}
-        return self
-
-    def prepare(self, event_type, handler: Callable) -> "EventRouter":
-        """Register a prepare handler for an event type.
-
-        The prepare handler returns a list of Covers identifying destinations
-        that should be fetched before the main handler executes.
-
-        Args:
-            event_type: Proto class (e.g., HandStarted) or full type name string
-
-        Must be called after .domain() to set context.
-        """
-        if self._current_domain is None:
-            raise ValueError("Must call .domain() before .prepare()")
-
-        # Extract full_name from proto class or use string directly
-        if hasattr(event_type, "DESCRIPTOR"):
-            full_name = event_type.DESCRIPTOR.full_name
-        else:
-            full_name = event_type
-
-        self._prepare_handlers[self._current_domain][full_name] = handler
-        return self
-
-    def on(self, type_or_handler, handler: Callable = None) -> "EventRouter":
-        """Register a handler for an event type in current domain.
-
-        Must be called after .domain() to set context.
-
-        Three calling patterns:
-            router.domain("order").on(OrderCompleted, handle_completed)  # Proto class (recommended)
-            router.domain("order").on(handle_completed)  # Derive from @event_handler decorator
-            router.domain("order").on("examples.OrderCompleted", handle_completed)  # String (legacy)
-
-        When passing only a handler, it must be decorated with @event_handler
-        so the event type can be derived via reflection.
-        """
-        if self._current_domain is None:
-            raise ValueError("Must call .domain() before .on()")
-
-        if handler is None:
-            # Single argument: derive type name from @event_handler decorator
-            handler = type_or_handler
-            if not hasattr(handler, "_event_type"):
-                raise TypeError(
-                    f"{handler.__name__}: must be decorated with @event_handler "
-                    "to use single-argument .on()"
-                )
-            full_name = handler._event_type.DESCRIPTOR.full_name
-        elif hasattr(type_or_handler, "DESCRIPTOR"):
-            # Proto class passed - extract full_name via reflection
-            full_name = type_or_handler.DESCRIPTOR.full_name
-        else:
-            # String passed (legacy - still supported but not recommended)
-            full_name = type_or_handler
-
-        self._handlers[self._current_domain].append((full_name, handler))
+        self._domains[name] = handler
         return self
 
     def subscriptions(self) -> list[tuple[str, list[str]]]:
-        """Auto-derive subscriptions from registered handlers.
+        """Get subscriptions (domain + event types) for this PM.
 
         Returns:
             List of (domain, event_types) tuples.
         """
         return [
-            (domain, [suffix for suffix, _ in handlers])
-            for domain, handlers in self._handlers.items()
-            if handlers
+            (domain, handler.event_types()) for domain, handler in self._domains.items()
         ]
 
-    def prepare_destinations(self, book: types.EventBook) -> list[types.Cover]:
-        """Get destinations needed for the given source events.
+    def rebuild_state(self, events: types.EventBook) -> S:
+        """Rebuild PM state from events."""
+        return self._rebuild(events)
 
-        Iterates pages, matches type_url exactly against prepare handlers,
-        and collects destination Covers.
+    def prepare_destinations(
+        self,
+        trigger: types.EventBook | None,
+        process_state: types.EventBook | None,
+    ) -> list[types.Cover]:
+        """Get destinations needed for the given trigger and process state.
+
+        Args:
+            trigger: Trigger EventBook with source event.
+            process_state: Current PM state EventBook.
+
+        Returns:
+            List of Covers identifying destination aggregates to fetch.
         """
-        root = book.cover.root if book.HasField("cover") else None
-        source_domain = book.cover.domain if book.HasField("cover") else ""
+        if trigger is None or not trigger.pages:
+            return []
 
-        destinations: list[types.Cover] = []
-        for page in book.pages:
-            if not page.HasField("event"):
-                continue
-            # Check prepare handlers for source domain
-            if source_domain in self._prepare_handlers:
-                for full_name, handler in self._prepare_handlers[source_domain].items():
-                    if page.event.type_url == TYPE_URL_PREFIX + full_name:
-                        destinations.extend(handler(page.event, root))
-                        break
-        return destinations
+        trigger_domain = trigger.cover.domain if trigger.HasField("cover") else ""
+
+        event_page = trigger.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        # Rebuild state from process_state if available
+        if process_state is not None:
+            state = self.rebuild_state(process_state)
+        else:
+            # Get handler to determine state type and create default
+            handler = self._domains.get(trigger_domain)
+            if handler is None:
+                return []
+            # Try to create default state - handlers should work with None-ish state
+            # For now, rebuild from empty EventBook
+            state = self._rebuild(types.EventBook())
+
+        handler = self._domains.get(trigger_domain)
+        if handler is None:
+            return []
+
+        return handler.prepare(trigger, state, event_page.event)
 
     def dispatch(
         self,
-        book: types.EventBook,
+        trigger: types.EventBook,
+        process_state: types.EventBook,
         destinations: list[types.EventBook] | None = None,
-    ) -> list[types.CommandBook]:
-        """Dispatch all events in an EventBook to registered handlers.
-
-        Routes based on source domain and exact event type match.
+    ) -> pm.ProcessManagerHandleResponse:
+        """Dispatch a trigger event to the appropriate handler.
 
         Args:
-            book: Source EventBook containing events to process
-            destinations: Optional list of destination EventBooks for two-phase protocol
-        """
-        root = book.cover.root if book.HasField("cover") else None
-        correlation_id = book.cover.correlation_id if book.HasField("cover") else ""
-        source_domain = book.cover.domain if book.HasField("cover") else ""
-        dests = destinations or []
-
-        # Find handlers for this domain
-        domain_handlers = self._handlers.get(source_domain, [])
-        if not domain_handlers:
-            return []
-
-        commands: list[types.CommandBook] = []
-        for page in book.pages:
-            if not page.HasField("event"):
-                continue
-            for full_name, handler in domain_handlers:
-                if page.event.type_url == TYPE_URL_PREFIX + full_name:
-                    commands.extend(handler(page.event, root, correlation_id, dests))
-                    break
-        return commands
-
-    # -------------------------------------------------------------------------
-    # Backwards compatibility (deprecated)
-    # -------------------------------------------------------------------------
-
-    @property
-    def input_domain(self) -> str:
-        """Return first registered domain (for backwards compatibility).
-
-        Deprecated: Use .subscriptions() instead.
-        """
-        domains = list(self._handlers.keys())
-        return domains[0] if domains else ""
-
-
-# ============================================================================
-# @upcaster decorator for function-based upcasters
-# ============================================================================
-
-
-def upcaster(from_type: type, to_type: type):
-    """Decorator for function-based upcaster handlers.
-
-    Simplifies handler functions by:
-    - Auto-unpacking the old event from Any to concrete type
-    - Auto-packing the new event into Any
-    - Storing types for router reflection
-
-    Original signature (manual):
-        handler(event_any: Any) -> Any
-
-    Decorated signature (simplified):
-        handler(old: OldEventType) -> NewEventType
-
-    Example:
-        @upcaster(OrderCreatedV1, OrderCreated)
-        def upcast_created(old: OrderCreatedV1) -> OrderCreated:
-            return OrderCreated(order_id=old.order_id, total=0)
-
-        router = UpcasterRouter("order").on(upcast_created)
-
-    Args:
-        from_type: The old event version to transform from.
-        to_type: The new event version to transform to.
-
-    Raises:
-        TypeError: If type hints don't match decorator arguments.
-    """
-
-    def decorator(func: Callable) -> Callable:
-        validate_command_handler(
-            func, from_type, cmd_param_index=0, decorator_name="upcaster"
-        )
-
-        @wraps(func)
-        def wrapper(event_any: any_pb2.Any) -> any_pb2.Any:
-            # Unpack old event
-            old_event = from_type()
-            event_any.Unpack(old_event)
-
-            # Transform
-            new_event = func(old_event)
-
-            # Pack new event
-            new_any = any_pb2.Any()
-            new_any.Pack(new_event)
-            return new_any
-
-        wrapper._from_type = from_type
-        wrapper._to_type = to_type
-        return wrapper
-
-    return decorator
-
-
-# ============================================================================
-# UpcasterRouter — event version transformation
-# ============================================================================
-
-
-class UpcasterRouter:
-    """DRY event transformer for upcasters.
-
-    Matches old event type_url suffixes and transforms to new versions.
-    Events without registered transformations pass through unchanged.
-
-    Example::
-
-        router = (UpcasterRouter("order")
-            .on(upcast_created_v1)
-            .on(upcast_shipped_v1))
-
-        # Transform events:
-        new_events = router.upcast(old_events)
-
-        # For topology:
-        desc = router.descriptor()
-    """
-
-    def __init__(self, domain: str) -> None:
-        self.domain = domain
-        self._handlers: list[
-            tuple[str, Callable, type]
-        ] = []  # (suffix, handler, to_type)
-
-    def on(self, type_or_handler, handler: Callable = None) -> UpcasterRouter:
-        """Register a handler for an old event type.
-
-        Three calling patterns:
-            router.on(OrderCreatedV1, upcast_created)  # Proto class + handler (recommended)
-            router.on(upcast_created)                   # Derive from @upcaster decorator
-            router.on("examples.OrderCreatedV1", upcast_created)  # String (legacy)
-
-        When passing only a handler, it must be decorated with @upcaster
-        so the from_type can be derived via reflection.
-        """
-        if handler is None:
-            # Single argument: derive type name from @upcaster decorator
-            handler = type_or_handler
-            if not hasattr(handler, "_from_type"):
-                raise TypeError(
-                    f"{handler.__name__}: must be decorated with @upcaster "
-                    "to use single-argument .on()"
-                )
-            full_name = handler._from_type.DESCRIPTOR.full_name
-            to_type = handler._to_type
-        elif hasattr(type_or_handler, "DESCRIPTOR"):
-            # Proto class passed - extract full_name via reflection
-            full_name = type_or_handler.DESCRIPTOR.full_name
-            to_type = getattr(handler, "_to_type", None)
-        else:
-            # String passed (legacy - still supported but not recommended)
-            full_name = type_or_handler
-            to_type = getattr(handler, "_to_type", None)
-
-        self._handlers.append((full_name, handler, to_type))
-        return self
-
-    def upcast(self, events: list[types.EventPage]) -> list[types.EventPage]:
-        """Transform a list of events to current versions.
-
-        Args:
-            events: List of EventPages to transform.
+            trigger: Trigger EventBook with source event.
+            process_state: Current PM state EventBook.
+            destinations: EventBooks for destinations declared in prepare() (optional).
 
         Returns:
-            List of EventPages with transformed events.
+            HandleResponse with commands and process events.
+
+        Raises:
+            ValueError: If trigger has no events or no handler for domain.
         """
-        result = []
+        trigger_domain = trigger.cover.domain if trigger.HasField("cover") else ""
 
-        for page in events:
-            if not page.HasField("event"):
-                result.append(page)
-                continue
+        handler = self._domains.get(trigger_domain)
+        if handler is None:
+            raise ValueError(f"No handler for domain: {trigger_domain}")
 
-            type_url = page.event.type_url
-            transformed = False
+        if not trigger.pages:
+            raise ValueError("Trigger event book has no events")
 
-            for full_name, handler, _ in self._handlers:
-                if type_url == TYPE_URL_PREFIX + full_name:
-                    new_event = handler(page.event)
-                    new_page = types.EventPage(event=new_event, sequence=page.sequence)
-                    new_page.created_at.CopyFrom(page.created_at)
-                    result.append(new_page)
-                    transformed = True
-                    break
+        event_page = trigger.pages[-1]
+        if not event_page.HasField("event"):
+            raise ValueError("Missing event payload")
 
-            if not transformed:
-                result.append(page)
+        event_any = event_page.event
+        state = self.rebuild_state(process_state)
 
-        return result
+        # Check for Notification
+        if event_any.type_url.endswith("Notification"):
+            return self._dispatch_notification(handler, event_any, state)
+
+        response = handler.handle(trigger, state, event_any, destinations or [])
+
+        return pm.ProcessManagerHandleResponse(
+            commands=response.commands,
+            process_events=response.events,
+        )
+
+    def _dispatch_notification(
+        self,
+        handler: ProcessManagerDomainHandler[S],
+        event_any: any_pb2.Any,
+        state: S,
+    ) -> pm.ProcessManagerHandleResponse:
+        """Dispatch a Notification to the PM's rejection handler."""
+        notification = types.Notification()
+        event_any.Unpack(notification)
+
+        rejection = types.RejectionNotification()
+        if notification.HasField("payload"):
+            notification.payload.Unpack(rejection)
+
+        domain, cmd_suffix = _extract_rejection_key(rejection)
+
+        # Call handler's on_rejected if it has one
+        if hasattr(handler, "on_rejected"):
+            response = handler.on_rejected(notification, state, domain, cmd_suffix)
+            return pm.ProcessManagerHandleResponse(
+                commands=[],
+                process_events=response.events,
+            )
+
+        return pm.ProcessManagerHandleResponse()
+
+
+class ProjectorRouter:
+    """Router for projector components (events -> external output, single or multi-domain).
+
+    Projectors consume events from one or more domains and produce external output.
+    Single-domain projectors use the simple constructor; multi-domain projectors
+    register domains via fluent .domain() calls.
+
+    Example (single-domain):
+        class PlayerProjectorHandler(ProjectorDomainHandler):
+            def event_types(self) -> list[str]:
+                return ["PlayerRegistered", "FundsDeposited"]
+
+            def project(self, source, event) -> ProjectorResponse:
+                # Update read model
+                return ProjectorResponse(projections=[...])
+
+        router = ProjectorRouter("prj-player", "player", PlayerProjectorHandler())
+        response = router.dispatch(events)
+
+    Example (multi-domain):
+        router = (ProjectorRouter("prj-output")
+            .domain("player", PlayerProjectorHandler())
+            .domain("hand", HandProjectorHandler()))
+
+        response = router.dispatch(events)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        input_domain: str | None = None,
+        handler: ProjectorDomainHandler | None = None,
+    ) -> None:
+        """Create a new projector router.
+
+        Two construction patterns:
+        1. Single-domain: ProjectorRouter(name, domain, handler)
+        2. Multi-domain: ProjectorRouter(name).domain(...).domain(...)
+
+        Args:
+            name: Router name (e.g., "prj-output").
+            input_domain: Input domain (single-domain mode only).
+            handler: Handler implementing ProjectorDomainHandler (single-domain mode only).
+        """
+        self._name = name
+        self._domains: dict[str, ProjectorDomainHandler] = {}
+
+        if input_domain is not None and handler is not None:
+            self._domains[input_domain] = handler
+
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._name
+
+    def domain(
+        self,
+        name: str,
+        handler: ProjectorDomainHandler,
+    ) -> "ProjectorRouter":
+        """Register a domain handler.
+
+        Projectors can have multiple input domains.
+
+        Args:
+            name: Domain name (e.g., "player", "hand").
+            handler: Handler implementing ProjectorDomainHandler protocol.
+
+        Returns:
+            Self for chaining.
+        """
+        self._domains[name] = handler
+        return self
+
+    def subscriptions(self) -> list[tuple[str, list[str]]]:
+        """Get subscriptions (domain + event types) for this projector.
+
+        Returns:
+            List of (domain, event_types) tuples.
+        """
+        return [
+            (domain, handler.event_types()) for domain, handler in self._domains.items()
+        ]
+
+    def dispatch(self, events: types.EventBook) -> types.Projection:
+        """Dispatch events to the appropriate handler.
+
+        Args:
+            events: EventBook containing events to project.
+
+        Returns:
+            Projection result.
+
+        Raises:
+            ValueError: If no handler for domain.
+        """
+        domain = events.cover.domain if events.HasField("cover") else ""
+
+        handler = self._domains.get(domain)
+        if handler is None:
+            raise ValueError(f"No handler for domain: {domain}")
+
+        return handler.project(events)

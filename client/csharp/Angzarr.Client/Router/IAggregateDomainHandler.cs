@@ -1,4 +1,5 @@
 using Google.Protobuf.WellKnownTypes;
+using Angzarr.Client;
 
 namespace Angzarr.Client.Router;
 

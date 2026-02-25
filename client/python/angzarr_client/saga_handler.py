@@ -1,14 +1,14 @@
-"""SagaHandler: gRPC Saga servicer backed by an EventRouter or Saga class.
+"""SagaHandler: gRPC Saga servicer backed by a SagaRouter or Saga class.
 
 Two-phase protocol matching the Saga proto service:
   Prepare  → declare destination aggregates
   Execute  → produce commands given source + destination state
 
 Supports two patterns:
-1. EventRouter (functional approach): SagaHandler(router)
+1. SagaRouter (protocol approach): SagaHandler(router)
 2. Saga class (OO approach): SagaHandler(TableHandSaga)
 
-Simple sagas that only need EventRouter dispatch can omit WithPrepare/WithExecute.
+Simple sagas that only need SagaRouter dispatch can omit WithPrepare/WithExecute.
 Complex sagas override with custom callbacks.
 """
 
@@ -21,7 +21,7 @@ import grpc
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import saga_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .router import EventRouter
+from .router import SagaRouter
 from .saga import Saga
 from .server import run_server
 
@@ -35,17 +35,17 @@ ExecuteFunc = Callable[
 
 
 class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
-    """gRPC Saga servicer backed by an EventRouter or Saga class.
+    """gRPC Saga servicer backed by a SagaRouter or Saga class.
 
     Two patterns:
-        SagaHandler(router) - functional approach with EventRouter
+        SagaHandler(router) - protocol approach with SagaRouter
         SagaHandler(MySaga) - OO approach with Saga class
 
     Simple mode (default): Prepare returns empty, Execute dispatches through router/class.
     Custom mode: Override with with_prepare/with_execute for destination-aware sagas.
     """
 
-    def __init__(self, handler: Union[EventRouter, type[Saga]]) -> None:
+    def __init__(self, handler: Union[SagaRouter, type[Saga]]) -> None:
         self._prepare: PrepareFunc | None = None
         self._execute: ExecuteFunc | None = None
 
@@ -54,7 +54,7 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
             self._saga_class = handler
             self._router = None
         else:
-            # Functional pattern: EventRouter
+            # Protocol pattern: SagaRouter
             self._saga_class = None
             self._router = handler
 
@@ -84,7 +84,7 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
             destinations = self._saga_class.prepare_destinations(request.source)
             return saga.SagaPrepareResponse(destinations=destinations)
 
-        # Functional pattern: use EventRouter's prepare_destinations
+        # Protocol pattern: use SagaRouter's prepare_destinations
         if self._router is not None:
             destinations = self._router.prepare_destinations(request.source)
             return saga.SagaPrepareResponse(destinations=destinations)
@@ -105,7 +105,7 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
         source: types.EventBook,
         destinations: list[types.EventBook],
     ) -> list[types.CommandBook]:
-        """Dispatch through custom execute, Saga class, or EventRouter."""
+        """Dispatch through custom execute, Saga class, or SagaRouter."""
         # Custom execute takes precedence
         if self._execute is not None:
             return self._execute(source, destinations)
@@ -114,9 +114,10 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
         if self._saga_class is not None:
             return self._saga_class.execute(source, destinations)
 
-        # Functional pattern: use EventRouter's dispatch
+        # Protocol pattern: use SagaRouter's dispatch (returns SagaResponse)
         if self._router is not None:
-            return self._router.dispatch(source, destinations)
+            response = self._router.dispatch(source, destinations)
+            return list(response.commands)
 
         return []
 

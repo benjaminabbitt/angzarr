@@ -32,6 +32,13 @@ from .errors import (
     TransportError,
 )
 from .event_packing import new_event_book, new_event_book_multi, pack_event, pack_events
+from .handler_protocols import (
+    AggregateDomainHandler,
+    ProcessManagerDomainHandler,
+    ProcessManagerResponse,
+    ProjectorDomainHandler,
+    SagaDomainHandler,
+)
 from .helpers import (
     correlation_id,
     destination_map,
@@ -77,16 +84,14 @@ from .projector_handler import (
 from .router import (
     ERRMSG_NO_COMMAND_PAGES,
     ERRMSG_UNKNOWN_COMMAND,
-    CommandRouter,
-    EventRouter,
-    UpcasterRouter,
-    command_handler,
-    event_handler,
+    AggregateRouter,
+    ProcessManagerRouter,
+    ProjectorRouter,
+    SagaRouter,
     prepares,
     projects,
     reacts_to,
     rejected,
-    upcaster,
     validate_command_handler,
 )
 from .router import (
@@ -110,19 +115,6 @@ from .state_builder import (
 )
 from .upcaster import Upcaster, upcasts
 from .upcaster_handler import UpcasterHandleFunc, UpcasterHandler, run_upcaster_server
-from .unified_router import (
-    AggregateRouter,
-    ProcessManagerRouter,
-    ProjectorRouter,
-    SagaRouter,
-)
-from .handler_protocols import (
-    AggregateDomainHandler,
-    ProcessManagerDomainHandler,
-    ProcessManagerResponse,
-    ProjectorDomainHandler,
-    SagaDomainHandler,
-)
 from .validation import (
     require_exists,
     require_non_negative,
@@ -185,13 +177,9 @@ __all__ = [
     "CommandPageW",
     "CommandResponseW",
     # Router
-    "CommandRouter",
-    "EventRouter",
     "ERRMSG_UNKNOWN_COMMAND",
     "ERRMSG_NO_COMMAND_PAGES",
     "router_next_sequence",
-    "command_handler",
-    "event_handler",
     "prepares",
     "reacts_to",
     "projects",
@@ -255,8 +243,6 @@ __all__ = [
     "Projector",
     "Upcaster",
     "upcasts",
-    "upcaster",
-    "UpcasterRouter",
     "UpcasterHandler",
     "run_upcaster_server",
     "UpcasterHandleFunc",

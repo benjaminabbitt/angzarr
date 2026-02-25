@@ -202,6 +202,227 @@ func RunSagaServer(name, defaultPort string, router *EventRouter) {
 	})
 }
 
+// ============================================================================
+// Trait-Based Handlers
+// ============================================================================
+//
+// These handlers use the trait-based AggregateRouter and SagaRouter
+// which delegate to AggregateDomainHandler and SagaDomainHandler interfaces.
+
+// TraitAggregateHandler wraps an AggregateRouter for the gRPC Aggregate service.
+//
+// Maps domain errors to gRPC status codes:
+//   - CommandRejectedError -> FAILED_PRECONDITION
+//   - Other errors -> INVALID_ARGUMENT
+type TraitAggregateHandler[S any] struct {
+	pb.UnimplementedAggregateServiceServer
+	router      *AggregateRouter[S]
+	statePacker StatePacker[S]
+}
+
+// NewTraitAggregateHandler creates a new aggregate handler with the given router.
+func NewTraitAggregateHandler[S any](router *AggregateRouter[S]) *TraitAggregateHandler[S] {
+	return &TraitAggregateHandler[S]{router: router}
+}
+
+// WithReplay enables Replay RPC support by providing a state packer.
+func (h *TraitAggregateHandler[S]) WithReplay(packer StatePacker[S]) *TraitAggregateHandler[S] {
+	h.statePacker = packer
+	return h
+}
+
+// Handle processes a contextual command asynchronously.
+func (h *TraitAggregateHandler[S]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	return h.dispatch(req)
+}
+
+// HandleSync processes a contextual command synchronously.
+func (h *TraitAggregateHandler[S]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	return h.dispatch(req)
+}
+
+func (h *TraitAggregateHandler[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	resp, err := h.router.Dispatch(req)
+	if err != nil {
+		var rejected CommandRejectedError
+		if errors.As(err, &rejected) {
+			return nil, status.Error(codes.FailedPrecondition, rejected.Message)
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return resp, nil
+}
+
+// Replay computes state from events for MERGE_COMMUTATIVE conflict detection.
+func (h *TraitAggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayRequest) (*pb.ReplayResponse, error) {
+	if h.statePacker == nil {
+		return nil, status.Error(codes.Unimplemented,
+			"Replay not implemented. Call WithReplay() to enable for MERGE_COMMUTATIVE strategy.")
+	}
+
+	eventBook := &pb.EventBook{
+		Pages:    req.Events,
+		Snapshot: req.BaseSnapshot,
+	}
+
+	state := h.router.RebuildState(eventBook)
+	stateAny, err := h.statePacker(state)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &pb.ReplayResponse{State: stateAny}, nil
+}
+
+// RegisterTraitAggregateHandler returns a ServiceRegistrar that registers an aggregate handler.
+func RegisterTraitAggregateHandler[S any](router *AggregateRouter[S]) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterAggregateServiceServer(server, NewTraitAggregateHandler(router))
+	}
+}
+
+// RunTraitAggregateServer starts a gRPC server for an aggregate using trait-based router.
+func RunTraitAggregateServer[S any](domain, defaultPort string, router *AggregateRouter[S]) {
+	RunServer(RegisterTraitAggregateHandler(router), ServerOptions{
+		ServiceName:      "Aggregate",
+		Domain:           domain,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}
+
+// TraitSagaHandler wraps a SagaRouter for the gRPC Saga service.
+type TraitSagaHandler struct {
+	pb.UnimplementedSagaServiceServer
+	router *SagaRouter
+}
+
+// NewTraitSagaHandler creates a new saga handler with the given router.
+func NewTraitSagaHandler(router *SagaRouter) *TraitSagaHandler {
+	return &TraitSagaHandler{router: router}
+}
+
+// Prepare declares which destination aggregates the saga needs to read.
+func (h *TraitSagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest) (*pb.SagaPrepareResponse, error) {
+	destinations := h.router.PrepareDestinations(req.Source)
+	return &pb.SagaPrepareResponse{Destinations: destinations}, nil
+}
+
+// Execute processes events and returns commands for other aggregates.
+func (h *TraitSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
+	resp, err := h.router.Dispatch(req.Source, req.Destinations)
+	if err != nil {
+		var rejected CommandRejectedError
+		if errors.As(err, &rejected) {
+			return nil, status.Error(codes.FailedPrecondition, rejected.Message)
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return resp, nil
+}
+
+// RegisterTraitSagaHandler returns a ServiceRegistrar that registers a saga handler.
+func RegisterTraitSagaHandler(router *SagaRouter) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterSagaServiceServer(server, NewTraitSagaHandler(router))
+	}
+}
+
+// RunTraitSagaServer starts a gRPC server for a saga using trait-based router.
+func RunTraitSagaServer(name, defaultPort string, router *SagaRouter) {
+	RunServer(RegisterTraitSagaHandler(router), ServerOptions{
+		ServiceName:      "Saga",
+		Domain:           name,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}
+
+// TraitProcessManagerHandler wraps a ProcessManagerRouter for the gRPC ProcessManager service.
+type TraitProcessManagerHandler[S any] struct {
+	pb.UnimplementedProcessManagerServiceServer
+	router *ProcessManagerRouter[S]
+}
+
+// NewTraitProcessManagerHandler creates a new process manager handler.
+func NewTraitProcessManagerHandler[S any](router *ProcessManagerRouter[S]) *TraitProcessManagerHandler[S] {
+	return &TraitProcessManagerHandler[S]{router: router}
+}
+
+// Prepare declares which additional destinations are needed.
+func (h *TraitProcessManagerHandler[S]) Prepare(ctx context.Context, req *pb.ProcessManagerPrepareRequest) (*pb.ProcessManagerPrepareResponse, error) {
+	destinations := h.router.PrepareDestinations(req.Trigger, req.ProcessState)
+	return &pb.ProcessManagerPrepareResponse{Destinations: destinations}, nil
+}
+
+// Handle processes events and returns commands and process events.
+func (h *TraitProcessManagerHandler[S]) Handle(ctx context.Context, req *pb.ProcessManagerHandleRequest) (*pb.ProcessManagerHandleResponse, error) {
+	resp, err := h.router.Dispatch(req.Trigger, req.ProcessState, req.Destinations)
+	if err != nil {
+		var rejected CommandRejectedError
+		if errors.As(err, &rejected) {
+			return nil, status.Error(codes.FailedPrecondition, rejected.Message)
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return resp, nil
+}
+
+// RegisterTraitProcessManagerHandler returns a ServiceRegistrar that registers a process manager handler.
+func RegisterTraitProcessManagerHandler[S any](router *ProcessManagerRouter[S]) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterProcessManagerServiceServer(server, NewTraitProcessManagerHandler(router))
+	}
+}
+
+// RunTraitProcessManagerServer starts a gRPC server for a process manager using trait-based router.
+func RunTraitProcessManagerServer[S any](name, defaultPort string, router *ProcessManagerRouter[S]) {
+	RunServer(RegisterTraitProcessManagerHandler(router), ServerOptions{
+		ServiceName:      "ProcessManager",
+		Domain:           name,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}
+
+// TraitProjectorHandler wraps a ProjectorRouter for the gRPC Projector service.
+type TraitProjectorHandler struct {
+	pb.UnimplementedProjectorServiceServer
+	router *ProjectorRouter
+}
+
+// NewTraitProjectorHandler creates a new projector handler.
+func NewTraitProjectorHandler(router *ProjectorRouter) *TraitProjectorHandler {
+	return &TraitProjectorHandler{router: router}
+}
+
+// Handle processes an EventBook and returns a Projection.
+func (h *TraitProjectorHandler) Handle(ctx context.Context, req *pb.EventBook) (*pb.Projection, error) {
+	return h.router.Dispatch(req)
+}
+
+// HandleSpeculative processes events without side effects.
+func (h *TraitProjectorHandler) HandleSpeculative(ctx context.Context, req *pb.EventBook) (*pb.Projection, error) {
+	return h.Handle(ctx, req)
+}
+
+// RegisterTraitProjectorHandler returns a ServiceRegistrar that registers a projector handler.
+func RegisterTraitProjectorHandler(router *ProjectorRouter) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterProjectorServiceServer(server, NewTraitProjectorHandler(router))
+	}
+}
+
+// RunTraitProjectorServer starts a gRPC server for a projector using trait-based router.
+func RunTraitProjectorServer(name, defaultPort string, router *ProjectorRouter) {
+	RunServer(RegisterTraitProjectorHandler(router), ServerOptions{
+		ServiceName:      "Projector",
+		Domain:           name,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}
+
 // ProjectorHandleFunc processes an EventBook and returns a Projection.
 type ProjectorHandleFunc func(events *pb.EventBook) (*pb.Projection, error)
 
