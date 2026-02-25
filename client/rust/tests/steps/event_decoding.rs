@@ -1,7 +1,7 @@
 //! Event decoding step definitions.
 
 use angzarr_client::proto::{event_page, CommandResponse, Cover, EventBook, EventPage};
-use angzarr_client::{decode_event, events_from_response, type_url_matches};
+use angzarr_client::{decode_event, events_from_response, type_url_matches_exact};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use prost_types::Any;
@@ -355,7 +355,7 @@ async fn when_decode_with_suffix(world: &mut EventDecodingWorld, suffix: String)
 async fn when_match_against(world: &mut EventDecodingWorld, pattern: String) {
     if let Some(ref event) = world.current_event {
         if let Some(event_page::Payload::Event(any)) = &event.payload {
-            world.match_result = type_url_matches(&any.type_url, &pattern);
+            world.match_result = type_url_matches_exact(&any.type_url, &pattern);
         }
     }
 }

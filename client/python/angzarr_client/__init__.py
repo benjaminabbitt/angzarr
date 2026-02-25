@@ -110,6 +110,19 @@ from .state_builder import (
 )
 from .upcaster import Upcaster, upcasts
 from .upcaster_handler import UpcasterHandleFunc, UpcasterHandler, run_upcaster_server
+from .unified_router import (
+    AggregateRouter,
+    ProcessManagerRouter,
+    ProjectorRouter,
+    SagaRouter,
+)
+from .handler_protocols import (
+    AggregateDomainHandler,
+    ProcessManagerDomainHandler,
+    ProcessManagerResponse,
+    ProjectorDomainHandler,
+    SagaDomainHandler,
+)
 from .validation import (
     require_exists,
     require_non_negative,
@@ -254,4 +267,15 @@ __all__ = [
     "emit_compensation_events",
     "pm_delegate_to_framework",
     "pm_emit_compensation_events",
+    # Unified Router (handler-protocol pattern)
+    "AggregateRouter",
+    "SagaRouter",
+    "ProcessManagerRouter",
+    "ProjectorRouter",
+    # Handler Protocols
+    "AggregateDomainHandler",
+    "SagaDomainHandler",
+    "ProcessManagerDomainHandler",
+    "ProjectorDomainHandler",
+    "ProcessManagerResponse",
 ]

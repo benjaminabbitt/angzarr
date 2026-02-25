@@ -6,85 +6,115 @@
 use angzarr_client::proto::examples::{EndHand, HandComplete, PotResult};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
-    run_saga_server, CommandRejectedError, CommandResult, EventRouter, UnpackAny,
+    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaRouter, UnpackAny,
 };
 use prost::Message;
 use prost_types::Any;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Prepare handler: return the destination cover to fetch (table aggregate).
-fn prepare_hand_complete(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
-    if let Ok(event) = HandComplete::decode(event_any.value.as_slice()) {
-        vec![Cover {
-            domain: "table".to_string(),
-            root: Some(Uuid { value: event.table_root }),
-            ..Default::default()
-        }]
-    } else {
+/// Saga handler for Hand → Table domain translation.
+struct HandTableSagaHandler;
+
+impl SagaDomainHandler for HandTableSagaHandler {
+    fn event_types(&self) -> Vec<String> {
+        vec!["HandComplete".into()]
+    }
+
+    fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover> {
+        if event.type_url.ends_with("HandComplete") {
+            return Self::prepare_hand_complete(source, event);
+        }
         vec![]
+    }
+
+    fn execute(
+        &self,
+        source: &EventBook,
+        event: &Any,
+        destinations: &[EventBook],
+    ) -> CommandResult<Vec<CommandBook>> {
+        if event.type_url.ends_with("HandComplete") {
+            return Self::handle_hand_complete(source, event, destinations);
+        }
+        Ok(vec![])
     }
 }
 
-/// Execute handler: translate HandComplete → EndHand.
-fn handle_hand_complete(
-    source: &EventBook,
-    event_any: &Any,
-    destinations: &[EventBook],
-) -> CommandResult<Option<CommandBook>> {
-    let event: HandComplete = event_any
-        .unpack()
-        .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandComplete: {}", e)))?;
+impl HandTableSagaHandler {
+    /// Prepare handler: return the destination cover to fetch (table aggregate).
+    fn prepare_hand_complete(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
+        if let Ok(event) = HandComplete::decode(event_any.value.as_slice()) {
+            vec![Cover {
+                domain: "table".to_string(),
+                root: Some(Uuid { value: event.table_root }),
+                ..Default::default()
+            }]
+        } else {
+            vec![]
+        }
+    }
 
-    // Get the destination's next sequence
-    let dest_seq = destinations
-        .first()
-        .map(|eb| eb.next_sequence)
-        .unwrap_or(0);
+    /// Execute handler: translate HandComplete → EndHand.
+    fn handle_hand_complete(
+        source: &EventBook,
+        event_any: &Any,
+        destinations: &[EventBook],
+    ) -> CommandResult<Vec<CommandBook>> {
+        let event: HandComplete = event_any
+            .unpack()
+            .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandComplete: {}", e)))?;
 
-    // Get hand_root from source cover
-    let hand_root = source
-        .cover
-        .as_ref()
-        .and_then(|c| c.root.as_ref())
-        .map(|u| u.value.clone())
-        .unwrap_or_default();
+        // Get the destination's next sequence
+        let dest_seq = destinations
+            .first()
+            .map(|eb| eb.next_sequence)
+            .unwrap_or(0);
 
-    // Convert PotWinner to PotResult
-    let results: Vec<PotResult> = event
-        .winners
-        .iter()
-        .map(|winner| PotResult {
-            winner_root: winner.player_root.clone(),
-            amount: winner.amount,
-            pot_type: winner.pot_type.clone(),
-            winning_hand: winner.winning_hand.clone(),
-        })
-        .collect();
+        // Get hand_root from source cover
+        let hand_root = source
+            .cover
+            .as_ref()
+            .and_then(|c| c.root.as_ref())
+            .map(|u| u.value.clone())
+            .unwrap_or_default();
 
-    // Build EndHand command
-    let end_hand = EndHand {
-        hand_root,
-        results,
-    };
+        // Convert PotWinner to PotResult
+        let results: Vec<PotResult> = event
+            .winners
+            .iter()
+            .map(|winner| PotResult {
+                winner_root: winner.player_root.clone(),
+                amount: winner.amount,
+                pot_type: winner.pot_type.clone(),
+                winning_hand: winner.winning_hand.clone(),
+            })
+            .collect();
 
-    let command_any = Any {
-        type_url: "type.googleapis.com/examples.EndHand".to_string(),
-        value: end_hand.encode_to_vec(),
-    };
+        // Build EndHand command
+        let end_hand = EndHand {
+            hand_root,
+            results,
+        };
 
-    Ok(Some(CommandBook {
-        cover: Some(Cover {
-            domain: "table".to_string(),
-            root: Some(Uuid { value: event.table_root }),
-            ..Default::default()
-        }),
-        pages: vec![CommandPage {
-            sequence: dest_seq,
-            payload: Some(command_page::Payload::Command(command_any)),
-            ..Default::default()
-        }],
-        saga_origin: None,
-    }))
+        let command_any = Any {
+            type_url: "type.googleapis.com/examples.EndHand".to_string(),
+            value: end_hand.encode_to_vec(),
+        };
+
+        Ok(vec![CommandBook {
+            cover: Some(Cover {
+                domain: "table".to_string(),
+                root: Some(Uuid { value: event.table_root }),
+                ..Default::default()
+            }),
+            pages: vec![CommandPage {
+                sequence: dest_seq,
+                payload: Some(command_page::Payload::Command(command_any)),
+                ..Default::default()
+            }],
+            saga_origin: None,
+        }])
+    }
 }
 
 #[tokio::main]
@@ -94,10 +124,7 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let router = EventRouter::new("saga-hand-table")
-        .domain("hand")
-        .prepare("examples.HandComplete", prepare_hand_complete)
-        .on("examples.HandComplete", handle_hand_complete);
+    let router = SagaRouter::new("saga-hand-table", "hand", HandTableSagaHandler);
 
     run_saga_server("saga-hand-table", 50012, router)
         .await

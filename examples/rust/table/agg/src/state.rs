@@ -162,7 +162,7 @@ fn apply_chips_added(state: &mut TableState, event: ChipsAdded) {
 /// StateRouter for fluent state reconstruction.
 ///
 /// Type names are extracted via reflection using `prost::Name::full_name()`.
-static STATE_ROUTER: LazyLock<StateRouter<TableState>> = LazyLock::new(|| {
+pub static STATE_ROUTER: LazyLock<StateRouter<TableState>> = LazyLock::new(|| {
     StateRouter::new()
         .on::<TableCreated>(apply_table_created)
         .on::<PlayerJoined>(apply_player_joined)

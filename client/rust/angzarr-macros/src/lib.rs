@@ -59,7 +59,7 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
     parse_macro_input, Attribute, Ident, ImplItem, ItemImpl, Meta, Token,
 };
@@ -149,8 +149,8 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
                         handlers.push((method.sig.ident.clone(), command_type));
                     }
                 } else if attr.path().is_ident("rejected") {
-                    if let Ok((domain, command)) = get_rejected_args(attr) {
-                        rejection_handlers.push((method.sig.ident.clone(), domain, command));
+                    if let Ok((rej_domain, command)) = get_rejected_args(attr) {
+                        rejection_handlers.push((method.sig.ident.clone(), rej_domain, command));
                     }
                 } else if attr.path().is_ident("applies") {
                     if let Ok(event_type) = get_attr_ident(attr) {
@@ -161,49 +161,48 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
-    // Generate handler registrations with command decoding
-    // Each handler needs its own clone of the Arc<Self>
-    let handler_registrations: Vec<_> = handlers
+    // Generate command type names
+    let command_types: Vec<_> = handlers
+        .iter()
+        .map(|(_, cmd_type)| {
+            let cmd_str = cmd_type.to_string();
+            quote! { #cmd_str.into() }
+        })
+        .collect();
+
+    // Generate handle dispatch arms
+    let handle_arms: Vec<_> = handlers
         .iter()
         .map(|(method, cmd_type)| {
             let cmd_str = cmd_type.to_string();
             quote! {
-                .on(#cmd_str, {
-                    let agg = agg.clone();
-                    move |cb, cmd_any, state, seq| {
-                        let cmd = <#cmd_type as prost::Message>::decode(cmd_any.value.as_slice())
-                            .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #cmd_str, e)))?;
-                        agg.#method(cb, cmd, state, seq)
-                    }
-                })
+                if payload.type_url.ends_with(#cmd_str) {
+                    let cmd = <#cmd_type as prost::Message>::decode(payload.value.as_slice())
+                        .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #cmd_str, e)))?;
+                    return self.inner.#method(cmd_book, cmd, state, seq);
+                }
             }
         })
         .collect();
 
-    let rejection_registrations: Vec<_> = rejection_handlers
+    // Generate rejection handler arms
+    let rejection_arms: Vec<_> = rejection_handlers
         .iter()
-        .map(|(method, domain, command)| {
+        .map(|(method, rej_domain, command)| {
             quote! {
-                .on_rejected(#domain, #command, {
-                    let agg = agg.clone();
-                    move |notification, state| agg.#method(notification, state)
-                })
+                if target_domain == #rej_domain && target_command.ends_with(#command) {
+                    return self.inner.#method(notification, state);
+                }
             }
         })
         .collect();
 
-    // Generate apply_event dispatch arms
-    let apply_arms: Vec<_> = appliers
+    // Generate StateRouter .on() calls for each applier
+    let state_router_on_calls: Vec<_> = appliers
         .iter()
         .map(|(method, event_type)| {
-            let suffix = event_type.to_string();
             quote! {
-                if event_any.type_url.ends_with(#suffix) {
-                    if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
-                        Self::#method(state, event);
-                        return;
-                    }
-                }
+                .on::<#event_type>(#self_ty::#method)
             }
         })
         .collect();
@@ -219,45 +218,80 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
-    // Generate apply_event and rebuild functions if appliers exist
-    let apply_event_fn = if !appliers.is_empty() {
-        quote! {
-            /// Apply a single event to state. Auto-generated from #[applies] methods.
-            pub fn apply_event(state: &mut #state_ty, event_any: &prost_types::Any) {
-                #(#apply_arms)*
-                // Unknown event type - silently ignore (forward compatibility)
-            }
+    // Generate the wrapper handler struct name
+    let handler_name = syn::Ident::new(
+        &format!("{}Handler", self_ty.to_token_stream()),
+        proc_macro2::Span::call_site(),
+    );
 
-            /// Rebuild state from event book. Auto-generated.
-            pub fn rebuild(events: &angzarr_client::proto::EventBook) -> #state_ty {
-                let mut state = #state_ty::default();
-                for page in &events.pages {
-                    if let Some(angzarr_client::proto::event_page::Payload::Event(event)) = &page.payload {
-                        Self::apply_event(&mut state, event);
-                    }
-                }
-                state
-            }
-        }
-    } else {
-        quote! {}
-    };
+    // Generate unique static name for the state router
+    let state_router_static = syn::Ident::new(
+        &format!("{}_STATE_ROUTER", self_ty.to_token_stream()).to_uppercase(),
+        proc_macro2::Span::call_site(),
+    );
 
     quote! {
         #input
 
-        impl #self_ty {
-            #apply_event_fn
+        /// Auto-generated state router with event appliers.
+        static #state_router_static: std::sync::LazyLock<angzarr_client::StateRouter<#state_ty>> =
+            std::sync::LazyLock::new(|| {
+                angzarr_client::StateRouter::new()
+                    #(#state_router_on_calls)*
+            });
 
-            /// Creates a CommandRouter from this aggregate's annotated methods.
-            pub fn into_router(self) -> angzarr_client::CommandRouter<#state_ty>
+        /// Auto-generated handler wrapper implementing AggregateDomainHandler.
+        pub struct #handler_name {
+            inner: #self_ty,
+        }
+
+        impl #handler_name {
+            pub fn new(inner: #self_ty) -> Self {
+                Self { inner }
+            }
+        }
+
+        impl angzarr_client::AggregateDomainHandler for #handler_name {
+            type State = #state_ty;
+
+            fn command_types(&self) -> Vec<String> {
+                vec![#(#command_types),*]
+            }
+
+            fn state_router(&self) -> &angzarr_client::StateRouter<Self::State> {
+                &#state_router_static
+            }
+
+            fn handle(
+                &self,
+                cmd_book: &angzarr_client::proto::CommandBook,
+                payload: &prost_types::Any,
+                state: &Self::State,
+                seq: u32,
+            ) -> angzarr_client::CommandResult<angzarr_client::proto::EventBook> {
+                #(#handle_arms)*
+                Err(angzarr_client::CommandRejectedError::new(format!("Unknown command type: {}", payload.type_url)))
+            }
+
+            fn on_rejected(
+                &self,
+                notification: &angzarr_client::proto::Notification,
+                state: &Self::State,
+                target_domain: &str,
+                target_command: &str,
+            ) -> angzarr_client::CommandResult<angzarr_client::RejectionHandlerResponse> {
+                #(#rejection_arms)*
+                Ok(angzarr_client::RejectionHandlerResponse::default())
+            }
+        }
+
+        impl #self_ty {
+            /// Creates an AggregateRouter from this aggregate's annotated methods.
+            pub fn into_router(self) -> angzarr_client::AggregateRouter<#state_ty, #handler_name>
             where
                 Self: Send + Sync + 'static,
             {
-                let agg = std::sync::Arc::new(self);
-                angzarr_client::CommandRouter::new(#domain, Self::rebuild)
-                    #(#handler_registrations)*
-                    #(#rejection_registrations)*
+                angzarr_client::AggregateRouter::new(#domain, #domain, #handler_name::new(self))
             }
         }
     }
@@ -428,40 +462,41 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
-    // Generate prepare handler registrations with event decoding
-    let prepare_registrations: Vec<_> = prepare_handlers
+    // Generate event type names
+    let event_types: Vec<_> = event_handlers
+        .iter()
+        .map(|(_, event_type)| {
+            let event_str = event_type.to_string();
+            quote! { #event_str.into() }
+        })
+        .collect();
+
+    // Generate prepare dispatch arms
+    let prepare_arms: Vec<_> = prepare_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
             quote! {
-                .prepare_fn(#event_str, {
-                    let saga = saga.clone();
-                    move |_source, event_any| {
-                        if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
-                            saga.#method(&event)
-                        } else {
-                            vec![]
-                        }
+                if event.type_url.ends_with(#event_str) {
+                    if let Ok(evt) = <#event_type as prost::Message>::decode(event.value.as_slice()) {
+                        return self.inner.#method(&evt);
                     }
-                })
+                }
             }
         })
         .collect();
 
-    // Generate event handler registrations with event decoding
-    let handler_registrations: Vec<_> = event_handlers
+    // Generate execute dispatch arms
+    let execute_arms: Vec<_> = event_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
             quote! {
-                .on_many_fn(#event_str, {
-                    let saga = saga.clone();
-                    move |_source, event_any, destinations| {
-                        let event = <#event_type as prost::Message>::decode(event_any.value.as_slice())
-                            .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
-                        saga.#method(event, destinations)
-                    }
-                })
+                if event.type_url.ends_with(#event_str) {
+                    let evt = <#event_type as prost::Message>::decode(event.value.as_slice())
+                        .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
+                    return self.inner.#method(evt, destinations);
+                }
             }
         })
         .collect();
@@ -475,20 +510,58 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
+    // Generate the wrapper handler struct name
+    let handler_name = syn::Ident::new(
+        &format!("{}Handler", self_ty.to_token_stream()),
+        proc_macro2::Span::call_site(),
+    );
+
     quote! {
         #input
 
+        /// Auto-generated handler wrapper implementing SagaDomainHandler.
+        pub struct #handler_name {
+            inner: #self_ty,
+        }
+
+        impl #handler_name {
+            pub fn new(inner: #self_ty) -> Self {
+                Self { inner }
+            }
+        }
+
+        impl angzarr_client::SagaDomainHandler for #handler_name {
+            fn event_types(&self) -> Vec<String> {
+                vec![#(#event_types),*]
+            }
+
+            fn prepare(
+                &self,
+                _source: &angzarr_client::proto::EventBook,
+                event: &prost_types::Any,
+            ) -> Vec<angzarr_client::proto::Cover> {
+                #(#prepare_arms)*
+                vec![]
+            }
+
+            fn execute(
+                &self,
+                _source: &angzarr_client::proto::EventBook,
+                event: &prost_types::Any,
+                destinations: &[angzarr_client::proto::EventBook],
+            ) -> angzarr_client::CommandResult<Vec<angzarr_client::proto::CommandBook>> {
+                #(#execute_arms)*
+                Ok(vec![])
+            }
+        }
+
         impl #self_ty {
-            /// Creates an EventRouter from this saga's annotated methods.
-            pub fn into_router(self) -> angzarr_client::EventRouter
+            /// Creates a SagaRouter from this saga's annotated methods.
+            pub fn into_router(self) -> angzarr_client::SagaRouter<#handler_name>
             where
                 Self: Send + Sync + 'static,
             {
-                let saga = std::sync::Arc::new(self);
-                angzarr_client::EventRouter::new(#name)
-                    .domain(#input_domain)
-                    #(#prepare_registrations)*
-                    #(#handler_registrations)*
+                angzarr_client::SagaRouter::new(#name, #input_domain, #handler_name::new(self))
             }
         }
     }
@@ -662,47 +735,44 @@ fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> Toke
         }
     }
 
-    // Generate prepare handler registrations with event decoding
-    let prepare_registrations: Vec<_> = prepare_handlers
+    // Generate event type names
+    let event_types: Vec<_> = event_handlers
+        .iter()
+        .map(|(_, event_type)| {
+            let event_str = event_type.to_string();
+            quote! { #event_str.into() }
+        })
+        .collect();
+
+    // Generate prepare dispatch arms
+    let prepare_arms: Vec<_> = prepare_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
             quote! {
-                .prepare_fn(#event_str, {
-                    let pm = pm.clone();
-                    move |trigger, state, event_any| {
-                        if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
-                            pm.#method(trigger, state, &event)
-                        } else {
-                            vec![]
-                        }
+                if event.type_url.ends_with(#event_str) {
+                    if let Ok(evt) = <#event_type as prost::Message>::decode(event.value.as_slice()) {
+                        return self.inner.#method(trigger, state, &evt);
                     }
-                })
+                }
             }
         })
         .collect();
 
-    // Generate event handler registrations with event decoding
-    let handler_registrations: Vec<_> = event_handlers
+    // Generate handle dispatch arms
+    let handle_arms: Vec<_> = event_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
             quote! {
-                .on_fn(#event_str, {
-                    let pm = pm.clone();
-                    move |trigger, state, event_any, destinations| {
-                        let event = <#event_type as prost::Message>::decode(event_any.value.as_slice())
-                            .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
-                        pm.#method(trigger, state, event, destinations)
-                    }
-                })
+                if event.type_url.ends_with(#event_str) {
+                    let evt = <#event_type as prost::Message>::decode(event.value.as_slice())
+                        .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
+                    return self.inner.#method(trigger, state, evt, destinations);
+                }
             }
         })
         .collect();
-
-    // Note: Subscriptions are now configured externally via env var or config file,
-    // not in code. The 'inputs' field is kept for documentation purposes only.
-    let _ = inputs; // Silence unused warning
 
     // Generate apply_event dispatch arms
     let apply_arms: Vec<_> = appliers
@@ -712,7 +782,7 @@ fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> Toke
             quote! {
                 if event_any.type_url.ends_with(#suffix) {
                     if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
-                        Self::#method(state, event);
+                        #self_ty::#method(state, event);
                         return;
                     }
                 }
@@ -760,21 +830,70 @@ fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> Toke
         }
     };
 
+    // Generate the wrapper handler struct name
+    let handler_name = syn::Ident::new(
+        &format!("{}Handler", self_ty.to_token_stream()),
+        proc_macro2::Span::call_site(),
+    );
+
+    // Generate domain registrations
+    let domain_registrations: Vec<_> = inputs
+        .iter()
+        .map(|domain| {
+            quote! {
+                .domain(#domain, #handler_name { inner: inner.clone() })
+            }
+        })
+        .collect();
+
     quote! {
         #input
 
         impl #self_ty {
             #apply_event_fn
+        }
 
+        /// Auto-generated handler wrapper implementing ProcessManagerDomainHandler.
+        pub struct #handler_name {
+            inner: std::sync::Arc<#self_ty>,
+        }
+
+        impl angzarr_client::ProcessManagerDomainHandler<#state_ty> for #handler_name {
+            fn event_types(&self) -> Vec<String> {
+                vec![#(#event_types),*]
+            }
+
+            fn prepare(
+                &self,
+                trigger: &angzarr_client::proto::EventBook,
+                state: &#state_ty,
+                event: &prost_types::Any,
+            ) -> Vec<angzarr_client::proto::Cover> {
+                #(#prepare_arms)*
+                vec![]
+            }
+
+            fn handle(
+                &self,
+                trigger: &angzarr_client::proto::EventBook,
+                state: &#state_ty,
+                event: &prost_types::Any,
+                destinations: &[angzarr_client::proto::EventBook],
+            ) -> angzarr_client::CommandResult<angzarr_client::ProcessManagerResponse> {
+                #(#handle_arms)*
+                Ok(angzarr_client::ProcessManagerResponse::default())
+            }
+        }
+
+        impl #self_ty {
             /// Creates a ProcessManagerRouter from this PM's annotated methods.
             pub fn into_router(self) -> angzarr_client::ProcessManagerRouter<#state_ty>
             where
                 Self: Send + Sync + 'static,
             {
-                let pm = std::sync::Arc::new(self);
-                angzarr_client::ProcessManagerRouter::new_with_rebuild_fn(#name, #pm_domain, Self::rebuild)
-                    #(#prepare_registrations)*
-                    #(#handler_registrations)*
+                let inner = std::sync::Arc::new(self);
+                angzarr_client::ProcessManagerRouter::new(#name, #pm_domain, Self::rebuild)
+                    #(#domain_registrations)*
             }
         }
     }

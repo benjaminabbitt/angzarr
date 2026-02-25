@@ -1,6 +1,6 @@
 //! gRPC service handlers for aggregates, sagas, and process managers.
 //!
-//! This module provides gRPC service implementations that wrap command/event routers.
+//! This module provides gRPC service implementations that wrap routers.
 
 use std::sync::Arc;
 
@@ -15,7 +15,9 @@ use crate::proto::{
     ProcessManagerPrepareRequest, ProcessManagerPrepareResponse, Projection, ReplayRequest,
     ReplayResponse, SagaExecuteRequest, SagaPrepareRequest, SagaPrepareResponse, SagaResponse,
 };
-use crate::router::{CommandRouter, EventRouter, ProcessManagerRouter};
+use crate::router::{
+    AggregateDomainHandler, AggregateRouter, ProcessManagerRouter, SagaDomainHandler, SagaRouter,
+};
 
 /// Function type for packing state into protobuf Any.
 ///
@@ -24,18 +26,25 @@ pub type StatePacker<S> = fn(&S) -> Result<Any, Status>;
 
 /// gRPC aggregate service implementation.
 ///
-/// Wraps a `CommandRouter` to handle aggregate commands.
+/// Wraps an `AggregateRouter` to handle aggregate commands.
 /// Optionally supports Replay RPC for MERGE_COMMUTATIVE conflict detection.
-pub struct AggregateHandler<S: Send + Sync + 'static> {
-    router: Arc<CommandRouter<S>>,
+pub struct AggregateHandler<S, H>
+where
+    S: Default + Send + Sync + 'static,
+    H: AggregateDomainHandler<State = S> + 'static,
+{
+    router: Arc<AggregateRouter<S, H>>,
     /// Optional state packer for Replay RPC support.
-    /// When set, enables computing state from events for commutative merge detection.
     state_packer: Option<StatePacker<S>>,
 }
 
-impl<S: Send + Sync + 'static> AggregateHandler<S> {
-    /// Create a new aggregate handler from a command router.
-    pub fn new(router: CommandRouter<S>) -> Self {
+impl<S, H> AggregateHandler<S, H>
+where
+    S: Default + Send + Sync + 'static,
+    H: AggregateDomainHandler<State = S> + 'static,
+{
+    /// Create a new aggregate handler from a router.
+    pub fn new(router: AggregateRouter<S, H>) -> Self {
         Self {
             router: Arc::new(router),
             state_packer: None,
@@ -43,40 +52,23 @@ impl<S: Send + Sync + 'static> AggregateHandler<S> {
     }
 
     /// Enable Replay RPC support by providing a state packer.
-    ///
-    /// The state packer converts the aggregate's internal state to a protobuf `Any`
-    /// message. This is required for MERGE_COMMUTATIVE strategy, which uses Replay
-    /// to compute state diffs for conflict detection.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// fn pack_player_state(state: &PlayerState) -> Result<Any, Status> {
-    ///     let proto_state = state.to_proto();
-    ///     let mut buf = Vec::new();
-    ///     proto_state.encode(&mut buf).map_err(|e| Status::internal(e.to_string()))?;
-    ///     Ok(Any {
-    ///         type_url: "type.googleapis.com/examples.PlayerState".to_string(),
-    ///         value: buf,
-    ///     })
-    /// }
-    ///
-    /// let handler = AggregateHandler::new(router)
-    ///     .with_replay(pack_player_state);
-    /// ```
     pub fn with_replay(mut self, packer: StatePacker<S>) -> Self {
         self.state_packer = Some(packer);
         self
     }
 
     /// Get the underlying router.
-    pub fn router(&self) -> &CommandRouter<S> {
+    pub fn router(&self) -> &AggregateRouter<S, H> {
         &self.router
     }
 }
 
 #[tonic::async_trait]
-impl<S: Send + Sync + 'static> AggregateService for AggregateHandler<S> {
+impl<S, H> AggregateService for AggregateHandler<S, H>
+where
+    S: Default + Send + Sync + 'static,
+    H: AggregateDomainHandler<State = S> + 'static,
+{
     async fn handle(
         &self,
         request: Request<ContextualCommand>,
@@ -90,7 +82,6 @@ impl<S: Send + Sync + 'static> AggregateService for AggregateHandler<S> {
         &self,
         request: Request<ReplayRequest>,
     ) -> Result<Response<ReplayResponse>, Status> {
-        // Replay is optional - only needed for MERGE_COMMUTATIVE conflict detection.
         let packer = self.state_packer.ok_or_else(|| {
             Status::unimplemented(
                 "Replay not implemented. Call with_replay() to enable for MERGE_COMMUTATIVE strategy.",
@@ -98,14 +89,8 @@ impl<S: Send + Sync + 'static> AggregateService for AggregateHandler<S> {
         })?;
 
         let req = request.into_inner();
-
-        // Build EventBook from ReplayRequest
         let event_book = build_event_book_for_replay(&req);
-
-        // Rebuild state using the router's state rebuilder
         let state = self.router.rebuild_state(&event_book);
-
-        // Pack state to Any
         let state_any = packer(&state)?;
 
         Ok(Response::new(ReplayResponse {
@@ -116,8 +101,6 @@ impl<S: Send + Sync + 'static> AggregateService for AggregateHandler<S> {
 
 /// Build an EventBook from a ReplayRequest for state reconstruction.
 fn build_event_book_for_replay(req: &ReplayRequest) -> EventBook {
-    // Convert ReplayRequest.events (Vec<EventPage>) to EventBook
-    // Include base_snapshot if provided
     EventBook {
         cover: None,
         pages: req.events.clone(),
@@ -128,37 +111,36 @@ fn build_event_book_for_replay(req: &ReplayRequest) -> EventBook {
 
 /// gRPC saga service implementation.
 ///
-/// Wraps an `EventRouter` to handle saga events.
-pub struct SagaHandler {
-    router: Arc<EventRouter>,
+/// Wraps a `SagaRouter` to handle saga events.
+pub struct SagaHandler<H>
+where
+    H: SagaDomainHandler + 'static,
+{
+    router: Arc<SagaRouter<H>>,
 }
 
-impl SagaHandler {
-    /// Create a new saga handler from an event router.
-    pub fn new(router: EventRouter) -> Self {
+impl<H: SagaDomainHandler + 'static> SagaHandler<H> {
+    /// Create a new saga handler from a router.
+    pub fn new(router: SagaRouter<H>) -> Self {
         Self {
             router: Arc::new(router),
         }
     }
 
     /// Get the underlying router.
-    pub fn router(&self) -> &EventRouter {
+    pub fn router(&self) -> &SagaRouter<H> {
         &self.router
     }
 }
 
 #[tonic::async_trait]
-impl SagaService for SagaHandler {
+impl<H: SagaDomainHandler + 'static> SagaService for SagaHandler<H> {
     async fn prepare(
         &self,
         request: Request<SagaPrepareRequest>,
     ) -> Result<Response<SagaPrepareResponse>, Status> {
         let req = request.into_inner();
-
-        // Get destinations from the router (for now, return empty)
-        // TODO: Allow handlers to declare destinations
         let destinations = self.router.prepare_destinations(&req.source);
-
         Ok(Response::new(SagaPrepareResponse { destinations }))
     }
 
@@ -167,17 +149,13 @@ impl SagaService for SagaHandler {
         request: Request<SagaExecuteRequest>,
     ) -> Result<Response<SagaResponse>, Status> {
         let req = request.into_inner();
-
         let source = req
             .source
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Missing source event book"))?;
 
-        let commands = self.router.dispatch(source, &req.destinations)?;
-        Ok(Response::new(SagaResponse {
-            commands,
-            events: vec![],
-        }))
+        let response = self.router.dispatch(source, &req.destinations)?;
+        Ok(Response::new(response))
     }
 }
 
@@ -260,11 +238,11 @@ impl ProjectorService for ProjectorHandler {
 /// gRPC process manager service implementation.
 ///
 /// Wraps a `ProcessManagerRouter` to handle PM events.
-pub struct ProcessManagerGrpcHandler<S: Send + Sync + 'static> {
+pub struct ProcessManagerGrpcHandler<S: Default + Send + Sync + 'static> {
     router: Arc<ProcessManagerRouter<S>>,
 }
 
-impl<S: Send + Sync + 'static> ProcessManagerGrpcHandler<S> {
+impl<S: Default + Send + Sync + 'static> ProcessManagerGrpcHandler<S> {
     /// Create a new process manager handler from a router.
     pub fn new(router: ProcessManagerRouter<S>) -> Self {
         Self {
@@ -279,7 +257,7 @@ impl<S: Send + Sync + 'static> ProcessManagerGrpcHandler<S> {
 }
 
 #[tonic::async_trait]
-impl<S: Send + Sync + 'static> ProcessManagerService for ProcessManagerGrpcHandler<S> {
+impl<S: Default + Send + Sync + 'static> ProcessManagerService for ProcessManagerGrpcHandler<S> {
     async fn prepare(
         &self,
         request: Request<ProcessManagerPrepareRequest>,
@@ -311,9 +289,6 @@ impl<S: Send + Sync + 'static> ProcessManagerService for ProcessManagerGrpcHandl
             .router
             .dispatch(trigger, &process_state, &req.destinations)?;
 
-        Ok(Response::new(ProcessManagerHandleResponse {
-            commands: response.commands,
-            process_events: response.process_events,
-        }))
+        Ok(Response::new(response))
     }
 }

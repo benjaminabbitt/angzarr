@@ -277,7 +277,7 @@ fn new_hand_state() -> HandState {
 /// StateRouter for fluent state reconstruction.
 ///
 /// Type names are extracted via reflection using `prost::Name::full_name()`.
-static STATE_ROUTER: LazyLock<StateRouter<HandState>> = LazyLock::new(|| {
+pub static STATE_ROUTER: LazyLock<StateRouter<HandState>> = LazyLock::new(|| {
     StateRouter::with_factory(new_hand_state)
         .on::<CardsDealt>(apply_cards_dealt)
         .on::<BlindPosted>(apply_blind_posted)

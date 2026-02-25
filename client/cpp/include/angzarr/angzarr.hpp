@@ -24,6 +24,10 @@
 // Functional router pattern
 #include "router.hpp"
 
+// Unified router pattern (trait-based)
+#include "handler_traits.hpp"
+#include "unified_router.hpp"
+
 // OO base classes with macro registration
 #include "aggregate.hpp"
 #include "process_manager.hpp"

@@ -1,0 +1,1005 @@
+package angzarr
+
+import (
+	"testing"
+
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
+)
+
+// ============================================================================
+// Mock Handlers for Testing
+// ============================================================================
+
+// TestState is a simple state type for testing aggregates.
+type TestState struct {
+	Value   string
+	Counter int
+}
+
+// MockAggregateHandler implements AggregateDomainHandler for testing.
+type MockAggregateHandler struct {
+	commandTypes []string
+	handleCalls  int
+}
+
+func NewMockAggregateHandler(types ...string) *MockAggregateHandler {
+	return &MockAggregateHandler{commandTypes: types}
+}
+
+func (h *MockAggregateHandler) CommandTypes() []string {
+	return h.commandTypes
+}
+
+func (h *MockAggregateHandler) Rebuild(events *pb.EventBook) *TestState {
+	return &TestState{Value: "rebuilt", Counter: len(events.GetPages())}
+}
+
+func (h *MockAggregateHandler) Handle(
+	cmd *pb.CommandBook,
+	payload *anypb.Any,
+	state *TestState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	h.handleCalls++
+	return &pb.EventBook{
+		Cover: cmd.Cover,
+		Pages: []*pb.EventPage{
+			{
+				Sequence: seq,
+				Payload:  &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.TestEvent"}},
+			},
+		},
+	}, nil
+}
+
+func (h *MockAggregateHandler) OnRejected(
+	notification *pb.Notification,
+	state *TestState,
+	targetDomain string,
+	targetCommand string,
+) (*RejectionHandlerResponse, error) {
+	return &RejectionHandlerResponse{}, nil
+}
+
+// MockSagaHandler implements SagaDomainHandler for testing.
+type MockSagaHandler struct {
+	eventTypes   []string
+	prepareCalls int
+	executeCalls int
+}
+
+func NewMockSagaHandler(types ...string) *MockSagaHandler {
+	return &MockSagaHandler{eventTypes: types}
+}
+
+func (h *MockSagaHandler) EventTypes() []string {
+	return h.eventTypes
+}
+
+func (h *MockSagaHandler) Prepare(source *pb.EventBook, event *anypb.Any) []*pb.Cover {
+	h.prepareCalls++
+	return []*pb.Cover{
+		{Domain: "destination", Root: &pb.UUID{Value: make([]byte, 16)}},
+	}
+}
+
+func (h *MockSagaHandler) Execute(
+	source *pb.EventBook,
+	event *anypb.Any,
+	destinations []*pb.EventBook,
+) ([]*pb.CommandBook, error) {
+	h.executeCalls++
+	return []*pb.CommandBook{
+		{
+			Cover: &pb.Cover{Domain: "destination"},
+			Pages: []*pb.CommandPage{
+				{
+					Sequence: 0,
+					Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.TestCommand"}},
+				},
+			},
+		},
+	}, nil
+}
+
+// MockPMHandler implements ProcessManagerDomainHandler for testing.
+type MockPMHandler struct {
+	eventTypes   []string
+	prepareCalls int
+	handleCalls  int
+}
+
+func NewMockPMHandler(types ...string) *MockPMHandler {
+	return &MockPMHandler{eventTypes: types}
+}
+
+func (h *MockPMHandler) EventTypes() []string {
+	return h.eventTypes
+}
+
+func (h *MockPMHandler) Prepare(trigger *pb.EventBook, state *TestState, event *anypb.Any) []*pb.Cover {
+	h.prepareCalls++
+	return nil
+}
+
+func (h *MockPMHandler) Handle(
+	trigger *pb.EventBook,
+	state *TestState,
+	event *anypb.Any,
+	destinations []*pb.EventBook,
+) (*ProcessManagerResponse, error) {
+	h.handleCalls++
+	return &ProcessManagerResponse{
+		Commands: []*pb.CommandBook{
+			{
+				Cover: &pb.Cover{Domain: "target"},
+				Pages: []*pb.CommandPage{
+					{
+						Sequence: 0,
+						Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.PMCommand"}},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+func (h *MockPMHandler) OnRejected(
+	notification *pb.Notification,
+	state *TestState,
+	targetDomain string,
+	targetCommand string,
+) (*RejectionHandlerResponse, error) {
+	return &RejectionHandlerResponse{}, nil
+}
+
+// MockProjectorHandler implements ProjectorDomainHandler for testing.
+type MockProjectorHandler struct {
+	eventTypes   []string
+	projectCalls int
+}
+
+func NewMockProjectorHandler(types ...string) *MockProjectorHandler {
+	return &MockProjectorHandler{eventTypes: types}
+}
+
+func (h *MockProjectorHandler) EventTypes() []string {
+	return h.eventTypes
+}
+
+func (h *MockProjectorHandler) Project(events *pb.EventBook) (*pb.Projection, error) {
+	h.projectCalls++
+	return &pb.Projection{
+		Cover:     events.Cover,
+		Projector: "test-projector",
+		Sequence:  uint32(len(events.GetPages())),
+	}, nil
+}
+
+// ============================================================================
+// AggregateRouter Tests
+// ============================================================================
+
+func TestAggregateRouterCreation(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing", "test.UpdateThing")
+	router := NewAggregateRouter("test-agg", "things", handler)
+
+	if router.Name() != "test-agg" {
+		t.Errorf("expected name 'test-agg', got '%s'", router.Name())
+	}
+
+	if router.Domain() != "things" {
+		t.Errorf("expected domain 'things', got '%s'", router.Domain())
+	}
+
+	types := router.CommandTypes()
+	if len(types) != 2 {
+		t.Errorf("expected 2 command types, got %d", len(types))
+	}
+}
+
+func TestAggregateRouterSubscriptions(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing", "test.UpdateThing")
+	router := NewAggregateRouter("test-agg", "things", handler)
+
+	subs := router.Subscriptions()
+	if len(subs) != 1 {
+		t.Errorf("expected 1 subscription domain, got %d", len(subs))
+	}
+
+	if types, ok := subs["things"]; !ok {
+		t.Error("expected 'things' domain in subscriptions")
+	} else if len(types) != 2 {
+		t.Errorf("expected 2 types for 'things' domain, got %d", len(types))
+	}
+}
+
+func TestAggregateRouterRebuildState(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing")
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	events := &pb.EventBook{
+		Pages: []*pb.EventPage{
+			{Sequence: 0},
+			{Sequence: 1},
+		},
+	}
+
+	state := router.RebuildState(events)
+	if state.Value != "rebuilt" {
+		t.Errorf("expected state.Value 'rebuilt', got '%s'", state.Value)
+	}
+	if state.Counter != 2 {
+		t.Errorf("expected state.Counter 2, got %d", state.Counter)
+	}
+}
+
+func TestAggregateRouterDispatch(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing")
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	cmd := &pb.ContextualCommand{
+		Command: &pb.CommandBook{
+			Cover: &pb.Cover{Domain: "things"},
+			Pages: []*pb.CommandPage{
+				{
+					Sequence: 0,
+					Payload: &pb.CommandPage_Command{
+						Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.CreateThing"},
+					},
+				},
+			},
+		},
+		Events: &pb.EventBook{NextSequence: 5},
+	}
+
+	resp, err := router.Dispatch(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	events := resp.GetEvents()
+	if events == nil {
+		t.Fatal("expected events in response")
+	}
+
+	if handler.handleCalls != 1 {
+		t.Errorf("expected 1 handle call, got %d", handler.handleCalls)
+	}
+}
+
+// ============================================================================
+// SagaRouter Tests
+// ============================================================================
+
+func TestSagaRouterCreation(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	if router.Name() != "saga-order-fulfillment" {
+		t.Errorf("expected name 'saga-order-fulfillment', got '%s'", router.Name())
+	}
+
+	if router.InputDomain() != "order" {
+		t.Errorf("expected input domain 'order', got '%s'", router.InputDomain())
+	}
+}
+
+func TestSagaRouterSubscriptions(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated", "test.OrderCancelled")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	subs := router.Subscriptions()
+	if len(subs) != 1 {
+		t.Errorf("expected 1 subscription domain, got %d", len(subs))
+	}
+
+	if types, ok := subs["order"]; !ok {
+		t.Error("expected 'order' domain in subscriptions")
+	} else if len(types) != 2 {
+		t.Errorf("expected 2 types for 'order' domain, got %d", len(types))
+	}
+}
+
+func TestSagaRouterPrepareDestinations(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	source := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
+				},
+			},
+		},
+	}
+
+	covers := router.PrepareDestinations(source)
+	if len(covers) != 1 {
+		t.Errorf("expected 1 cover, got %d", len(covers))
+	}
+
+	if handler.prepareCalls != 1 {
+		t.Errorf("expected 1 prepare call, got %d", handler.prepareCalls)
+	}
+}
+
+func TestSagaRouterDispatch(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	source := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
+				},
+			},
+		},
+	}
+
+	resp, err := router.Dispatch(source, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	if len(resp.Commands) != 1 {
+		t.Errorf("expected 1 command, got %d", len(resp.Commands))
+	}
+
+	if handler.executeCalls != 1 {
+		t.Errorf("expected 1 execute call, got %d", handler.executeCalls)
+	}
+}
+
+// ============================================================================
+// ProcessManagerRouter Tests
+// ============================================================================
+
+func TestProcessManagerRouterCreation(t *testing.T) {
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{Value: "pm-state"}
+	}
+	router := NewProcessManagerRouter[*TestState]("pmg-order-flow", "order-flow", rebuild)
+
+	if router.Name() != "pmg-order-flow" {
+		t.Errorf("expected name 'pmg-order-flow', got '%s'", router.Name())
+	}
+
+	if router.PMDomain() != "order-flow" {
+		t.Errorf("expected PM domain 'order-flow', got '%s'", router.PMDomain())
+	}
+}
+
+func TestProcessManagerRouterMultiDomain(t *testing.T) {
+	orderHandler := NewMockPMHandler("test.OrderCreated")
+	inventoryHandler := NewMockPMHandler("test.StockReserved")
+
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-order-flow", "order-flow", rebuild).
+		Domain("order", orderHandler).
+		Domain("inventory", inventoryHandler)
+
+	subs := router.Subscriptions()
+	if len(subs) != 2 {
+		t.Errorf("expected 2 subscription domains, got %d", len(subs))
+	}
+
+	if _, ok := subs["order"]; !ok {
+		t.Error("expected 'order' domain in subscriptions")
+	}
+
+	if _, ok := subs["inventory"]; !ok {
+		t.Error("expected 'inventory' domain in subscriptions")
+	}
+}
+
+func TestProcessManagerRouterDispatch(t *testing.T) {
+	handler := NewMockPMHandler("test.OrderCreated")
+
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{Value: "rebuilt"}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-order-flow", "order-flow", rebuild).
+		Domain("order", handler)
+
+	trigger := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
+				},
+			},
+		},
+	}
+
+	resp, err := router.Dispatch(trigger, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	if len(resp.Commands) != 1 {
+		t.Errorf("expected 1 command, got %d", len(resp.Commands))
+	}
+
+	if handler.handleCalls != 1 {
+		t.Errorf("expected 1 handle call, got %d", handler.handleCalls)
+	}
+}
+
+// ============================================================================
+// ProjectorRouter Tests
+// ============================================================================
+
+func TestProjectorRouterCreation(t *testing.T) {
+	router := NewProjectorRouter("prj-output")
+
+	if router.Name() != "prj-output" {
+		t.Errorf("expected name 'prj-output', got '%s'", router.Name())
+	}
+}
+
+func TestProjectorRouterMultiDomain(t *testing.T) {
+	playerHandler := NewMockProjectorHandler("test.PlayerRegistered")
+	handHandler := NewMockProjectorHandler("test.CardsDealt")
+
+	router := NewProjectorRouter("prj-output").
+		Domain("player", playerHandler).
+		Domain("hand", handHandler)
+
+	subs := router.Subscriptions()
+	if len(subs) != 2 {
+		t.Errorf("expected 2 subscription domains, got %d", len(subs))
+	}
+
+	if _, ok := subs["player"]; !ok {
+		t.Error("expected 'player' domain in subscriptions")
+	}
+
+	if _, ok := subs["hand"]; !ok {
+		t.Error("expected 'hand' domain in subscriptions")
+	}
+}
+
+func TestProjectorRouterDispatch(t *testing.T) {
+	handler := NewMockProjectorHandler("test.PlayerRegistered")
+
+	router := NewProjectorRouter("prj-output").
+		Domain("player", handler)
+
+	events := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "player"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.PlayerRegistered"},
+				},
+			},
+		},
+	}
+
+	projection, err := router.Dispatch(events)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if projection == nil {
+		t.Fatal("expected non-nil projection")
+	}
+
+	if projection.Projector != "test-projector" {
+		t.Errorf("expected projector 'test-projector', got '%s'", projection.Projector)
+	}
+
+	if handler.projectCalls != 1 {
+		t.Errorf("expected 1 project call, got %d", handler.projectCalls)
+	}
+}
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+func TestAggregateRouterDispatchMissingCommand(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing")
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	cmd := &pb.ContextualCommand{
+		Command: nil,
+	}
+
+	_, err := router.Dispatch(cmd)
+	if err == nil {
+		t.Error("expected error for missing command book")
+	}
+}
+
+func TestSagaRouterDispatchEmptySource(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	_, err := router.Dispatch(&pb.EventBook{}, nil)
+	if err == nil {
+		t.Error("expected error for empty source")
+	}
+}
+
+func TestProcessManagerRouterDispatchUnknownDomain(t *testing.T) {
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-test", "test-flow", rebuild)
+	// No handlers registered
+
+	trigger := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "unknown"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
+				},
+			},
+		},
+	}
+
+	_, err := router.Dispatch(trigger, nil, nil)
+	if err == nil {
+		t.Error("expected error for unknown domain")
+	}
+}
+
+func TestProjectorRouterDispatchUnknownDomain(t *testing.T) {
+	router := NewProjectorRouter("prj-test")
+	// No handlers registered
+
+	events := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "unknown"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
+				},
+			},
+		},
+	}
+
+	_, err := router.Dispatch(events)
+	if err == nil {
+		t.Error("expected error for unknown domain")
+	}
+}
+
+// ============================================================================
+// Notification Handling Tests
+// ============================================================================
+
+// MockAggregateHandlerWithRejection tracks rejection handler calls.
+type MockAggregateHandlerWithRejection struct {
+	*MockAggregateHandler
+	onRejectedCalls  int
+	lastTargetDomain string
+	lastTargetCmd    string
+	returnEvents     *pb.EventBook
+}
+
+func NewMockAggregateHandlerWithRejection(types ...string) *MockAggregateHandlerWithRejection {
+	return &MockAggregateHandlerWithRejection{
+		MockAggregateHandler: NewMockAggregateHandler(types...),
+	}
+}
+
+func (h *MockAggregateHandlerWithRejection) OnRejected(
+	notification *pb.Notification,
+	state *TestState,
+	targetDomain string,
+	targetCommand string,
+) (*RejectionHandlerResponse, error) {
+	h.onRejectedCalls++
+	h.lastTargetDomain = targetDomain
+	h.lastTargetCmd = targetCommand
+	if h.returnEvents != nil {
+		return &RejectionHandlerResponse{Events: h.returnEvents}, nil
+	}
+	return &RejectionHandlerResponse{}, nil
+}
+
+func TestAggregateRouterDispatchNotification(t *testing.T) {
+	handler := NewMockAggregateHandlerWithRejection("test.CreateThing")
+	handler.returnEvents = &pb.EventBook{
+		Cover: &pb.Cover{Domain: "things"},
+		Pages: []*pb.EventPage{
+			{Sequence: 0, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.Compensated"}}},
+		},
+	}
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	// Create a Notification command
+	notification := &pb.Notification{}
+	notificationBytes, _ := proto.Marshal(notification)
+	notificationAny := &anypb.Any{
+		TypeUrl: "type.googleapis.com/angzarr.Notification",
+		Value:   notificationBytes,
+	}
+
+	cmd := &pb.ContextualCommand{
+		Command: &pb.CommandBook{
+			Cover: &pb.Cover{Domain: "things"},
+			Pages: []*pb.CommandPage{
+				{
+					Sequence: 0,
+					Payload:  &pb.CommandPage_Command{Command: notificationAny},
+				},
+			},
+		},
+		Events: &pb.EventBook{NextSequence: 5},
+	}
+
+	resp, err := router.Dispatch(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// Should have called OnRejected
+	if handler.onRejectedCalls != 1 {
+		t.Errorf("expected 1 OnRejected call, got %d", handler.onRejectedCalls)
+	}
+
+	// Should return events
+	events := resp.GetEvents()
+	if events == nil {
+		t.Fatal("expected events in response for compensation")
+	}
+}
+
+func TestAggregateRouterDispatchNotificationReturnsRevocation(t *testing.T) {
+	handler := NewMockAggregateHandlerWithRejection("test.CreateThing")
+	// returnEvents is nil, so OnRejected returns empty response
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	notification := &pb.Notification{}
+	notificationBytes, _ := proto.Marshal(notification)
+	notificationAny := &anypb.Any{
+		TypeUrl: "type.googleapis.com/angzarr.Notification",
+		Value:   notificationBytes,
+	}
+
+	cmd := &pb.ContextualCommand{
+		Command: &pb.CommandBook{
+			Cover: &pb.Cover{Domain: "things"},
+			Pages: []*pb.CommandPage{
+				{
+					Sequence: 0,
+					Payload:  &pb.CommandPage_Command{Command: notificationAny},
+				},
+			},
+		},
+		Events: &pb.EventBook{NextSequence: 5},
+	}
+
+	resp, err := router.Dispatch(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should return revocation response when handler returns empty
+	revocation := resp.GetRevocation()
+	if revocation == nil {
+		t.Fatal("expected revocation response for empty handler response")
+	}
+
+	if !revocation.EmitSystemRevocation {
+		t.Error("expected EmitSystemRevocation to be true")
+	}
+}
+
+// MockPMHandlerWithRejection tracks PM rejection handler calls.
+type MockPMHandlerWithRejection struct {
+	*MockPMHandler
+	onRejectedCalls  int
+	lastTargetDomain string
+	lastTargetCmd    string
+	returnEvents     *pb.EventBook
+}
+
+func NewMockPMHandlerWithRejection(types ...string) *MockPMHandlerWithRejection {
+	return &MockPMHandlerWithRejection{
+		MockPMHandler: NewMockPMHandler(types...),
+	}
+}
+
+func (h *MockPMHandlerWithRejection) OnRejected(
+	notification *pb.Notification,
+	state *TestState,
+	targetDomain string,
+	targetCommand string,
+) (*RejectionHandlerResponse, error) {
+	h.onRejectedCalls++
+	h.lastTargetDomain = targetDomain
+	h.lastTargetCmd = targetCommand
+	if h.returnEvents != nil {
+		return &RejectionHandlerResponse{Events: h.returnEvents}, nil
+	}
+	return &RejectionHandlerResponse{}, nil
+}
+
+func TestProcessManagerRouterDispatchNotification(t *testing.T) {
+	handler := NewMockPMHandlerWithRejection("test.OrderCreated")
+	handler.returnEvents = &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order-flow"},
+		Pages: []*pb.EventPage{
+			{Sequence: 0, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.FlowCompensated"}}},
+		},
+	}
+
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{Value: "rebuilt"}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-order-flow", "order-flow", rebuild).
+		Domain("order", handler)
+
+	// Create a Notification event
+	notification := &pb.Notification{}
+	notificationBytes, _ := proto.Marshal(notification)
+	notificationAny := &anypb.Any{
+		TypeUrl: "type.googleapis.com/angzarr.Notification",
+		Value:   notificationBytes,
+	}
+
+	trigger := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload:  &pb.EventPage_Event{Event: notificationAny},
+			},
+		},
+	}
+
+	resp, err := router.Dispatch(trigger, &pb.EventBook{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// Should have called OnRejected
+	if handler.onRejectedCalls != 1 {
+		t.Errorf("expected 1 OnRejected call, got %d", handler.onRejectedCalls)
+	}
+
+	// Should return process events
+	if resp.ProcessEvents == nil {
+		t.Fatal("expected process events in response for PM compensation")
+	}
+}
+
+// ============================================================================
+// PrepareDestinations Tests
+// ============================================================================
+
+func TestProcessManagerRouterPrepareDestinations(t *testing.T) {
+	handler := NewMockPMHandler("test.OrderCreated")
+
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{Value: "rebuilt"}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-order-flow", "order-flow", rebuild).
+		Domain("order", handler)
+
+	trigger := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
+				},
+			},
+		},
+	}
+
+	processState := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order-flow"},
+		Pages: []*pb.EventPage{},
+	}
+
+	covers := router.PrepareDestinations(trigger, processState)
+
+	// MockPMHandler.Prepare returns nil by default
+	if covers != nil && len(covers) > 0 {
+		t.Errorf("expected empty covers from mock, got %d", len(covers))
+	}
+
+	// Verify Prepare was called
+	if handler.prepareCalls != 1 {
+		t.Errorf("expected 1 prepare call, got %d", handler.prepareCalls)
+	}
+}
+
+func TestProcessManagerRouterPrepareDestinationsNilTrigger(t *testing.T) {
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-test", "test-flow", rebuild)
+
+	covers := router.PrepareDestinations(nil, nil)
+
+	if covers != nil {
+		t.Error("expected nil covers for nil trigger")
+	}
+}
+
+func TestProcessManagerRouterPrepareDestinationsUnknownDomain(t *testing.T) {
+	rebuild := func(events *pb.EventBook) *TestState {
+		return &TestState{}
+	}
+
+	router := NewProcessManagerRouter[*TestState]("pmg-test", "test-flow", rebuild)
+	// No handlers registered
+
+	trigger := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "unknown"},
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
+				},
+			},
+		},
+	}
+
+	covers := router.PrepareDestinations(trigger, nil)
+
+	if covers != nil {
+		t.Error("expected nil covers for unknown domain")
+	}
+}
+
+// ============================================================================
+// Edge Case Tests
+// ============================================================================
+
+func TestSagaRouterPrepareDestinationsNilSource(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	covers := router.PrepareDestinations(nil)
+
+	if covers != nil {
+		t.Error("expected nil covers for nil source")
+	}
+
+	if handler.prepareCalls != 0 {
+		t.Errorf("expected 0 prepare calls for nil source, got %d", handler.prepareCalls)
+	}
+}
+
+func TestSagaRouterPrepareDestinationsEmptyPages(t *testing.T) {
+	handler := NewMockSagaHandler("test.OrderCreated")
+	router := NewSagaRouter("saga-order-fulfillment", "order", handler)
+
+	source := &pb.EventBook{
+		Cover: &pb.Cover{Domain: "order"},
+		Pages: []*pb.EventPage{}, // Empty pages
+	}
+
+	covers := router.PrepareDestinations(source)
+
+	if covers != nil {
+		t.Error("expected nil covers for empty pages")
+	}
+
+	if handler.prepareCalls != 0 {
+		t.Errorf("expected 0 prepare calls for empty pages, got %d", handler.prepareCalls)
+	}
+}
+
+func TestAggregateRouterDispatchNoPages(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing")
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	cmd := &pb.ContextualCommand{
+		Command: &pb.CommandBook{
+			Cover: &pb.Cover{Domain: "things"},
+			Pages: []*pb.CommandPage{}, // Empty pages
+		},
+		Events: &pb.EventBook{NextSequence: 0},
+	}
+
+	_, err := router.Dispatch(cmd)
+	if err == nil {
+		t.Error("expected error for empty command pages")
+	}
+}
+
+func TestAggregateRouterDispatchNilEvents(t *testing.T) {
+	handler := NewMockAggregateHandler("test.CreateThing")
+	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+
+	cmd := &pb.ContextualCommand{
+		Command: &pb.CommandBook{
+			Cover: &pb.Cover{Domain: "things"},
+			Pages: []*pb.CommandPage{
+				{
+					Sequence: 0,
+					Payload: &pb.CommandPage_Command{
+						Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.CreateThing"},
+					},
+				},
+			},
+		},
+		Events: nil, // Nil events
+	}
+
+	// Should still work - events initialized to empty EventBook
+	resp, err := router.Dispatch(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+}
+
+func TestProjectorRouterDispatchNilCover(t *testing.T) {
+	handler := NewMockProjectorHandler("test.PlayerRegistered")
+	router := NewProjectorRouter("prj-output").
+		Domain("player", handler)
+
+	events := &pb.EventBook{
+		Cover: nil, // Nil cover
+		Pages: []*pb.EventPage{
+			{
+				Sequence: 0,
+				Payload: &pb.EventPage_Event{
+					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.PlayerRegistered"},
+				},
+			},
+		},
+	}
+
+	_, err := router.Dispatch(events)
+	if err == nil {
+		t.Error("expected error for nil cover")
+	}
+}

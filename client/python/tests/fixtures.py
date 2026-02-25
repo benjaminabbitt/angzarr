@@ -199,3 +199,38 @@ class ScoreUpdated(TestProto):
     game_id: str = ""
     score_delta: int = 0
     new_total: int = 0
+
+
+# =============================================================================
+# Player domain - Commands (for aggregate tests)
+# =============================================================================
+
+
+@dataclass
+class RegisterPlayer(TestProto):
+    """Command to register a new player."""
+
+    DESCRIPTOR = _make_descriptor("player.RegisterPlayer")
+    email: str = ""
+    display_name: str = ""
+
+
+@dataclass
+class DepositFunds(TestProto):
+    """Command to deposit funds to player bankroll."""
+
+    DESCRIPTOR = _make_descriptor("player.DepositFunds")
+    amount: int = 0
+
+
+# =============================================================================
+# Player domain - Additional Events (for aggregate tests)
+# =============================================================================
+
+
+@dataclass
+class FundsDeposited(TestProto):
+    """Event: funds were deposited to player bankroll."""
+
+    DESCRIPTOR = _make_descriptor("player.FundsDeposited")
+    new_bankroll: int = 0

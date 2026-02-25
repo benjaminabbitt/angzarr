@@ -1,7 +1,7 @@
 //! Player bounded context gRPC server.
 
-use agg_player::{handlers, state};
-use angzarr_client::{run_aggregate_server, CommandRouter};
+use agg_player::PlayerHandler;
+use angzarr_client::{run_aggregate_server, AggregateRouter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -12,15 +12,9 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // docs:start:command_router
-    let router = CommandRouter::new("player", state::rebuild_state)
-        .on("examples.RegisterPlayer", handlers::handle_register_player)
-        .on("examples.DepositFunds", handlers::handle_deposit_funds)
-        .on("examples.WithdrawFunds", handlers::handle_withdraw_funds)
-        .on("examples.ReserveFunds", handlers::handle_reserve_funds)
-        .on("examples.ReleaseFunds", handlers::handle_release_funds)
-        .on_rejected("table", "examples.JoinTable", handlers::handle_join_rejected);
-    // docs:end:command_router
+    // docs:start:aggregate_router
+    let router = AggregateRouter::new("player", "player", PlayerHandler::new());
+    // docs:end:aggregate_router
 
     run_aggregate_server("player", 50001, router)
         .await

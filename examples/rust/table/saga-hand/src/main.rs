@@ -9,84 +9,114 @@
 use angzarr_client::proto::examples::{DealCards, HandStarted, PlayerInHand};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
-    run_saga_server, CommandRejectedError, CommandResult, EventRouter, UnpackAny,
+    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaRouter, UnpackAny,
 };
 use prost::Message;
 use prost_types::Any;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Prepare handler: return the destination cover to fetch (hand aggregate).
-fn prepare_hand_started(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
-    if let Ok(event) = HandStarted::decode(event_any.value.as_slice()) {
-        // The hand aggregate root is in the event
-        vec![Cover {
-            domain: "hand".to_string(),
-            root: Some(Uuid { value: event.hand_root }),
-            ..Default::default()
-        }]
-    } else {
+// docs:start:saga_handler
+/// Saga handler for Table → Hand domain translation.
+struct TableHandSagaHandler;
+
+impl SagaDomainHandler for TableHandSagaHandler {
+    fn event_types(&self) -> Vec<String> {
+        vec!["HandStarted".into()]
+    }
+
+    fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover> {
+        if event.type_url.ends_with("HandStarted") {
+            return Self::prepare_hand_started(source, event);
+        }
         vec![]
+    }
+
+    fn execute(
+        &self,
+        source: &EventBook,
+        event: &Any,
+        destinations: &[EventBook],
+    ) -> CommandResult<Vec<CommandBook>> {
+        if event.type_url.ends_with("HandStarted") {
+            return Self::handle_hand_started(source, event, destinations);
+        }
+        Ok(vec![])
     }
 }
 
-// docs:start:saga_handler
-/// Execute handler: translate HandStarted → DealCards.
-fn handle_hand_started(
-    _source: &EventBook,
-    event_any: &Any,
-    destinations: &[EventBook],
-) -> CommandResult<Option<CommandBook>> {
-    let event: HandStarted = event_any
-        .unpack()
-        .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandStarted: {}", e)))?;
+impl TableHandSagaHandler {
+    /// Prepare handler: return the destination cover to fetch (hand aggregate).
+    fn prepare_hand_started(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
+        if let Ok(event) = HandStarted::decode(event_any.value.as_slice()) {
+            // The hand aggregate root is in the event
+            vec![Cover {
+                domain: "hand".to_string(),
+                root: Some(Uuid { value: event.hand_root }),
+                ..Default::default()
+            }]
+        } else {
+            vec![]
+        }
+    }
 
-    // Get the destination's next sequence
-    let dest_seq = destinations
-        .first()
-        .map(|eb| eb.next_sequence)
-        .unwrap_or(0);
+    /// Execute handler: translate HandStarted → DealCards.
+    fn handle_hand_started(
+        _source: &EventBook,
+        event_any: &Any,
+        destinations: &[EventBook],
+    ) -> CommandResult<Vec<CommandBook>> {
+        let event: HandStarted = event_any
+            .unpack()
+            .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandStarted: {}", e)))?;
 
-    // Convert SeatSnapshot to PlayerInHand
-    let players: Vec<PlayerInHand> = event
-        .active_players
-        .iter()
-        .map(|seat| PlayerInHand {
-            player_root: seat.player_root.clone(),
-            position: seat.position,
-            stack: seat.stack,
-        })
-        .collect();
+        // Get the destination's next sequence
+        let dest_seq = destinations
+            .first()
+            .map(|eb| eb.next_sequence)
+            .unwrap_or(0);
 
-    // Build DealCards command
-    let deal_cards = DealCards {
-        table_root: event.hand_root.clone(), // The hand_root becomes the table_root reference
-        hand_number: event.hand_number,
-        game_variant: event.game_variant,
-        players,
-        dealer_position: event.dealer_position,
-        small_blind: event.small_blind,
-        big_blind: event.big_blind,
-        deck_seed: vec![], // Let the aggregate generate a random seed
-    };
+        // Convert SeatSnapshot to PlayerInHand
+        let players: Vec<PlayerInHand> = event
+            .active_players
+            .iter()
+            .map(|seat| PlayerInHand {
+                player_root: seat.player_root.clone(),
+                position: seat.position,
+                stack: seat.stack,
+            })
+            .collect();
 
-    let command_any = Any {
-        type_url: "type.googleapis.com/examples.DealCards".to_string(),
-        value: deal_cards.encode_to_vec(),
-    };
+        // Build DealCards command
+        let deal_cards = DealCards {
+            table_root: event.hand_root.clone(), // The hand_root becomes the table_root reference
+            hand_number: event.hand_number,
+            game_variant: event.game_variant,
+            players,
+            dealer_position: event.dealer_position,
+            small_blind: event.small_blind,
+            big_blind: event.big_blind,
+            deck_seed: vec![], // Let the aggregate generate a random seed
+        };
 
-    Ok(Some(CommandBook {
-        cover: Some(Cover {
-            domain: "hand".to_string(),
-            root: Some(Uuid { value: event.hand_root }),
-            ..Default::default()
-        }),
-        pages: vec![CommandPage {
-            sequence: dest_seq,
-            payload: Some(command_page::Payload::Command(command_any)),
-            ..Default::default()
-        }],
-        saga_origin: None,
-    }))
+        let command_any = Any {
+            type_url: "type.googleapis.com/examples.DealCards".to_string(),
+            value: deal_cards.encode_to_vec(),
+        };
+
+        Ok(vec![CommandBook {
+            cover: Some(Cover {
+                domain: "hand".to_string(),
+                root: Some(Uuid { value: event.hand_root }),
+                ..Default::default()
+            }),
+            pages: vec![CommandPage {
+                sequence: dest_seq,
+                payload: Some(command_page::Payload::Command(command_any)),
+                ..Default::default()
+            }],
+            saga_origin: None,
+        }])
+    }
 }
 // docs:end:saga_handler
 
@@ -97,12 +127,9 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // docs:start:event_router
-    let router = EventRouter::new("saga-table-hand")
-        .domain("table")
-        .prepare("examples.HandStarted", prepare_hand_started)
-        .on("examples.HandStarted", handle_hand_started);
-    // docs:end:event_router
+    // docs:start:saga_router
+    let router = SagaRouter::new("saga-table-hand", "table", TableHandSagaHandler);
+    // docs:end:saga_router
 
     run_saga_server("saga-table-hand", 50011, router)
         .await

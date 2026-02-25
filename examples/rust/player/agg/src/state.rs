@@ -99,7 +99,7 @@ fn apply_transferred(state: &mut PlayerState, event: FundsTransferred) {
 /// StateRouter for fluent state reconstruction.
 ///
 /// Type names are extracted via reflection using `prost::Name::full_name()`.
-static STATE_ROUTER: LazyLock<StateRouter<PlayerState>> = LazyLock::new(|| {
+pub static STATE_ROUTER: LazyLock<StateRouter<PlayerState>> = LazyLock::new(|| {
     StateRouter::new()
         .on::<PlayerRegistered>(apply_registered)
         .on::<FundsDeposited>(apply_deposited)

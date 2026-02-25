@@ -10,7 +10,8 @@ use angzarr_client::proto::examples::{
 };
 use angzarr_client::proto::{Cover, EventBook, Uuid};
 use angzarr_client::{
-    run_process_manager_server, CommandResult, ProcessManagerResponse, ProcessManagerRouter,
+    run_process_manager_server, CommandResult, ProcessManagerDomainHandler, ProcessManagerResponse,
+    ProcessManagerRouter,
 };
 use prost::Message;
 use prost_types::Any;
@@ -75,7 +76,7 @@ struct HandProcess {
 /// The PM's aggregate state (rebuilt from its own events).
 /// For simplicity, we're keeping the HandProcess inline.
 #[derive(Clone, Default)]
-struct PMState {
+pub struct PMState {
     process: Option<HandProcess>,
 }
 
@@ -85,105 +86,96 @@ fn rebuild_state(_events: &EventBook) -> PMState {
     PMState::default()
 }
 
-fn prepare_hand_started(_trigger: &EventBook, _state: &PMState, event_any: &Any) -> Vec<Cover> {
-    if let Ok(event) = HandStarted::decode(event_any.value.as_slice()) {
-        vec![Cover {
-            domain: "hand".to_string(),
-            root: Some(Uuid { value: event.hand_root }),
-            ..Default::default()
-        }]
-    } else {
+/// Handler for table domain events in the hand-flow PM.
+struct TableDomainHandler;
+
+impl ProcessManagerDomainHandler<PMState> for TableDomainHandler {
+    fn event_types(&self) -> Vec<String> {
+        vec!["HandStarted".into()]
+    }
+
+    fn prepare(&self, _trigger: &EventBook, _state: &PMState, event: &Any) -> Vec<Cover> {
+        if event.type_url.ends_with("HandStarted") {
+            if let Ok(evt) = HandStarted::decode(event.value.as_slice()) {
+                return vec![Cover {
+                    domain: "hand".to_string(),
+                    root: Some(Uuid { value: evt.hand_root }),
+                    ..Default::default()
+                }];
+            }
+        }
         vec![]
+    }
+
+    fn handle(
+        &self,
+        _trigger: &EventBook,
+        _state: &PMState,
+        event: &Any,
+        _destinations: &[EventBook],
+    ) -> CommandResult<ProcessManagerResponse> {
+        if event.type_url.ends_with("HandStarted") {
+            let _event: HandStarted = HandStarted::decode(event.value.as_slice())
+                .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+            // Initialize hand process (not persisted in this simplified version)
+            // The saga-table-hand will send DealCards, so we don't emit commands here.
+        }
+        Ok(ProcessManagerResponse::default())
     }
 }
 
-fn handle_hand_started(
-    _trigger: &EventBook,
-    _state: &PMState,
-    event_any: &Any,
-    _destinations: &[EventBook],
-) -> CommandResult<ProcessManagerResponse> {
-    let _event: HandStarted = HandStarted::decode(event_any.value.as_slice())
-        .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+/// Handler for hand domain events in the hand-flow PM.
+struct HandDomainHandler;
 
-    // Initialize hand process (not persisted in this simplified version)
-    // The saga-table-hand will send DealCards, so we don't emit commands here.
+impl ProcessManagerDomainHandler<PMState> for HandDomainHandler {
+    fn event_types(&self) -> Vec<String> {
+        vec![
+            "CardsDealt".into(),
+            "BlindPosted".into(),
+            "ActionTaken".into(),
+            "CommunityCardsDealt".into(),
+            "PotAwarded".into(),
+        ]
+    }
 
-    Ok(ProcessManagerResponse::default())
-}
+    fn prepare(&self, _trigger: &EventBook, _state: &PMState, _event: &Any) -> Vec<Cover> {
+        // Hand domain events don't need destinations in this simplified PM
+        vec![]
+    }
 
-fn handle_cards_dealt(
-    _trigger: &EventBook,
-    _state: &PMState,
-    event_any: &Any,
-    _destinations: &[EventBook],
-) -> CommandResult<ProcessManagerResponse> {
-    let _event: CardsDealt = CardsDealt::decode(event_any.value.as_slice())
-        .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+    fn handle(
+        &self,
+        _trigger: &EventBook,
+        _state: &PMState,
+        event: &Any,
+        _destinations: &[EventBook],
+    ) -> CommandResult<ProcessManagerResponse> {
+        let type_url = &event.type_url;
 
-    // Post small blind command
-    // In a real implementation, we'd track state to know which blind to post.
-    // For now, we assume the hand aggregate tracks this.
+        if type_url.ends_with("CardsDealt") {
+            let _evt: CardsDealt = CardsDealt::decode(event.value.as_slice())
+                .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+            // Post small blind command
+        } else if type_url.ends_with("BlindPosted") {
+            let _evt: BlindPosted = BlindPosted::decode(event.value.as_slice())
+                .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+            // Check if both blinds are posted
+        } else if type_url.ends_with("ActionTaken") {
+            let _evt: ActionTaken = ActionTaken::decode(event.value.as_slice())
+                .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+            // Check if betting is complete
+        } else if type_url.ends_with("CommunityCardsDealt") {
+            let _evt: CommunityCardsDealt = CommunityCardsDealt::decode(event.value.as_slice())
+                .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+            // Start new betting round
+        } else if type_url.ends_with("PotAwarded") {
+            let _evt: PotAwarded = PotAwarded::decode(event.value.as_slice())
+                .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
+            // Hand is complete
+        }
 
-    Ok(ProcessManagerResponse::default())
-}
-
-fn handle_blind_posted(
-    _trigger: &EventBook,
-    _state: &PMState,
-    event_any: &Any,
-    _destinations: &[EventBook],
-) -> CommandResult<ProcessManagerResponse> {
-    let _event: BlindPosted = BlindPosted::decode(event_any.value.as_slice())
-        .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
-
-    // In a full implementation, we'd check if both blinds are posted
-    // and then start the betting round.
-
-    Ok(ProcessManagerResponse::default())
-}
-
-fn handle_action_taken(
-    _trigger: &EventBook,
-    _state: &PMState,
-    event_any: &Any,
-    _destinations: &[EventBook],
-) -> CommandResult<ProcessManagerResponse> {
-    let _event: ActionTaken = ActionTaken::decode(event_any.value.as_slice())
-        .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
-
-    // In a full implementation, we'd check if betting is complete
-    // and advance to the next phase.
-
-    Ok(ProcessManagerResponse::default())
-}
-
-fn handle_community_dealt(
-    _trigger: &EventBook,
-    _state: &PMState,
-    event_any: &Any,
-    _destinations: &[EventBook],
-) -> CommandResult<ProcessManagerResponse> {
-    let _event: CommunityCardsDealt = CommunityCardsDealt::decode(event_any.value.as_slice())
-        .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
-
-    // Start new betting round after community cards.
-
-    Ok(ProcessManagerResponse::default())
-}
-
-fn handle_pot_awarded(
-    _trigger: &EventBook,
-    _state: &PMState,
-    event_any: &Any,
-    _destinations: &[EventBook],
-) -> CommandResult<ProcessManagerResponse> {
-    let _event: PotAwarded = PotAwarded::decode(event_any.value.as_slice())
-        .map_err(|e| angzarr_client::CommandRejectedError::new(e.to_string()))?;
-
-    // Hand is complete. Clean up.
-
-    Ok(ProcessManagerResponse::default())
+        Ok(ProcessManagerResponse::default())
+    }
 }
 
 #[tokio::main]
@@ -194,13 +186,8 @@ async fn main() {
         .init();
 
     let router = ProcessManagerRouter::new("hand-flow", "hand-flow", rebuild_state)
-        .prepare("examples.HandStarted", prepare_hand_started)
-        .on("examples.HandStarted", handle_hand_started)
-        .on("examples.CardsDealt", handle_cards_dealt)
-        .on("examples.BlindPosted", handle_blind_posted)
-        .on("examples.ActionTaken", handle_action_taken)
-        .on("examples.CommunityCardsDealt", handle_community_dealt)
-        .on("examples.PotAwarded", handle_pot_awarded);
+        .domain("table", TableDomainHandler)
+        .domain("hand", HandDomainHandler);
 
     run_process_manager_server("hand-flow", 50091, router)
         .await

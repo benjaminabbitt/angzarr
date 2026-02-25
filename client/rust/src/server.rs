@@ -14,7 +14,9 @@ use crate::proto::aggregate_service_server::AggregateServiceServer;
 use crate::proto::process_manager_service_server::ProcessManagerServiceServer;
 use crate::proto::projector_service_server::ProjectorServiceServer;
 use crate::proto::saga_service_server::SagaServiceServer;
-use crate::router::{CommandRouter, EventRouter, ProcessManagerRouter};
+use crate::router::{
+    AggregateDomainHandler, AggregateRouter, ProcessManagerRouter, SagaDomainHandler, SagaRouter,
+};
 
 /// Configuration for a gRPC server.
 pub struct ServerConfig {
@@ -72,21 +74,24 @@ impl ServerConfig {
 /// # Example
 ///
 /// ```rust,ignore
-/// use angzarr_client::{run_aggregate_server, CommandRouter};
+/// use angzarr_client::{run_aggregate_server, AggregateRouter};
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let router = CommandRouter::new("player", rebuild_state)
-///         .on("RegisterPlayer", handle_register);
+///     let router = AggregateRouter::new("player", "player", PlayerHandler::new());
 ///
 ///     run_aggregate_server("player", 50001, router).await;
 /// }
 /// ```
-pub async fn run_aggregate_server<S: Send + Sync + 'static>(
+pub async fn run_aggregate_server<S, H>(
     domain: &str,
     default_port: u16,
-    router: CommandRouter<S>,
-) -> Result<(), tonic::transport::Error> {
+    router: AggregateRouter<S, H>,
+) -> Result<(), tonic::transport::Error>
+where
+    S: Default + Send + Sync + 'static,
+    H: AggregateDomainHandler<State = S> + 'static,
+{
     let config = ServerConfig::from_env(default_port);
     let handler = AggregateHandler::new(router);
     let service = AggregateServiceServer::new(handler);
@@ -130,21 +135,23 @@ pub async fn run_aggregate_server<S: Send + Sync + 'static>(
 /// # Example
 ///
 /// ```rust,ignore
-/// use angzarr_client::{run_saga_server, EventRouter};
+/// use angzarr_client::{run_saga_server, SagaRouter};
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let router = EventRouter::new("saga-order-fulfillment", "order")
-///         .on("OrderCompleted", handle_order_completed);
+///     let router = SagaRouter::new("saga-order-fulfillment", "order", OrderHandler::new());
 ///
 ///     run_saga_server("saga-order-fulfillment", 50010, router).await;
 /// }
 /// ```
-pub async fn run_saga_server(
+pub async fn run_saga_server<H>(
     name: &str,
     default_port: u16,
-    router: EventRouter,
-) -> Result<(), tonic::transport::Error> {
+    router: SagaRouter<H>,
+) -> Result<(), tonic::transport::Error>
+where
+    H: SagaDomainHandler + 'static,
+{
     let config = ServerConfig::from_env(default_port);
     let handler = SagaHandler::new(router);
     let service = SagaServiceServer::new(handler);
@@ -239,12 +246,12 @@ pub async fn run_projector_server(
 /// #[tokio::main]
 /// async fn main() {
 ///     let router = ProcessManagerRouter::new("hand-flow", "hand-flow", rebuild_state)
-///         .on("HandStarted", handle_hand_started);
+///         .domain("table", TablePmHandler::new());
 ///
 ///     run_process_manager_server("hand-flow", 9091, router).await;
 /// }
 /// ```
-pub async fn run_process_manager_server<S: Send + Sync + 'static>(
+pub async fn run_process_manager_server<S: Default + Send + Sync + 'static>(
     name: &str,
     default_port: u16,
     router: ProcessManagerRouter<S>,

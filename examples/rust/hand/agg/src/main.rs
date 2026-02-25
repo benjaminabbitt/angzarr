@@ -1,8 +1,7 @@
 //! Hand bounded context gRPC server.
 
-use agg_hand::{handlers, state};
-
-use angzarr_client::{run_aggregate_server, CommandRouter};
+use agg_hand::HandHandler;
+use angzarr_client::{run_aggregate_server, AggregateRouter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -13,14 +12,7 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let router = CommandRouter::new("hand", state::rebuild_state)
-        .on("examples.DealCards", handlers::handle_deal_cards)
-        .on("examples.PostBlind", handlers::handle_post_blind)
-        .on("examples.PlayerAction", handlers::handle_player_action)
-        .on("examples.DealCommunityCards", handlers::handle_deal_community_cards)
-        .on("examples.RequestDraw", handlers::handle_request_draw)
-        .on("examples.RevealCards", handlers::handle_reveal_cards)
-        .on("examples.AwardPot", handlers::handle_award_pot);
+    let router = AggregateRouter::new("hand", "hand", HandHandler::new());
 
     run_aggregate_server("hand", 50003, router)
         .await

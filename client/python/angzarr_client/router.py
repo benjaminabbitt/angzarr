@@ -481,9 +481,9 @@ class CommandRouter(Generic[S]):
         self._rebuild = rebuild
         self._state_router = None  # StateRouter for fluent composition
         self._handlers: list[tuple[str, Callable]] = []
-        self._rejection_handlers: dict[str, Callable] = (
-            {}
-        )  # "domain/command" -> handler
+        self._rejection_handlers: dict[
+            str, Callable
+        ] = {}  # "domain/command" -> handler
 
     def with_state(self, state_router) -> "CommandRouter[S]":
         """Compose a StateRouter for state reconstruction.
@@ -1010,9 +1010,9 @@ class UpcasterRouter:
 
     def __init__(self, domain: str) -> None:
         self.domain = domain
-        self._handlers: list[tuple[str, Callable, type]] = (
-            []
-        )  # (suffix, handler, to_type)
+        self._handlers: list[
+            tuple[str, Callable, type]
+        ] = []  # (suffix, handler, to_type)
 
     def on(self, type_or_handler, handler: Callable = None) -> UpcasterRouter:
         """Register a handler for an old event type.

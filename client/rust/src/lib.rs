@@ -90,12 +90,41 @@ pub use proto_ext::{
 
 // Re-export router types
 pub use router::{
-    event_book_from, event_page, new_event_book, new_event_book_multi, pack_event, CommandHandler,
-    CommandRejectedError, CommandResult, CommandRouter, EventApplier, EventHandler, EventRouter,
-    PrepareHandler, ProcessManagerHandler, ProcessManagerPrepareHandler, ProcessManagerResponse,
-    ProcessManagerRouter, ProcessManagerStateRebuilder, StateRebuilder, StateRouter, UnpackAny,
-    UpcasterHandler, UpcasterRouter,
+    // Helper functions
+    event_book_from,
+    event_page,
+    new_event_book,
+    new_event_book_multi,
+    pack_event,
+    // Handler traits
+    AggregateDomainHandler,
+    // Mode markers
+    AggregateMode,
+    // Router types
+    AggregateRouter,
+    // Error types
+    CommandRejectedError,
+    CommandResult,
+    // State management
+    EventApplier,
+    ProcessManagerDomainHandler,
+    ProcessManagerMode,
+    ProcessManagerResponse,
+    ProcessManagerRouter,
+    ProjectorDomainHandler,
+    ProjectorMode,
+    ProjectorRouter,
+    RejectionHandlerResponse,
+    SagaDomainHandler,
+    SagaMode,
+    SagaRouter,
+    StateFactory,
+    StateRouter,
+    UnpackAny,
 };
+
+// Note: dispatch_command! and dispatch_event! macros are available at crate root
+// via #[macro_export] in router/dispatch.rs
 
 // Re-export handler types
 pub use handler::{

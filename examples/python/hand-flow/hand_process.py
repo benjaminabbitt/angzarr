@@ -58,6 +58,7 @@ class HandProcess:
 
     hand_id: str = ""
     table_root: bytes = b""
+    hand_root: bytes = b""  # Actual hand aggregate root
     hand_number: int = 0
     game_variant: int = 0
 
@@ -136,11 +137,12 @@ class HandProcessManager:
         Called when HandStarted event is received from table domain.
         The correlation_id is used as the key for process lookup.
         """
-        hand_id = f"{table_root.hex()}_{event.hand_number}"
+        hand_id = f"{event.hand_root.hex()}_{event.hand_number}"
 
         process = HandProcess(
             hand_id=hand_id,
             table_root=table_root,
+            hand_root=event.hand_root,  # Use actual hand aggregate root
             hand_number=event.hand_number,
             game_variant=event.game_variant,
             dealer_position=event.dealer_position,
@@ -349,7 +351,7 @@ class HandProcessManager:
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
-        hand_root = bytes.fromhex(process.hand_id.split("_")[0])
+        hand_root = process.hand_root
         return types.CommandBook(
             cover=types.Cover(
                 root=types.UUID(value=hand_root),
@@ -507,7 +509,7 @@ class HandProcessManager:
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
-        hand_root = bytes.fromhex(process.hand_id.split("_")[0])
+        hand_root = process.hand_root
         return types.CommandBook(
             cover=types.Cover(
                 root=types.UUID(value=hand_root),
@@ -550,7 +552,7 @@ class HandProcessManager:
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
-        hand_root = bytes.fromhex(process.hand_id.split("_")[0])
+        hand_root = process.hand_root
         return types.CommandBook(
             cover=types.Cover(
                 root=types.UUID(value=hand_root),
@@ -593,7 +595,7 @@ class HandProcessManager:
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
-        hand_root = bytes.fromhex(process.hand_id.split("_")[0])
+        hand_root = process.hand_root
         return types.CommandBook(
             cover=types.Cover(
                 root=types.UUID(value=hand_root),
@@ -665,7 +667,7 @@ class HandProcessManager:
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
-        hand_root = bytes.fromhex(process.hand_id.split("_")[0])
+        hand_root = process.hand_root
         self._command_sender(
             types.CommandBook(
                 cover=types.Cover(

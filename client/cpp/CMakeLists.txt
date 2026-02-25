@@ -18,6 +18,8 @@ find_package(absl CONFIG REQUIRED)
 # Proto generation
 set(PROTO_DIR "${CMAKE_SOURCE_DIR}/../../proto")
 set(PROTO_FILES
+    ${PROTO_DIR}/google/api/annotations.proto
+    ${PROTO_DIR}/google/api/http.proto
     ${PROTO_DIR}/angzarr/types.proto
     ${PROTO_DIR}/angzarr/aggregate.proto
     ${PROTO_DIR}/angzarr/saga.proto
@@ -37,6 +39,7 @@ set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_DIR})
 file(MAKE_DIRECTORY ${GENERATED_DIR}/angzarr)
 file(MAKE_DIRECTORY ${GENERATED_DIR}/examples)
+file(MAKE_DIRECTORY ${GENERATED_DIR}/google/api)
 
 # Generate protobuf and gRPC sources
 # Use relative path from PROTO_DIR to preserve subdirectory structure
@@ -220,6 +223,17 @@ target_link_libraries(state_building_test
         GTest::gtest_main
 )
 
+add_executable(unified_router_test
+    tests/unified_router_test.cpp
+)
+
+target_link_libraries(unified_router_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(rejection_handler_response_test)
 gtest_discover_tests(builder_test)
@@ -227,3 +241,4 @@ gtest_discover_tests(error_introspection_test)
 gtest_discover_tests(router_test)
 gtest_discover_tests(compensation_test)
 gtest_discover_tests(state_building_test)
+gtest_discover_tests(unified_router_test)
