@@ -155,7 +155,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/gateway \
             ${{ needs.build-images.outputs.go-tag }} \
-            go build -o /tmp/angzarr-grpc-gateway .
+            go build -buildvcs=false -o /tmp/angzarr-grpc-gateway .
 
       - name: Generate OpenAPI spec
         run: |
