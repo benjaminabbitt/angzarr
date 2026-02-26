@@ -152,8 +152,8 @@ RUN --mount=type=cache,id=rust-cargo-registry,target=/usr/local/cargo/registry,s
     cp target/container-dev/saga-table-player /tmp/ && \
     cp target/container-dev/saga-hand-table /tmp/ && \
     cp target/container-dev/saga-hand-player /tmp/ && \
-    cp target/container-dev/pmg-hand-flow /tmp/ && \
-    cp target/container-dev/pmg-hand-flow-oo /tmp/ && \
+    cp target/container-dev/hand-flow /tmp/ && \
+    cp target/container-dev/hand-flow-oo /tmp/ && \
     cp target/container-dev/prj-output /tmp/ && \
     cp target/container-dev/prj-output-oo /tmp/
 
@@ -317,8 +317,8 @@ RUN --mount=type=cache,id=rust-musl-cargo-registry,target=/usr/local/cargo/regis
     cp target/$TARGET/production/saga-table-player /tmp/ && \
     cp target/$TARGET/production/saga-hand-table /tmp/ && \
     cp target/$TARGET/production/saga-hand-player /tmp/ && \
-    cp target/$TARGET/production/pmg-hand-flow /tmp/ && \
-    cp target/$TARGET/production/pmg-hand-flow-oo /tmp/ && \
+    cp target/$TARGET/production/hand-flow /tmp/ && \
+    cp target/$TARGET/production/hand-flow-oo /tmp/ && \
     cp target/$TARGET/production/prj-output /tmp/ && \
     cp target/$TARGET/production/prj-output-oo /tmp/
 
@@ -436,7 +436,7 @@ ENTRYPOINT ["./server"]
 # Dev Process Manager
 # ============================================================================
 FROM runtime-dev-base AS pmg-hand-flow-dev
-COPY --from=builder-dev /tmp/pmg-hand-flow ./server
+COPY --from=builder-dev /tmp/hand-flow ./server
 ENV PORT=50091
 EXPOSE 50091
 ENTRYPOINT ["./server"]
@@ -445,7 +445,7 @@ ENTRYPOINT ["./server"]
 # Release Process Manager
 # ============================================================================
 FROM runtime-release-base AS pmg-hand-flow
-COPY --from=builder-release --chown=nonroot:nonroot /tmp/pmg-hand-flow ./server
+COPY --from=builder-release --chown=nonroot:nonroot /tmp/hand-flow ./server
 ENV PORT=50091
 EXPOSE 50091
 ENTRYPOINT ["./server"]

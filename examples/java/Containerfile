@@ -84,25 +84,25 @@ COPY examples/java/hand-flow ./examples/java/hand-flow
 COPY examples/java/prj-output ./examples/java/prj-output
 
 # ============================================================================
-# Aggregate builds
+# Aggregate builds (Spring Boot uses bootJar, not shadowJar)
 # ============================================================================
 FROM source AS build-player
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :player-agg:shadowJar --no-daemon \
-    && cp player/agg/build/libs/*-all.jar /out.jar
+    ./gradlew :player-agg:bootJar --no-daemon \
+    && cp player/agg/build/libs/*.jar /out.jar
 
 FROM source AS build-table
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :table-agg:shadowJar --no-daemon \
-    && cp table/agg/build/libs/*-all.jar /out.jar
+    ./gradlew :table-agg:bootJar --no-daemon \
+    && cp table/agg/build/libs/*.jar /out.jar
 
 FROM source AS build-hand
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :hand-agg:shadowJar --no-daemon \
-    && cp hand/agg/build/libs/*-all.jar /out.jar
+    ./gradlew :hand-agg:bootJar --no-daemon \
+    && cp hand/agg/build/libs/*.jar /out.jar
 
 # ============================================================================
 # Saga builds
@@ -110,26 +110,26 @@ RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
 FROM source AS build-saga-table-hand
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :table-saga-hand:shadowJar --no-daemon \
-    && cp table/saga-hand/build/libs/*-all.jar /out.jar
+    ./gradlew :table-saga-hand:bootJar --no-daemon \
+    && cp table/saga-hand/build/libs/*.jar /out.jar
 
 FROM source AS build-saga-table-player
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :table-saga-player:shadowJar --no-daemon \
-    && cp table/saga-player/build/libs/*-all.jar /out.jar
+    ./gradlew :table-saga-player:bootJar --no-daemon \
+    && cp table/saga-player/build/libs/*.jar /out.jar
 
 FROM source AS build-saga-hand-table
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :hand-saga-table:shadowJar --no-daemon \
-    && cp hand/saga-table/build/libs/*-all.jar /out.jar
+    ./gradlew :hand-saga-table:bootJar --no-daemon \
+    && cp hand/saga-table/build/libs/*.jar /out.jar
 
 FROM source AS build-saga-hand-player
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :hand-saga-player:shadowJar --no-daemon \
-    && cp hand/saga-player/build/libs/*-all.jar /out.jar
+    ./gradlew :hand-saga-player:bootJar --no-daemon \
+    && cp hand/saga-player/build/libs/*.jar /out.jar
 
 # ============================================================================
 # Process Manager build
@@ -137,8 +137,8 @@ RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
 FROM source AS build-pmg-hand-flow
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :hand-flow:shadowJar --no-daemon \
-    && cp hand-flow/build/libs/*-all.jar /out.jar
+    ./gradlew :hand-flow:bootJar --no-daemon \
+    && cp hand-flow/build/libs/*.jar /out.jar
 
 # ============================================================================
 # Projector build
@@ -146,8 +146,8 @@ RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
 FROM source AS build-prj-output
 WORKDIR /app/examples/java
 RUN --mount=type=cache,id=gradle-cache,target=/root/.gradle,sharing=locked \
-    ./gradlew :prj-output:shadowJar --no-daemon \
-    && cp prj-output/build/libs/*-all.jar /out.jar
+    ./gradlew :prj-output:bootJar --no-daemon \
+    && cp prj-output/build/libs/*.jar /out.jar
 
 # ============================================================================
 # Runtime base - distroless Java (minimal, secure)

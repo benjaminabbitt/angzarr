@@ -22,6 +22,21 @@ RUN apk add --no-cache ca-certificates git
 WORKDIR /app
 
 # ============================================================================
+# Proto generator - generates Go proto files from .proto sources
+# ============================================================================
+FROM docker.io/bufbuild/buf:1.47.2 AS proto-gen
+
+WORKDIR /app
+
+# Copy proto files and buf config
+COPY proto ./proto
+
+WORKDIR /app/proto
+
+# Generate Go proto files (output: ../client/go/proto/)
+RUN buf generate --template buf.gen.go.yaml
+
+# ============================================================================
 # Deps fetcher - downloads ALL dependencies once
 # ============================================================================
 FROM base AS deps-fetcher
@@ -32,6 +47,10 @@ WORKDIR /app
 # The replace directive is: replace ... => ../../client/go
 # From /app/examples/go, that resolves to /app/client/go
 COPY client/go ./client/go
+
+# Copy generated proto files from proto-gen stage
+# These are gitignored locally but needed for the build
+COPY --from=proto-gen /app/client/go/proto ./client/go/proto
 
 # Copy go.mod/go.sum for dependency resolution
 COPY examples/go/go.mod examples/go/go.sum ./examples/go/
