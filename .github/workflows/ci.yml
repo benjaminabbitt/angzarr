@@ -255,6 +255,51 @@ jobs:
           name: openapi-spec
           path: docs/static/openapi.json
 
+  # Build runtime images (angzarr binaries) using matrix
+  build-runtime:
+    name: Build ${{ matrix.binary }} Image
+    runs-on: ubuntu-latest
+    needs: [build-base, build-lang]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        binary: [aggregate, projector, saga, process-manager, log, stream]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate rust tag
+        id: rust
+        run: |
+          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
+          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
+          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG" >> $GITHUB_OUTPUT
+
+      - name: Build runtime image
+        run: |
+          docker build \
+            --build-arg RUST_IMAGE=${{ steps.rust.outputs.tag }} \
+            --target angzarr-${{ matrix.binary }}-dev \
+            -t ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.binary }}:${{ github.sha }} \
+            -f Containerfile .
+
+      - name: Push runtime image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker push ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.binary }}:${{ github.sha }}
+          docker tag ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.binary }}:${{ github.sha }} \
+            ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.binary }}:latest
+          docker push ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.binary }}:latest
+
   push-gateway:
     name: Push Gateway Image
     runs-on: ubuntu-latest
