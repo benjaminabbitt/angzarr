@@ -38,14 +38,13 @@ logger = structlog.get_logger()
 
 
 # docs:start:saga_oo
-class TableHandSaga(Saga):
+class TableHandSaga(Saga, domain="table"):
     """Saga that translates HandStarted events to DealCards commands.
 
     Uses the OO pattern with @prepares and @reacts_to decorators.
     """
 
     name = "saga-table-hand"
-    input_domain = "table"
     output_domain = "hand"
 
     @prepares(table.HandStarted)

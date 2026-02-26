@@ -42,7 +42,7 @@ def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
 # =============================================================================
 
 
-class TableSyncSaga(Saga):
+class TableSyncSaga(Saga, domain="table"):
     """Table <-> Hand saga: bidirectional bridge for testing.
 
     Production sagas are single-domain, but for testing we combine both directions:
@@ -51,7 +51,6 @@ class TableSyncSaga(Saga):
     """
 
     name = "saga-table-hand"
-    input_domain = "table"  # Primary domain
     output_domain = "hand"
 
     @prepares(table.HandStarted)
@@ -122,7 +121,7 @@ class TableSyncSaga(Saga):
         )
 
 
-class HandResultsSaga(Saga):
+class HandResultsSaga(Saga, domain="hand"):
     """Hand/Table -> Player saga: bidirectional bridge for testing.
 
     Production sagas are single-domain, but for testing we handle multiple events:
@@ -131,7 +130,6 @@ class HandResultsSaga(Saga):
     """
 
     name = "saga-hand-player"
-    input_domain = "hand"  # Primary domain
     output_domain = "player"
 
     @prepares(hand.PotAwarded)
@@ -186,11 +184,10 @@ class HandResultsSaga(Saga):
         return tuple(commands) if commands else None
 
 
-class FailingSaga(Saga):
+class FailingSaga(Saga, domain="table"):
     """A saga that always fails for testing."""
 
     name = "saga-failing"
-    input_domain = "table"
     output_domain = "hand"
 
     @reacts_to(table.HandStarted)
