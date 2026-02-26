@@ -10,7 +10,8 @@ Supports two patterns:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Union
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import grpc
 
@@ -35,9 +36,7 @@ class CommandHandlerGrpc(command_handler_pb2_grpc.CommandHandlerServiceServicer)
     - ValueError -> INVALID_ARGUMENT
     """
 
-    def __init__(
-        self, handler: Union[type[CommandHandler], CommandHandlerRouter]
-    ) -> None:
+    def __init__(self, handler: type[CommandHandler] | CommandHandlerRouter) -> None:
         if isinstance(handler, type) and issubclass(handler, CommandHandler):
             self._handle = handler.handle
             self._replay: (
@@ -103,7 +102,7 @@ class CommandHandlerGrpc(command_handler_pb2_grpc.CommandHandlerServiceServicer)
 
 
 def run_command_handler_server(
-    handler: Union[type[CommandHandler], CommandHandlerRouter],
+    handler: type[CommandHandler] | CommandHandlerRouter,
     default_port: str,
     logger: structlog.BoundLogger | None = None,
 ) -> None:

@@ -1,4 +1,4 @@
-"""Tests for ProcessManager ABC and @reacts_to decorator with input_domain.
+"""Tests for ProcessManager ABC and @handles decorator with input_domain.
 
 Tests both OO (class-based) and protocol-based (router) patterns.
 Uses consistent domains: order, inventory, fulfillment.
@@ -13,7 +13,7 @@ from angzarr_client.handler_protocols import (
     ProcessManagerDomainHandler,
     ProcessManagerResponse,
 )
-from angzarr_client.process_manager import ProcessManager, reacts_to
+from angzarr_client.process_manager import ProcessManager, handles
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import ProcessManagerRouter
 from angzarr_client.state_builder import StateRouter
@@ -42,14 +42,14 @@ class OrderWorkflowState:
 
 
 # =============================================================================
-# OO Pattern: ProcessManager subclass with @reacts_to
+# OO Pattern: ProcessManager subclass with @handles
 # =============================================================================
 
 
 class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
     """Process manager coordinating order → inventory → fulfillment workflow.
 
-    Uses OO pattern with @reacts_to decorator.
+    Uses OO pattern with @handles decorator.
     """
 
     name = "order-workflow"
@@ -66,11 +66,11 @@ class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
         elif event_any.type_url.endswith("StockReserved"):
             state.inventory_reserved = True
 
-    @reacts_to(OrderCreated, input_domain="order", output_domain="inventory")
+    @handles(OrderCreated, input_domain="order", output_domain="inventory")
     def on_order_created(self, event: OrderCreated) -> ReserveStock:
         return ReserveStock(order_id=event.order_id, sku="default", quantity=1)
 
-    @reacts_to(StockReserved, input_domain="inventory", output_domain="fulfillment")
+    @handles(StockReserved, input_domain="inventory", output_domain="fulfillment")
     def on_stock_reserved(self, event: StockReserved) -> CreateShipment:
         state = self._get_state()
         return CreateShipment(
@@ -89,7 +89,7 @@ class NoopPM(ProcessManager[OrderWorkflowState]):
     def _apply_event(self, state: OrderWorkflowState, event_any: any_pb2.Any) -> None:
         pass
 
-    @reacts_to(OrderCreated, input_domain="order")
+    @handles(OrderCreated, input_domain="order")
     def on_order_created(self, event: OrderCreated) -> None:
         return None
 
@@ -105,7 +105,7 @@ class MultiCommandPM(ProcessManager[OrderWorkflowState]):
     def _apply_event(self, state: OrderWorkflowState, event_any: any_pb2.Any) -> None:
         pass
 
-    @reacts_to(OrderCreated, input_domain="order", output_domain="inventory")
+    @handles(OrderCreated, input_domain="order", output_domain="inventory")
     def on_order_created(self, event: OrderCreated) -> tuple:
         return (
             ReserveStock(order_id=event.order_id, sku="item-1", quantity=1),
@@ -227,7 +227,7 @@ def build_inventory_pm_router() -> ProcessManagerRouter[RouterPMState]:
 
 
 # =============================================================================
-# Tests for @reacts_to decorator with input_domain
+# Tests for @handles decorator with input_domain
 # =============================================================================
 
 
@@ -273,11 +273,11 @@ class TestProcessManagerValidation:
                 def _apply_event(self, state, event_any):
                     pass
 
-                @reacts_to(OrderCreated, input_domain="order")
+                @handles(OrderCreated, input_domain="order")
                 def handle_one(self, event: OrderCreated):
                     pass
 
-                @reacts_to(OrderCreated, input_domain="order")
+                @handles(OrderCreated, input_domain="order")
                 def handle_two(self, event: OrderCreated):
                     pass
 

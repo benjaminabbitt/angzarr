@@ -1,7 +1,6 @@
 """Helper functions for working with Angzarr proto types."""
 
-from datetime import datetime
-from typing import Optional, Type, TypeVar, Union
+from typing import TypeVar, Union
 from uuid import UUID as PyUUID
 
 from google.protobuf.any_pb2 import Any as ProtoAny
@@ -40,7 +39,7 @@ TYPE_URL_PREFIX = "type.googleapis.com/"
 CoverBearer = Union[EventBook, CommandBook, Query, Cover]
 
 
-def cover_of(obj: CoverBearer) -> Optional[Cover]:
+def cover_of(obj: CoverBearer) -> Cover | None:
     """Extract the Cover from various proto types."""
     if isinstance(obj, Cover):
         return obj
@@ -70,7 +69,7 @@ def has_correlation_id(obj: CoverBearer) -> bool:
     return bool(correlation_id(obj))
 
 
-def root_uuid(obj: CoverBearer) -> Optional[PyUUID]:
+def root_uuid(obj: CoverBearer) -> PyUUID | None:
     """Extract the root UUID from a Cover-bearing type."""
     c = cover_of(obj)
     if c is None or not c.HasField("root"):
@@ -97,7 +96,7 @@ def edition(obj: CoverBearer) -> str:
     return c.edition.name
 
 
-def edition_opt(obj: CoverBearer) -> Optional[str]:
+def edition_opt(obj: CoverBearer) -> str | None:
     """Return the edition name as Optional, None if not set."""
     c = cover_of(obj)
     if c is None or not c.HasField("edition") or not c.edition.name:
@@ -139,7 +138,7 @@ def bytes_to_uuid_text(b: bytes) -> str:
     return b.hex()
 
 
-def proto_uuid_to_text(u: Optional[UUID]) -> str:
+def proto_uuid_to_text(u: UUID | None) -> str:
     """Convert a proto UUID to text format."""
     if u is None:
         return ""
@@ -172,12 +171,12 @@ def explicit_edition(name: str, divergences: list[DomainDivergence]) -> Edition:
     return Edition(name=name, divergences=divergences)
 
 
-def is_main_timeline(e: Optional[Edition]) -> bool:
+def is_main_timeline(e: Edition | None) -> bool:
     """Check if an edition represents the main timeline."""
     return e is None or not e.name or e.name == DEFAULT_EDITION
 
 
-def divergence_for(e: Optional[Edition], domain_name: str) -> int:
+def divergence_for(e: Edition | None, domain_name: str) -> int:
     """Return the divergence sequence for a domain, or -1 if not found."""
     if e is None:
         return -1
@@ -211,7 +210,7 @@ def next_sequence(book: EventBook) -> int:
     return book.next_sequence
 
 
-def event_pages(book: Optional[EventBook]) -> list[EventPage]:
+def event_pages(book: EventBook | None) -> list[EventPage]:
     """Return the event pages from an EventBook, or empty list if None."""
     if book is None:
         return []
@@ -246,7 +245,7 @@ def destination_map(destinations: list[EventBook]) -> dict[str, EventBook]:
 # CommandBook helpers
 
 
-def command_pages(book: Optional[CommandBook]) -> list[CommandPage]:
+def command_pages(book: CommandBook | None) -> list[CommandPage]:
     """Return the command pages from a CommandBook, or empty list if None."""
     if book is None:
         return []
@@ -296,7 +295,7 @@ def type_url_matches(type_url_str: str, type_name: str) -> bool:
 # Type-safe reflection helpers
 
 
-def type_matches(any_proto: ProtoAny, msg_class: Type[T]) -> bool:
+def type_matches(any_proto: ProtoAny, msg_class: type[T]) -> bool:
     """Check if an Any contains a message of the given type using DESCRIPTOR.
 
     This is preferred over string-based suffix matching.
@@ -317,7 +316,7 @@ def type_matches(any_proto: ProtoAny, msg_class: Type[T]) -> bool:
     return any_proto.Is(msg_class.DESCRIPTOR)
 
 
-def try_unpack(any_proto: ProtoAny, msg_class: Type[T]) -> Optional[T]:
+def try_unpack(any_proto: ProtoAny, msg_class: type[T]) -> T | None:
     """Unpack an Any to msg_class if type matches, returning None otherwise.
 
     This is type-safe: it only unpacks if the type URL matches exactly.
@@ -343,7 +342,7 @@ def try_unpack(any_proto: ProtoAny, msg_class: Type[T]) -> Optional[T]:
         return None
 
 
-def unpack(any_proto: ProtoAny, msg_class: Type[T]) -> T:
+def unpack(any_proto: ProtoAny, msg_class: type[T]) -> T:
     """Unpack an Any to msg_class, raising ValueError if type doesn't match.
 
     Args:
@@ -366,7 +365,7 @@ def unpack(any_proto: ProtoAny, msg_class: Type[T]) -> T:
     return msg
 
 
-def full_type_name(msg_class: Type[Message]) -> str:
+def full_type_name(msg_class: type[Message]) -> str:
     """Get the fully-qualified type name from a message class DESCRIPTOR.
 
     Args:
@@ -381,7 +380,7 @@ def full_type_name(msg_class: Type[Message]) -> str:
     return msg_class.DESCRIPTOR.full_name
 
 
-def full_type_url_for(msg_class: Type[Message]) -> str:
+def full_type_url_for(msg_class: type[Message]) -> str:
     """Get the full type URL for a message class.
 
     Args:
@@ -416,7 +415,7 @@ def parse_timestamp(rfc3339: str) -> Timestamp:
 # Event decoding
 
 
-def decode_event(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def decode_event(page: EventPage, type_suffix: str, msg_class) -> object | None:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -446,7 +445,7 @@ def new_cover(
     domain_name: str,
     root: PyUUID,
     correlation_id_val: str = "",
-    edition_val: Optional[Edition] = None,
+    edition_val: Edition | None = None,
 ) -> Cover:
     """Create a new Cover with the given parameters."""
     cover = Cover(
@@ -474,7 +473,7 @@ def new_command_book(cover: Cover, pages: list[CommandPage]) -> CommandBook:
     return book
 
 
-def range_selection(lower: int, upper: Optional[int] = None) -> SequenceRange:
+def range_selection(lower: int, upper: int | None = None) -> SequenceRange:
     """Create a sequence range selection."""
     r = SequenceRange(lower=lower)
     if upper is not None:

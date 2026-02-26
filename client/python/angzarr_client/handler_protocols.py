@@ -77,7 +77,7 @@ class CommandHandlerDomainHandler(Protocol[S_co]):
         """Return list of command type suffixes this handler processes."""
         ...
 
-    def state_router(self) -> "StateRouter[S_co]":
+    def state_router(self) -> StateRouter[S_co]:
         """Return StateRouter for state reconstruction."""
         ...
 
@@ -111,7 +111,7 @@ class CommandHandlerDomainHandler(Protocol[S_co]):
         state: S_co,
         target_domain: str,
         target_command: str,
-    ) -> "RejectionHandlerResponse":
+    ) -> RejectionHandlerResponse:
         """Handle rejection notification for compensation.
 
         Args:
@@ -122,69 +122,6 @@ class CommandHandlerDomainHandler(Protocol[S_co]):
 
         Returns:
             RejectionHandlerResponse with compensation events or delegation flags
-        """
-        ...
-
-
-@runtime_checkable
-class SagaDomainHandler(Protocol):
-    """Protocol for saga domain handlers.
-
-    Implementations provide event translation logic from one domain to another.
-    Sagas are stateless - each event is processed independently.
-
-    Example:
-        class TableHandHandler(SagaDomainHandler):
-            def event_types(self) -> list[str]:
-                return ["HandStarted"]
-
-            def prepare(self, source, event) -> list[Cover]:
-                return [Cover(domain="hand", root=event.hand_root)]
-
-            def execute(self, source, event, destinations) -> list[CommandBook]:
-                dest = destinations[0]
-                return [new_command_book("hand", DealCards(...), dest.next_sequence)]
-    """
-
-    def event_types(self) -> list[str]:
-        """Return list of event type suffixes this handler processes."""
-        ...
-
-    def prepare(
-        self,
-        source: types.EventBook,
-        event: Any,
-    ) -> list[types.Cover]:
-        """Declare destination aggregates needed for execution.
-
-        Called during Prepare phase to fetch destination state before Execute.
-
-        Args:
-            source: Source EventBook with triggering events
-            event: The specific event being processed
-
-        Returns:
-            List of Covers identifying destination aggregates to fetch
-        """
-        ...
-
-    def execute(
-        self,
-        source: types.EventBook,
-        event: Any,
-        destinations: list[types.EventBook],
-    ) -> list[types.CommandBook]:
-        """Execute saga logic and produce commands.
-
-        Called during Execute phase with destination state available.
-
-        Args:
-            source: Source EventBook with triggering events
-            event: The specific event being processed
-            destinations: EventBooks for destinations declared in prepare()
-
-        Returns:
-            List of CommandBooks to send to target domains
         """
         ...
 
@@ -238,7 +175,7 @@ class ProcessManagerDomainHandler(Protocol, Generic[S]):
         state: S,
         event: Any,
         destinations: list[types.EventBook],
-    ) -> "ProcessManagerResponse":
+    ) -> ProcessManagerResponse:
         """Handle event and produce commands/events.
 
         Args:
@@ -258,7 +195,7 @@ class ProcessManagerDomainHandler(Protocol, Generic[S]):
         state: S,
         target_domain: str,
         target_command: str,
-    ) -> "RejectionHandlerResponse":
+    ) -> RejectionHandlerResponse:
         """Handle rejection notification for compensation.
 
         Called when a PM-issued command was rejected. Override to provide

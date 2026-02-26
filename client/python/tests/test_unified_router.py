@@ -1,9 +1,7 @@
-"""Tests for unified router pattern: CommandHandlerRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter.
+"""Tests for unified router pattern: CommandHandlerRouter, ProcessManagerRouter, ProjectorRouter.
 
-These routers wrap handler protocol implementations and provide unified routing
-with two patterns:
-- Single-domain: CommandHandlerRouter, SagaRouter (domain set at construction)
-- Multi-domain: ProcessManagerRouter, ProjectorRouter (fluent .domain() method)
+These routers wrap handler protocol implementations and provide unified routing.
+For sagas, use SingleFluentRouter (fluent builder pattern) instead.
 """
 
 from dataclasses import dataclass, field
@@ -18,7 +16,6 @@ from angzarr_client.handler_protocols import (
     ProcessManagerDomainHandler,
     ProcessManagerResponse,
     ProjectorDomainHandler,
-    SagaDomainHandler,
 )
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import (
@@ -26,7 +23,7 @@ from angzarr_client.router import (
     CommandHandlerRouter,
     ProcessManagerRouter,
     ProjectorRouter,
-    SagaRouter,
+    SingleFluentRouter,
     _extract_rejection_key,
     _next_sequence,
 )
@@ -129,40 +126,6 @@ class MockPlayerHandler(CommandHandlerDomainHandler[PlayerState]):
         target_command: str,
     ) -> RejectionHandlerResponse:
         return RejectionHandlerResponse()
-
-
-class MockSagaHandler(SagaDomainHandler):
-    """Test saga handler implementation."""
-
-    def event_types(self) -> list[str]:
-        return ["StockUpdated"]
-
-    def prepare(
-        self,
-        source: types.EventBook,
-        event: any_pb2.Any,
-    ) -> list[types.Cover]:
-        return [types.Cover(domain="inventory", root=source.cover.root)]
-
-    def execute(
-        self,
-        source: types.EventBook,
-        event: any_pb2.Any,
-        destinations: list[types.EventBook],
-    ) -> list[types.CommandBook]:
-        # Create a command targeting inventory domain
-        return [
-            types.CommandBook(
-                cover=types.Cover(
-                    domain="inventory",
-                    root=source.cover.root,
-                    correlation_id=source.cover.correlation_id,
-                ),
-                pages=[
-                    types.CommandPage(command=any_pb2.Any(type_url="test/ReserveStock"))
-                ],
-            )
-        ]
 
 
 class MockPMInventoryHandler(ProcessManagerDomainHandler[WorkflowState]):
@@ -395,71 +358,6 @@ class TestCommandHandlerRouter:
 
 
 # =============================================================================
-# SagaRouter Tests
-# =============================================================================
-
-
-class TestSagaRouter:
-    """Tests for SagaRouter (single-domain, events -> commands, stateless)."""
-
-    def test_construction_sets_name_and_domain(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        assert router.name == "saga-inventory"
-        assert router.input_domain == "inventory"
-
-    def test_event_types_delegates_to_handler(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        assert router.event_types() == ["StockUpdated"]
-
-    def test_subscriptions_returns_domain_and_types(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        subs = router.subscriptions()
-        assert subs == [("inventory", ["StockUpdated"])]
-
-    def test_prepare_destinations_returns_covers(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        source = make_event_book("inventory", "StockUpdated")
-        destinations = router.prepare_destinations(source)
-
-        assert len(destinations) == 1
-        assert destinations[0].domain == "inventory"
-
-    def test_prepare_destinations_returns_empty_for_none(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        destinations = router.prepare_destinations(None)
-        assert destinations == []
-
-    def test_dispatch_returns_commands(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        source = make_event_book("inventory", "StockUpdated", "corr-123")
-        response = router.dispatch(source, [])
-
-        assert len(response.commands) == 1
-        assert response.commands[0].cover.domain == "inventory"
-
-    def test_dispatch_raises_on_empty_source(self):
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-inventory", "inventory", handler)
-
-        source = types.EventBook(cover=types.Cover(domain="inventory"))
-
-        with pytest.raises(ValueError, match="no events"):
-            router.dispatch(source, [])
-
-
-# =============================================================================
 # ProcessManagerRouter Tests
 # =============================================================================
 
@@ -661,10 +559,31 @@ class TestRouterIntegration:
         assert state.exists is True
         assert state.player_id == "integration-test"
 
-    def test_saga_two_phase_protocol(self):
-        """Verify saga prepare/dispatch two-phase protocol."""
-        handler = MockSagaHandler()
-        router = SagaRouter("saga-test", "inventory", handler)
+    def test_saga_two_phase_protocol_with_event_router(self):
+        """Verify saga prepare/dispatch two-phase protocol using SingleFluentRouter."""
+
+        def prepare_stock_updated(event_any, root):
+            return [types.Cover(domain="inventory", root=root)]
+
+        def handle_stock_updated(event_any, root, correlation_id, destinations):
+            return [
+                types.CommandBook(
+                    cover=types.Cover(
+                        domain="inventory", root=root, correlation_id=correlation_id
+                    ),
+                    pages=[
+                        types.CommandPage(
+                            command=any_pb2.Any(type_url="test/ReserveStock")
+                        )
+                    ],
+                )
+            ]
+
+        router = (
+            SingleFluentRouter("saga-test", "inventory")
+            .prepare(StockUpdated, prepare_stock_updated)
+            .on(StockUpdated, handle_stock_updated)
+        )
 
         # Phase 1: Prepare
         source = make_event_book("inventory", "StockUpdated", "workflow-1")
@@ -672,8 +591,8 @@ class TestRouterIntegration:
         assert len(destinations) > 0
 
         # Phase 2: Dispatch with fetched destinations
-        response = router.dispatch(source, [types.EventBook()])
-        assert len(response.commands) > 0
+        commands = router.dispatch(source, [types.EventBook()])
+        assert len(commands) > 0
 
     def test_pm_multi_domain_routing(self):
         """Verify PM routes to correct handler per domain."""

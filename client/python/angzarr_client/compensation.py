@@ -30,7 +30,7 @@ Usage in Aggregate:
             )
 
 Usage in ProcessManager:
-    from angzarr_client import ProcessManager, reacts_to
+    from angzarr_client.process_manager import ProcessManager, handles
     from angzarr_client.compensation import (
         CompensationContext,
         pm_delegate_to_framework,
@@ -56,7 +56,6 @@ Usage in ProcessManager:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .proto.angzarr import command_handler_pb2 as command_handler
 from .proto.angzarr import types_pb2 as types
@@ -81,10 +80,10 @@ class CompensationContext:
     rejection_reason: str
     """Why the command was rejected."""
 
-    rejected_command: Optional[types.CommandBook]
+    rejected_command: types.CommandBook | None
     """The command that was rejected (if available)."""
 
-    source_aggregate: Optional[types.Cover]
+    source_aggregate: types.Cover | None
     """Cover of the aggregate that triggered the flow."""
 
     @classmethod
@@ -121,7 +120,7 @@ class CompensationContext:
         )
 
     @property
-    def rejected_command_type(self) -> Optional[str]:
+    def rejected_command_type(self) -> str | None:
         """Get the type URL of the rejected command, if available."""
         if self.rejected_command and self.rejected_command.pages:
             page = self.rejected_command.pages[0]
@@ -193,10 +192,10 @@ class RejectionHandlerResponse:
     Can contain events (compensation), notification (upstream propagation), or both.
     """
 
-    events: Optional[types.EventBook] = None
+    events: types.EventBook | None = None
     """Events to persist to own state (compensation)."""
 
-    notification: Optional[types.Notification] = None
+    notification: types.Notification | None = None
     """Notification to forward upstream (rejection propagation)."""
 
 

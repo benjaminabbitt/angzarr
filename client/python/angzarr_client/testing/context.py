@@ -5,7 +5,7 @@ particularly useful for Gherkin/BDD scenarios.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from ..errors import CommandRejectedError
 from ..helpers import now
@@ -55,7 +55,7 @@ class ScenarioContext:
 
     # Last command result
     result: Any = None
-    error: Optional[CommandRejectedError] = None
+    error: CommandRejectedError | None = None
 
     # State after rebuild
     state: Any = None

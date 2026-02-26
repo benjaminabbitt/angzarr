@@ -1,16 +1,15 @@
-"""Tests for Saga ABC and @reacts_to decorator.
+"""Tests for Saga ABC and @handles decorator.
 
-Tests both OO (class-based) and protocol-based (router) patterns.
+Tests both OO (class-based) and functional (SingleFluentRouter) patterns.
 Uses consistent domains: order, inventory, fulfillment.
 """
 
 import pytest
 from google.protobuf import any_pb2
 
-from angzarr_client.handler_protocols import SagaDomainHandler
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import SagaRouter
-from angzarr_client.saga import Saga, reacts_to
+from angzarr_client.router import SingleFluentRouter
+from angzarr_client.saga import Saga, handles
 
 from .fixtures import (
     CreateShipment,
@@ -40,33 +39,31 @@ class AnotherEvent:
 
 
 # =============================================================================
-# OO Pattern: Saga subclass with @reacts_to
+# OO Pattern: Saga subclass with @handles
 # =============================================================================
 
 
-class OrderFulfillmentSaga(Saga):
+class OrderFulfillmentSaga(Saga, domain="order"):
     """Saga bridging order → fulfillment domain.
 
-    Uses OO pattern with @reacts_to decorator.
+    Uses OO pattern with @handles decorator.
     """
 
     name = "saga-order-fulfillment"
-    input_domain = "order"
     output_domain = "fulfillment"
 
-    @reacts_to(OrderCompleted)
+    @handles(OrderCompleted)
     def handle_completed(self, event: OrderCompleted) -> CreateShipment:
         return CreateShipment(order_id=event.order_id, address="default")
 
 
-class FulfillmentInventorySaga(Saga):
+class FulfillmentInventorySaga(Saga, domain="inventory"):
     """Saga bridging fulfillment → inventory domain."""
 
     name = "saga-fulfillment-inventory"
-    input_domain = "inventory"
     output_domain = "order"
 
-    @reacts_to(StockReserved)
+    @handles(StockReserved)
     def handle_reserved(self, event: StockReserved) -> tuple:
         # Return multiple commands
         return (
@@ -75,109 +72,86 @@ class FulfillmentInventorySaga(Saga):
         )
 
 
-class NoopSaga(Saga):
+class NoopSaga(Saga, domain="order"):
     """Saga that returns None (no command)."""
 
     name = "saga-noop"
-    input_domain = "order"
     output_domain = "fulfillment"
 
-    @reacts_to(OrderCompleted)
+    @handles(OrderCompleted)
     def handle_completed(self, event: OrderCompleted) -> None:
         return None
 
 
 # =============================================================================
-# Protocol-based Pattern: SagaRouter with SagaDomainHandler
+# Functional Pattern: SingleFluentRouter with fluent API
 # =============================================================================
 
 
-class OrderFulfillmentHandler(SagaDomainHandler):
-    """Protocol-based saga handler bridging order → fulfillment."""
+def _handle_order_completed(
+    event_any: any_pb2.Any,
+    root: types.UUID | None,
+    correlation_id: str,
+    destinations: list[types.EventBook],
+) -> list[types.CommandBook]:
+    """Functional handler for OrderCompleted."""
+    completed = OrderCompleted()
+    completed.ParseFromString(event_any.value)
+    cmd = CreateShipment(order_id=completed.order_id, address="default")
+    cmd_any = any_pb2.Any()
+    cmd_any.Pack(cmd)
+    return [
+        types.CommandBook(
+            cover=types.Cover(domain="fulfillment", correlation_id=correlation_id),
+            pages=[types.CommandPage(command=cmd_any)],
+        )
+    ]
 
-    def event_types(self) -> list[str]:
-        return ["OrderCompleted"]
 
-    def prepare(self, source: types.EventBook, event: any_pb2.Any) -> list[types.Cover]:
-        return []
+def _handle_stock_reserved(
+    event_any: any_pb2.Any,
+    root: types.UUID | None,
+    correlation_id: str,
+    destinations: list[types.EventBook],
+) -> list[types.CommandBook]:
+    """Functional handler for StockReserved."""
+    reserved = StockReserved()
+    reserved.ParseFromString(event_any.value)
+    cmd1 = ReserveStock(order_id=f"{reserved.order_id}-1", sku=reserved.sku, quantity=1)
+    cmd2 = ReserveStock(order_id=f"{reserved.order_id}-2", sku=reserved.sku, quantity=1)
 
-    def execute(
-        self,
-        source: types.EventBook,
-        event: any_pb2.Any,
-        destinations: list[types.EventBook],
-    ) -> list[types.CommandBook]:
-        completed = OrderCompleted()
-        completed.ParseFromString(event.value)
-        cmd = CreateShipment(order_id=completed.order_id, address="default")
+    result = []
+    for cmd in [cmd1, cmd2]:
         cmd_any = any_pb2.Any()
         cmd_any.Pack(cmd)
-        return [
+        result.append(
             types.CommandBook(
-                cover=types.Cover(
-                    domain="fulfillment", correlation_id=source.cover.correlation_id
-                ),
+                cover=types.Cover(domain="order", correlation_id=correlation_id),
                 pages=[types.CommandPage(command=cmd_any)],
             )
-        ]
-
-
-class InventorySagaHandler(SagaDomainHandler):
-    """Protocol-based saga handler for inventory events."""
-
-    def event_types(self) -> list[str]:
-        return ["StockReserved"]
-
-    def prepare(self, source: types.EventBook, event: any_pb2.Any) -> list[types.Cover]:
-        return []
-
-    def execute(
-        self,
-        source: types.EventBook,
-        event: any_pb2.Any,
-        destinations: list[types.EventBook],
-    ) -> list[types.CommandBook]:
-        reserved = StockReserved()
-        reserved.ParseFromString(event.value)
-        cmd1 = ReserveStock(
-            order_id=f"{reserved.order_id}-1", sku=reserved.sku, quantity=1
         )
-        cmd2 = ReserveStock(
-            order_id=f"{reserved.order_id}-2", sku=reserved.sku, quantity=1
-        )
-
-        result = []
-        for cmd in [cmd1, cmd2]:
-            cmd_any = any_pb2.Any()
-            cmd_any.Pack(cmd)
-            result.append(
-                types.CommandBook(
-                    cover=types.Cover(
-                        domain="order", correlation_id=source.cover.correlation_id
-                    ),
-                    pages=[types.CommandPage(command=cmd_any)],
-                )
-            )
-        return result
+    return result
 
 
-def build_order_fulfillment_router() -> SagaRouter:
-    """Build protocol-based saga router.
+def build_order_fulfillment_router() -> SingleFluentRouter:
+    """Build SingleFluentRouter for order → fulfillment saga.
 
     Demonstrates same logic as OrderFulfillmentSaga but with router pattern.
     """
-    handler = OrderFulfillmentHandler()
-    return SagaRouter("saga-order-fulfillment-fn", "order", handler)
+    return SingleFluentRouter("saga-order-fulfillment-fn", "order").on(
+        OrderCompleted, _handle_order_completed
+    )
 
 
-def build_inventory_router() -> SagaRouter:
-    """Protocol-based router for inventory events."""
-    handler = InventorySagaHandler()
-    return SagaRouter("saga-inventory-order-fn", "inventory", handler)
+def build_inventory_router() -> SingleFluentRouter:
+    """SingleFluentRouter for inventory events."""
+    return SingleFluentRouter("saga-inventory-order-fn", "inventory").on(
+        StockReserved, _handle_stock_reserved
+    )
 
 
 # =============================================================================
-# Tests for @reacts_to decorator
+# Tests for @handles decorator
 # =============================================================================
 
 
@@ -191,21 +165,21 @@ class TestReactsToDecorator:
     def test_decorator_validates_missing_param(self):
         with pytest.raises(TypeError, match="must have cmd parameter"):
 
-            @reacts_to(OrderCompleted)
+            @handles(OrderCompleted)
             def bad_method(self):
                 pass
 
     def test_decorator_validates_missing_type_hint(self):
         with pytest.raises(TypeError, match="missing type hint"):
 
-            @reacts_to(OrderCompleted)
+            @handles(OrderCompleted)
             def bad_method(self, event):
                 pass
 
     def test_decorator_validates_type_hint_mismatch(self):
         with pytest.raises(TypeError, match="doesn't match type hint"):
 
-            @reacts_to(OrderCompleted)
+            @handles(OrderCompleted)
             def bad_method(self, event: AnotherEvent):
                 pass
 
@@ -223,49 +197,46 @@ class TestSagaSubclassValidation:
     def test_missing_name_raises(self):
         with pytest.raises(TypeError, match="must define 'name'"):
 
-            class BadSaga(Saga):
-                input_domain = "order"
+            class BadSaga(Saga, domain="order"):
                 output_domain = "fulfillment"
 
-                @reacts_to(OrderCompleted)
+                @handles(OrderCompleted)
                 def handle(self, event: OrderCompleted):
                     pass
 
     def test_missing_input_domain_raises(self):
-        with pytest.raises(TypeError, match="must define 'input_domain'"):
+        with pytest.raises(TypeError, match="must specify domain"):
 
             class BadSaga(Saga):
                 name = "bad-saga"
                 output_domain = "fulfillment"
 
-                @reacts_to(OrderCompleted)
+                @handles(OrderCompleted)
                 def handle(self, event: OrderCompleted):
                     pass
 
     def test_missing_output_domain_raises(self):
         with pytest.raises(TypeError, match="must define 'output_domain'"):
 
-            class BadSaga(Saga):
+            class BadSaga(Saga, domain="order"):
                 name = "bad-saga"
-                input_domain = "order"
 
-                @reacts_to(OrderCompleted)
+                @handles(OrderCompleted)
                 def handle(self, event: OrderCompleted):
                     pass
 
     def test_duplicate_handler_raises(self):
         with pytest.raises(TypeError, match="duplicate handler"):
 
-            class BadSaga(Saga):
+            class BadSaga(Saga, domain="order"):
                 name = "bad-saga"
-                input_domain = "order"
                 output_domain = "fulfillment"
 
-                @reacts_to(OrderCompleted)
+                @handles(OrderCompleted)
                 def handle_one(self, event: OrderCompleted):
                     pass
 
-                @reacts_to(OrderCompleted)
+                @handles(OrderCompleted)
                 def handle_two(self, event: OrderCompleted):
                     pass
 
@@ -384,11 +355,11 @@ class TestSagaExecute:
 
 # =============================================================================
 # =============================================================================
-# Tests for protocol-based pattern (SagaRouter)
+# Tests for SingleFluentRouter (fluent pattern)
 # =============================================================================
 
 
-class TestProtocolBasedRouter:
+class TestSingleFluentRouter:
     def test_router_dispatch_order_completed(self):
         router = build_order_fulfillment_router()
 
@@ -401,8 +372,7 @@ class TestProtocolBasedRouter:
             pages=[types.EventPage(event=event_any)],
         )
 
-        response = router.dispatch(source, [])
-        commands = list(response.commands)
+        commands = router.dispatch(source, [])
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "fulfillment"
@@ -420,8 +390,7 @@ class TestProtocolBasedRouter:
             pages=[types.EventPage(event=event_any)],
         )
 
-        response = router.dispatch(source, [])
-        commands = list(response.commands)
+        commands = router.dispatch(source, [])
 
         assert len(commands) == 2
         assert commands[0].cover.domain == "order"
@@ -434,7 +403,7 @@ class TestProtocolBasedRouter:
 
 
 class TestPatternEquivalence:
-    """Verify OO and protocol-based patterns produce equivalent results."""
+    """Verify OO and SingleFluentRouter patterns produce equivalent results."""
 
     def test_same_output_for_order_completed(self):
         event = OrderCompleted(order_id="order-eq")
@@ -445,14 +414,13 @@ class TestPatternEquivalence:
         saga = OrderFulfillmentSaga()
         oo_commands = saga.dispatch(event_any, b"\x01", "corr-eq")
 
-        # Protocol pattern
+        # SingleFluentRouter pattern
         router = build_order_fulfillment_router()
         source = types.EventBook(
             cover=types.Cover(domain="order", correlation_id="corr-eq"),
             pages=[types.EventPage(event=event_any)],
         )
-        response = router.dispatch(source, [])
-        router_commands = list(response.commands)
+        router_commands = router.dispatch(source, [])
 
         # Both produce one command to fulfillment domain
         assert len(oo_commands) == len(router_commands) == 1

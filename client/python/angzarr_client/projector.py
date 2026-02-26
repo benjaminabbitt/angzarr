@@ -3,14 +3,21 @@
 Projectors consume events and produce projections (read model updates).
 They are stateless event consumers that build query-optimized views.
 
-Example usage (single domain):
-    from angzarr_client import Projector, projects
+Router Pattern: Projector follows the OO pattern.
+- Single domain: use @domain("name") class decorator
+- Multi-domain: use input_domains class attribute (list of domains)
+- Uses @handles decorator for event handler registration
+- Stateless: each event projected independently
+- External output: writes to read models, files, external systems
 
+Example usage (single domain):
+    from angzarr_client.projector import Projector, handles, domain
+
+    @domain("inventory")
     class InventoryStockProjector(Projector):
         name = "projector-inventory-stock"
-        input_domain = "inventory"
 
-        @projects(StockUpdated)
+        @handles(StockUpdated)
         def project_stock(self, event: StockUpdated) -> Projection:
             # Pack projection data into Any
             data = StockLevel(sku=event.sku, quantity=event.quantity)
@@ -19,16 +26,17 @@ Example usage (single domain):
             return Projection(projector=self.name, projection=data_any)
 
 Example usage (multi-domain):
-    from angzarr_client import Projector, projects
+    from angzarr_client.projector import Projector, handles
 
     class OutputProjector(Projector):
         name = "output"
         input_domains = ["player", "table", "hand"]
 
-        @projects(PlayerRegistered)
+        @handles(PlayerRegistered)
         def project_registered(self, event: PlayerRegistered) -> Projection:
             write_log(f"PLAYER registered: {event.display_name}")
             return Projection(projector=self.name)
+
 """
 
 from __future__ import annotations
@@ -40,31 +48,39 @@ from google.protobuf.any_pb2 import Any
 
 from .helpers import TYPE_URL_PREFIX
 from .proto.angzarr import types_pb2 as types
-from .router import projects
+from .router import domain, handles
 
-# Re-export decorator
-__all__ = ["Projector", "projects"]
+# Re-export decorators
+__all__ = ["Projector", "domain", "handles"]
 
 
 class Projector(ABC):
     """Base class for event-driven projectors.
 
+    Router Pattern: Follows the OO pattern.
+
+    Projector-specific notes:
+    - Single domain: use @domain("name") class decorator
+    - Multi-domain: use input_domains class attribute
+    - Stateless: each event projected independently
+    - External output: writes to read models, external systems
+
     Provides:
-    - Event dispatch via @projects decorated methods
+    - Event dispatch via @handles decorated methods
     - Projection building
     - Descriptor generation for topology discovery
 
     Subclasses must:
     - Set `name` class attribute (e.g., "projector-inventory-stock")
-    - Set `input_domain` (single domain) OR `input_domains` (list of domains)
-    - Decorate event handlers with `@projects(EventType)`
+    - Use @domain("name") decorator (single domain) OR set `input_domains` (list)
+    - Decorate event handlers with `@handles(EventType)`
 
     Usage (single domain):
+        @domain("inventory")
         class InventoryStockProjector(Projector):
             name = "projector-inventory-stock"
-            input_domain = "inventory"
 
-            @projects(StockUpdated)
+            @handles(StockUpdated)
             def project_stock(self, event: StockUpdated) -> Projection:
                 # Pack projection data into Any
                 data = StockLevel(sku=event.sku, quantity=event.quantity)
@@ -77,40 +93,51 @@ class Projector(ABC):
             name = "output"
             input_domains = ["player", "table", "hand"]
 
-            @projects(PlayerRegistered)
+            @handles(PlayerRegistered)
             def project_registered(self, event: PlayerRegistered) -> Projection:
                 ...
+
     """
 
     name: str
-    input_domain: str = None
+    _domain: str = None  # Set by @domain decorator
     input_domains: list[str] = None
     _dispatch_table: dict[str, tuple[str, type]] = {}
 
-    def __init_subclass__(cls, **kwargs):
+    @property
+    def input_domain(self) -> str:
+        """Get input domain (from @domain decorator)."""
+        return self._domain
+
+    def __init_subclass__(cls, domain: str = None, **kwargs):
         super().__init_subclass__(**kwargs)
 
         # Skip validation for abstract intermediate classes
         if inspect.isabstract(cls):
             return
 
+        # Set domain from __init_subclass__ kwarg
+        if domain is not None:
+            cls._domain = domain
+
         # Validate required class attributes
         if not getattr(cls, "name", None):
             raise TypeError(f"{cls.__name__} must define 'name' class attribute")
 
-        # Require either input_domain or input_domains
-        has_single = getattr(cls, "input_domain", None) is not None
+        # Check for domain kwarg or input_domains attribute (multi-domain)
+        has_domain = getattr(cls, "_domain", None) is not None
         has_multi = getattr(cls, "input_domains", None) is not None
-        if not has_single and not has_multi:
+
+        if not has_domain and not has_multi:
             raise TypeError(
-                f"{cls.__name__} must define 'input_domain' or 'input_domains' class attribute"
+                f"{cls.__name__} must specify domain: class {cls.__name__}(Projector, domain='x')"
             )
 
         cls._dispatch_table = cls._build_dispatch_table()
 
     @classmethod
     def _build_dispatch_table(cls) -> dict[str, tuple[str, type]]:
-        """Scan for @projects methods and build dispatch table."""
+        """Scan for @handles methods and build dispatch table."""
         table = {}
         for attr_name in dir(cls):
             attr = getattr(cls, attr_name, None)
@@ -125,7 +152,7 @@ class Projector(ABC):
         return table
 
     def dispatch(self, event_any: Any) -> types.Projection:
-        """Dispatch event to matching @projects method.
+        """Dispatch event to matching @handles method.
 
         Args:
             event_any: Packed event as google.protobuf.Any

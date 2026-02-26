@@ -1,6 +1,5 @@
 """Fluent builders for commands and queries."""
 
-from typing import Optional
 from uuid import UUID as PyUUID
 from uuid import uuid4
 
@@ -15,7 +14,6 @@ from .proto.angzarr import (
     CommandPage,
     CommandResponse,
     Cover,
-    Edition,
     EventBook,
     EventPage,
     Query,
@@ -31,16 +29,16 @@ class CommandBuilder:
         self,
         client: CommandHandlerClient,
         domain: str,
-        root: Optional[PyUUID] = None,
+        root: PyUUID | None = None,
     ):
         self._client = client
         self._domain = domain
         self._root = root
-        self._correlation_id: Optional[str] = None
+        self._correlation_id: str | None = None
         self._sequence: int = 0
-        self._type_url: Optional[str] = None
-        self._payload: Optional[bytes] = None
-        self._err: Optional[Exception] = None
+        self._type_url: str | None = None
+        self._payload: bytes | None = None
+        self._err: Exception | None = None
 
     def with_correlation_id(self, id: str) -> "CommandBuilder":
         """Set the correlation ID for request tracing."""
@@ -98,16 +96,16 @@ class QueryBuilder:
         self,
         client: QueryClient,
         domain: str,
-        root: Optional[PyUUID] = None,
+        root: PyUUID | None = None,
     ):
         self._client = client
         self._domain = domain
         self._root = root
-        self._correlation_id: Optional[str] = None
-        self._range: Optional[SequenceRange] = None
-        self._temporal: Optional[TemporalQuery] = None
-        self._edition: Optional[str] = None
-        self._err: Optional[Exception] = None
+        self._correlation_id: str | None = None
+        self._range: SequenceRange | None = None
+        self._temporal: TemporalQuery | None = None
+        self._edition: str | None = None
+        self._err: Exception | None = None
 
     def by_correlation_id(self, id: str) -> "QueryBuilder":
         """Query by correlation ID instead of root."""

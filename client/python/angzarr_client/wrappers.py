@@ -4,7 +4,7 @@ Each wrapper takes a protobuf message in its constructor and provides
 extension methods as instance methods.
 """
 
-from typing import List, Optional, Type, TypeVar
+from typing import Optional, TypeVar
 from uuid import UUID as PyUUID
 
 from .helpers import (
@@ -45,7 +45,7 @@ class CoverW:
         """Return True if the correlation_id is present and non-empty."""
         return bool(self.proto.correlation_id)
 
-    def root_uuid(self) -> Optional[PyUUID]:
+    def root_uuid(self) -> PyUUID | None:
         """Extract the root UUID."""
         if not self.proto.HasField("root"):
             return None
@@ -66,7 +66,7 @@ class CoverW:
             return DEFAULT_EDITION
         return self.proto.edition.name
 
-    def edition_opt(self) -> Optional[str]:
+    def edition_opt(self) -> str | None:
         """Return the edition name as Optional, None if not set."""
         if not self.proto.HasField("edition") or not self.proto.edition.name:
             return None
@@ -91,11 +91,11 @@ class EventBookW:
         """Return the next sequence number."""
         return self.proto.next_sequence
 
-    def pages(self) -> List["EventPageW"]:
+    def pages(self) -> list["EventPageW"]:
         """Return the event pages as wrapped EventPageW instances."""
         return [EventPageW(p) for p in self.proto.pages]
 
-    def _cover(self) -> Optional[Cover]:
+    def _cover(self) -> Cover | None:
         """Get the cover, or None if not set."""
         if not self.proto.HasField("cover"):
             return None
@@ -119,7 +119,7 @@ class EventBookW:
         """Return True if the correlation_id is present and non-empty."""
         return bool(self.correlation_id())
 
-    def root_uuid(self) -> Optional[PyUUID]:
+    def root_uuid(self) -> PyUUID | None:
         """Extract the root UUID from the cover."""
         cover = self._cover()
         if cover is None or not cover.HasField("root"):
@@ -165,11 +165,11 @@ class CommandBookW:
     def __init__(self, proto: CommandBook) -> None:
         self.proto = proto
 
-    def pages(self) -> List["CommandPageW"]:
+    def pages(self) -> list["CommandPageW"]:
         """Return the command pages as wrapped CommandPageW instances."""
         return [CommandPageW(p) for p in self.proto.pages]
 
-    def _cover(self) -> Optional[Cover]:
+    def _cover(self) -> Cover | None:
         """Get the cover, or None if not set."""
         if not self.proto.HasField("cover"):
             return None
@@ -193,7 +193,7 @@ class CommandBookW:
         """Return True if the correlation_id is present and non-empty."""
         return bool(self.correlation_id())
 
-    def root_uuid(self) -> Optional[PyUUID]:
+    def root_uuid(self) -> PyUUID | None:
         """Extract the root UUID from the cover."""
         cover = self._cover()
         if cover is None or not cover.HasField("root"):
@@ -228,7 +228,7 @@ class QueryW:
     def __init__(self, proto: Query) -> None:
         self.proto = proto
 
-    def _cover(self) -> Optional[Cover]:
+    def _cover(self) -> Cover | None:
         """Get the cover, or None if not set."""
         if not self.proto.HasField("cover"):
             return None
@@ -252,7 +252,7 @@ class QueryW:
         """Return True if the correlation_id is present and non-empty."""
         return bool(self.correlation_id())
 
-    def root_uuid(self) -> Optional[PyUUID]:
+    def root_uuid(self) -> PyUUID | None:
         """Extract the root UUID from the cover."""
         cover = self._cover()
         if cover is None or not cover.HasField("root"):
@@ -280,7 +280,7 @@ class EventPageW:
     def __init__(self, proto: EventPage) -> None:
         self.proto = proto
 
-    def decode_event(self, type_suffix: str, msg_class: Type[T]) -> Optional[T]:
+    def decode_event(self, type_suffix: str, msg_class: type[T]) -> T | None:
         """Attempt to decode an event payload if the type URL matches.
 
         Args:
@@ -325,7 +325,7 @@ class CommandResponseW:
             return None
         return EventBookW(self.proto.events)
 
-    def events(self) -> List["EventPageW"]:
+    def events(self) -> list["EventPageW"]:
         """Extract the event pages as wrapped EventPageW instances."""
         if not self.proto.HasField("events"):
             return []

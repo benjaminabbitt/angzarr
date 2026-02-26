@@ -8,7 +8,8 @@ StateRouter: Higher-level, auto-unpacks events to typed handlers.
 
 from __future__ import annotations
 
-from typing import Callable, Generic, List, TypeVar
+from collections.abc import Callable
+from typing import Generic, TypeVar
 
 from google.protobuf.any_pb2 import Any as AnyProto
 
@@ -168,7 +169,7 @@ class StateRouter(Generic[S]):
                           Can be a class (e.g., PlayerState) or a factory function.
         """
         self._state_factory = state_factory
-        self._handlers: List[tuple[str, type, Callable[[S, object], None]]] = []
+        self._handlers: list[tuple[str, type, Callable[[S, object], None]]] = []
         self._snapshot_loader: SnapshotLoader[S] | None = None
 
     def on(

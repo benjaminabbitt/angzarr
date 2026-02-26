@@ -1,4 +1,4 @@
-"""Tests for Projector ABC and @projects decorator.
+"""Tests for Projector ABC and @handles decorator.
 
 Tests both OO (class-based) and protocol-based (router) patterns.
 Uses consistent domains: order, inventory, fulfillment, player.
@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 
 from angzarr_client.handler_protocols import ProjectorDomainHandler
-from angzarr_client.projector import Projector, projects
+from angzarr_client.projector import Projector, handles
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import ProjectorRouter
 
@@ -72,19 +72,18 @@ def create_test_db() -> Engine:
 # =============================================================================
 
 
-class AuditTrailProjector(Projector):
+class AuditTrailProjector(Projector, domain="inventory"):
     """Projects events to audit trail table using SQLAlchemy Core.
 
     Demonstrates SQLite projector with type-safe queries.
     """
 
     name = "projector-audit-trail"
-    input_domain = "inventory"
 
     def __init__(self, engine: Engine):
         self._engine = engine
 
-    @projects(StockUpdated)
+    @handles(StockUpdated)
     def project_stock_updated(self, event: StockUpdated) -> types.Projection:
         with self._engine.connect() as conn:
             conn.execute(
@@ -98,7 +97,7 @@ class AuditTrailProjector(Projector):
             conn.commit()
         return types.Projection(projector=self.name)
 
-    @projects(StockReserved)
+    @handles(StockReserved)
     def project_stock_reserved(self, event: StockReserved) -> types.Projection:
         with self._engine.connect() as conn:
             conn.execute(
@@ -113,19 +112,18 @@ class AuditTrailProjector(Projector):
         return types.Projection(projector=self.name)
 
 
-class PlayerStatsProjector(Projector):
+class PlayerStatsProjector(Projector, domain="player"):
     """Projects player events to stats table using SQLAlchemy Core.
 
     Demonstrates upsert pattern with SQLite.
     """
 
     name = "projector-player-stats"
-    input_domain = "player"
 
     def __init__(self, engine: Engine):
         self._engine = engine
 
-    @projects(PlayerRegistered)
+    @handles(PlayerRegistered)
     def project_registered(self, event: PlayerRegistered) -> types.Projection:
         with self._engine.connect() as conn:
             conn.execute(
@@ -139,7 +137,7 @@ class PlayerStatsProjector(Projector):
             conn.commit()
         return types.Projection(projector=self.name)
 
-    @projects(ScoreUpdated)
+    @handles(ScoreUpdated)
     def project_score(self, event: ScoreUpdated) -> types.Projection:
         with self._engine.connect() as conn:
             # Update existing player stats
@@ -155,13 +153,12 @@ class PlayerStatsProjector(Projector):
         return types.Projection(projector=self.name)
 
 
-class NoopProjector(Projector):
+class NoopProjector(Projector, domain="inventory"):
     """Projector that returns empty projection."""
 
     name = "projector-noop"
-    input_domain = "inventory"
 
-    @projects(StockUpdated)
+    @handles(StockUpdated)
     def project_stock(self, event: StockUpdated) -> None:
         return None
 
@@ -222,7 +219,7 @@ def build_fulfillment_projector_router() -> ProjectorRouter:
 
 
 # =============================================================================
-# Tests for @projects decorator
+# Tests for @handles decorator
 # =============================================================================
 
 
@@ -237,21 +234,21 @@ class TestProjectsDecorator:
     def test_decorator_validates_missing_param(self):
         with pytest.raises(TypeError, match="must have cmd parameter"):
 
-            @projects(StockUpdated)
+            @handles(StockUpdated)
             def bad_method(self):
                 pass
 
     def test_decorator_validates_missing_type_hint(self):
         with pytest.raises(TypeError, match="missing type hint"):
 
-            @projects(StockUpdated)
+            @handles(StockUpdated)
             def bad_method(self, event):
                 pass
 
     def test_decorator_validates_type_hint_mismatch(self):
         with pytest.raises(TypeError, match="doesn't match type hint"):
 
-            @projects(StockUpdated)
+            @handles(StockUpdated)
             def bad_method(self, event: StockReserved):
                 pass
 
@@ -269,35 +266,32 @@ class TestProjectorValidation:
     def test_missing_name_raises(self):
         with pytest.raises(TypeError, match="must define 'name'"):
 
-            class BadProjector(Projector):
-                input_domain = "inventory"
-
-                @projects(StockUpdated)
+            class BadProjector(Projector, domain="inventory"):
+                @handles(StockUpdated)
                 def handle(self, event: StockUpdated):
                     pass
 
     def test_missing_input_domain_raises(self):
-        with pytest.raises(TypeError, match="must define 'input_domain'"):
+        with pytest.raises(TypeError, match="must specify domain"):
 
             class BadProjector(Projector):
                 name = "bad-projector"
 
-                @projects(StockUpdated)
+                @handles(StockUpdated)
                 def handle(self, event: StockUpdated):
                     pass
 
     def test_duplicate_handler_raises(self):
         with pytest.raises(TypeError, match="duplicate handler"):
 
-            class BadProjector(Projector):
+            class BadProjector(Projector, domain="inventory"):
                 name = "bad-projector"
-                input_domain = "inventory"
 
-                @projects(StockUpdated)
+                @handles(StockUpdated)
                 def handle_one(self, event: StockUpdated):
                     pass
 
-                @projects(StockUpdated)
+                @handles(StockUpdated)
                 def handle_two(self, event: StockUpdated):
                     pass
 

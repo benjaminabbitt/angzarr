@@ -234,3 +234,41 @@ class FundsDeposited(TestProto):
 
     DESCRIPTOR = _make_descriptor("player.FundsDeposited")
     new_bankroll: int = 0
+
+
+@dataclass
+class FundsReleased(TestProto):
+    """Event: funds were released (compensation for failed payment)."""
+
+    DESCRIPTOR = _make_descriptor("player.FundsReleased")
+    amount: int = 0
+    reason: str = ""
+
+
+# =============================================================================
+# Payment domain - Commands (for rejection tests)
+# =============================================================================
+
+
+@dataclass
+class ProcessPayment(TestProto):
+    """Command to process a payment."""
+
+    DESCRIPTOR = _make_descriptor("payment.ProcessPayment")
+    order_id: str = ""
+    amount: int = 0
+
+
+# =============================================================================
+# Workflow domain - Events (for PM rejection tests)
+# =============================================================================
+
+
+@dataclass
+class WorkflowFailed(TestProto):
+    """Event: workflow step failed (compensation event)."""
+
+    DESCRIPTOR = _make_descriptor("workflow.WorkflowFailed")
+    reason: str = ""
+    failed_domain: str = ""
+    failed_command: str = ""

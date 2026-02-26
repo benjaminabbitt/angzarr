@@ -11,7 +11,8 @@ Supports two patterns:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Union
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import grpc
 
@@ -46,7 +47,7 @@ class ProcessManagerHandler(process_manager_pb2_grpc.ProcessManagerServiceServic
         ProcessManagerHandler(OrderWorkflowPM)  # OO class
     """
 
-    def __init__(self, name_or_class: Union[str, type[ProcessManager]]) -> None:
+    def __init__(self, name_or_class: str | type[ProcessManager]) -> None:
         if isinstance(name_or_class, type) and issubclass(
             name_or_class, ProcessManager
         ):

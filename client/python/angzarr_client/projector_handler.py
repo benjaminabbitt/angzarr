@@ -9,7 +9,8 @@ The coordinators are for angzarr-internal orchestration only.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import grpc
 

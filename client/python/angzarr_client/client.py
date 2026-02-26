@@ -2,11 +2,10 @@
 
 import os
 from enum import Enum
-from typing import Optional
 
 import grpc
 
-from .errors import GRPCError, TransportError
+from .errors import GRPCError
 from .proto.angzarr import (
     CommandBook,
     CommandHandlerCoordinatorServiceStub,

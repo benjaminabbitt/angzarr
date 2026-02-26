@@ -2,10 +2,19 @@
 
 This module provides the framework for implementing event-sourced aggregates
 using the rich domain model pattern. Business logic lives as methods on the
-command handler class, with decorators registering handlers:
+command handler class, with decorators registering handlers.
 
+Router Pattern: CommandHandler follows the SINGLE-DOMAIN OO pattern
+(see SingleDomainClassRouter).
+- One domain: commands come from and events go to a single domain
+- Uses @handles decorator for command handlers
+- Uses @applies decorator for event appliers
+- Stateful: maintains event-sourced state via event book
+
+Decorators:
 - @handles: Register command handlers that emit events
 - @applies: Register event appliers that mutate state
+- @rejected: Register compensation handlers for rejection notifications
 
 Example usage:
     from angzarr_client import CommandHandler, handles, applies
@@ -38,14 +47,13 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import wraps
-from typing import Any as TypingAny
-from typing import Callable, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from google.protobuf.any_pb2 import Any
 
 from .proto.angzarr import command_handler_pb2 as command_handler
-from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 from .router import validate_command_handler
 
@@ -138,6 +146,14 @@ StateT = TypeVar("StateT")
 
 class CommandHandler(Generic[StateT], ABC):
     """Base class for event-sourced aggregates.
+
+    Router Pattern: Follows the SINGLE-DOMAIN OO pattern.
+    See SingleDomainClassRouter for the generic pattern documentation.
+
+    CommandHandler-specific notes:
+    - Uses `domain` attribute (same semantics as `input_domain`)
+    - Stateful: maintains event-sourced state via event book
+    - Bidirectional: receives commands, emits events (same domain)
 
     Provides:
     - Event application via @applies decorated methods

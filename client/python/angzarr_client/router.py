@@ -2,57 +2,88 @@
 
 This module provides:
 
-1. Protocol-based Routers (wrap handler objects):
-   - CommandHandlerRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter
-   - Wrap handler protocol implementations
-   - Provide subscriptions() and dispatch() methods
+1. Router (unified core):
+   - Routes events, commands, and notifications by type_url
+   - All specialized routers delegate to this for dispatch
 
-2. Decorators for OO-style components:
-   - @handles, @applies (for Aggregate base class - defined in aggregate.py)
-   - @reacts_to, @prepares (for Saga/ProcessManager base classes)
-   - @projects (for Projector base class)
-   - @rejected (for rejection/compensation handlers)
+2. Fluent Routers (functional handler pattern, sibling classes):
+   - SingleFluentRouter(name, domain).on() - single-domain, domain in constructor
+   - FluentRouter(name).domain(d).on() - multi-domain, domain via method
+   - Both extend _FluentRouterBase (internal) for shared dispatch logic
+
+3. Protocol-based Routers (wrap handler objects):
+   - CommandHandlerRouter, ProcessManagerRouter, ProjectorRouter
+   - Wrap handler protocol implementations
+
+4. OORouter (class-based with decorators):
+   - Add @domain decorated classes via .add(cls)
+   - Each class handles a single domain
+   - Multi-domain: add multiple classes
+
+5. Decorators:
+   - @domain("name") - class decorator marking handler class domain
+   - @handles(Event) - method decorator for event handlers
+   - @prepares(Event) - method decorator for prepare handlers
+   - @rejected(domain, command) - method decorator for rejection handlers
+
+Note: aggregate.py has its own @handles decorator for command handlers.
+Import from the appropriate module for your use case:
+   - from angzarr_client import handles  # aggregate command handlers
+   - from angzarr_client.saga import handles  # saga event handlers
+   - from angzarr_client.projector import handles  # projector event handlers
+   - from angzarr_client.process_manager import handles  # PM event handlers
+
+Usage (Fluent builder - single domain):
+    router = (
+        SingleFluentRouter("saga-table-hand", "table")
+        .prepare(HandStarted, prepare_hand)
+        .on(HandStarted, handle_hand)
+    )
+
+Usage (Fluent builder - multi-domain):
+    router = (
+        FluentRouter("pmg-order-workflow")
+        .domain("order").on(OrderCreated, handle_order)
+        .domain("inventory").on(StockReserved, handle_stock)
+    )
 
 Usage (Protocol-based):
     router = CommandHandlerRouter("player", "player", PlayerHandler())
-    router = SagaRouter("saga-order-fulfillment", "order", OrderHandler())
 
 Usage (OO with decorators):
-    class TableHandSaga(Saga):
-        @prepares(HandStarted)
+    class TableHandSaga(Saga, domain="table"):
+        @handles(HandStarted, prepare=True)
         def prepare_hand(self, event): ...
 
-        @reacts_to(HandStarted)
+        @handles(HandStarted)
         def handle_started(self, event, destinations): ...
+
+    router = OORouter("saga-table-hand").add(TableHandSaga)
 """
 
 from __future__ import annotations
 
 import inspect
 import typing
+from collections.abc import Callable
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 from typing import Any as TypingAny
 
 from google.protobuf import any_pb2
 
-from .errors import CommandRejectedError
 from .handler_protocols import (
     CommandHandlerDomainHandler,
     ProcessManagerDomainHandler,
-    ProcessManagerResponse,
     ProjectorDomainHandler,
-    SagaDomainHandler,
 )
 from .helpers import TYPE_URL_PREFIX
 from .proto.angzarr import command_handler_pb2 as command_handler
 from .proto.angzarr import process_manager_pb2 as pm
-from .proto.angzarr import projector_pb2 as projector
-from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 
 if TYPE_CHECKING:
-    from .state_builder import StateRouter
+    pass
 
 S = TypeVar("S")
 
@@ -184,52 +215,108 @@ def validate_command_handler(
 
 
 # ============================================================================
-# @reacts_to decorator for sagas and process managers
+# @domain class decorator
 # ============================================================================
 
 
-def reacts_to(event_type: type, *, input_domain: str = None, output_domain: str = None):
-    """Decorator for event handler methods on Saga or ProcessManager.
+def domain(name: str):
+    """Class decorator to mark handler class domain.
 
-    Registers the method as a handler for the given event type.
-    Validates that event_type matches the method's type hint.
-
-    The decorated method should return either:
-    - A single protobuf command message
-    - A tuple of protobuf command messages
-    - None (no command to emit)
+    All @handles methods in this class will be registered to this domain.
+    Use with OORouter or as base for Saga/ProcessManager/Projector classes.
 
     Args:
-        event_type: The protobuf event class to handle.
-        input_domain: Source domain for this event (ProcessManager only).
-        output_domain: Target domain for commands (optional override).
+        name: The domain name (e.g., "order", "inventory").
 
-    Example (Saga):
-        @reacts_to(OrderCompleted)
-        def handle_completed(self, event: OrderCompleted) -> CreateShipment:
-            return CreateShipment(order_id=event.order_id)
+    Example:
+        @domain("order")
+        class OrderHandlers:
+            @handles(OrderCreated)
+            def on_order(self, event: OrderCreated):
+                ...
 
-    Example (ProcessManager):
-        @reacts_to(OrderCreated, input_domain="order")
-        def on_order_created(self, event: OrderCreated) -> ReserveInventory:
-            return ReserveInventory(...)
+        router = OORouter("my-component").add(OrderHandlers)
+    """
+
+    def decorator(cls):
+        cls._domain = name
+        return cls
+
+    return decorator
+
+
+# ============================================================================
+# @handles decorator (unified handler decorator)
+# ============================================================================
+
+
+def handles(
+    msg_type: type,
+    *,
+    prepare: bool = False,
+    input_domain: str = None,
+    output_domain: str = None,
+):
+    """Unified decorator for handler methods.
+
+    Registers the method as a handler for the given message type.
+    Works for sagas, process managers, projectors, and command handlers.
+
+    Domain resolution:
+    - Primary: use @domain class decorator on the containing class
+    - Override: specify input_domain parameter (for multi-domain ProcessManagers)
+
+    Args:
+        msg_type: The protobuf message class to handle.
+        prepare: If True, this is a prepare handler (destination declaration).
+        input_domain: Optional explicit input domain (overrides @domain decorator).
+            Use for ProcessManagers that listen to multiple domains.
+        output_domain: Optional explicit output domain for commands.
+            Use for ProcessManagers that emit to specific domains.
+
+    Example (Saga - single domain via @domain):
+        @domain("order")
+        class OrderFulfillmentSaga(Saga):
+            @handles(OrderCompleted)
+            def handle_completed(self, event: OrderCompleted) -> CreateShipment:
+                return CreateShipment(order_id=event.order_id)
+
+    Example (ProcessManager - multi-domain via input_domain):
+        class OrderWorkflowPM(ProcessManager[State]):
+            @handles(OrderCreated, input_domain="order", output_domain="inventory")
+            def on_order(self, event: OrderCreated) -> ReserveStock:
+                return ReserveStock(...)
+
+            @handles(StockReserved, input_domain="inventory", output_domain="payment")
+            def on_stock(self, event: StockReserved) -> ProcessPayment:
+                return ProcessPayment(...)
+
+    Example (prepare handler):
+        @handles(HandStarted, prepare=True)
+        def prepare_hand(self, event: HandStarted) -> list[Cover]:
+            return [Cover(domain="hand", root=UUID(value=event.hand_root))]
 
     Raises:
-        TypeError: If type hint is missing or doesn't match event_type.
+        TypeError: If type hint is missing or doesn't match msg_type.
     """
 
     def decorator(method: Callable) -> Callable:
-        # Validate at decoration time (event is at index 1 after self)
+        # Validate at decoration time (msg is at index 1 after self)
         validate_command_handler(
-            method, event_type, cmd_param_index=1, decorator_name="reacts_to"
+            method, msg_type, cmd_param_index=1, decorator_name="handles"
         )
 
         @wraps(method)
         def wrapper(self, *args, **kwargs):
             return method(self, *args, **kwargs)
 
-        wrapper._is_handler = True
-        wrapper._event_type = event_type
+        if prepare:
+            wrapper._is_prepare_handler = True
+        else:
+            wrapper._is_handler = True
+
+        wrapper._event_type = msg_type
+        wrapper._command_type = msg_type  # For aggregate compatibility
         wrapper._input_domain = input_domain
         wrapper._output_domain = output_domain
         return wrapper
@@ -237,20 +324,12 @@ def reacts_to(event_type: type, *, input_domain: str = None, output_domain: str 
     return decorator
 
 
-# ============================================================================
-# @prepares decorator for saga destination declaration
-# ============================================================================
-
-
 def prepares(event_type: type):
-    """Decorator for saga prepare handler methods.
+    """Decorator for prepare handler methods (destination declaration phase).
 
     Registers the method as a prepare handler for the given event type.
-    The method is called during the Prepare phase to declare which
-    destination aggregates need to be fetched before execution.
-
-    The decorated method should return a list of Covers identifying
-    the destination aggregates.
+    Used in sagas and process managers to declare which destination
+    aggregates are needed before the main handler executes.
 
     Args:
         event_type: The protobuf event class to handle.
@@ -263,22 +342,7 @@ def prepares(event_type: type):
     Raises:
         TypeError: If type hint is missing or doesn't match event_type.
     """
-
-    def decorator(method: Callable) -> Callable:
-        # Validate at decoration time (event is at index 1 after self)
-        validate_command_handler(
-            method, event_type, cmd_param_index=1, decorator_name="prepares"
-        )
-
-        @wraps(method)
-        def wrapper(self, *args, **kwargs):
-            return method(self, *args, **kwargs)
-
-        wrapper._is_prepare_handler = True
-        wrapper._event_type = event_type
-        return wrapper
-
-    return decorator
+    return handles(event_type, prepare=True)
 
 
 # ============================================================================
@@ -338,46 +402,625 @@ def rejected(*, domain: str, command: str):
 
 
 # ============================================================================
-# @projects decorator for projectors
+# Unified Router (core routing for all message types)
 # ============================================================================
 
 
-def projects(event_type: type):
-    """Decorator for projector event handler methods.
+class Router:
+    """Unified router core - routes events, commands, and notifications by type_url.
 
-    Registers the method as a handler for the given event type.
-    Validates that event_type matches the method's type hint.
-
-    The decorated method should return a Projection message.
+    All specialized routers (SingleFluentRouter, CommandRouter, etc.) delegate to this
+    class for the core dispatch logic. This ensures consistent type_url matching
+    across all message types.
 
     Example:
-        @projects(StockUpdated)
-        def project_stock(self, event: StockUpdated) -> Projection:
-            return Projection(...)
+        router = Router("my-component")
+        router.register("order", OrderCreated, handle_order_created)
+        router.register("order", OrderCompleted, handle_order_completed, is_prepare=True)
 
-    Raises:
-        TypeError: If type hint is missing or doesn't match event_type.
+        # Dispatch to matching handler
+        result = router.dispatch("order", event_any, *args)
     """
 
-    def decorator(method: Callable) -> Callable:
-        # Validate at decoration time (event is at index 1 after self)
-        validate_command_handler(
-            method, event_type, cmd_param_index=1, decorator_name="projects"
-        )
+    def __init__(self, name: str) -> None:
+        """Create a new unified router.
 
-        @wraps(method)
-        def wrapper(self, *args, **kwargs):
-            return method(self, *args, **kwargs)
+        Args:
+            name: The component name (e.g., "saga-table-hand").
+        """
+        self._name = name
+        # domain -> {type_suffix -> (msg_type, handler)}
+        self._handlers: dict[str, dict[str, tuple[type, Callable]]] = {}
+        self._prepare_handlers: dict[str, dict[str, tuple[type, Callable]]] = {}
 
-        wrapper._is_handler = True
-        wrapper._event_type = event_type
-        return wrapper
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._name
 
-    return decorator
+    def domains(self) -> list[str]:
+        """Get list of registered domains."""
+        return list(set(self._handlers.keys()) | set(self._prepare_handlers.keys()))
+
+    def register(
+        self,
+        domain: str,
+        msg_type: type,
+        handler: Callable,
+        *,
+        is_prepare: bool = False,
+    ) -> None:
+        """Register a handler for a message type in a domain.
+
+        Args:
+            domain: The domain name.
+            msg_type: The protobuf message class.
+            handler: The handler function.
+            is_prepare: If True, register as prepare handler (two-phase protocol).
+        """
+        handlers = self._prepare_handlers if is_prepare else self._handlers
+        if domain not in handlers:
+            handlers[domain] = {}
+        type_suffix = msg_type.DESCRIPTOR.full_name
+        handlers[domain][type_suffix] = (msg_type, handler)
+
+    def types_for_domain(self, domain: str) -> list[str]:
+        """Get registered type suffixes for a domain.
+
+        Args:
+            domain: The domain name.
+
+        Returns:
+            List of type suffixes (e.g., ["OrderCreated", "OrderCompleted"]).
+        """
+        domain_handlers = self._handlers.get(domain, {})
+        return [name.rsplit(".", 1)[-1] for name in domain_handlers.keys()]
+
+    def dispatch(
+        self,
+        domain: str,
+        msg_any: any_pb2.Any,
+        *args,
+        **kwargs,
+    ) -> TypingAny:
+        """Dispatch a message to its handler.
+
+        Works for events, commands, and notifications. Matches by type_url suffix.
+
+        Args:
+            domain: The domain to dispatch within.
+            msg_any: The message wrapped in Any.
+            *args, **kwargs: Additional arguments passed to the handler.
+
+        Returns:
+            Handler result, or None if no handler matched.
+        """
+        type_suffix = self._extract_type_suffix(msg_any.type_url)
+        domain_handlers = self._handlers.get(domain, {})
+
+        for full_name, (msg_type, handler) in domain_handlers.items():
+            if full_name.endswith(type_suffix) or type_suffix in full_name:
+                return handler(msg_any, *args, **kwargs)
+        return None
+
+    def dispatch_prepare(
+        self,
+        domain: str,
+        msg_any: any_pb2.Any,
+        *args,
+        **kwargs,
+    ) -> TypingAny:
+        """Dispatch prepare phase for two-phase protocol.
+
+        Args:
+            domain: The domain to dispatch within.
+            msg_any: The message wrapped in Any.
+            *args, **kwargs: Additional arguments passed to the handler.
+
+        Returns:
+            Handler result (typically list[Cover]), or None if no handler matched.
+        """
+        type_suffix = self._extract_type_suffix(msg_any.type_url)
+        domain_handlers = self._prepare_handlers.get(domain, {})
+
+        for full_name, (msg_type, handler) in domain_handlers.items():
+            if full_name.endswith(type_suffix) or type_suffix in full_name:
+                return handler(msg_any, *args, **kwargs)
+        return None
+
+    @staticmethod
+    def _extract_type_suffix(type_url: str) -> str:
+        """Extract type name suffix from type_url.
+
+        Args:
+            type_url: Full type URL (e.g., "type.googleapis.com/angzarr.OrderCreated")
+
+        Returns:
+            Type suffix (e.g., "OrderCreated")
+        """
+        return type_url.rsplit(".", 1)[-1] if type_url else ""
+
+    # =========================================================================
+    # Static helpers (shared across all router types)
+    # =========================================================================
+
+    @staticmethod
+    def next_sequence(event_book: types.EventBook | None) -> int:
+        """Compute next sequence number from an event book.
+
+        Args:
+            event_book: The event book (may be None).
+
+        Returns:
+            Next sequence number (0 if event_book is None or empty).
+        """
+        return _next_sequence(event_book)
+
+    @staticmethod
+    def pack_any(message) -> any_pb2.Any:
+        """Pack any protobuf message into Any.
+
+        Args:
+            message: The protobuf message to pack.
+
+        Returns:
+            Any containing the packed message.
+        """
+        return _pack_any(message)
 
 
 # ============================================================================
-# Protocol-based Routers (CommandHandlerRouter, SagaRouter, etc.)
+# Simplified Router Hierarchy
+# ============================================================================
+#
+# Design:
+#   Router (core type_url dispatch)
+#   ├── OORouter(name).add(cls)                      # @domain decorated classes
+#   └── _FluentRouterBase (internal)                 # shared fluent dispatch logic
+#       ├── SingleFluentRouter(name, domain).on(...) # single-domain
+#       └── FluentRouter(name).domain(d).on(...)     # multi-domain
+#
+# All routing logic lives in Router. The higher-level classes just provide
+# different APIs for registering handlers.
+#
+# _FluentRouterBase contains shared dispatch logic. SingleFluentRouter and
+# FluentRouter are siblings (not parent-child) to prevent accidental
+# .domain() calls on single-domain routers.
+#
+# OORouter handles both single and multi-domain cases via .add():
+#   - Single domain: add one @domain decorated class
+#   - Multi-domain: add multiple @domain decorated classes
+# ============================================================================
+
+
+class _FluentRouterBase:
+    """Internal base class for fluent routers.
+
+    Contains shared dispatch logic. Not for direct use.
+    Use SingleFluentRouter or FluentRouter instead.
+    """
+
+    _router: Router
+    _domains: set[str]
+
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._router.name
+
+    def domains(self) -> list[str]:
+        """Get list of registered domains."""
+        return list(self._domains)
+
+    def types_for_domain(self, domain: str) -> list[str]:
+        """Get registered type names for a domain."""
+        return self._router.types_for_domain(domain)
+
+    def subscriptions(self) -> list[tuple[str, list[str]]]:
+        """Get subscriptions for this router."""
+        return [(d, self.types_for_domain(d)) for d in self._domains]
+
+    def _get_registration_domain(self) -> str:
+        """Get domain to use for registering handlers. Subclasses must implement."""
+        raise NotImplementedError
+
+    def _get_dispatch_domain(self, source: types.EventBook) -> str:
+        """Get domain to dispatch to. Subclasses must implement."""
+        raise NotImplementedError
+
+    def _register_prepare(self, msg_type: type, handler: Callable) -> None:
+        """Register a prepare handler."""
+        domain = self._get_registration_domain()
+        self._router.register(domain, msg_type, handler, is_prepare=True)
+
+    def _register_handler(self, msg_type: type, handler: Callable) -> None:
+        """Register an event handler."""
+        domain = self._get_registration_domain()
+        self._router.register(domain, msg_type, handler)
+
+    def prepare_destinations(self, source: types.EventBook | None) -> list[types.Cover]:
+        """Execute prepare phase for source events."""
+        if source is None or not source.pages:
+            return []
+
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        event_any = event_page.event
+        root = source.cover.root if source.HasField("cover") else None
+        domain = self._get_dispatch_domain(source)
+
+        result = self._router.dispatch_prepare(domain, event_any, root)
+        return result if result is not None else []
+
+    def dispatch(
+        self, source: types.EventBook, destinations: list[types.EventBook]
+    ) -> list[types.CommandBook]:
+        """Execute handle phase for source events."""
+        if not source.pages:
+            return []
+
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        event_any = event_page.event
+        root = source.cover.root if source.HasField("cover") else None
+        correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
+        domain = self._get_dispatch_domain(source)
+
+        result = self._router.dispatch(
+            domain, event_any, root, correlation_id, destinations
+        )
+        return result if result is not None else []
+
+    next_sequence = staticmethod(Router.next_sequence)
+    pack_any = staticmethod(Router.pack_any)
+    pack_command = staticmethod(Router.pack_any)  # Legacy alias
+
+
+class SingleFluentRouter(_FluentRouterBase):
+    """Single-domain fluent builder API.
+
+    Domain is fixed at construction - no .domain() method.
+    Use .prepare() and .on() to register handlers.
+
+    For multi-domain support, use FluentRouter instead (sibling class).
+
+    Example:
+        router = (
+            SingleFluentRouter("saga-order-fulfillment", "order")
+            .prepare(OrderCompleted, prepare_completed)
+            .on(OrderCompleted, handle_completed)
+        )
+    """
+
+    def __init__(self, name: str, domain: str) -> None:
+        """Create a single-domain fluent router.
+
+        Args:
+            name: The component name.
+            domain: THE input domain for this router (fixed at construction).
+        """
+        self._router = Router(name)
+        self._domain = domain
+        self._domains: set[str] = {domain}
+
+    @property
+    def input_domain(self) -> str:
+        """Get THE input domain for this router."""
+        return self._domain
+
+    def event_types(self) -> list[str]:
+        """Get registered event type names."""
+        return self._router.types_for_domain(self._domain)
+
+    def _get_registration_domain(self) -> str:
+        """Get domain for registration (fixed at construction)."""
+        return self._domain
+
+    def _get_dispatch_domain(self, source: types.EventBook) -> str:
+        """Get domain for dispatch (fixed at construction)."""
+        return self._domain
+
+    def prepare(
+        self,
+        msg_type: type,
+        handler: Callable[[any_pb2.Any, types.UUID | None], list[types.Cover]],
+    ) -> SingleFluentRouter:
+        """Register a prepare handler for a message type.
+
+        Args:
+            msg_type: The protobuf message class.
+            handler: Function (msg_any, root) -> list[Cover].
+
+        Returns:
+            Self for fluent chaining.
+        """
+        self._register_prepare(msg_type, handler)
+        return self
+
+    def on(
+        self,
+        msg_type: type,
+        handler: Callable[
+            [any_pb2.Any, types.UUID | None, str, list[types.EventBook]],
+            list[types.CommandBook],
+        ],
+    ) -> SingleFluentRouter:
+        """Register a handler for a message type.
+
+        Args:
+            msg_type: The protobuf message class.
+            handler: Function (msg_any, root, correlation_id, destinations) -> list[CommandBook].
+
+        Returns:
+            Self for fluent chaining.
+        """
+        self._register_handler(msg_type, handler)
+        return self
+
+
+class FluentRouter(_FluentRouterBase):
+    """Multi-domain fluent builder API.
+
+    Use .domain() to switch between domains, then .on() to register handlers.
+    Chain .domain() and .on() for multi-domain handler registration.
+
+    For single-domain, use SingleFluentRouter instead (sibling class).
+
+    Example:
+        router = (
+            FluentRouter("pmg-order-workflow")
+            .domain("order")
+            .on(OrderCreated, handle_order_created)
+            .domain("inventory")
+            .on(StockReserved, handle_stock_reserved)
+        )
+    """
+
+    def __init__(self, name: str) -> None:
+        """Create a multi-domain fluent router.
+
+        Args:
+            name: The component name.
+        """
+        self._router = Router(name)
+        self._domains: set[str] = set()
+        self._current_domain: str | None = None
+
+    def domain(self, name: str) -> FluentRouter:
+        """Set current domain context for subsequent registrations.
+
+        Can be called multiple times to switch between domains.
+
+        Args:
+            name: The domain name.
+
+        Returns:
+            Self for fluent chaining.
+        """
+        self._domains.add(name)
+        self._current_domain = name
+        return self
+
+    def _get_registration_domain(self) -> str:
+        """Get current domain for registration."""
+        if self._current_domain is None:
+            raise ValueError("Must call domain() before registering handlers")
+        return self._current_domain
+
+    def _get_dispatch_domain(self, source: types.EventBook) -> str:
+        """Get domain from source event book."""
+        return source.cover.domain if source.HasField("cover") else ""
+
+    def prepare(
+        self,
+        msg_type: type,
+        handler: Callable[[any_pb2.Any, types.UUID | None], list[types.Cover]],
+    ) -> FluentRouter:
+        """Register a prepare handler for a message type.
+
+        Args:
+            msg_type: The protobuf message class.
+            handler: Function (msg_any, root) -> list[Cover].
+
+        Returns:
+            Self for fluent chaining.
+        """
+        self._register_prepare(msg_type, handler)
+        return self
+
+    def on(
+        self,
+        msg_type: type,
+        handler: Callable[
+            [any_pb2.Any, types.UUID | None, str, list[types.EventBook]],
+            list[types.CommandBook],
+        ],
+    ) -> FluentRouter:
+        """Register a handler for a message type.
+
+        Args:
+            msg_type: The protobuf message class.
+            handler: Function (msg_any, root, correlation_id, destinations) -> list[CommandBook].
+
+        Returns:
+            Self for fluent chaining.
+        """
+        self._register_handler(msg_type, handler)
+        return self
+
+
+class OORouter:
+    """Multi-domain router with fluent class registration.
+
+    Add @domain decorated classes via .add(cls). Each class handles
+    events for a single domain; add multiple classes for multi-domain.
+
+    Example:
+        @domain("order")
+        class OrderHandlers:
+            @handles(OrderCreated)
+            def on_order(self, event): ...
+
+        @domain("inventory")
+        class InventoryHandlers:
+            @handles(StockReserved)
+            def on_stock(self, event): ...
+
+        router = (
+            OORouter("pmg-order-workflow")
+            .add(OrderHandlers)
+            .add(InventoryHandlers)
+        )
+    """
+
+    def __init__(self, name: str) -> None:
+        """Create a multi-domain OO router.
+
+        Args:
+            name: The component name.
+        """
+        self._router = Router(name)
+        self._domains: set[str] = set()
+
+    @property
+    def name(self) -> str:
+        """Get the router name."""
+        return self._router.name
+
+    def domains(self) -> list[str]:
+        """Get list of registered domains."""
+        return list(self._domains)
+
+    def types_for_domain(self, domain: str) -> list[str]:
+        """Get registered type names for a domain."""
+        return self._router.types_for_domain(domain)
+
+    def subscriptions(self) -> list[tuple[str, list[str]]]:
+        """Get subscriptions (domain + types) for topology registration."""
+        return [(d, self.types_for_domain(d)) for d in self._domains]
+
+    def add(self, cls) -> OORouter:
+        """Add handlers from a @domain decorated class.
+
+        Scans cls for @handles and @prepares decorated methods.
+        Domain is read from cls._domain (set by @domain decorator).
+
+        Args:
+            cls: Class with @domain decorator and @handles methods.
+
+        Returns:
+            Self for fluent chaining.
+
+        Raises:
+            ValueError: If class is missing @domain decorator.
+        """
+        class_domain = getattr(cls, "_domain", None)
+        if class_domain is None:
+            raise ValueError(f"{cls.__name__} must use @domain decorator")
+
+        self._domains.add(class_domain)
+        self._scan_class(cls, class_domain)
+        return self
+
+    def _scan_class(self, cls, class_domain: str) -> None:
+        """Scan a class for decorated methods and register handlers."""
+        for attr_name in dir(cls):
+            attr = getattr(cls, attr_name, None)
+            if not callable(attr):
+                continue
+
+            # Check for @handles decorated methods
+            if getattr(attr, "_is_handler", False):
+                event_type = attr._event_type
+                self._register_handler(cls, attr_name, class_domain, event_type)
+
+            # Check for @prepares decorated methods
+            if getattr(attr, "_is_prepare_handler", False):
+                event_type = attr._event_type
+                self._register_prepare_handler(cls, attr_name, class_domain, event_type)
+
+    def _register_handler(
+        self, cls, method_name: str, domain: str, msg_type: type
+    ) -> None:
+        """Register a handler that creates instance and calls method."""
+
+        def handler(msg_any, root, correlation_id, destinations):
+            instance = cls()
+            method = getattr(instance, method_name)
+            # Unpack the message
+            msg = msg_type()
+            msg_any.Unpack(msg)
+            # Check method signature for destinations param
+            sig = inspect.signature(method)
+            if "destinations" in sig.parameters:
+                return method(msg, destinations=destinations)
+            return method(msg)
+
+        self._router.register(domain, msg_type, handler)
+
+    def _register_prepare_handler(
+        self, cls, method_name: str, domain: str, msg_type: type
+    ) -> None:
+        """Register a prepare handler that creates instance and calls method."""
+
+        def handler(msg_any, root):
+            instance = cls()
+            method = getattr(instance, method_name)
+            msg = msg_type()
+            msg_any.Unpack(msg)
+            return method(msg)
+
+        self._router.register(domain, msg_type, handler, is_prepare=True)
+
+    def prepare_destinations(self, source: types.EventBook | None) -> list[types.Cover]:
+        """Execute prepare phase."""
+        if source is None or not source.pages:
+            return []
+
+        domain = source.cover.domain if source.HasField("cover") else ""
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        event_any = event_page.event
+        root = source.cover.root if source.HasField("cover") else None
+
+        result = self._router.dispatch_prepare(domain, event_any, root)
+        return result if result is not None else []
+
+    def dispatch(
+        self,
+        source: types.EventBook,
+        destinations: list[types.EventBook],
+    ) -> list[types.CommandBook]:
+        """Execute handle phase."""
+        if not source.pages:
+            return []
+
+        domain = source.cover.domain if source.HasField("cover") else ""
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        event_any = event_page.event
+        root = source.cover.root if source.HasField("cover") else None
+        correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
+
+        result = self._router.dispatch(
+            domain, event_any, root, correlation_id, destinations
+        )
+        return result if result is not None else []
+
+    next_sequence = staticmethod(Router.next_sequence)
+    pack_any = staticmethod(Router.pack_any)
+
+
+# ============================================================================
+# Protocol-based Routers (CommandHandlerRouter, etc.)
 # ============================================================================
 
 
@@ -527,132 +1170,6 @@ class CommandHandlerRouter(Generic[S]):
             )
 
 
-class SagaRouter:
-    """Router for saga components (events -> commands, single domain, stateless).
-
-    Wraps a SagaDomainHandler and provides event dispatch with two-phase
-    protocol support (prepare_destinations + dispatch).
-
-    Domain is set at construction time - no .domain() method exists,
-    enforcing single-domain constraint.
-
-    Example:
-        class OrderSagaHandler(SagaDomainHandler):
-            def event_types(self) -> list[str]:
-                return ["OrderCompleted"]
-
-            def prepare(self, source, event) -> list[Cover]:
-                return [Cover(domain="fulfillment", root=...)]
-
-            def execute(self, source, event, destinations) -> list[CommandBook]:
-                return [new_command_book(...)]
-
-        router = SagaRouter("saga-order-fulfillment", "order", OrderSagaHandler())
-        destinations = router.prepare_destinations(source_events)
-        response = router.dispatch(source_events, destinations)
-    """
-
-    def __init__(
-        self,
-        name: str,
-        input_domain: str,
-        handler: SagaDomainHandler,
-    ) -> None:
-        """Create a new saga router.
-
-        Args:
-            name: Router name (e.g., "saga-order-fulfillment").
-            input_domain: The domain this saga subscribes to.
-            handler: The handler implementing SagaDomainHandler protocol.
-        """
-        self._name = name
-        self._input_domain = input_domain
-        self._handler = handler
-
-    @property
-    def name(self) -> str:
-        """Get the router name."""
-        return self._name
-
-    @property
-    def input_domain(self) -> str:
-        """Get the input domain."""
-        return self._input_domain
-
-    def event_types(self) -> list[str]:
-        """Get event types from the handler."""
-        return self._handler.event_types()
-
-    def subscriptions(self) -> list[tuple[str, list[str]]]:
-        """Get subscriptions for this saga.
-
-        Returns:
-            List of (domain, event_types) tuples.
-        """
-        return [(self._input_domain, self.event_types())]
-
-    def prepare_destinations(
-        self,
-        source: types.EventBook | None,
-    ) -> list[types.Cover]:
-        """Get destinations needed for the given source events.
-
-        Calls the handler's prepare() method for the last event in the source.
-
-        Args:
-            source: Source EventBook containing triggering events.
-
-        Returns:
-            List of Covers identifying destination aggregates to fetch.
-        """
-        if source is None or not source.pages:
-            return []
-
-        event_page = source.pages[-1]
-        if not event_page.HasField("event"):
-            return []
-
-        return self._handler.prepare(source, event_page.event)
-
-    def dispatch(
-        self,
-        source: types.EventBook,
-        destinations: list[types.EventBook],
-    ) -> saga.SagaResponse:
-        """Dispatch an event to the saga handler.
-
-        Args:
-            source: Source EventBook containing triggering events.
-            destinations: EventBooks for destinations declared in prepare().
-
-        Returns:
-            SagaResponse containing commands to send.
-
-        Raises:
-            ValueError: If source has no events.
-        """
-        if not source.pages:
-            raise ValueError("Source event book has no events")
-
-        event_page = source.pages[-1]
-        if not event_page.HasField("event"):
-            raise ValueError("Missing event payload")
-
-        # Check if event type matches handler's event_types
-        event_any = event_page.event
-        type_suffix = (
-            event_any.type_url.rsplit(".", 1)[-1] if event_any.type_url else ""
-        )
-        event_types = self._handler.event_types()
-        if type_suffix not in event_types:
-            # Event type doesn't match - return empty commands
-            return saga.SagaResponse(commands=[])
-
-        commands = self._handler.execute(source, event_any, destinations)
-
-        return saga.SagaResponse(commands=commands)
-
-
 class ProcessManagerRouter(Generic[S]):
     """Router for process manager components (events -> commands + PM events, multi-domain).
 
@@ -733,7 +1250,7 @@ class ProcessManagerRouter(Generic[S]):
         self,
         name: str,
         handler: ProcessManagerDomainHandler[S],
-    ) -> "ProcessManagerRouter[S]":
+    ) -> ProcessManagerRouter[S]:
         """Register a domain handler.
 
         Process managers can have multiple input domains.
@@ -876,21 +1393,41 @@ class ProcessManagerRouter(Generic[S]):
         return pm.ProcessManagerHandleResponse()
 
 
+# ============================================================================
+# Backward Compatibility Aliases
+# ============================================================================
+
+# UpcasterRouter is an alias for SingleFluentRouter
+UpcasterRouter = SingleFluentRouter
+
+
+# ============================================================================
+# Protocol-based Routers (wrap handler protocol objects)
+# ============================================================================
+#
+# These routers wrap handler objects that implement Protocol interfaces.
+# They're different from the fluent and OO routers above - they delegate
+# to protocol implementations rather than using decorators.
+# ============================================================================
+
+
 class ProjectorRouter:
-    """Router for projector components (events -> external output, single or multi-domain).
+    """Router for projector components (events -> external output, multi-domain).
 
     Projectors consume events from one or more domains and produce external output.
-    Single-domain projectors use the simple constructor; multi-domain projectors
-    register domains via fluent .domain() calls.
+    Uses protocol-based handlers (ProjectorDomainHandler).
+
+    Design: This is a multi-domain router using protocol-based handlers,
+    not the functional-handler pattern of FluentRouter.
 
     Example (single-domain):
         class PlayerProjectorHandler(ProjectorDomainHandler):
             def event_types(self) -> list[str]:
                 return ["PlayerRegistered", "FundsDeposited"]
 
-            def project(self, source, event) -> ProjectorResponse:
+            def project(self, events) -> Projection:
                 # Update read model
-                return ProjectorResponse(projections=[...])
+                return Projection()
 
         router = ProjectorRouter("prj-player", "player", PlayerProjectorHandler())
         response = router.dispatch(events)
@@ -935,7 +1472,7 @@ class ProjectorRouter:
         self,
         name: str,
         handler: ProjectorDomainHandler,
-    ) -> "ProjectorRouter":
+    ) -> ProjectorRouter:
         """Register a domain handler.
 
         Projectors can have multiple input domains.

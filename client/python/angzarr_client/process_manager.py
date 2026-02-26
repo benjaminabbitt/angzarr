@@ -4,12 +4,19 @@ Process managers coordinate long-running workflows across multiple aggregates.
 They maintain their own event-sourced state (keyed by correlation_id) and
 react to events from multiple domains.
 
+Router Pattern: ProcessManager follows the MULTI-DOMAIN OO pattern (see ClassRouter).
+- Multiple input domains: events come from multiple source domains via input_domain param
+- Uses @handles(EventType, input_domain="domain") decorator with explicit domain
+- Uses @handles(EventType, prepare=True) for destination declaration
+- Uses @rejected decorator for compensation handling
+- Stateful: maintains event-sourced state via correlation_id
+
 Two-phase protocol support:
-    1. Prepare: Declare additional destinations needed (via @prepares)
-    2. Handle: Produce commands and process events (via @reacts_to)
+    1. Prepare: Declare additional destinations needed (via @handles(E, prepare=True))
+    2. Handle: Produce commands and process events (via @handles(E, input_domain="x"))
 
 Example usage:
-    from angzarr_client import ProcessManager, prepares, reacts_to
+    from angzarr_client.process_manager import ProcessManager, handles, rejected
 
     @dataclass
     class OrderWorkflowState:
@@ -27,19 +34,20 @@ Example usage:
             if event_any.type_url.endswith("OrderCreated"):
                 ...
 
-        @prepares(OrderCreated)
+        @handles(OrderCreated, prepare=True)
         def prepare_order(self, event: OrderCreated) -> list[Cover]:
             return [Cover(domain="inventory", root=...)]
 
-        @reacts_to(OrderCreated, input_domain="order")
+        @handles(OrderCreated, input_domain="order")
         def on_order_created(
             self, event: OrderCreated, destinations: list[EventBook]
         ) -> ReserveInventory:
             return ReserveInventory(...)
 
-        @reacts_to(InventoryReserved, input_domain="inventory")
+        @handles(InventoryReserved, input_domain="inventory")
         def on_inventory_reserved(self, event: InventoryReserved) -> ProcessPayment:
             return ProcessPayment(...)
+
 """
 
 from __future__ import annotations
@@ -51,13 +59,11 @@ from typing import Generic, TypeVar
 from google.protobuf.any_pb2 import Any
 
 from .compensation import RejectionHandlerResponse
-from .proto.angzarr import command_handler_pb2 as command_handler
-from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
-from .router import _pack_any, prepares, reacts_to, rejected
+from .router import _pack_any, domain, handles, prepares, rejected
 
-# Re-export decorators
-__all__ = ["ProcessManager", "prepares", "reacts_to", "rejected"]
+# Re-export decorators (domain exported for consistency, but PM uses input_domain param)
+__all__ = ["ProcessManager", "domain", "handles", "prepares", "rejected"]
 
 StateT = TypeVar("StateT")
 
@@ -65,19 +71,27 @@ StateT = TypeVar("StateT")
 class ProcessManager(Generic[StateT], ABC):
     """Base class for stateful process managers.
 
+    Router Pattern: Follows the MULTI-DOMAIN OO pattern.
+    See ClassRouter for the generic pattern documentation.
+
+    ProcessManager-specific notes:
+    - Multi-domain: uses @handles(EventType, input_domain="domain") syntax
+    - Stateful: maintains event-sourced state keyed by correlation_id
+    - Produces commands: can emit commands to any domain
+
     Process managers are event-sourced aggregates that:
     - React to events from multiple domains
     - Maintain state keyed by correlation_id
     - Produce commands to coordinate workflows
     - Handle rejection/compensation via @rejected handlers
-    - Support two-phase protocol with @prepares for destination declaration
+    - Support two-phase protocol with @handles(E, prepare=True) for destination declaration
 
     Subclasses must:
     - Set `name` class attribute
     - Implement `_create_empty_state() -> StateT`
     - Implement `_apply_event(state: StateT, event_any: Any) -> None`
-    - Decorate event handlers with `@reacts_to(EventType, input_domain="...")`
-    - Optionally decorate prepare handlers with `@prepares(EventType)`
+    - Decorate event handlers with `@handles(EventType, input_domain="...")`
+    - Optionally decorate prepare handlers with `@handles(EventType, prepare=True)`
     - Optionally decorate rejection handlers with `@rejected(domain, command)`
 
     Usage:
@@ -90,11 +104,11 @@ class ProcessManager(Generic[StateT], ABC):
             def _apply_event(self, state, event_any):
                 ...
 
-            @prepares(OrderCreated)
+            @handles(OrderCreated, prepare=True)
             def prepare_order(self, event: OrderCreated) -> list[Cover]:
                 return [Cover(domain="inventory", root=...)]
 
-            @reacts_to(OrderCreated, input_domain="order")
+            @handles(OrderCreated, input_domain="order")
             def on_order_created(
                 self, event: OrderCreated, destinations: list[EventBook]
             ) -> ReserveInventory:
@@ -103,6 +117,7 @@ class ProcessManager(Generic[StateT], ABC):
             @rejected(domain="inventory", command="ReserveInventory")
             def handle_reserve_rejected(self, revoke_cmd) -> WorkflowFailed:
                 return WorkflowFailed(reason=revoke_cmd.rejection_reason)
+
     """
 
     name: str
@@ -134,7 +149,7 @@ class ProcessManager(Generic[StateT], ABC):
 
     @classmethod
     def _build_dispatch_table(cls):
-        """Scan for @reacts_to methods and build dispatch table."""
+        """Scan for @handles methods and build dispatch table."""
         for attr_name in dir(cls):
             attr = getattr(cls, attr_name, None)
             if callable(attr) and getattr(attr, "_is_handler", False):

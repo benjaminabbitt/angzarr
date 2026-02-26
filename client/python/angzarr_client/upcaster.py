@@ -3,6 +3,11 @@
 Upcasters transform old event versions to current versions during replay.
 They enable schema evolution without breaking existing event stores.
 
+Router Pattern: Upcaster follows the SINGLE-DOMAIN OO pattern (see SingleDomainClassRouter).
+- One domain: events come from and go to a single domain
+- Uses @upcasts decorator for transformation handler registration
+- Stateless: each event transformed independently
+
 Example usage:
     from angzarr_client import Upcaster, upcasts
 
@@ -23,7 +28,7 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC
-from typing import Callable
+from collections.abc import Callable
 
 from google.protobuf import any_pb2
 
@@ -89,6 +94,13 @@ def upcasts(from_type: type, to_type: type):
 
 class Upcaster(ABC):
     """Base class for event version transformation.
+
+    Router Pattern: Follows the SINGLE-DOMAIN OO pattern.
+    See SingleDomainClassRouter for the generic pattern documentation.
+
+    Upcaster-specific notes:
+    - Uses `domain` attribute (same semantics as `input_domain`)
+    - Events are transformed in place (same domain in, same domain out)
 
     Provides:
     - Event dispatch via @upcasts decorated methods

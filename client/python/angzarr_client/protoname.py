@@ -15,14 +15,12 @@ Example::
     protoname.type_url(player_pb2.RegisterPlayer)  # "type.examples/examples.RegisterPlayer"
 """
 
-from typing import Type, Union
-
 from google.protobuf.message import Message
 
 TYPE_URL_PREFIX = "type.examples/examples."
 
 
-def name(msg_or_cls: Union[Message, Type[Message]]) -> str:
+def name(msg_or_cls: Message | type[Message]) -> str:
     """Extract the short type name from a proto message or class.
 
     Args:
@@ -36,7 +34,7 @@ def name(msg_or_cls: Union[Message, Type[Message]]) -> str:
     return msg_or_cls.DESCRIPTOR.name
 
 
-def type_url(msg_or_cls: Union[Message, Type[Message]]) -> str:
+def type_url(msg_or_cls: Message | type[Message]) -> str:
     """Build the full type URL for a proto message or class.
 
     Args:

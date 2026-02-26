@@ -37,7 +37,6 @@ from .handler_protocols import (
     ProcessManagerDomainHandler,
     ProcessManagerResponse,
     ProjectorDomainHandler,
-    SagaDomainHandler,
 )
 from .helpers import (
     correlation_id,
@@ -85,14 +84,21 @@ from .router import (
     ERRMSG_NO_COMMAND_PAGES,
     ERRMSG_UNKNOWN_COMMAND,
     CommandHandlerRouter,
+    FluentRouter,
+    OORouter,
     ProcessManagerRouter,
     ProjectorRouter,
-    SagaRouter,
-    prepares,
-    projects,
-    reacts_to,
+    Router,
+    SingleFluentRouter,
+    UpcasterRouter,
+    prepares,  # Prepare handler decorator for two-phase protocol
     rejected,
-    validate_command_handler,
+)
+from .router import (
+    domain as domain_class,  # Class decorator for handler domain (@domain("name"))
+)
+from .router import (
+    handles as event_handles,  # Unified decorator for event handlers (sagas/PMs/projectors)
 )
 from .router import (
     next_sequence as router_next_sequence,
@@ -180,9 +186,9 @@ __all__ = [
     "ERRMSG_UNKNOWN_COMMAND",
     "ERRMSG_NO_COMMAND_PAGES",
     "router_next_sequence",
-    "prepares",
-    "reacts_to",
-    "projects",
+    "domain_class",  # Class decorator for handler domain (@domain("name"))
+    "event_handles",  # Unified decorator for event handlers (import from module for component-specific)
+    "prepares",  # Prepare handler decorator for two-phase protocol
     "rejected",
     # Server
     "configure_logging",
@@ -253,14 +259,20 @@ __all__ = [
     "emit_compensation_events",
     "pm_delegate_to_framework",
     "pm_emit_compensation_events",
-    # Unified Router (handler-protocol pattern)
+    # Unified Router (core)
+    "Router",
+    # Fluent Routers (functional handlers)
+    "FluentRouter",
+    "SingleFluentRouter",
+    # OO Routers (decorator handlers)
+    "OORouter",
+    # Component-Specific Routers
     "CommandHandlerRouter",
-    "SagaRouter",
+    "UpcasterRouter",
     "ProcessManagerRouter",
     "ProjectorRouter",
     # Handler Protocols
     "CommandHandlerDomainHandler",
-    "SagaDomainHandler",
     "ProcessManagerDomainHandler",
     "ProjectorDomainHandler",
     "ProcessManagerResponse",

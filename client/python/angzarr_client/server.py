@@ -4,8 +4,8 @@ Supports both TCP and Unix Domain Socket (UDS) transports for gRPC servers.
 """
 
 import os
+from collections.abc import Callable
 from concurrent import futures
-from typing import Callable
 
 import grpc
 import structlog

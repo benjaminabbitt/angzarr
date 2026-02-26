@@ -3,8 +3,7 @@
 Wraps protobuf events into EventBook structures with cover, sequence, and timestamp.
 """
 
-from datetime import datetime, timezone
-from typing import Sequence
+from collections.abc import Sequence
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.message import Message

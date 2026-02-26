@@ -1,14 +1,12 @@
 """Error types for the Angzarr client library."""
 
-from typing import Optional
-
 import grpc
 
 
 class ClientError(Exception):
     """Base class for client errors."""
 
-    def __init__(self, message: str, cause: Optional[Exception] = None):
+    def __init__(self, message: str, cause: Exception | None = None):
         super().__init__(message)
         self.message = message
         self.cause = cause
