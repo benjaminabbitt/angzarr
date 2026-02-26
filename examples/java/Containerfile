@@ -16,7 +16,7 @@ ARG JAVA_VERSION=21
 # ============================================================================
 FROM docker.io/library/eclipse-temurin:${JAVA_VERSION}-jdk-alpine AS base
 
-RUN apk add --no-cache ca-certificates bash
+RUN apk add --no-cache ca-certificates bash protobuf
 
 WORKDIR /app
 
@@ -26,6 +26,9 @@ WORKDIR /app
 FROM base AS deps
 
 WORKDIR /app
+
+# Copy proto files (required by client/java/proto for proto compilation)
+COPY proto ./proto
 
 # Copy client library (composite build dependency)
 COPY client/java ./client/java

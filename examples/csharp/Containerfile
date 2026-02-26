@@ -27,6 +27,9 @@ FROM base AS restore
 
 WORKDIR /app
 
+# Copy proto files (required by Angzarr.Proto for proto compilation)
+COPY proto ./proto
+
 # Copy client library (local dependency)
 COPY client/csharp ./client/csharp
 
