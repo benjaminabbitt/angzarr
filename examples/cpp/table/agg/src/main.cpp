@@ -12,7 +12,7 @@
 #include "../handlers/join_handler.hpp"
 #include "../handlers/leave_handler.hpp"
 #include "../handlers/start_hand_handler.hpp"
-#include "angzarr/aggregate.grpc.pb.h"
+#include "angzarr/command_handler.grpc.pb.h"
 #include "angzarr/command_router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/table.pb.h"
@@ -35,7 +35,7 @@ angzarr::CommandRouter<table::TableState> create_router() {
 }
 
 /// gRPC service implementation for table aggregate.
-class TableAggregateService final : public angzarr::AggregateService::Service {
+class TableAggregateService final : public angzarr::CommandHandlerService::Service {
    public:
     explicit TableAggregateService(angzarr::CommandRouter<table::TableState> router)
         : router_(std::move(router)) {}

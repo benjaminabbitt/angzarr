@@ -12,7 +12,7 @@
 #include "../handlers/deal_community_handler.hpp"
 #include "../handlers/deal_handler.hpp"
 #include "../handlers/post_blind_handler.hpp"
-#include "angzarr/aggregate.grpc.pb.h"
+#include "angzarr/command_handler.grpc.pb.h"
 #include "angzarr/command_router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
@@ -34,7 +34,7 @@ angzarr::CommandRouter<hand::HandState> create_router() {
 }
 
 /// gRPC service implementation for hand aggregate.
-class HandAggregateService final : public angzarr::AggregateService::Service {
+class HandAggregateService final : public angzarr::CommandHandlerService::Service {
    public:
     explicit HandAggregateService(angzarr::CommandRouter<hand::HandState> router)
         : router_(std::move(router)) {}

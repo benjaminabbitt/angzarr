@@ -13,7 +13,7 @@
 #include "../handlers/reserve_handler.hpp"
 #include "../handlers/transfer_handler.hpp"
 #include "../handlers/withdraw_handler.hpp"
-#include "angzarr/aggregate.grpc.pb.h"
+#include "angzarr/command_handler.grpc.pb.h"
 #include "angzarr/command_router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/player.pb.h"
@@ -47,7 +47,7 @@ angzarr::CommandRouter<player::PlayerState> create_router() {
 // docs:end:command_router
 
 /// gRPC service implementation for player aggregate.
-class PlayerAggregateService final : public angzarr::AggregateService::Service {
+class PlayerAggregateService final : public angzarr::CommandHandlerService::Service {
    public:
     explicit PlayerAggregateService(angzarr::CommandRouter<player::PlayerState> router)
         : router_(std::move(router)) {}

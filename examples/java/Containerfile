@@ -8,15 +8,20 @@
 # 2. Named cache IDs for Gradle cache persistence
 # 3. Distroless Java runtime - minimal attack surface
 # 4. Multi-arch support (amd64 + arm64)
+#
+# Note: Using Ubuntu-based Temurin (not Alpine) because io.grpc:protoc-gen-grpc-java
+# bundles glibc-linked binaries that don't run on musl-based Alpine.
 
 ARG JAVA_VERSION=21
 
 # ============================================================================
-# Base builder - Gradle with JDK
+# Base builder - Gradle with JDK (Ubuntu jammy)
 # ============================================================================
-FROM docker.io/library/eclipse-temurin:${JAVA_VERSION}-jdk-alpine AS base
+FROM docker.io/library/eclipse-temurin:${JAVA_VERSION}-jdk-jammy AS base
 
-RUN apk add --no-cache ca-certificates bash protobuf
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates bash protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

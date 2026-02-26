@@ -6,17 +6,21 @@
 # Optimizations:
 # 1. Shared restore stage - NuGet restore runs once
 # 2. Named cache IDs for NuGet package cache persistence
-# 3. Distroless runtime - minimal attack surface
+# 3. Slim Debian runtime - minimal attack surface
 # 4. Multi-arch support (amd64 + arm64)
+#
+# Note: Using Debian-based images (not Alpine) because Grpc.Tools NuGet package
+# bundles glibc-linked protoc binaries that don't run on musl-based Alpine.
 
 ARG DOTNET_VERSION=8.0
 
 # ============================================================================
-# Base builder - .NET SDK
+# Base builder - .NET SDK (Debian bookworm)
 # ============================================================================
-FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION}-alpine AS base
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION}-bookworm-slim AS base
 
-RUN apk add --no-cache ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -121,11 +125,11 @@ RUN --mount=type=cache,id=nuget-cache,target=/root/.nuget/packages,sharing=locke
     dotnet publish PrjOutput/PrjOutput.csproj -c Release -o /out --no-restore
 
 # ============================================================================
-# Runtime base - chiseled .NET runtime (minimal, secure)
+# Runtime base - slim Debian .NET runtime (minimal, secure)
 # ============================================================================
-FROM mcr.microsoft.com/dotnet/runtime-deps:${DOTNET_VERSION}-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/runtime-deps:${DOTNET_VERSION}-bookworm-slim AS runtime
 WORKDIR /app
-RUN adduser -D -u 1000 angzarr
+RUN adduser --disabled-password --gecos "" --uid 1000 angzarr
 USER angzarr
 
 # ============================================================================
