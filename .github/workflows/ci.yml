@@ -301,6 +301,45 @@ jobs:
           echo "Built images:"
           jq -r '.builds[].tag' runtime-build.json
 
+  # Build client libraries using matrix
+  build-client:
+    name: Build ${{ matrix.lang }} Client
+    runs-on: ubuntu-latest
+    needs: [build-base, build-lang]
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [rust, python, go, csharp, java, cpp]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate ${{ matrix.lang }} image tag
+        id: image
+        run: |
+          CONTENT_HASH=$(sha256sum build/images/${{ matrix.lang }}/Containerfile | cut -c1-12)
+          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
+          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:$TAG" >> $GITHUB_OUTPUT
+
+      - name: Pull ${{ matrix.lang }} image
+        run: docker pull ${{ steps.image.outputs.tag }}
+
+      - name: Build ${{ matrix.lang }} client
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -v "${{ github.workspace }}/client/${{ matrix.lang }}/justfile.container:/workspace/client/${{ matrix.lang }}/justfile:ro" \
+            -w /workspace/client/${{ matrix.lang }} \
+            -e DEVCONTAINER=true \
+            ${{ steps.image.outputs.tag }} \
+            just build
+
   push-gateway:
     name: Push Gateway Image
     runs-on: ubuntu-latest
