@@ -51,7 +51,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
-        run: just test
+        run: cargo test --lib
+        env:
+          DEVCONTAINER: "true"  # Skip container, use host Rust
 
   gateway:
     name: Build gRPC Gateway
