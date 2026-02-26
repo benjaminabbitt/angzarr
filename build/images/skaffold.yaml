@@ -8,9 +8,11 @@ metadata:
 
 build:
   tagPolicy:
-    inputDigest: {}  # Content-based tags - rebuild only when inputs change
+    gitCommit:
+      prefix: ""      # No prefix, just the commit SHA
+      variant: AbbrevCommitSha  # Short SHA (7 chars)
   local:
-    push: false      # Don't push by default (CI uses --push flag)
+    push: false       # Don't push by default (CI uses --push flag)
     useBuildkit: true
     tryImportMissing: true  # Pull from registry if exists
 
