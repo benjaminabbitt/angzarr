@@ -340,15 +340,49 @@ jobs:
             ${{ steps.image.outputs.tag }} \
             bash -c "git config --global --add safe.directory /workspace && just build"
 
-  # Build example business logic using matrix
+  # Build example business logic images using matrix
+  # Only for languages with Containerfiles: rust, go, python
   build-example:
-    name: Build ${{ matrix.lang }} Example
+    name: Build ${{ matrix.lang }}-${{ matrix.target }} Example
     runs-on: ubuntu-latest
     needs: [build-base, build-lang, build-client]
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
-        lang: [rust, python, go, csharp, java, cpp]
+        include:
+          # Rust examples (dev targets for faster CI)
+          - lang: rust
+            target: agg-player-dev
+            image_name: poker-rust-player
+          - lang: rust
+            target: agg-table-dev
+            image_name: poker-rust-table
+          - lang: rust
+            target: agg-hand-dev
+            image_name: poker-rust-hand
+          # Go examples
+          - lang: go
+            target: agg-player
+            image_name: poker-go-player
+          - lang: go
+            target: agg-table
+            image_name: poker-go-table
+          - lang: go
+            target: agg-hand
+            image_name: poker-go-hand
+          # Python examples
+          - lang: python
+            target: agg-player
+            image_name: poker-python-player
+          - lang: python
+            target: agg-table
+            image_name: poker-python-table
+          - lang: python
+            target: agg-hand
+            image_name: poker-python-hand
     steps:
       - uses: actions/checkout@v4
 
@@ -359,25 +393,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Calculate ${{ matrix.lang }} image tag
-        id: image
+      - name: Calculate rust image tag
+        if: matrix.lang == 'rust'
+        id: rust-image
         run: |
-          CONTENT_HASH=$(sha256sum build/images/${{ matrix.lang }}/Containerfile | cut -c1-12)
+          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
           TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:$TAG" >> $GITHUB_OUTPUT
+          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG" >> $GITHUB_OUTPUT
 
-      - name: Pull ${{ matrix.lang }} image
-        run: docker pull ${{ steps.image.outputs.tag }}
-
-      - name: Build ${{ matrix.lang }} example
+      - name: Calculate content hash
+        id: hash
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -v "${{ github.workspace }}/examples/${{ matrix.lang }}/justfile.container:/workspace/examples/${{ matrix.lang }}/justfile:ro" \
-            -w /workspace/examples/${{ matrix.lang }} \
-            -e DEVCONTAINER=true \
-            ${{ steps.image.outputs.tag }} \
-            bash -c "git config --global --add safe.directory /workspace && just build"
+          # Hash includes the example Containerfile and relevant source
+          CONTENT_HASH=$(sha256sum examples/${{ matrix.lang }}/Containerfile | cut -c1-12)
+          echo "hash=$CONTENT_HASH" >> $GITHUB_OUTPUT
+
+      - name: Build example image
+        run: |
+          TAG="${{ steps.hash.outputs.hash }}"
+          IMAGE="${{ env.IMAGE_PREFIX }}/${{ matrix.image_name }}:$TAG"
+
+          BUILD_ARGS=""
+          if [ "${{ matrix.lang }}" = "rust" ]; then
+            BUILD_ARGS="--build-arg RUST_IMAGE=${{ steps.rust-image.outputs.tag }}"
+          fi
+
+          docker build \
+            $BUILD_ARGS \
+            --target ${{ matrix.target }} \
+            -t "$IMAGE" \
+            -f examples/${{ matrix.lang }}/Containerfile \
+            .
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Push example image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          TAG="${{ steps.hash.outputs.hash }}"
+          IMAGE="${{ env.IMAGE_PREFIX }}/${{ matrix.image_name }}:$TAG"
+          docker push "$IMAGE"
 
   push-gateway:
     name: Push Gateway Image
