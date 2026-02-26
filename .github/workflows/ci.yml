@@ -14,76 +14,47 @@ jobs:
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-base:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      DEVCONTAINER: "true"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Install buf
-        uses: bufbuild/buf-setup-action@v1
-
-      - name: Buf lint
-        run: just buf-lint
-
-      - name: Buf build
-        run: just buf-build
+      - run: just buf-lint
+      - run: just buf-build
 
   test:
     name: Test
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-rust:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      DEVCONTAINER: "true"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Run tests
-        run: cargo test --lib
-        env:
-          DEVCONTAINER: "true"  # Skip container, use host Rust
-          # Override .cargo/config.toml mold linker (not installed on GH Actions)
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ""
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ""
+      - run: just test
 
   gateway:
     name: Build gRPC Gateway
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-go:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      DEVCONTAINER: "true"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Install buf
-        uses: bufbuild/buf-setup-action@v1
-
-      - name: Generate gateway code
-        run: just gateway-gen
-
-      - name: Build gateway binary
-        run: just gateway-build
-
-      - name: Generate OpenAPI spec
-        run: just openapi
-
+      - run: just gateway-gen
+      - run: just gateway-build
+      - run: just openapi
       - name: Upload OpenAPI artifact
         uses: actions/upload-artifact@v4
         with:
@@ -103,14 +74,6 @@ jobs:
 
       - name: Install just
         uses: extractions/setup-just@v2
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Install buf
-        uses: bufbuild/buf-setup-action@v1
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
