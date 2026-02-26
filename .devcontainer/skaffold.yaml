@@ -10,7 +10,7 @@ build:
   tagPolicy:
     inputDigest: {}
   local:
-    push: true
+    push: true  # Push to registry for caching across CI runs
     useBuildkit: true
     tryImportMissing: true  # Pull from registry if exists
   artifacts:

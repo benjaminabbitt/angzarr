@@ -206,13 +206,13 @@ buf-docs:
 _go +ARGS:
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ] || (command -v go &>/dev/null && command -v buf &>/dev/null); then
-        {{ARGS}}
+        eval {{ARGS}}
     else
         {{CONTAINER_CMD}} run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-go:latest \
-            {{ARGS}}
+            sh -c {{ARGS}}
     fi
 
 # Generate gRPC-Gateway and OpenAPI code from protos
