@@ -21,7 +21,7 @@ set(PROTO_FILES
     ${PROTO_DIR}/google/api/annotations.proto
     ${PROTO_DIR}/google/api/http.proto
     ${PROTO_DIR}/angzarr/types.proto
-    ${PROTO_DIR}/angzarr/aggregate.proto
+    ${PROTO_DIR}/angzarr/command_handler.proto
     ${PROTO_DIR}/angzarr/saga.proto
     ${PROTO_DIR}/angzarr/projector.proto
     ${PROTO_DIR}/angzarr/process_manager.proto

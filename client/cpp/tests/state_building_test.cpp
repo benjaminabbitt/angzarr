@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "angzarr/aggregate.pb.h"
+#include "angzarr/command_handler.pb.h"
 #include "angzarr/helpers.hpp"
 #include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"

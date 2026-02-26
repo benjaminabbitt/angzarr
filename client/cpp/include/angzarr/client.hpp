@@ -6,8 +6,8 @@
 #include <memory>
 #include <string>
 
-#include "angzarr/aggregate.grpc.pb.h"
-#include "angzarr/aggregate.pb.h"
+#include "angzarr/command_handler.grpc.pb.h"
+#include "angzarr/command_handler.pb.h"
 #include "angzarr/query.grpc.pb.h"
 #include "angzarr/query.pb.h"
 #include "angzarr/types.pb.h"
@@ -176,7 +176,7 @@ class AggregateClient {
      * @param channel Shared gRPC channel
      */
     explicit AggregateClient(std::shared_ptr<grpc::Channel> channel)
-        : stub_(AggregateCoordinatorService::NewStub(channel)) {}
+        : stub_(CommandHandlerCoordinatorService::NewStub(channel)) {}
 
     /**
      * Execute a command asynchronously (fire-and-forget).
@@ -189,9 +189,13 @@ class AggregateClient {
      * @throws GrpcError if the gRPC call fails
      */
     CommandResponse handle(const CommandBook& command) {
+        CommandRequest request;
+        *request.mutable_command() = command;
+        request.set_sync_mode(SYNC_MODE_UNSPECIFIED);  // Async
+
         CommandResponse response;
         grpc::ClientContext context;
-        auto status = stub_->Handle(&context, command, &response);
+        auto status = stub_->HandleCommand(&context, request, &response);
         if (!status.ok()) {
             throw GrpcError(status.error_message(), status.error_code());
         }
@@ -204,14 +208,19 @@ class AggregateClient {
      * Blocks until the aggregate processes the command and events are persisted.
      * The response includes the resulting events.
      *
-     * @param command The sync command to execute
+     * @param command The command to execute
+     * @param sync_mode The sync mode (default: SYNC_MODE_SIMPLE)
      * @return CommandResponse with resulting events
      * @throws GrpcError if the gRPC call fails
      */
-    CommandResponse handle_sync(const SyncCommandBook& command) {
+    CommandResponse handle_sync(const CommandBook& command, SyncMode sync_mode = SYNC_MODE_SIMPLE) {
+        CommandRequest request;
+        *request.mutable_command() = command;
+        request.set_sync_mode(sync_mode);
+
         CommandResponse response;
         grpc::ClientContext context;
-        auto status = stub_->HandleSync(&context, command, &response);
+        auto status = stub_->HandleCommand(&context, request, &response);
         if (!status.ok()) {
             throw GrpcError(status.error_message(), status.error_code());
         }
@@ -228,7 +237,7 @@ class AggregateClient {
      * @return CommandResponse with projected events
      * @throws GrpcError if the gRPC call fails
      */
-    CommandResponse handle_sync_speculative(const SpeculateAggregateRequest& request) {
+    CommandResponse handle_sync_speculative(const SpeculateCommandHandlerRequest& request) {
         CommandResponse response;
         grpc::ClientContext context;
         auto status = stub_->HandleSyncSpeculative(&context, request, &response);
@@ -239,7 +248,7 @@ class AggregateClient {
     }
 
    private:
-    std::unique_ptr<AggregateCoordinatorService::Stub> stub_;
+    std::unique_ptr<CommandHandlerCoordinatorService::Stub> stub_;
 
     static std::string format_endpoint(const std::string& endpoint) {
         if (endpoint.find("://") == std::string::npos) {

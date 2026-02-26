@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "angzarr/aggregate.pb.h"
+#include "angzarr/command_handler.pb.h"
 #include "angzarr/types.pb.h"
 #include "errors.hpp"
 #include "helpers.hpp"

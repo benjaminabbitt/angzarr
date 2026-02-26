@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "angzarr/aggregate.pb.h"
+#include "angzarr/command_handler.pb.h"
 #include "angzarr/process_manager.pb.h"
 #include "angzarr/saga.pb.h"
 #include "angzarr/types.pb.h"
