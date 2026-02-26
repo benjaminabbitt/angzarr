@@ -65,14 +65,6 @@ build:
         buildArgs:
           RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
-    - image: ghcr.io/angzarr-io/angzarr-topology
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: angzarr-topology-dev
-        buildArgs:
-          RUST_IMAGE: "{{ .RUST_IMAGE }}"
-
     - image: ghcr.io/angzarr-io/angzarr-stream
       context: .
       docker:
@@ -128,14 +120,6 @@ profiles:
           docker:
             dockerfile: Containerfile
             target: angzarr-log
-            buildArgs:
-              RUST_IMAGE: "{{ .RUST_IMAGE }}"
-
-        - image: ghcr.io/angzarr-io/angzarr-topology
-          context: .
-          docker:
-            dockerfile: Containerfile
-            target: angzarr-topology
             buildArgs:
               RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
