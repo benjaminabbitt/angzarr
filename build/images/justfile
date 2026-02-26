@@ -96,7 +96,7 @@ pull IMAGE:
 pull-core:
     #!/usr/bin/env bash
     set -e
-    for img in aggregate projector saga process-manager log stream topology; do
+    for img in aggregate projector saga process-manager log stream; do
         echo "=== Pulling $img image ==="
         just pull-core-image "$img"
     done

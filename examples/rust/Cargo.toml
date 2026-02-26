@@ -29,3 +29,15 @@ hex = "0.4"
 sha2 = "0.10"
 rand = "0.8"
 chrono = "0.4"
+
+# Container build profile - fast compilation, no incremental
+[profile.container-dev]
+inherits = "dev"
+incremental = false
+
+# Container release profile - optimized for size
+[profile.production]
+inherits = "release"
+lto = true
+opt-level = "z"
+strip = true

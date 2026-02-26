@@ -341,7 +341,7 @@ jobs:
             bash -c "git config --global --add safe.directory /workspace && just build"
 
   # Build example business logic images using matrix
-  # Only for languages with Containerfiles: rust, go, python
+  # All languages with Containerfiles: rust, go, python, csharp, cpp, java
   build-example:
     name: Build ${{ matrix.lang }}-${{ matrix.target }} Example
     runs-on: ubuntu-latest
@@ -353,7 +353,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Rust examples (dev targets for faster CI)
+          # ============ Rust examples (dev targets for faster CI) ============
+          # Aggregates
           - lang: rust
             target: agg-player-dev
             image_name: poker-rust-player
@@ -363,7 +364,30 @@ jobs:
           - lang: rust
             target: agg-hand-dev
             image_name: poker-rust-hand
-          # Go examples
+          # Sagas
+          - lang: rust
+            target: saga-table-hand-dev
+            image_name: poker-rust-saga-table-hand
+          - lang: rust
+            target: saga-table-player-dev
+            image_name: poker-rust-saga-table-player
+          - lang: rust
+            target: saga-hand-table-dev
+            image_name: poker-rust-saga-hand-table
+          - lang: rust
+            target: saga-hand-player-dev
+            image_name: poker-rust-saga-hand-player
+          # Process Manager
+          - lang: rust
+            target: pmg-hand-flow-dev
+            image_name: poker-rust-pmg-hand-flow
+          # Projector
+          - lang: rust
+            target: prj-output-dev
+            image_name: poker-rust-prj-output
+
+          # ============ Go examples ============
+          # Aggregates
           - lang: go
             target: agg-player
             image_name: poker-go-player
@@ -373,7 +397,30 @@ jobs:
           - lang: go
             target: agg-hand
             image_name: poker-go-hand
-          # Python examples
+          # Sagas
+          - lang: go
+            target: saga-table-hand
+            image_name: poker-go-saga-table-hand
+          - lang: go
+            target: saga-table-player
+            image_name: poker-go-saga-table-player
+          - lang: go
+            target: saga-hand-table
+            image_name: poker-go-saga-hand-table
+          - lang: go
+            target: saga-hand-player
+            image_name: poker-go-saga-hand-player
+          # Process Manager
+          - lang: go
+            target: pmg-hand-flow
+            image_name: poker-go-pmg-hand-flow
+          # Projector
+          - lang: go
+            target: prj-output
+            image_name: poker-go-prj-output
+
+          # ============ Python examples ============
+          # Aggregates
           - lang: python
             target: agg-player
             image_name: poker-python-player
@@ -383,6 +430,126 @@ jobs:
           - lang: python
             target: agg-hand
             image_name: poker-python-hand
+          # Sagas
+          - lang: python
+            target: saga-table-hand
+            image_name: poker-python-saga-table-hand
+          - lang: python
+            target: saga-table-player
+            image_name: poker-python-saga-table-player
+          - lang: python
+            target: saga-hand-table
+            image_name: poker-python-saga-hand-table
+          - lang: python
+            target: saga-hand-player
+            image_name: poker-python-saga-hand-player
+          # Process Manager
+          - lang: python
+            target: pmg-hand-flow
+            image_name: poker-python-pmg-hand-flow
+          # Projector
+          - lang: python
+            target: prj-output
+            image_name: poker-python-prj-output
+
+          # ============ C# examples ============
+          # Aggregates
+          - lang: csharp
+            target: agg-player
+            image_name: poker-csharp-player
+          - lang: csharp
+            target: agg-table
+            image_name: poker-csharp-table
+          - lang: csharp
+            target: agg-hand
+            image_name: poker-csharp-hand
+          # Sagas
+          - lang: csharp
+            target: saga-table-hand
+            image_name: poker-csharp-saga-table-hand
+          - lang: csharp
+            target: saga-table-player
+            image_name: poker-csharp-saga-table-player
+          - lang: csharp
+            target: saga-hand-table
+            image_name: poker-csharp-saga-hand-table
+          - lang: csharp
+            target: saga-hand-player
+            image_name: poker-csharp-saga-hand-player
+          # Process Manager
+          - lang: csharp
+            target: pmg-hand-flow
+            image_name: poker-csharp-pmg-hand-flow
+          # Projector
+          - lang: csharp
+            target: prj-output
+            image_name: poker-csharp-prj-output
+
+          # ============ C++ examples ============
+          # Aggregates
+          - lang: cpp
+            target: agg-player
+            image_name: poker-cpp-player
+          - lang: cpp
+            target: agg-table
+            image_name: poker-cpp-table
+          - lang: cpp
+            target: agg-hand
+            image_name: poker-cpp-hand
+          # Sagas
+          - lang: cpp
+            target: saga-table-hand
+            image_name: poker-cpp-saga-table-hand
+          - lang: cpp
+            target: saga-table-player
+            image_name: poker-cpp-saga-table-player
+          - lang: cpp
+            target: saga-hand-table
+            image_name: poker-cpp-saga-hand-table
+          - lang: cpp
+            target: saga-hand-player
+            image_name: poker-cpp-saga-hand-player
+          # Process Manager
+          - lang: cpp
+            target: pmg-hand-flow
+            image_name: poker-cpp-pmg-hand-flow
+          # Projector
+          - lang: cpp
+            target: prj-output
+            image_name: poker-cpp-prj-output
+
+          # ============ Java examples ============
+          # Aggregates
+          - lang: java
+            target: agg-player
+            image_name: poker-java-player
+          - lang: java
+            target: agg-table
+            image_name: poker-java-table
+          - lang: java
+            target: agg-hand
+            image_name: poker-java-hand
+          # Sagas
+          - lang: java
+            target: saga-table-hand
+            image_name: poker-java-saga-table-hand
+          - lang: java
+            target: saga-table-player
+            image_name: poker-java-saga-table-player
+          - lang: java
+            target: saga-hand-table
+            image_name: poker-java-saga-hand-table
+          - lang: java
+            target: saga-hand-player
+            image_name: poker-java-saga-hand-player
+          # Process Manager
+          - lang: java
+            target: pmg-hand-flow
+            image_name: poker-java-pmg-hand-flow
+          # Projector
+          - lang: java
+            target: prj-output
+            image_name: poker-java-prj-output
     steps:
       - uses: actions/checkout@v4
 

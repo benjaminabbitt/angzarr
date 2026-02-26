@@ -20,15 +20,10 @@ locals {
     "${var.stream_dns}.${var.namespace_name}:1340"
   ) : var.stream_dns
 
-  topology_address = var.topology_dns != null && var.namespace_name != null ? (
-    "${var.topology_dns}.${var.namespace_name}:9099"
-  ) : var.topology_dns
-
   # Combine all discovery entries
   all_services = merge(
     var.services,
     local.stream_address != null ? { "STREAM_ADDRESS" = local.stream_address } : {},
-    local.topology_address != null ? { "TOPOLOGY_ADDRESS" = local.topology_address } : {},
     var.additional_env
   )
 

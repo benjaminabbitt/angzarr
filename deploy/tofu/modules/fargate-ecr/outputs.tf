@@ -34,7 +34,6 @@ output "images" {
     coordinator_projector = aws_ecr_repository.repos["projector"].repository_url
     coordinator_pm        = aws_ecr_repository.repos["process-manager"].repository_url
     stream                = aws_ecr_repository.repos["stream"].repository_url
-    topology              = aws_ecr_repository.repos["topology"].repository_url
     upcaster              = aws_ecr_repository.repos["upcaster"].repository_url
   }
 }

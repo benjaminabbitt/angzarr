@@ -80,17 +80,6 @@ Usage: {{- include "angzarr.otel-env" (dict "root" $ "service" "aggregate" "doma
 {{- end }}
 
 {{/*
-Whether topology service is enabled.
-Auto-enables when observability is enabled (Grafana stack implies topology visualization).
-Returns empty string if disabled (falsy in Helm), "true" if enabled.
-*/}}
-{{- define "angzarr.topology-enabled" -}}
-{{- if or .Values.infrastructure.topology.enabled .Values.observability.enabled -}}
-true
-{{- end -}}
-{{- end }}
-
-{{/*
 Component naming convention: {domain}-{type}
 Per-domain aggregate coordinator names follow the pattern: player-aggregate, order-aggregate
 This enables consistent DNS routing: player-aggregate.angzarr.svc.cluster.local:1310

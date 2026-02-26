@@ -74,15 +74,12 @@ resource "helm_release" "observability" {
 
   values = [
     yamlencode({
-      topologyEndpoint = "http://angzarr-topology.angzarr.svc.cluster.local:9099"
-
       grafana = {
         adminPassword = "angzarr"
         service = {
           type     = "NodePort"
           nodePort = 30300
         }
-        # Add topology datasource
         datasources = {
           "datasources.yaml" = {
             apiVersion = 1
@@ -127,14 +124,6 @@ resource "helm_release" "observability" {
                     }
                   ]
                 }
-              },
-              {
-                name      = "Angzarr Topology"
-                type      = "hamedkarbasi93-nodegraphapi-datasource"
-                access    = "proxy"
-                url       = "http://angzarr-topology.angzarr.svc.cluster.local:9099"
-                uid       = "topology"
-                isDefault = false
               },
             ]
           }

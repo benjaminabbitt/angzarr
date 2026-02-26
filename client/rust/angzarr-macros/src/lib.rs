@@ -1051,7 +1051,9 @@ fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
                             return projection;
                         }
                     }
-                    last_seq = page.sequence;
+                    if let Some(angzarr_client::proto::event_page::SequenceType::Sequence(seq)) = &page.sequence_type {
+                        last_seq = *seq;
+                    }
                 }
 
                 // Default projection if no handler matched

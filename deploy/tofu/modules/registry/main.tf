@@ -18,7 +18,6 @@ locals {
   all_services = merge(
     var.services,
     var.stream_url != null ? { "STREAM_ADDRESS" = var.stream_url } : {},
-    var.topology_url != null ? { "TOPOLOGY_ADDRESS" = var.topology_url } : {},
     var.additional_env
   )
 

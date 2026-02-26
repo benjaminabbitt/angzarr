@@ -55,12 +55,6 @@ variable "enable_stream" {
   default     = true
 }
 
-variable "enable_topology" {
-  description = "Enable topology service"
-  type        = bool
-  default     = true
-}
-
 variable "allow_unauthenticated" {
   description = "Allow unauthenticated access to services"
   type        = bool

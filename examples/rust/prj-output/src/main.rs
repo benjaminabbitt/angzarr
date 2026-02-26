@@ -40,7 +40,10 @@ fn write_log(msg: &str) {
 }
 
 fn get_sequence(page: &EventPage) -> u32 {
-    page.sequence
+    match &page.sequence_type {
+        Some(event_page::SequenceType::Sequence(seq)) => *seq,
+        _ => 0,
+    }
 }
 
 // docs:start:projector_functional

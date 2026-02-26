@@ -103,13 +103,6 @@ const config: Config = {
         id: 'openapi',
         docsPluginId: 'classic',
         config: {
-          topology: {
-            specPath: 'openapi/topology.yaml',
-            outputDir: 'docs/api/topology',
-            sidebarOptions: {
-              groupPathsBy: 'tag',
-            },
-          },
           restapi: {
             specPath: 'openapi/angzarr.swagger.json',
             outputDir: 'docs/api/rest',

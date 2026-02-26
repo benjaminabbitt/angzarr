@@ -14,12 +14,6 @@ variable "stream_dns" {
   default     = null
 }
 
-variable "topology_dns" {
-  description = "DNS name of the topology service (optional)"
-  type        = string
-  default     = null
-}
-
 variable "namespace_name" {
   description = "Cloud Map namespace name for constructing full DNS names"
   type        = string

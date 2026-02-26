@@ -29,8 +29,7 @@ class HandFlowService final : public angzarr::ProcessManagerService::Service {
                          const angzarr::ProcessManagerPrepareRequest* request,
                          angzarr::ProcessManagerPrepareResponse* response) override {
         const auto& trigger = request->trigger();
-        std::string trigger_domain =
-            trigger.has_cover() ? trigger.cover().domain() : "";
+        std::string trigger_domain = trigger.has_cover() ? trigger.cover().domain() : "";
 
         for (const auto& page : trigger.pages()) {
             const auto& event_any = page.event();

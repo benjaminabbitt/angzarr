@@ -47,17 +47,6 @@ pub const STREAM_ADDRESS_ENV_VAR: &str = "STREAM_ADDRESS";
 /// Environment variable for stream timeout.
 pub const STREAM_TIMEOUT_ENV_VAR: &str = "STREAM_TIMEOUT_SECS";
 
-/// Environment variable for topology REST port.
-pub const TOPOLOGY_REST_PORT_ENV_VAR: &str = "TOPOLOGY_REST_PORT";
-/// Environment variable for topology storage type.
-pub const TOPOLOGY_STORAGE_TYPE_ENV_VAR: &str = "TOPOLOGY_STORAGE_TYPE";
-/// Environment variable for topology SQLite path.
-pub const TOPOLOGY_SQLITE_PATH_ENV_VAR: &str = "TOPOLOGY_SQLITE_PATH";
-/// Environment variable for topology Postgres URI.
-pub const TOPOLOGY_POSTGRES_URI_ENV_VAR: &str = "TOPOLOGY_POSTGRES_URI";
-/// Environment variable for topology Redis URI.
-pub const TOPOLOGY_REDIS_URI_ENV_VAR: &str = "TOPOLOGY_REDIS_URI";
-
 /// Environment variable for stream output enablement.
 pub const STREAM_OUTPUT_ENV_VAR: &str = "STREAM_OUTPUT";
 

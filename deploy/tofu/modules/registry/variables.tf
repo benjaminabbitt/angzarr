@@ -13,12 +13,6 @@ variable "stream_url" {
   default     = null
 }
 
-variable "topology_url" {
-  description = "URL of the topology service (optional)"
-  type        = string
-  default     = null
-}
-
 variable "additional_env" {
   description = "Additional environment variables to include in discovery"
   type        = map(string)

@@ -106,7 +106,7 @@ impl PlayerWorld {
 
     fn add_event(&mut self, event_any: Any) {
         self.events.push(EventPage {
-            sequence: self.next_sequence,
+            sequence_type: Some(event_page::SequenceType::Sequence(self.next_sequence)),
             payload: Some(event_page::Payload::Event(event_any)),
             created_at: Some(angzarr_client::now()),
         });

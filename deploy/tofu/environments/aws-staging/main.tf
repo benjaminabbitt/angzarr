@@ -223,13 +223,6 @@ module "infrastructure" {
     max_instances = 3
   }
 
-  topology = {
-    enabled       = true
-    image         = "${module.ecr.images.topology}:${var.image_tag}"
-    min_instances = 1
-    max_instances = 2
-  }
-
   coordinator_env = local.coordinator_env
   log_level       = var.log_level
 }
@@ -248,6 +241,5 @@ module "registry" {
     module.fulfillment.discovery_entries
   )
 
-  stream_dns   = module.infrastructure.service_discovery_dns.stream
-  topology_dns = module.infrastructure.service_discovery_dns.topology
+  stream_dns = module.infrastructure.service_discovery_dns.stream
 }

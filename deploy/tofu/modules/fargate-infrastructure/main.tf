@@ -1,7 +1,6 @@
 # Fargate Infrastructure Module
 # Deploys shared infrastructure services:
 # - Stream: Event streaming service
-# - Topology: Topology visualization service
 #
 # AWS Fargate equivalent of the GCP Cloud Run infrastructure module
 
@@ -56,14 +55,6 @@ resource "aws_cloudwatch_log_group" "stream" {
   tags              = merge(local.tags, { "angzarr-component" = "stream" })
 }
 
-resource "aws_cloudwatch_log_group" "topology" {
-  count = var.topology.enabled ? 1 : 0
-
-  name              = "/ecs/angzarr-topology"
-  retention_in_days = 30
-  tags              = merge(local.tags, { "angzarr-component" = "topology" })
-}
-
 #------------------------------------------------------------------------------
 # Security Group (if none provided)
 #------------------------------------------------------------------------------
@@ -85,14 +76,6 @@ resource "aws_security_group" "infrastructure" {
   ingress {
     from_port   = 1340
     to_port     = 1340
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Topology port (REST)
-  ingress {
-    from_port   = 9099
-    to_port     = 9099
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -199,134 +182,6 @@ resource "aws_service_discovery_service" "stream" {
   health_check_custom_config {}
 
   tags = merge(local.tags, { "angzarr-component" = "stream" })
-}
-
-#------------------------------------------------------------------------------
-# Topology Service
-#------------------------------------------------------------------------------
-resource "aws_ecs_task_definition" "topology" {
-  count = var.topology.enabled ? 1 : 0
-
-  family                   = "angzarr-topology"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = lookup(local.fargate_cpu_map, var.topology.resources.cpu, 512)
-  memory                   = 256
-  execution_role_arn       = var.execution_role_arn
-  task_role_arn            = var.task_role_arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "topology"
-      image     = var.topology.image
-      essential = true
-      portMappings = [{
-        containerPort = 9099
-        protocol      = "tcp"
-      }]
-      environment = concat(
-        local.coordinator_env_list,
-        [for k, v in var.topology.env : { name = k, value = v }],
-        [
-          { name = "RUST_LOG", value = var.log_level },
-          { name = "PORT", value = "9099" }
-        ]
-      )
-      secrets = local.coordinator_secrets_list
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.topology[0].name
-          "awslogs-region"        = data.aws_region.current.name
-          "awslogs-stream-prefix" = "topology"
-        }
-      }
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget -q --spider http://localhost:9099/health || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
-    }
-  ])
-
-  tags = merge(local.tags, { "angzarr-component" = "topology" })
-}
-
-resource "aws_ecs_service" "topology" {
-  count = var.topology.enabled ? 1 : 0
-
-  name            = "angzarr-topology"
-  cluster         = var.cluster_arn
-  task_definition = aws_ecs_task_definition.topology[0].arn
-  desired_count   = var.topology.min_instances > 0 ? var.topology.min_instances : 1
-  launch_type     = "FARGATE"
-
-  network_configuration {
-    subnets          = var.subnet_ids
-    security_groups  = local.security_group_ids
-    assign_public_ip = false
-  }
-
-  dynamic "service_registries" {
-    for_each = var.service_discovery_namespace_id != null ? [1] : []
-    content {
-      registry_arn = aws_service_discovery_service.topology[0].arn
-    }
-  }
-
-  dynamic "load_balancer" {
-    for_each = var.lb_arn != null ? [1] : []
-    content {
-      target_group_arn = aws_lb_target_group.topology[0].arn
-      container_name   = "topology"
-      container_port   = 9099
-    }
-  }
-
-  tags = merge(local.tags, { "angzarr-component" = "topology" })
-}
-
-resource "aws_service_discovery_service" "topology" {
-  count = var.topology.enabled && var.service_discovery_namespace_id != null ? 1 : 0
-
-  name = "angzarr-topology"
-
-  dns_config {
-    namespace_id = var.service_discovery_namespace_id
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-    routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {}
-
-  tags = merge(local.tags, { "angzarr-component" = "topology" })
-}
-
-resource "aws_lb_target_group" "topology" {
-  count = var.topology.enabled && var.lb_arn != null ? 1 : 0
-
-  name        = "angzarr-topology"
-  port        = 9099
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"
-
-  health_check {
-    enabled             = true
-    path                = "/health"
-    protocol            = "HTTP"
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-  }
-
-  tags = merge(local.tags, { "angzarr-component" = "topology" })
 }
 
 #------------------------------------------------------------------------------

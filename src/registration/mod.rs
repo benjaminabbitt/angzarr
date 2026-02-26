@@ -1,7 +1,7 @@
-//! Component registration and republish strategies.
+//! Republish strategies for retrying operations.
 //!
-//! Provides configurable strategies for how often components re-register
-//! with the topology projector to handle startup races.
+//! Provides configurable backoff strategies for retrying operations
+//! such as component registration or reconnection attempts.
 
 use std::time::Duration;
 

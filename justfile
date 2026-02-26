@@ -463,11 +463,6 @@ port-forward-gateway: port-forward-cleanup
     @kubectl port-forward --address 127.0.0.1 -n angzarr svc/angzarr-gateway 9084:9084 &
     @echo "Gateway available at localhost:9084"
 
-# Start topology port-forward (9099)
-port-forward-topology: port-forward-cleanup
-    @kubectl port-forward --address 127.0.0.1 -n angzarr svc/angzarr-topology 9099:9099 &
-    @echo "Topology API available at localhost:9099"
-
 # Start Grafana port-forward (3000)
 port-forward-grafana:
     @pkill -f "kubectl.*port-forward.*grafana" || true

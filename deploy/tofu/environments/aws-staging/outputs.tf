@@ -45,8 +45,7 @@ output "domain_services" {
 output "infrastructure_services" {
   description = "Infrastructure service names"
   value = {
-    stream   = module.infrastructure.stream_service_name
-    topology = module.infrastructure.topology_service_name
+    stream = module.infrastructure.stream_service_name
   }
 }
 

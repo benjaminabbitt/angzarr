@@ -50,8 +50,7 @@ Exchange: angzarr.events (topic)
     │
     ├── Binding: player.# → queue: player-projector
     ├── Binding: player.# → queue: output-projector
-    ├── Binding: hand.# → queue: hand-saga
-    └── Binding: *.# → queue: topology-tracker
+    └── Binding: hand.# → queue: hand-saga
 ```
 
 ### Routing Keys

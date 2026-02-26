@@ -35,8 +35,6 @@ securityContext: {}
 
 # Infrastructure services
 infrastructure:
-  topology:
-    enabled: false  # Using OTel-based topology from monitoring stack
   gateway:
     enabled: true
     replicas: 1

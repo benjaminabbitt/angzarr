@@ -11,7 +11,6 @@ Angzarr provides several built-in projectors for common operational needs. These
 | [LogService](#logservice) | Debug logging | Console (stdout) |
 | [EventService](#eventservice) | Event storage | Database (SQL) |
 | [OutboundService](#outboundservice) | Real-time streaming + external publishing | gRPC streams, HTTP/Kafka |
-| [TopologyProjector](#topologyprojector) | Component graph | REST API (Grafana) |
 
 ---
 
@@ -239,73 +238,15 @@ Each EventBook page becomes a CloudEvent with:
 
 ---
 
-## TopologyProjector
-
-Builds a graph of runtime components from event observation. Serves the graph via REST API for visualization in Grafana's Node Graph panel.
-
-### Features
-
-- Graph structure inferred from event flow
-- Metrics from event observation (counts, last seen)
-- REST API for Grafana integration
-- K8s watcher mode for pod annotation discovery
-
-### Discovery Modes
-
-| Mode | Source | Use Case |
-|------|--------|----------|
-| Event observation | Runtime event flow | Default |
-| K8s watcher | Pod annotations | Production K8s |
-
-### REST API
-
-```
-GET /api/v1/topology/nodes
-GET /api/v1/topology/edges
-GET /api/v1/topology/graph  # Combined for Grafana
-```
-
-### Grafana Integration
-
-Configure as JSON API datasource pointing to the topology REST endpoint. The Node Graph panel displays:
-
-- **Nodes**: Components (aggregates, sagas, projectors, PMs)
-- **Edges**: Event/command flow between components
-- **Metrics**: Event counts, last event type, timestamps
-
-### Usage (Rust)
-
-```rust
-use angzarr::handlers::projectors::TopologyProjector;
-use angzarr::handlers::projectors::topology::store::SqliteTopologyStore;
-
-let store = SqliteTopologyStore::new("topology.db").await?;
-let projector = TopologyProjector::new(Arc::new(store), 9099);
-
-projector.init().await?;  // Start REST server
-
-// Process events (builds graph from observed traffic)
-projector.process_event(&event_book).await?;
-```
-
-### Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TOPOLOGY_REST_PORT` | REST API port | `9099` |
-| `TOPOLOGY_DB_PATH` | SQLite database path | `topology.db` |
-
----
-
 ## Comparison
 
-| Feature | Log | Event | Outbound | Topology |
-|---------|-----|-------|----------|----------|
-| **Output** | Console | Database | gRPC + HTTP/Kafka | REST |
-| **Purpose** | Debug | Audit/Query | Real-time + Integration | Visualization |
-| **State** | Stateless | Persistent | In-memory | Persistent |
-| **Filtering** | None | SQL queries | Correlation | Component |
-| **Production** | Dev only | Yes | Yes | Yes |
+| Feature | Log | Event | Outbound |
+|---------|-----|-------|----------|
+| **Output** | Console | Database | gRPC + HTTP/Kafka |
+| **Purpose** | Debug | Audit/Query | Real-time + Integration |
+| **State** | Stateless | Persistent | In-memory |
+| **Filtering** | None | SQL queries | Correlation |
+| **Production** | Dev only | Yes | Yes |
 
 ---
 
@@ -317,12 +258,6 @@ In standalone mode, register framework projectors via `RuntimeBuilder`:
 let mut runtime = RuntimeBuilder::new()
     .with_sqlite_memory()
     .register_aggregate("orders", orders_aggregate)
-    // Framework projectors
-    .register_projector(
-        "topology",
-        topology_projector,
-        ProjectorConfig::async_(),
-    )
     .build()
     .await?;
 ```

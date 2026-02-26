@@ -16,7 +16,6 @@ Core framework services use fixed ports:
 |---------|------|----------|-------------|
 | Aggregate Coordinator | 1310 | 31310 | Per-domain command handling |
 | Stream gRPC | 1340 | 31340 | Event streaming |
-| Topology REST API | 9099 | - | Topology visualization |
 
 ---
 

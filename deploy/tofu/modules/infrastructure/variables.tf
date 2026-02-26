@@ -1,5 +1,5 @@
 # Infrastructure Module - Variables
-# Deploys shared infrastructure services (Stream, Topology)
+# Deploys shared infrastructure services (Stream)
 
 variable "project_id" {
   description = "GCP project ID"
@@ -25,25 +25,6 @@ variable "stream" {
       cpu    = string
       memory = string
     }), { cpu = "1", memory = "512Mi" })
-    env = optional(map(string), {})
-  })
-  default = { enabled = false, image = "" }
-}
-
-#------------------------------------------------------------------------------
-# Topology Service
-#------------------------------------------------------------------------------
-variable "topology" {
-  description = "Topology service configuration"
-  type = object({
-    enabled       = bool
-    image         = string
-    min_instances = optional(number, 0)
-    max_instances = optional(number, 5)
-    resources = optional(object({
-      cpu    = string
-      memory = string
-    }), { cpu = "0.5", memory = "256Mi" })
     env = optional(map(string), {})
   })
   default = { enabled = false, image = "" }

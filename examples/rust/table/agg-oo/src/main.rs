@@ -390,7 +390,7 @@ fn new_event_book<M: prost::Message>(
     EventBook {
         cover: cb.cover.clone(),
         pages: vec![EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             payload: Some(event_page::Payload::Event(event_any)),
             created_at: Some(angzarr_client::now()),
         }],

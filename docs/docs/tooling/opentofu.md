@@ -47,7 +47,7 @@ deploy/tofu/
 │   ├── cloudsql/              # Cloud SQL PostgreSQL (GCP)
 │   ├── pubsub/                # Pub/Sub event bus (GCP)
 │   ├── domain/                # Cloud Run domain deployment (GCP)
-│   ├── infrastructure/        # Stream + Topology services (GCP)
+│   ├── infrastructure/        # Stream service (GCP)
 │   ├── registry/              # Service discovery (GCP)
 │   ├── gke-domain/            # GKE domain deployment (GCP K8s)
 │   ├── eks-domain/            # EKS domain deployment (AWS K8s)
@@ -55,7 +55,7 @@ deploy/tofu/
 │   ├── fargate-domain/        # Fargate domain deployment (AWS)
 │   ├── fargate-ecr/           # ECR repositories (AWS)
 │   ├── fargate-registry/      # Service discovery (AWS)
-│   └── fargate-infrastructure/# Stream + Topology (AWS Fargate)
+│   └── fargate-infrastructure/# Stream service (AWS Fargate)
 ├── environments/              # Environment-specific configurations
 │   ├── local/                 # Local Kind cluster
 │   ├── gcp/                   # Google Cloud Run

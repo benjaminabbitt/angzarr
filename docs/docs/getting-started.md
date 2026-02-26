@@ -168,7 +168,6 @@ just nuke-deploy
 |---------|------|----------|-------------|
 | Command Handler Coordinator | 1310 | 31310 | Command handling per domain |
 | Stream gRPC | 1340 | 31340 | Event streaming |
-| Topology REST | 9099 | - | Topology visualization API |
 
 ### Business Logic Ports
 
@@ -245,7 +244,6 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 |---------|-------------|
 | `just port-forward-gateway` | Gateway port-forward (9084) |
 | `just port-forward-grafana` | Grafana port-forward (3000) |
-| `just port-forward-topology` | Topology port-forward (9099) |
 | `just port-forward-cleanup` | Kill all angzarr-related port-forwards |
 
 ---

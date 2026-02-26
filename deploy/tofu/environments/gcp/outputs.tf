@@ -31,11 +31,6 @@ output "stream_url" {
   value       = module.infrastructure.stream_url
 }
 
-output "topology_url" {
-  description = "Topology service URL"
-  value       = module.infrastructure.topology_url
-}
-
 output "discovery_env" {
   description = "Service discovery environment variables"
   value       = module.registry.discovery_env

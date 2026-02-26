@@ -55,10 +55,6 @@ images:
     repository: ghcr.io/angzarr-io/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"  # Overridden by skaffold setValueTemplates
-  topology:
-    repository: ghcr.io/angzarr-io/angzarr-topology
-    pullPolicy: IfNotPresent
-    tag: "latest"  # Overridden by skaffold setValueTemplates
 
 # Minimal resources for local dev
 resources:

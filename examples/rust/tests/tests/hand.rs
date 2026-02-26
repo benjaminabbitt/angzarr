@@ -142,7 +142,7 @@ impl HandWorld {
                 .iter()
                 .enumerate()
                 .map(|(i, e)| EventPage {
-                    sequence: i as u32,
+                    sequence_type: Some(event_page::SequenceType::Sequence(i as u32)),
                     payload: Some(event_page::Payload::Event(e.clone())),
                     created_at: None,
                 })

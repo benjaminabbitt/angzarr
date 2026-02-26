@@ -319,9 +319,6 @@ The `just dev` command runs Skaffold in watch mode—file changes trigger automa
 # Forward gateway to localhost:9084
 just port-forward-gateway
 
-# Forward topology API to localhost:9099
-just port-forward-topology
-
 # Forward Grafana to localhost:3000
 just port-forward-grafana
 

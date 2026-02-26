@@ -60,8 +60,7 @@ SNS provides fan-out to SQS queues:
 SNS Topic: angzarr-events-player
     │
     ├── SQS: player-projector-queue
-    ├── SQS: output-projector-queue
-    └── SQS: topology-tracker-queue
+    └── SQS: output-projector-queue
 
 SNS Topic: angzarr-events-hand
     │

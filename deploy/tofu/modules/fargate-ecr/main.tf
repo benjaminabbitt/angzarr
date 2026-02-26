@@ -25,7 +25,6 @@ locals {
     "projector",
     "process-manager",
     "stream",
-    "topology",
     "grpc-gateway",
     "upcaster"
   ]

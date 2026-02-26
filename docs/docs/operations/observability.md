@@ -155,7 +155,6 @@ Pre-built dashboards are deployed automatically:
 - **Command Pipeline** — Throughput, latency percentiles, error rates
 - **Event Bus** — Publish throughput, latency distribution
 - **Orchestration** — Saga execution, retry rates, compensations
-- **Topology** — Live system topology graph
 
 ---
 

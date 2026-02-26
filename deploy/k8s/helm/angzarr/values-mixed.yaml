@@ -49,10 +49,6 @@ images:
     repository: ghcr.io/angzarr-io/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
-  topology:
-    repository: ghcr.io/angzarr-io/angzarr-topology
-    pullPolicy: IfNotPresent
-    tag: "latest"
 
 # Minimal resources for local dev
 resources:

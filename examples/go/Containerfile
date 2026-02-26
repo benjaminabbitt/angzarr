@@ -26,36 +26,96 @@ WORKDIR /app
 # ============================================================================
 FROM base AS deps-fetcher
 
+WORKDIR /app
+
+# Copy client library (local dependency via go.mod replace directive)
+# The replace directive is: replace ... => ../../client/go
+# From /app/examples/go, that resolves to /app/client/go
+COPY client/go ./client/go
+
 # Copy go.mod/go.sum for dependency resolution
-COPY examples/go/go.mod examples/go/go.sum ./
+COPY examples/go/go.mod examples/go/go.sum ./examples/go/
+
+WORKDIR /app/examples/go
 
 # Download dependencies with persistent cache
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     go mod download
 
 # ============================================================================
-# Service builds - each builds a static binary
+# Aggregate builds - each builds a static binary
 # ============================================================================
 FROM deps-fetcher AS build-player
-WORKDIR /build
+WORKDIR /app/examples/go
 COPY examples/go/ ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./agg-player
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./player/agg
 
 FROM deps-fetcher AS build-table
-WORKDIR /build
+WORKDIR /app/examples/go
 COPY examples/go/ ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./agg-table
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/agg
 
 FROM deps-fetcher AS build-hand
-WORKDIR /build
+WORKDIR /app/examples/go
 COPY examples/go/ ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./agg-hand
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/agg
+
+# ============================================================================
+# Saga builds
+# ============================================================================
+FROM deps-fetcher AS build-saga-table-hand
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/saga-hand
+
+FROM deps-fetcher AS build-saga-table-player
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/saga-player
+
+FROM deps-fetcher AS build-saga-hand-table
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/saga-table
+
+FROM deps-fetcher AS build-saga-hand-player
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/saga-player
+
+# ============================================================================
+# Process Manager build
+# ============================================================================
+FROM deps-fetcher AS build-pmg-hand-flow
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand-flow
+
+# ============================================================================
+# Projector build
+# ============================================================================
+FROM deps-fetcher AS build-prj-output
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./prj-output
 
 # ============================================================================
 # Runtime base - distroless static (minimal, secure)
@@ -83,4 +143,49 @@ FROM runtime AS agg-hand
 COPY --from=build-hand --chown=nonroot:nonroot /out/server ./server
 ENV PORT=50203
 EXPOSE 50203
+ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Sagas
+# ============================================================================
+FROM runtime AS saga-table-hand
+COPY --from=build-saga-table-hand --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50211
+EXPOSE 50211
+ENTRYPOINT ["./server"]
+
+FROM runtime AS saga-table-player
+COPY --from=build-saga-table-player --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50212
+EXPOSE 50212
+ENTRYPOINT ["./server"]
+
+FROM runtime AS saga-hand-table
+COPY --from=build-saga-hand-table --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50213
+EXPOSE 50213
+ENTRYPOINT ["./server"]
+
+FROM runtime AS saga-hand-player
+COPY --from=build-saga-hand-player --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50214
+EXPOSE 50214
+ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Process Manager
+# ============================================================================
+FROM runtime AS pmg-hand-flow
+COPY --from=build-pmg-hand-flow --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50291
+EXPOSE 50291
+ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Projector
+# ============================================================================
+FROM runtime AS prj-output
+COPY --from=build-prj-output --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50290
+EXPOSE 50290
 ENTRYPOINT ["./server"]

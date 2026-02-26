@@ -57,8 +57,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 ```
 Topic: angzarr-events-player
   ├── Subscription: player-projector
-  ├── Subscription: output-projector
-  └── Subscription: topology-tracker
+  └── Subscription: output-projector
 
 Topic: angzarr-events-hand
   ├── Subscription: hand-saga

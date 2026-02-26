@@ -38,7 +38,6 @@ locals {
     coordinator_projector = "${var.image_registry}/angzarr-projector:${var.image_tag}"
     coordinator_pm        = "${var.image_registry}/angzarr-pm:${var.image_tag}"
     stream                = "${var.image_registry}/angzarr-stream:${var.image_tag}"
-    topology              = "${var.image_registry}/angzarr-topology:${var.image_tag}"
     upcaster_noop         = "${var.image_registry}/angzarr-upcaster-noop:${var.image_tag}"
   }
 
@@ -93,7 +92,7 @@ module "pubsub" {
 }
 
 #------------------------------------------------------------------------------
-# Infrastructure: Stream & Topology
+# Infrastructure: Stream
 #------------------------------------------------------------------------------
 module "infrastructure" {
   source = "../../modules/infrastructure"
@@ -104,11 +103,6 @@ module "infrastructure" {
   stream = {
     enabled = var.enable_stream
     image   = local.images.stream
-  }
-
-  topology = {
-    enabled = var.enable_topology
-    image   = local.images.topology
   }
 
   coordinator_env       = merge(module.cloudsql.coordinator_env, module.pubsub.coordinator_env)
@@ -244,6 +238,5 @@ module "registry" {
     module.fulfillment.discovery_entries,
   )
 
-  stream_url   = module.infrastructure.stream_url
-  topology_url = module.infrastructure.topology_url
+  stream_url = module.infrastructure.stream_url
 }
