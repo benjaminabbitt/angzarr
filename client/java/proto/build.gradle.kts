@@ -14,7 +14,8 @@ dependencies {
 
 protobuf {
     protoc {
-        path = "/usr/bin/protoc"
+        // Use Gradle-managed protoc instead of system (system may lack proto3 optional support)
+        artifact = "com.google.protobuf:protoc:3.25.1"
     }
     plugins {
         id("grpc") {
