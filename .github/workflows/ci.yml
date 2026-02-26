@@ -338,7 +338,7 @@ jobs:
             -w /workspace/client/${{ matrix.lang }} \
             -e DEVCONTAINER=true \
             ${{ steps.image.outputs.tag }} \
-            just build
+            bash -c "git config --global --add safe.directory /workspace && just build"
 
   push-gateway:
     name: Push Gateway Image
