@@ -3,7 +3,7 @@
 package dev.angzarr.examples.player;
 
 import dev.angzarr.Notification;
-import dev.angzarr.client.Aggregate;
+import dev.angzarr.client.CommandHandler;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Applies;
 import dev.angzarr.client.annotations.Handles;
@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  * <p>Manages player identity, bankroll, and table reservations. Uses the guard/validate/compute
  * pattern in command handlers.
  */
-public class Player extends Aggregate<PlayerState> {
+public class Player extends CommandHandler<PlayerState> {
 
   private static final Logger logger = Logger.getLogger(Player.class.getName());
   public static final String DOMAIN = "player";

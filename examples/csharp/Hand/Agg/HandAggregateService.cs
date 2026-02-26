@@ -10,7 +10,7 @@ namespace Hand.Agg;
 /// <summary>
 /// gRPC service for the Hand aggregate.
 /// </summary>
-public class HandAggregateService : AggregateService.AggregateServiceBase
+public class HandAggregateService : CommandHandlerService.CommandHandlerServiceBase
 {
     private readonly CommandRouter _router;
 

@@ -10,7 +10,7 @@ namespace Table.Agg;
 /// <summary>
 /// gRPC service for the Table aggregate.
 /// </summary>
-public class TableAggregateService : AggregateService.AggregateServiceBase
+public class TableAggregateService : CommandHandlerService.CommandHandlerServiceBase
 {
     private readonly CommandRouter _router;
 

@@ -3,7 +3,7 @@ package dev.angzarr.examples.table;
 import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-import dev.angzarr.client.Aggregate;
+import dev.angzarr.client.CommandHandler;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.util.ByteUtils;
@@ -21,7 +21,7 @@ import java.util.UUID;
  *
  * <p>Manages game session, seating, and hand lifecycle.
  */
-public class Table extends Aggregate<TableState> {
+public class Table extends CommandHandler<TableState> {
 
   public static final String DOMAIN = "table";
 

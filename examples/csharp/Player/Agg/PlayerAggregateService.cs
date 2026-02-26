@@ -10,7 +10,7 @@ namespace Player.Agg;
 /// <summary>
 /// gRPC service for the Player aggregate.
 /// </summary>
-public class PlayerAggregateService : AggregateService.AggregateServiceBase
+public class PlayerAggregateService : CommandHandlerService.CommandHandlerServiceBase
 {
     private readonly CommandRouter _router;
 

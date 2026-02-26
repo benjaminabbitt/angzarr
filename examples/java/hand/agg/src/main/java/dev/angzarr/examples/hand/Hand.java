@@ -2,7 +2,7 @@ package dev.angzarr.examples.hand;
 
 import com.google.protobuf.Any;
 import com.google.protobuf.InvalidProtocolBufferException;
-import dev.angzarr.client.Aggregate;
+import dev.angzarr.client.CommandHandler;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.util.ByteUtils;
@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  *
  * <p>Manages a single hand of poker with betting rounds.
  */
-public class Hand extends Aggregate<HandState> {
+public class Hand extends CommandHandler<HandState> {
 
   public static final String DOMAIN = "hand";
 
