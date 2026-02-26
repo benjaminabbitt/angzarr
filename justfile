@@ -30,24 +30,36 @@ mod k3s "deploy/k3s/justfile"
 mod kind "deploy/kind/justfile"
 mod tofu "deploy/tofu/justfile"
 
-# Build the devcontainer image with skaffold (content-addressable tags)
-# Outputs built image name to .devcontainer/build.json
+# Build images with skaffold (content-addressable tags)
+# Outputs built image tags to build/images/build.json
 [private]
-_build-image:
+_build-images:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd "{{TOP}}/.devcontainer"
-    skaffold build --file-output=build.json --push=false
-    echo "Built image: $(jq -r '.builds[0].tag' build.json)"
+    cd "{{TOP}}/build/images"
+    skaffold build --file-output=build.json
+    echo "Built images:"
+    jq -r '.builds[].tag' build.json
+
+# Get image tag from skaffold build output
+[private]
+_image-tag IMAGE:
+    #!/usr/bin/env bash
+    BUILD_JSON="{{TOP}}/build/images/build.json"
+    if [ ! -f "$BUILD_JSON" ]; then
+        echo "Error: Build output not found. Run 'just _build-images' first." >&2
+        exit 1
+    fi
+    jq -r ".builds[] | select(.imageName | contains(\"{{IMAGE}}\")) | .tag" "$BUILD_JSON"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
-_container +ARGS: _build-image
+_container +ARGS: _build-images
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
-        IMAGE=$(jq -r '.builds[0].tag' "{{TOP}}/.devcontainer/build.json")
+        IMAGE=$(just _image-tag angzarr-rust)
         {{CONTAINER_CMD}} run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
@@ -58,12 +70,12 @@ _container +ARGS: _build-image
 
 # Run just target in container with container socket access (for testcontainers)
 [private]
-_container-dind +ARGS: _build-image
+_container-dind +ARGS: _build-images
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
-        IMAGE=$(jq -r '.builds[0].tag' "{{TOP}}/.devcontainer/build.json")
+        IMAGE=$(just _image-tag angzarr-rust)
         # Find container socket (podman or docker)
         if command -v podman &>/dev/null; then
             SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"

@@ -34,6 +34,12 @@ func NewHandFlowManager() *HandFlowManager {
 func (m *HandFlowManager) Prepare(trigger, processState *pb.EventBook) []*pb.Cover {
 	var destinations []*pb.Cover
 
+	// Check trigger domain for hand events
+	triggerDomain := ""
+	if trigger.Cover != nil {
+		triggerDomain = trigger.Cover.Domain
+	}
+
 	for _, page := range trigger.Pages {
 		if page.GetEvent() == nil {
 			continue
@@ -47,6 +53,16 @@ func (m *HandFlowManager) Prepare(trigger, processState *pb.EventBook) []*pb.Cov
 					Domain: "hand",
 					Root:   &pb.UUID{Value: event.HandRoot},
 				})
+			}
+		} else if triggerDomain == "hand" {
+			// Hand domain events - use trigger's root directly
+			// Need state for sequence numbers on subsequent commands
+			if trigger.Cover != nil && trigger.Cover.Root != nil {
+				destinations = append(destinations, &pb.Cover{
+					Domain: "hand",
+					Root:   trigger.Cover.Root,
+				})
+				break // Only need one destination per hand
 			}
 		}
 	}

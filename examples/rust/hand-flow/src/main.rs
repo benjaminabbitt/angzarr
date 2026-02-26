@@ -138,8 +138,17 @@ impl ProcessManagerDomainHandler<PMState> for HandDomainHandler {
         ]
     }
 
-    fn prepare(&self, _trigger: &EventBook, _state: &PMState, _event: &Any) -> Vec<Cover> {
-        // Hand domain events don't need destinations in this simplified PM
+    fn prepare(&self, trigger: &EventBook, _state: &PMState, _event: &Any) -> Vec<Cover> {
+        // Hand domain events - use trigger's root directly for sequence lookup
+        if let Some(cover) = &trigger.cover {
+            if let Some(root) = &cover.root {
+                return vec![Cover {
+                    domain: "hand".to_string(),
+                    root: Some(root.clone()),
+                    ..Default::default()
+                }];
+            }
+        }
         vec![]
     }
 

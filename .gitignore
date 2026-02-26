@@ -56,6 +56,7 @@ client/cpp/build/
 !/build/
 !/build/images/
 !/build/images/**
+build/images/build.json
 .gradle/
 
 # Generated proto files (regenerated during build)

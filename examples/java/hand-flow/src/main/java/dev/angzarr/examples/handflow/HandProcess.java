@@ -12,6 +12,7 @@ import java.util.*;
 public class HandProcess {
   private String handId = "";
   private byte[] tableRoot = new byte[0];
+  private byte[] handRoot = new byte[0]; // Actual hand aggregate root
   private long handNumber;
   private int gameVariant;
 
@@ -63,6 +64,14 @@ public class HandProcess {
 
   public void setTableRoot(byte[] tableRoot) {
     this.tableRoot = tableRoot;
+  }
+
+  public byte[] getHandRoot() {
+    return handRoot;
+  }
+
+  public void setHandRoot(byte[] handRoot) {
+    this.handRoot = handRoot;
   }
 
   public long getHandNumber() {

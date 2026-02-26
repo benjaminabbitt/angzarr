@@ -42,6 +42,7 @@ struct PlayerState {
 struct HandProcess {
     std::string hand_id;
     std::string table_root;
+    std::string hand_root;  // Actual hand aggregate root
     int64_t hand_number = 0;
     examples::GameVariant game_variant = examples::GAME_VARIANT_UNSPECIFIED;
 

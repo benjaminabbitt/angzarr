@@ -11,17 +11,23 @@ env:
   IMAGE_PREFIX: ghcr.io/angzarr-io
 
 jobs:
-  lint:
-    name: Lint & Format
+  # Build images first - other jobs depend on this
+  build-images:
+    name: Build Images
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      base-tag: ${{ steps.build.outputs.base-tag }}
+      rust-tag: ${{ steps.build.outputs.rust-tag }}
+      go-tag: ${{ steps.build.outputs.go-tag }}
+      python-tag: ${{ steps.build.outputs.python-tag }}
+      csharp-tag: ${{ steps.build.outputs.csharp-tag }}
+      cpp-tag: ${{ steps.build.outputs.cpp-tag }}
+      java-tag: ${{ steps.build.outputs.java-tag }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install just
-        uses: extractions/setup-just@v2
 
       - name: Install Skaffold
         run: |
@@ -36,26 +42,66 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: just buf-lint
-      - run: just buf-build
+      - name: Build and push images
+        id: build
+        run: |
+          cd build/images
+          skaffold build --push --file-output=build.json
+
+          # Extract tags from build output
+          echo "base-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-base")) | .tag' build.json)" >> $GITHUB_OUTPUT
+          echo "rust-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-rust")) | .tag' build.json)" >> $GITHUB_OUTPUT
+          echo "go-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-go")) | .tag' build.json)" >> $GITHUB_OUTPUT
+          echo "python-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-python")) | .tag' build.json)" >> $GITHUB_OUTPUT
+          echo "csharp-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-csharp")) | .tag' build.json)" >> $GITHUB_OUTPUT
+          echo "cpp-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-cpp")) | .tag' build.json)" >> $GITHUB_OUTPUT
+          echo "java-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-java")) | .tag' build.json)" >> $GITHUB_OUTPUT
+
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base image
+        run: docker pull ${{ needs.build-images.outputs.base-tag }}
+
+      - name: Buf lint
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace:ro" \
+            -w /workspace/proto \
+            ${{ needs.build-images.outputs.base-tag }} \
+            buf lint
+
+      - name: Buf build
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace:ro" \
+            -w /workspace/proto \
+            ${{ needs.build-images.outputs.base-tag }} \
+            buf build
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    needs: build-images
     steps:
       - uses: actions/checkout@v4
 
       - name: Install just
         uses: extractions/setup-just@v2
-
-      - name: Install Skaffold
-        run: |
-          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
-          chmod +x skaffold
-          sudo mv skaffold /usr/local/bin/
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -64,25 +110,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: just test
+      - name: Pull rust image
+        run: docker pull ${{ needs.build-images.outputs.rust-tag }}
+
+      - name: Run tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo test --lib
 
   gateway:
     name: Build gRPC Gateway
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    needs: build-images
     steps:
       - uses: actions/checkout@v4
 
       - name: Install just
         uses: extractions/setup-just@v2
-
-      - name: Install Skaffold
-        run: |
-          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
-          chmod +x skaffold
-          sudo mv skaffold /usr/local/bin/
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -91,9 +138,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: just gateway-gen
-      - run: just gateway-build
-      - run: just openapi
+      - name: Pull go image
+        run: docker pull ${{ needs.build-images.outputs.go-tag }}
+
+      - name: Generate gateway code
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace/gateway \
+            ${{ needs.build-images.outputs.go-tag }} \
+            buf generate
+
+      - name: Build gateway binary
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace/gateway \
+            ${{ needs.build-images.outputs.go-tag }} \
+            go build -o /tmp/angzarr-grpc-gateway .
+
+      - name: Generate OpenAPI spec
+        run: |
+          mkdir -p docs/static
+          cp gateway/api/angzarr.swagger.json docs/static/openapi.json
 
       - name: Upload OpenAPI artifact
         uses: actions/upload-artifact@v4
@@ -101,8 +168,8 @@ jobs:
           name: openapi-spec
           path: docs/static/openapi.json
 
-  images:
-    name: Build Images
+  push-gateway:
+    name: Push Gateway Image
     runs-on: ubuntu-latest
     needs: [lint, test, gateway]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

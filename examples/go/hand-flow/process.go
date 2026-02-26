@@ -42,6 +42,7 @@ type PlayerState struct {
 type HandProcess struct {
 	HandID      string
 	TableRoot   []byte
+	HandRoot    []byte // Actual hand aggregate root
 	HandNumber  int64
 	GameVariant examples.GameVariant
 
@@ -79,11 +80,12 @@ type HandProcess struct {
 
 // NewHandProcess creates a new hand process from a HandStarted event.
 func NewHandProcess(event *examples.HandStarted, tableRoot []byte) *HandProcess {
-	handID := hex.EncodeToString(tableRoot[:min(len(tableRoot), 8)]) + "_" + string(rune(event.HandNumber))
+	handID := hex.EncodeToString(event.HandRoot[:min(len(event.HandRoot), 8)]) + "_" + string(rune(event.HandNumber))
 
 	process := &HandProcess{
 		HandID:             handID,
 		TableRoot:          tableRoot,
+		HandRoot:           event.HandRoot, // Store actual hand aggregate root
 		HandNumber:         event.HandNumber,
 		GameVariant:        event.GameVariant,
 		DealerPosition:     event.DealerPosition,
@@ -243,11 +245,10 @@ func (p *HandProcess) buildPostBlindCommand(player *PlayerState, blindType strin
 		return nil
 	}
 
-	handRoot := p.TableRoot // Hand root is derived from table root + hand number
 	return &pb.CommandBook{
 		Cover: &pb.Cover{
 			Domain: "hand",
-			Root:   &pb.UUID{Value: handRoot},
+			Root:   &pb.UUID{Value: p.HandRoot},
 		},
 		Pages: []*pb.CommandPage{
 			{
@@ -422,7 +423,7 @@ func (p *HandProcess) dealCommunity(count int) []*pb.CommandBook {
 		{
 			Cover: &pb.Cover{
 				Domain: "hand",
-				Root:   &pb.UUID{Value: p.TableRoot},
+				Root:   &pb.UUID{Value: p.HandRoot},
 			},
 			Pages: []*pb.CommandPage{
 				{
@@ -464,7 +465,7 @@ func (p *HandProcess) awardPotToLastPlayer(winner *PlayerState) []*pb.CommandBoo
 		{
 			Cover: &pb.Cover{
 				Domain: "hand",
-				Root:   &pb.UUID{Value: p.TableRoot},
+				Root:   &pb.UUID{Value: p.HandRoot},
 			},
 			Pages: []*pb.CommandPage{
 				{
@@ -518,7 +519,7 @@ func (p *HandProcess) autoAwardPot() []*pb.CommandBook {
 		{
 			Cover: &pb.Cover{
 				Domain: "hand",
-				Root:   &pb.UUID{Value: p.TableRoot},
+				Root:   &pb.UUID{Value: p.HandRoot},
 			},
 			Pages: []*pb.CommandPage{
 				{

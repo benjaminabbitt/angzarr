@@ -38,6 +38,9 @@ public class HandFlowProcessManager {
   public List<Cover> prepare(EventBook trigger, EventBook processState) {
     List<Cover> destinations = new ArrayList<>();
 
+    // Check trigger domain for hand events
+    String triggerDomain = trigger.hasCover() ? trigger.getCover().getDomain() : "";
+
     for (EventPage page : trigger.getPagesList()) {
       String typeUrl = page.getEvent().getTypeUrl();
       try {
@@ -48,6 +51,13 @@ public class HandFlowProcessManager {
                   .setDomain("hand")
                   .setRoot(dev.angzarr.UUID.newBuilder().setValue(event.getHandRoot()))
                   .build());
+        } else if ("hand".equals(triggerDomain)) {
+          // Hand domain events - use trigger's root directly for sequence lookup
+          if (trigger.hasCover() && trigger.getCover().hasRoot()) {
+            destinations.add(
+                Cover.newBuilder().setDomain("hand").setRoot(trigger.getCover().getRoot()).build());
+            break; // Only need one destination per hand
+          }
         }
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Failed to unpack event: " + typeUrl, e);
@@ -106,12 +116,12 @@ public class HandFlowProcessManager {
 
   /** Initialize process for a new hand. */
   private CommandBook handleHandStarted(HandStarted event) {
-    byte[] tableRoot = event.getHandRoot().toByteArray();
-    String handId = bytesToHex(tableRoot) + "_" + event.getHandNumber();
+    byte[] handRoot = event.getHandRoot().toByteArray();
+    String handId = bytesToHex(handRoot) + "_" + event.getHandNumber();
 
     HandProcess process = new HandProcess();
     process.setHandId(handId);
-    process.setTableRoot(tableRoot);
+    process.setHandRoot(handRoot); // Store actual hand aggregate root
     process.setHandNumber(event.getHandNumber());
     process.setGameVariant(event.getGameVariantValue());
     process.setDealerPosition(event.getDealerPosition());
@@ -295,7 +305,7 @@ public class HandFlowProcessManager {
                     dev.angzarr
                         .UUID
                         .newBuilder()
-                        .setValue(ByteString.copyFrom(process.getTableRoot()))))
+                        .setValue(ByteString.copyFrom(process.getHandRoot()))))
         .addPages(CommandPage.newBuilder().setCommand(Any.pack(cmd, "type.googleapis.com/")))
         .build();
   }
@@ -423,7 +433,7 @@ public class HandFlowProcessManager {
                     dev.angzarr
                         .UUID
                         .newBuilder()
-                        .setValue(ByteString.copyFrom(process.getTableRoot()))))
+                        .setValue(ByteString.copyFrom(process.getHandRoot()))))
         .addPages(CommandPage.newBuilder().setCommand(Any.pack(cmd, "type.googleapis.com/")))
         .build();
   }
@@ -448,7 +458,7 @@ public class HandFlowProcessManager {
                     dev.angzarr
                         .UUID
                         .newBuilder()
-                        .setValue(ByteString.copyFrom(process.getTableRoot()))))
+                        .setValue(ByteString.copyFrom(process.getHandRoot()))))
         .addPages(CommandPage.newBuilder().setCommand(Any.pack(cmd, "type.googleapis.com/")))
         .build();
   }
@@ -488,7 +498,7 @@ public class HandFlowProcessManager {
                     dev.angzarr
                         .UUID
                         .newBuilder()
-                        .setValue(ByteString.copyFrom(process.getTableRoot()))))
+                        .setValue(ByteString.copyFrom(process.getHandRoot()))))
         .addPages(
             CommandPage.newBuilder()
                 .setCommand(Any.pack(cmdBuilder.build(), "type.googleapis.com/")))

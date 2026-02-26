@@ -1,7 +1,8 @@
 # Root devcontainer for angzarr core development
 # Uses custom base image from ghcr.io/angzarr-io
+# ARG is set by skaffold's requires.alias
 
-ARG RUST_IMAGE=ghcr.io/angzarr-io/angzarr-rust:latest
+ARG RUST_IMAGE
 FROM ${RUST_IMAGE}
 
 # Add podman for testcontainers support, mold linker, and build dependencies

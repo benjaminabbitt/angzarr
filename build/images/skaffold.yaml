@@ -1,0 +1,109 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr-images
+
+# All build images with content-addressable tags
+# Usage: skaffold build -f build/images/skaffold.yaml [--profile dev]
+
+build:
+  tagPolicy:
+    inputDigest: {}  # Content-based tags - rebuild only when inputs change
+  local:
+    push: false      # Don't push by default (CI uses --push flag)
+    useBuildkit: true
+    tryImportMissing: true  # Pull from registry if exists
+
+  artifacts:
+    # Base image - foundation for all others
+    - image: ghcr.io/angzarr-io/angzarr-base
+      context: base
+      docker:
+        dockerfile: Containerfile
+
+    # Language-specific images
+    - image: ghcr.io/angzarr-io/angzarr-rust
+      context: rust
+      docker:
+        dockerfile: Containerfile
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-base
+          alias: BASE_IMAGE
+
+    - image: ghcr.io/angzarr-io/angzarr-go
+      context: go
+      docker:
+        dockerfile: Containerfile
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-base
+          alias: BASE_IMAGE
+
+    - image: ghcr.io/angzarr-io/angzarr-python
+      context: python
+      docker:
+        dockerfile: Containerfile
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-base
+          alias: BASE_IMAGE
+
+    - image: ghcr.io/angzarr-io/angzarr-csharp
+      context: csharp
+      docker:
+        dockerfile: Containerfile
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-base
+          alias: BASE_IMAGE
+
+    - image: ghcr.io/angzarr-io/angzarr-cpp
+      context: cpp
+      docker:
+        dockerfile: Containerfile
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-base
+          alias: BASE_IMAGE
+
+    - image: ghcr.io/angzarr-io/angzarr-java
+      context: java
+      docker:
+        dockerfile: Containerfile
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-base
+          alias: BASE_IMAGE
+
+profiles:
+  # Dev profile - adds dev containers with extra tooling
+  - name: dev
+    build:
+      artifacts:
+        # Dev containers extend language images with dev tooling
+        - image: ghcr.io/angzarr-io/angzarr-dev-rust
+          context: ../../.devcontainer
+          docker:
+            dockerfile: Containerfile
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
+
+        - image: ghcr.io/angzarr-io/angzarr-dev-python
+          context: dev/python
+          docker:
+            dockerfile: Containerfile
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-python
+              alias: PYTHON_IMAGE
+
+        - image: ghcr.io/angzarr-io/angzarr-dev-csharp
+          context: dev/csharp
+          docker:
+            dockerfile: Containerfile
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-csharp
+              alias: CSHARP_IMAGE
+
+        - image: ghcr.io/angzarr-io/angzarr-dev-cpp
+          context: dev/cpp
+          docker:
+            dockerfile: Containerfile
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-cpp
+              alias: CPP_IMAGE

@@ -16,7 +16,7 @@ HandProcess* HandProcessManager::get_process(const std::string& hand_id) {
 
 std::optional<angzarr::CommandBook> HandProcessManager::start_hand(
     const examples::HandStarted& event) {
-    // Build hand_id from table_root hex + hand_number
+    // Build hand_id from hand_root hex + hand_number
     std::stringstream ss;
     for (unsigned char c : event.hand_root()) {
         ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
@@ -25,6 +25,7 @@ std::optional<angzarr::CommandBook> HandProcessManager::start_hand(
 
     HandProcess process;
     process.hand_id = hand_id;
+    process.hand_root = event.hand_root();  // Store actual hand aggregate root
     process.hand_number = event.hand_number();
     process.game_variant = event.game_variant();
     process.dealer_position = event.dealer_position();
@@ -221,18 +222,9 @@ angzarr::CommandBook HandProcessManager::build_post_blind_cmd(const HandProcess&
     google::protobuf::Any cmd_any;
     cmd_any.PackFrom(post_blind, "type.googleapis.com/");
 
-    // Extract hand_root from hand_id
-    std::string hand_root_hex = process.hand_id.substr(0, process.hand_id.find('_'));
-    std::string hand_root;
-    for (size_t i = 0; i < hand_root_hex.length(); i += 2) {
-        std::string byte_str = hand_root_hex.substr(i, 2);
-        char byte = static_cast<char>(std::stoi(byte_str, nullptr, 16));
-        hand_root.push_back(byte);
-    }
-
     angzarr::CommandBook cmd_book;
     cmd_book.mutable_cover()->set_domain("hand");
-    cmd_book.mutable_cover()->mutable_root()->set_value(hand_root);
+    cmd_book.mutable_cover()->mutable_root()->set_value(process.hand_root);
 
     auto* page = cmd_book.add_pages();
     page->mutable_command()->CopyFrom(cmd_any);
@@ -349,18 +341,9 @@ angzarr::CommandBook HandProcessManager::build_deal_community_cmd(const HandProc
     google::protobuf::Any cmd_any;
     cmd_any.PackFrom(deal, "type.googleapis.com/");
 
-    // Extract hand_root
-    std::string hand_root_hex = process.hand_id.substr(0, process.hand_id.find('_'));
-    std::string hand_root;
-    for (size_t i = 0; i < hand_root_hex.length(); i += 2) {
-        std::string byte_str = hand_root_hex.substr(i, 2);
-        char byte = static_cast<char>(std::stoi(byte_str, nullptr, 16));
-        hand_root.push_back(byte);
-    }
-
     angzarr::CommandBook cmd_book;
     cmd_book.mutable_cover()->set_domain("hand");
-    cmd_book.mutable_cover()->mutable_root()->set_value(hand_root);
+    cmd_book.mutable_cover()->mutable_root()->set_value(process.hand_root);
 
     auto* page = cmd_book.add_pages();
     page->mutable_command()->CopyFrom(cmd_any);
@@ -394,18 +377,9 @@ angzarr::CommandBook HandProcessManager::build_award_pot_cmd(const HandProcess& 
     google::protobuf::Any cmd_any;
     cmd_any.PackFrom(award, "type.googleapis.com/");
 
-    // Extract hand_root
-    std::string hand_root_hex = process.hand_id.substr(0, process.hand_id.find('_'));
-    std::string hand_root;
-    for (size_t i = 0; i < hand_root_hex.length(); i += 2) {
-        std::string byte_str = hand_root_hex.substr(i, 2);
-        char byte = static_cast<char>(std::stoi(byte_str, nullptr, 16));
-        hand_root.push_back(byte);
-    }
-
     angzarr::CommandBook cmd_book;
     cmd_book.mutable_cover()->set_domain("hand");
-    cmd_book.mutable_cover()->mutable_root()->set_value(hand_root);
+    cmd_book.mutable_cover()->mutable_root()->set_value(process.hand_root);
 
     auto* page = cmd_book.add_pages();
     page->mutable_command()->CopyFrom(cmd_any);
