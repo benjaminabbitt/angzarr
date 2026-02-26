@@ -1,0 +1,62 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr-langs
+
+# Phase 2: Build language images with proper content-based tags
+# Requires: BASE_TAG env var set to base image full tag (from phase 1)
+# Usage: BASE_TAG=ghcr.io/angzarr-io/angzarr-base:<hash> skaffold build -f skaffold-langs.yaml
+
+build:
+  tagPolicy:
+    # Tag format: <content-hash>-<base-hash-suffix>
+    # This ensures rebuilds when either the lang Containerfile OR base changes
+    envTemplate:
+      template: "{{.LANG_HASH}}-{{.BASE_SUFFIX}}"
+  local:
+    push: false
+    useBuildkit: true
+    tryImportMissing: true
+
+  artifacts:
+    - image: ghcr.io/angzarr-io/angzarr-rust
+      context: rust
+      docker:
+        dockerfile: Containerfile
+        buildArgs:
+          BASE_IMAGE: "{{ .BASE_TAG }}"
+
+    - image: ghcr.io/angzarr-io/angzarr-go
+      context: go
+      docker:
+        dockerfile: Containerfile
+        buildArgs:
+          BASE_IMAGE: "{{ .BASE_TAG }}"
+
+    - image: ghcr.io/angzarr-io/angzarr-python
+      context: python
+      docker:
+        dockerfile: Containerfile
+        buildArgs:
+          BASE_IMAGE: "{{ .BASE_TAG }}"
+
+    - image: ghcr.io/angzarr-io/angzarr-csharp
+      context: csharp
+      docker:
+        dockerfile: Containerfile
+        buildArgs:
+          BASE_IMAGE: "{{ .BASE_TAG }}"
+
+    - image: ghcr.io/angzarr-io/angzarr-cpp
+      context: cpp
+      docker:
+        dockerfile: Containerfile
+        buildArgs:
+          BASE_IMAGE: "{{ .BASE_TAG }}"
+
+    - image: ghcr.io/angzarr-io/angzarr-java
+      context: java
+      docker:
+        dockerfile: Containerfile
+        buildArgs:
+          BASE_IMAGE: "{{ .BASE_TAG }}"

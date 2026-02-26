@@ -1,0 +1,21 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr-base
+
+# Phase 1: Build base image with content-based tag
+# Usage: skaffold build -f skaffold-base.yaml --file-output=base-build.json
+
+build:
+  tagPolicy:
+    inputDigest: {}
+  local:
+    push: false
+    useBuildkit: true
+    tryImportMissing: true
+
+  artifacts:
+    - image: ghcr.io/angzarr-io/angzarr-base
+      context: base
+      docker:
+        dockerfile: Containerfile

@@ -11,21 +11,16 @@ env:
   IMAGE_PREFIX: ghcr.io/angzarr-io
 
 jobs:
-  # Build images first - other jobs depend on this
-  build-images:
-    name: Build Images
+  # Build base image first - language images depend on this
+  build-base:
+    name: Build Base Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
       base-tag: ${{ steps.build.outputs.base-tag }}
-      rust-tag: ${{ steps.build.outputs.rust-tag }}
-      go-tag: ${{ steps.build.outputs.go-tag }}
-      python-tag: ${{ steps.build.outputs.python-tag }}
-      csharp-tag: ${{ steps.build.outputs.csharp-tag }}
-      cpp-tag: ${{ steps.build.outputs.cpp-tag }}
-      java-tag: ${{ steps.build.outputs.java-tag }}
+      base-hash: ${{ steps.build.outputs.base-hash }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,30 +37,114 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push images
+      - name: Build and push base image
         id: build
         run: |
           cd build/images
-          skaffold build --push --file-output=build.json
+          skaffold build -f skaffold-base.yaml --push --file-output=base-build.json
+          BASE_TAG=$(jq -r '.builds[0].tag' base-build.json)
+          BASE_HASH=$(echo "$BASE_TAG" | sed 's/.*://')
+          echo "base-tag=$BASE_TAG" >> $GITHUB_OUTPUT
+          echo "base-hash=$BASE_HASH" >> $GITHUB_OUTPUT
 
-          # Extract tags from build output
-          echo "base-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-base")) | .tag' build.json)" >> $GITHUB_OUTPUT
-          echo "rust-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-rust")) | .tag' build.json)" >> $GITHUB_OUTPUT
-          echo "go-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-go")) | .tag' build.json)" >> $GITHUB_OUTPUT
-          echo "python-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-python")) | .tag' build.json)" >> $GITHUB_OUTPUT
-          echo "csharp-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-csharp")) | .tag' build.json)" >> $GITHUB_OUTPUT
-          echo "cpp-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-cpp")) | .tag' build.json)" >> $GITHUB_OUTPUT
-          echo "java-tag=$(jq -r '.builds[] | select(.imageName | contains("angzarr-java")) | .tag' build.json)" >> $GITHUB_OUTPUT
-
-  lint:
-    name: Lint & Format
+  # Language images - run in parallel via matrix
+  build-lang:
+    name: Build ${{ matrix.lang }} Image
     runs-on: ubuntu-latest
-    needs: build-images
+    needs: build-base
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [rust, go, python, csharp, cpp, java]
+    outputs:
+      rust-tag: ${{ steps.output.outputs.rust-tag }}
+      go-tag: ${{ steps.output.outputs.go-tag }}
+      python-tag: ${{ steps.output.outputs.python-tag }}
+      csharp-tag: ${{ steps.output.outputs.csharp-tag }}
+      cpp-tag: ${{ steps.output.outputs.cpp-tag }}
+      java-tag: ${{ steps.output.outputs.java-tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install just
-        uses: extractions/setup-just@v2
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate content hash
+        id: hash
+        run: |
+          CONTENT_HASH=$(sha256sum build/images/${{ matrix.lang }}/Containerfile | cut -c1-12)
+          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check if image exists
+        id: check
+        run: |
+          if docker manifest inspect ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:${{ steps.hash.outputs.tag }} > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push ${{ matrix.lang }} image
+        id: build
+        run: |
+          TAG="${{ steps.hash.outputs.tag }}"
+          IMAGE="${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:$TAG"
+          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+            echo "Image already exists, skipping build"
+          else
+            docker build \
+              --build-arg BASE_IMAGE=${{ needs.build-base.outputs.base-tag }} \
+              -t "$IMAGE" \
+              -f build/images/${{ matrix.lang }}/Containerfile \
+              build/images/${{ matrix.lang }}
+            docker push "$IMAGE"
+          fi
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Set output for ${{ matrix.lang }}
+        id: output
+        run: |
+          echo "${{ matrix.lang }}-tag=${{ steps.build.outputs.image }}" >> $GITHUB_OUTPUT
+
+  # Collect all language image tags into a single output
+  collect-tags:
+    name: Collect Image Tags
+    runs-on: ubuntu-latest
+    needs: build-lang
+    outputs:
+      rust-tag: ${{ steps.tags.outputs.rust-tag }}
+      go-tag: ${{ steps.tags.outputs.go-tag }}
+      python-tag: ${{ steps.tags.outputs.python-tag }}
+      csharp-tag: ${{ steps.tags.outputs.csharp-tag }}
+      cpp-tag: ${{ steps.tags.outputs.cpp-tag }}
+      java-tag: ${{ steps.tags.outputs.java-tag }}
+    steps:
+      - name: Aggregate tags
+        id: tags
+        run: |
+          # Matrix outputs don't propagate directly, so we reconstruct from build-lang
+          echo "rust-tag=${{ needs.build-lang.outputs.rust-tag }}" >> $GITHUB_OUTPUT
+          echo "go-tag=${{ needs.build-lang.outputs.go-tag }}" >> $GITHUB_OUTPUT
+          echo "python-tag=${{ needs.build-lang.outputs.python-tag }}" >> $GITHUB_OUTPUT
+          echo "csharp-tag=${{ needs.build-lang.outputs.csharp-tag }}" >> $GITHUB_OUTPUT
+          echo "cpp-tag=${{ needs.build-lang.outputs.cpp-tag }}" >> $GITHUB_OUTPUT
+          echo "java-tag=${{ needs.build-lang.outputs.java-tag }}" >> $GITHUB_OUTPUT
+
+  # Downstream jobs use the built images
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    needs: build-base
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -75,14 +154,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull base image
-        run: docker pull ${{ needs.build-images.outputs.base-tag }}
+        run: docker pull ${{ needs.build-base.outputs.base-tag }}
 
       - name: Buf lint
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace:ro" \
             -w /workspace/proto \
-            ${{ needs.build-images.outputs.base-tag }} \
+            ${{ needs.build-base.outputs.base-tag }} \
             buf lint
 
       - name: Buf build
@@ -90,18 +169,15 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/workspace:ro" \
             -w /workspace/proto \
-            ${{ needs.build-images.outputs.base-tag }} \
+            ${{ needs.build-base.outputs.base-tag }} \
             buf build
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: build-images
+    needs: [build-base, build-lang]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install just
-        uses: extractions/setup-just@v2
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -110,26 +186,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Calculate rust tag
+        id: rust
+        run: |
+          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
+          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
+          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG" >> $GITHUB_OUTPUT
+
       - name: Pull rust image
-        run: docker pull ${{ needs.build-images.outputs.rust-tag }}
+        run: docker pull ${{ steps.rust.outputs.tag }}
 
       - name: Run tests
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
-            ${{ needs.build-images.outputs.rust-tag }} \
+            ${{ steps.rust.outputs.tag }} \
             cargo test --lib
 
   gateway:
     name: Build gRPC Gateway
     runs-on: ubuntu-latest
-    needs: build-images
+    needs: [build-base, build-lang]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install just
-        uses: extractions/setup-just@v2
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -138,15 +218,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Calculate go tag
+        id: go
+        run: |
+          CONTENT_HASH=$(sha256sum build/images/go/Containerfile | cut -c1-12)
+          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
+          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-go:$TAG" >> $GITHUB_OUTPUT
+
       - name: Pull go image
-        run: docker pull ${{ needs.build-images.outputs.go-tag }}
+        run: docker pull ${{ steps.go.outputs.tag }}
 
       - name: Generate gateway code
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/gateway \
-            ${{ needs.build-images.outputs.go-tag }} \
+            ${{ steps.go.outputs.tag }} \
             buf generate
 
       - name: Build gateway binary
@@ -154,7 +241,7 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/gateway \
-            ${{ needs.build-images.outputs.go-tag }} \
+            ${{ steps.go.outputs.tag }} \
             go build -buildvcs=false -o /tmp/angzarr-grpc-gateway .
 
       - name: Generate OpenAPI spec
@@ -171,7 +258,7 @@ jobs:
   push-gateway:
     name: Push Gateway Image
     runs-on: ubuntu-latest
-    needs: [build-images, lint, test, gateway]
+    needs: [build-base, build-lang, lint, test, gateway]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -186,15 +273,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Calculate go tag
+        id: go
+        run: |
+          CONTENT_HASH=$(sha256sum build/images/go/Containerfile | cut -c1-12)
+          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
+          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-go:$TAG" >> $GITHUB_OUTPUT
+
       - name: Pull go image
-        run: docker pull ${{ needs.build-images.outputs.go-tag }}
+        run: docker pull ${{ steps.go.outputs.tag }}
 
       - name: Generate gateway code
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/gateway \
-            ${{ needs.build-images.outputs.go-tag }} \
+            ${{ steps.go.outputs.tag }} \
             buf generate
 
       - name: Build gateway image

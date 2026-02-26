@@ -8,9 +8,7 @@ metadata:
 
 build:
   tagPolicy:
-    gitCommit:
-      prefix: ""      # No prefix, just the commit SHA
-      variant: AbbrevCommitSha  # Short SHA (7 chars)
+    inputDigest: {}   # Content-based tags
   local:
     push: false       # Don't push by default (CI uses --push flag)
     useBuildkit: true
