@@ -54,6 +54,9 @@ jobs:
         run: cargo test --lib
         env:
           DEVCONTAINER: "true"  # Skip container, use host Rust
+          # Override .cargo/config.toml mold linker (not installed on GH Actions)
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ""
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ""
 
   gateway:
     name: Build gRPC Gateway

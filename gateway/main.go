@@ -56,8 +56,8 @@ func main() {
 	gwMux := runtime.NewServeMux()
 
 	// Register all service handlers
-	if err := gw.RegisterAggregateCoordinatorServiceHandler(ctx, gwMux, conn); err != nil {
-		log.Fatalf("Failed to register AggregateCoordinatorService handler: %v", err)
+	if err := gw.RegisterCommandHandlerCoordinatorServiceHandler(ctx, gwMux, conn); err != nil {
+		log.Fatalf("Failed to register CommandHandlerCoordinatorService handler: %v", err)
 	}
 	if err := gw.RegisterEventQueryServiceHandler(ctx, gwMux, conn); err != nil {
 		log.Fatalf("Failed to register EventQueryService handler: %v", err)
