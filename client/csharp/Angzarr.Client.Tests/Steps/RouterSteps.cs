@@ -583,12 +583,50 @@ public class RouterSteps
             Reason = "Command rejected by target aggregate",
         };
         _ctx["rejection"] = _rejection;
+
+        // Build a rejection notification for context sharing
+        var commandBook = new Angzarr.CommandBook
+        {
+            Cover = new Angzarr.Cover { Domain = "target-domain" },
+        };
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage
+            {
+                Sequence = 1,
+                Command = Google.Protobuf.WellKnownTypes.Any.Pack(
+                    new Google.Protobuf.WellKnownTypes.Empty(),
+                    "type.googleapis.com/TestCommand"
+                ),
+            }
+        );
+
+        var rejectionNotification = new Angzarr.RejectionNotification
+        {
+            IssuerName = "rejection-saga",
+            IssuerType = "saga",
+            RejectionReason = "Command rejected by target aggregate",
+            RejectedCommand = commandBook,
+        };
+
+        var notification = new Angzarr.Notification
+        {
+            Payload = Google.Protobuf.WellKnownTypes.Any.Pack(rejectionNotification),
+        };
+        _ctx["notification"] = notification;
     }
 
     [When(@"the router processes the rejection")]
     public void WhenTheRouterProcessesTheRejection()
     {
         _rejection.Should().NotBeNull("Expected rejection to be present");
+
+        // Build compensation context from the notification
+        if (_ctx.ContainsKey("notification"))
+        {
+            var notification = _ctx["notification"] as Angzarr.Notification;
+            var compensationContext = CompensationContext.FromNotification(notification!);
+            _ctx["compensation_context"] = compensationContext;
+        }
     }
 }
 

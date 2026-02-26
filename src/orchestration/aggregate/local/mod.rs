@@ -14,10 +14,10 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
 use crate::proto::{
-    CommandBook, Cover, Edition, EventBook, EventPage, MergeStrategy, Projection, Snapshot,
-    SyncEventBook, Uuid as ProtoUuid,
+    CommandBook, Cover, Edition, EventBook, EventPage, EventRequest, MergeStrategy, Projection,
+    Snapshot, Uuid as ProtoUuid,
 };
-use crate::proto_ext::{calculate_set_next_seq, CoverExt};
+use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventPageExt};
 use crate::standalone::DomainStorage;
 use crate::storage::StorageError;
 
@@ -42,6 +42,7 @@ fn build_event_book(
                 name: edition.to_string(),
                 divergences: vec![],
             }),
+            external_id: String::new(),
         }),
         pages,
         snapshot,
@@ -53,7 +54,7 @@ fn build_event_book(
 
 /// Extract sequence number from an EventPage.
 fn extract_sequence(page: Option<&crate::proto::EventPage>) -> u32 {
-    page.map(|p| p.sequence).unwrap_or(0)
+    page.map(|p| p.sequence_num()).unwrap_or(0)
 }
 
 /// Local aggregate context using in-process storage with optional service discovery.
@@ -135,9 +136,10 @@ impl LocalAggregateContext {
 
         let mut projections = Vec::new();
         for mut client in clients {
-            let request = tonic::Request::new(SyncEventBook {
+            let request = tonic::Request::new(EventRequest {
                 events: Some(events.clone()),
                 sync_mode: crate::proto::SyncMode::Simple.into(),
+                route_to_handler: false, // Projectors don't route to aggregates
             });
             match client.handle_sync(request).await {
                 Ok(response) => projections.push(response.into_inner()),

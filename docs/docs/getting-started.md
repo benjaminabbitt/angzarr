@@ -166,7 +166,7 @@ just nuke-deploy
 
 | Service | Port | NodePort | Description |
 |---------|------|----------|-------------|
-| Aggregate Coordinator | 1310 | 31310 | Command handling per domain |
+| Command Handler Coordinator | 1310 | 31310 | Command handling per domain |
 | Stream gRPC | 1340 | 31340 | Event streaming |
 | Topology REST | 9099 | - | Topology visualization API |
 
@@ -267,14 +267,14 @@ ANGZARR_LOG=sqlx=debug,angzarr=info just dev
 ### Inspecting gRPC Services
 
 ```bash
-# Port forward an aggregate service
+# Port forward a command handler service
 kubectl port-forward svc/angzarr-player 1310:1310 -n angzarr &
 
 # List available services
 grpcurl -plaintext localhost:1310 list
 
 # Describe a service
-grpcurl -plaintext localhost:1310 describe angzarr.AggregateCoordinator
+grpcurl -plaintext localhost:1310 describe angzarr.CommandHandlerCoordinator
 ```
 
 ### Common Issues

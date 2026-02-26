@@ -15,7 +15,7 @@ use angzarr_client::proto::examples::{
     PlayerJoined, PlayerLeft, SeatSnapshot, StartHand, TableCreated,
 };
 use angzarr_client::proto::{event_page, CommandBook, EventBook, EventPage};
-use angzarr_client::{run_aggregate_server, CommandRejectedError, CommandResult};
+use angzarr_client::{run_command_handler_server, CommandRejectedError, CommandResult};
 #[allow(unused_imports)]
 use angzarr_macros::{aggregate, applies, handles};
 use prost_types::Any;
@@ -432,7 +432,7 @@ async fn main() {
     println!("Starting Table aggregate (OO pattern)");
     println!("Domain: {}", router.domain());
 
-    run_aggregate_server("table", 50012, router)
+    run_command_handler_server("table", 50012, router)
         .await
         .expect("Server failed");
 }

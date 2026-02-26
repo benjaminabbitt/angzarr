@@ -58,7 +58,7 @@ Usage in ProcessManager:
 from dataclasses import dataclass
 from typing import Optional
 
-from .proto.angzarr import aggregate_pb2 as aggregate
+from .proto.angzarr import command_handler_pb2 as command_handler
 from .proto.angzarr import types_pb2 as types
 
 
@@ -139,7 +139,7 @@ def delegate_to_framework(
     send_to_dead_letter: bool = False,
     escalate: bool = False,
     abort: bool = False,
-) -> aggregate.BusinessResponse:
+) -> command_handler.BusinessResponse:
     """Create a response that delegates compensation to the framework.
 
     Use when the aggregate doesn't have custom compensation logic for a saga.
@@ -155,8 +155,8 @@ def delegate_to_framework(
     Returns:
         BusinessResponse with revocation flags.
     """
-    return aggregate.BusinessResponse(
-        revocation=aggregate.RevocationResponse(
+    return command_handler.BusinessResponse(
+        revocation=command_handler.RevocationResponse(
             emit_system_revocation=emit_system_event,
             send_to_dead_letter_queue=send_to_dead_letter,
             escalate=escalate,
@@ -166,7 +166,9 @@ def delegate_to_framework(
     )
 
 
-def emit_compensation_events(event_book: types.EventBook) -> aggregate.BusinessResponse:
+def emit_compensation_events(
+    event_book: types.EventBook,
+) -> command_handler.BusinessResponse:
     """Create a response containing compensation events.
 
     Use when the aggregate emits events to record compensation.
@@ -178,7 +180,7 @@ def emit_compensation_events(event_book: types.EventBook) -> aggregate.BusinessR
     Returns:
         BusinessResponse with events.
     """
-    return aggregate.BusinessResponse(events=event_book)
+    return command_handler.BusinessResponse(events=event_book)
 
 
 # --- Process Manager helpers ---
@@ -201,7 +203,7 @@ class RejectionHandlerResponse:
 def pm_delegate_to_framework(
     reason: str,
     emit_system_event: bool = True,
-) -> tuple[None, aggregate.RevocationResponse]:
+) -> tuple[None, command_handler.RevocationResponse]:
     """Create a PM response that delegates compensation to the framework.
 
     Use when the PM doesn't have custom compensation logic.
@@ -213,7 +215,7 @@ def pm_delegate_to_framework(
     Returns:
         Tuple of (None, RevocationResponse) - no PM events, delegate to framework.
     """
-    return None, aggregate.RevocationResponse(
+    return None, command_handler.RevocationResponse(
         emit_system_revocation=emit_system_event,
         reason=reason,
     )
@@ -223,7 +225,7 @@ def pm_emit_compensation_events(
     process_events: types.EventBook,
     also_emit_system_event: bool = False,
     reason: str = "",
-) -> tuple[types.EventBook, aggregate.RevocationResponse]:
+) -> tuple[types.EventBook, command_handler.RevocationResponse]:
     """Create a PM response containing compensation events.
 
     Use when the PM emits events to record the compensation in its state.
@@ -236,7 +238,7 @@ def pm_emit_compensation_events(
     Returns:
         Tuple of (EventBook, RevocationResponse).
     """
-    return process_events, aggregate.RevocationResponse(
+    return process_events, command_handler.RevocationResponse(
         emit_system_revocation=also_emit_system_event,
         reason=reason,
     )

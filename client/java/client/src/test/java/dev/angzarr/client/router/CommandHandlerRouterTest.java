@@ -16,12 +16,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Tests for AggregateRouter.
+ * Tests for CommandHandlerRouter.
  *
- * Verifies the router for aggregate components (commands -> events, single domain).
+ * Verifies the router for command handler components (commands -> events, single domain).
  * Domain is set at construction time with no additional domain registration possible.
  */
-class AggregateRouterTest {
+class CommandHandlerRouterTest {
 
     // =========================================================================
     // Test State and Handler
@@ -32,7 +32,7 @@ class AggregateRouterTest {
         boolean exists = false;
     }
 
-    static class TestHandler implements AggregateDomainHandler<TestState> {
+    static class TestHandler implements CommandHandlerDomainHandler<TestState> {
         private final StateRouter<TestState> stateRouter;
 
         TestHandler() {
@@ -92,16 +92,16 @@ class AggregateRouterTest {
     @Nested
     class BasicRouterTests {
 
-        private AggregateRouter<TestState> router;
+        private CommandHandlerRouter<TestState> router;
 
         @BeforeEach
         void setUp() {
-            router = new AggregateRouter<>("test-aggregate", "test-domain", new TestHandler());
+            router = new CommandHandlerRouter<>("test-handler", "test-domain", new TestHandler());
         }
 
         @Test
         void getName_returns_router_name() {
-            assertThat(router.getName()).isEqualTo("test-aggregate");
+            assertThat(router.getName()).isEqualTo("test-handler");
         }
 
         @Test
@@ -143,11 +143,11 @@ class AggregateRouterTest {
     @Nested
     class DispatchTests {
 
-        private AggregateRouter<TestState> router;
+        private CommandHandlerRouter<TestState> router;
 
         @BeforeEach
         void setUp() {
-            router = new AggregateRouter<>("test-aggregate", "test-domain", new TestHandler());
+            router = new CommandHandlerRouter<>("test-handler", "test-domain", new TestHandler());
         }
 
         @Test
@@ -156,7 +156,7 @@ class AggregateRouterTest {
                     .build();
 
             assertThatThrownBy(() -> router.dispatch(cmd))
-                    .isInstanceOf(AggregateRouter.RouterException.class)
+                    .isInstanceOf(CommandHandlerRouter.RouterException.class)
                     .hasMessageContaining("Missing command book");
         }
 
@@ -167,7 +167,7 @@ class AggregateRouterTest {
                     .build();
 
             assertThatThrownBy(() -> router.dispatch(cmd))
-                    .isInstanceOf(AggregateRouter.RouterException.class)
+                    .isInstanceOf(CommandHandlerRouter.RouterException.class)
                     .hasMessageContaining("Missing command book or pages");
         }
 
@@ -192,7 +192,7 @@ class AggregateRouterTest {
                     "test-domain", "UpdateValue", EventBook.getDefaultInstance());
 
             assertThatThrownBy(() -> router.dispatch(cmd))
-                    .isInstanceOf(AggregateRouter.RouterException.class)
+                    .isInstanceOf(CommandHandlerRouter.RouterException.class)
                     .hasMessageContaining("Command rejected")
                     .hasMessageContaining("Entity does not exist");
         }
@@ -203,7 +203,7 @@ class AggregateRouterTest {
                     "test-domain", "UnknownCommand", EventBook.getDefaultInstance());
 
             assertThatThrownBy(() -> router.dispatch(cmd))
-                    .isInstanceOf(AggregateRouter.RouterException.class)
+                    .isInstanceOf(CommandHandlerRouter.RouterException.class)
                     .hasMessageContaining("Unknown command");
         }
     }
@@ -215,7 +215,7 @@ class AggregateRouterTest {
     @Nested
     class NotificationHandlingTests {
 
-        static class NotificationHandler implements AggregateDomainHandler<TestState> {
+        static class NotificationHandler implements CommandHandlerDomainHandler<TestState> {
             private final StateRouter<TestState> stateRouter = new StateRouter<>(TestState::new);
             private boolean onRejectedCalled = false;
             private String lastTargetDomain = "";
@@ -253,8 +253,8 @@ class AggregateRouterTest {
         @Test
         void dispatch_notification_calls_onRejected() throws Exception {
             NotificationHandler handler = new NotificationHandler();
-            AggregateRouter<TestState> router = new AggregateRouter<>(
-                    "test-aggregate", "test-domain", handler);
+            CommandHandlerRouter<TestState> router = new CommandHandlerRouter<>(
+                    "test-handler", "test-domain", handler);
 
             ContextualCommand cmd = makeNotificationCommand("inventory", "ReserveStock", "out of stock");
 
@@ -270,7 +270,7 @@ class AggregateRouterTest {
 
         @Test
         void dispatch_notification_with_events_returns_events() throws Exception {
-            AggregateDomainHandler<TestState> handler = new AggregateDomainHandler<>() {
+            CommandHandlerDomainHandler<TestState> handler = new CommandHandlerDomainHandler<>() {
                 private final StateRouter<TestState> stateRouter = new StateRouter<>(TestState::new);
 
                 @Override
@@ -303,8 +303,8 @@ class AggregateRouterTest {
                 }
             };
 
-            AggregateRouter<TestState> router = new AggregateRouter<>(
-                    "test-aggregate", "test-domain", handler);
+            CommandHandlerRouter<TestState> router = new CommandHandlerRouter<>(
+                    "test-handler", "test-domain", handler);
 
             ContextualCommand cmd = makeNotificationCommand("inventory", "ReserveStock", "out of stock");
 

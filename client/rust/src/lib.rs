@@ -15,7 +15,7 @@
 //!
 //!     // Execute a command
 //!     let cart_id = Uuid::new_v4();
-//!     let response = client.aggregate
+//!     let response = client.command_handler
 //!         .command("cart", cart_id)
 //!         .with_command("type.googleapis.com/examples.CreateCart", &create_cart)
 //!         .execute()
@@ -69,7 +69,7 @@ pub mod traits;
 pub mod validation;
 
 // Re-export main types at crate root
-pub use client::{AggregateClient, Client, DomainClient, QueryClient, SpeculativeClient};
+pub use client::{Client, CommandHandlerClient, DomainClient, QueryClient, SpeculativeClient};
 pub use error::{ClientError, Result};
 
 // Re-export builder extension traits for fluent API
@@ -128,12 +128,12 @@ pub use router::{
 
 // Re-export handler types
 pub use handler::{
-    AggregateHandler, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler, StatePacker,
+    CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler, StatePacker,
 };
 
 // Re-export server utilities
 pub use server::{
-    run_aggregate_server, run_process_manager_server, run_projector_server, run_saga_server,
+    run_command_handler_server, run_process_manager_server, run_projector_server, run_saga_server,
     ServerConfig,
 };
 

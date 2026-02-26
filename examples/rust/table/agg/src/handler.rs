@@ -1,4 +1,4 @@
-//! Table aggregate handler implementing AggregateDomainHandler.
+//! Table command handler implementing AggregateDomainHandler.
 
 use angzarr_client::proto::{CommandBook, EventBook, Notification};
 use angzarr_client::{
@@ -9,7 +9,7 @@ use prost_types::Any;
 use crate::handlers;
 use crate::state::{TableState, STATE_ROUTER};
 
-/// Table aggregate handler.
+/// Table command handler.
 pub struct TableHandler;
 
 impl TableHandler {

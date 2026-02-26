@@ -179,6 +179,7 @@ fn test_extract_identity_success() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -211,6 +212,7 @@ fn test_extract_identity_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -231,6 +233,7 @@ fn test_extract_identity_invalid_uuid() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -249,6 +252,7 @@ fn test_extract_identity_empty_uuid_bytes() {
             root: Some(ProtoUuid { value: vec![] }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -273,6 +277,7 @@ fn test_extract_identity_preserves_domain() {
                 }),
                 correlation_id: String::new(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
@@ -376,6 +381,7 @@ mod grpc_integration {
     use crate::proto::event_page;
     use crate::proto::event_query_service_server::EventQueryServiceServer;
     use crate::proto::Snapshot;
+    use crate::proto_ext::EventPageExt;
     use crate::services::EventQueryService;
     use crate::storage::mock::{MockEventStore, MockSnapshotStore};
     use crate::storage::EventStore;
@@ -388,7 +394,7 @@ mod grpc_integration {
 
     fn test_event(sequence: u32, event_type: &str) -> EventPage {
         EventPage {
-            sequence,
+            sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
             created_at: Some(Timestamp {
                 seconds: 1704067200 + sequence as i64,
                 nanos: 0,
@@ -466,8 +472,8 @@ mod grpc_integration {
 
         assert!(is_complete(&repaired));
         assert_eq!(repaired.pages.len(), 5);
-        assert_eq!(repaired.pages[0].sequence, 0);
-        assert_eq!(repaired.pages[4].sequence, 4);
+        assert_eq!(repaired.pages[0].sequence_num(), 0);
+        assert_eq!(repaired.pages[4].sequence_num(), 4);
     }
 
     #[tokio::test]
@@ -489,7 +495,7 @@ mod grpc_integration {
         let result = repairer.repair(complete_book.clone()).await.unwrap();
 
         assert_eq!(result.pages.len(), 2);
-        assert_eq!(result.pages[0].sequence, 0);
+        assert_eq!(result.pages[0].sequence_num(), 0);
     }
 
     #[tokio::test]
@@ -542,7 +548,7 @@ mod grpc_integration {
         assert!(repaired.snapshot.is_some());
         assert_eq!(repaired.snapshot.as_ref().unwrap().sequence, 5);
         assert_eq!(repaired.pages.len(), 4); // Events 6,7,8,9 (after snapshot at 5)
-        assert_eq!(repaired.pages[0].sequence, 6);
+        assert_eq!(repaired.pages[0].sequence_num(), 6);
     }
 
     #[tokio::test]

@@ -15,8 +15,8 @@ use crate::config::ServiceEndpoint;
 use crate::grpc::connect_channel;
 use crate::proto::{
     projector_coordinator_service_server::ProjectorCoordinatorService,
-    projector_service_client::ProjectorServiceClient, EventBook, Projection,
-    SpeculateProjectorRequest, SyncEventBook,
+    projector_service_client::ProjectorServiceClient, EventBook, EventRequest, Projection,
+    SpeculateProjectorRequest,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::services::event_book_repair::EventBookRepairer;
@@ -85,12 +85,12 @@ impl ProjectorCoordinatorService for ProjectorCoord {
     /// Handle events synchronously, returning a projection.
     async fn handle_sync(
         &self,
-        request: Request<SyncEventBook>,
+        request: Request<EventRequest>,
     ) -> Result<Response<Projection>, Status> {
         let sync_request = request.into_inner();
         let event_book = sync_request
             .events
-            .ok_or_else(|| Status::invalid_argument("SyncEventBook must have events"))?;
+            .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
 
         // Repair EventBook if incomplete
         let event_book = self
@@ -262,6 +262,7 @@ mod tests {
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
@@ -296,9 +297,10 @@ mod tests {
         let coordinator = ProjectorCoord::connect(&addr.to_string()).await.unwrap();
 
         let event_book = make_event_book();
-        let sync_request = SyncEventBook {
+        let sync_request = EventRequest {
             events: Some(event_book),
             sync_mode: crate::proto::SyncMode::Simple.into(),
+            route_to_handler: false,
         };
 
         let response = coordinator.handle_sync(Request::new(sync_request)).await;

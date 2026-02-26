@@ -1,7 +1,7 @@
 //! Player bounded context gRPC server.
 
 use agg_player::PlayerHandler;
-use angzarr_client::{run_aggregate_server, AggregateRouter};
+use angzarr_client::{run_command_handler_server, AggregateRouter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -16,7 +16,7 @@ async fn main() {
     let router = AggregateRouter::new("player", "player", PlayerHandler::new());
     // docs:end:aggregate_router
 
-    run_aggregate_server("player", 50001, router)
+    run_command_handler_server("player", 50001, router)
         .await
         .expect("Server failed");
 }

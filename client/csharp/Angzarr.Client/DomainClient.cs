@@ -3,9 +3,9 @@ using Grpc.Net.Client;
 namespace Angzarr.Client;
 
 /// <summary>
-/// Combined client for aggregate commands and event queries.
+/// Combined client for commands and event queries.
 ///
-/// <para>DomainClient combines QueryClient and AggregateClient into a single unified
+/// <para>DomainClient combines QueryClient and CommandHandlerClient into a single unified
 /// interface. This is the recommended entry point for most applications because:</para>
 /// <list type="bullet">
 ///   <item>Single connection - one endpoint, one channel, reduced resource usage</item>
@@ -15,7 +15,7 @@ namespace Angzarr.Client;
 /// </list>
 ///
 /// <para>For advanced use cases (separate scaling, different endpoints), use
-/// QueryClient and AggregateClient directly.</para>
+/// QueryClient and CommandHandlerClient directly.</para>
 ///
 /// <example>
 /// <code>
@@ -33,14 +33,18 @@ namespace Angzarr.Client;
 /// </summary>
 public sealed class DomainClient : IDisposable
 {
-    private readonly AggregateClient _aggregate;
+    private readonly CommandHandlerClient _commandHandler;
     private readonly QueryClient _query;
     private readonly GrpcChannel? _channel;
 
-    private DomainClient(GrpcChannel? channel, AggregateClient aggregate, QueryClient query)
+    private DomainClient(
+        GrpcChannel? channel,
+        CommandHandlerClient commandHandler,
+        QueryClient query
+    )
     {
         _channel = channel;
-        _aggregate = aggregate;
+        _commandHandler = commandHandler;
         _query = query;
     }
 
@@ -58,7 +62,7 @@ public sealed class DomainClient : IDisposable
             var channel = GrpcChannel.ForAddress(formattedEndpoint);
             return new DomainClient(
                 channel,
-                AggregateClient.FromChannel(channel),
+                CommandHandlerClient.FromChannel(channel),
                 QueryClient.FromChannel(channel)
             );
         }
@@ -91,15 +95,15 @@ public sealed class DomainClient : IDisposable
     {
         return new DomainClient(
             null, // Don't own the channel
-            AggregateClient.FromChannel(channel),
+            CommandHandlerClient.FromChannel(channel),
             QueryClient.FromChannel(channel)
         );
     }
 
     /// <summary>
-    /// Get the aggregate client for direct access.
+    /// Get the command handler client for direct access.
     /// </summary>
-    public AggregateClient Aggregate => _aggregate;
+    public CommandHandlerClient CommandHandler => _commandHandler;
 
     /// <summary>
     /// Get the query client for direct access.
@@ -107,40 +111,40 @@ public sealed class DomainClient : IDisposable
     public QueryClient Query => _query;
 
     /// <summary>
-    /// Execute a command (convenience method delegating to aggregate).
+    /// Execute a command (convenience method delegating to command handler).
     /// </summary>
     /// <param name="command">The command to execute</param>
     /// <returns>The command response</returns>
     public Angzarr.CommandResponse Execute(Angzarr.CommandBook command)
     {
-        return _aggregate.Handle(command);
+        return _commandHandler.Handle(command);
     }
 
     /// <summary>
     /// Start building a command for the given domain and root.
     /// </summary>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="domain">The domain</param>
     /// <param name="root">The aggregate root GUID</param>
     /// <returns>A CommandBuilder for fluent construction</returns>
     public CommandBuilder Command(string domain, Guid root)
     {
-        return _aggregate.Command(domain, root);
+        return _commandHandler.Command(domain, root);
     }
 
     /// <summary>
     /// Start building a command for a new aggregate (no root yet).
     /// </summary>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="domain">The domain</param>
     /// <returns>A CommandBuilder for fluent construction</returns>
     public CommandBuilder CommandNew(string domain)
     {
-        return _aggregate.CommandNew(domain);
+        return _commandHandler.CommandNew(domain);
     }
 
     /// <summary>
     /// Start building a query for the given domain and root.
     /// </summary>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="domain">The domain</param>
     /// <param name="root">The aggregate root GUID</param>
     /// <returns>A QueryBuilder for fluent construction</returns>
     public QueryBuilder QueryEvents(string domain, Guid root)
@@ -151,7 +155,7 @@ public sealed class DomainClient : IDisposable
     /// <summary>
     /// Start building a query by domain only (use with ByCorrelationId).
     /// </summary>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="domain">The domain</param>
     /// <returns>A QueryBuilder for fluent construction</returns>
     public QueryBuilder QueryDomain(string domain)
     {
@@ -163,7 +167,7 @@ public sealed class DomainClient : IDisposable
     /// </summary>
     public void Dispose()
     {
-        _aggregate.Dispose();
+        _commandHandler.Dispose();
         _query.Dispose();
 
         if (_channel != null)

@@ -91,8 +91,8 @@ use angzarr::orchestration::command::local::LocalCommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
 use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
-use angzarr::proto::aggregate_coordinator_service_server::AggregateCoordinatorServiceServer;
-use angzarr::proto::aggregate_service_client::AggregateServiceClient;
+use angzarr::proto::command_handler_coordinator_service_server::CommandHandlerCoordinatorServiceServer;
+use angzarr::proto::command_handler_service_client::CommandHandlerServiceClient;
 use angzarr::proto::event_query_service_server::EventQueryServiceServer;
 use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
 use angzarr::proto::projector_service_client::ProjectorServiceClient;
@@ -379,7 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let client = AggregateServiceClient::new(channel);
+        let client = CommandHandlerServiceClient::new(channel);
         client_logic.insert(svc.domain.clone(), Arc::new(GrpcBusinessLogic::new(client)));
 
         info!(domain = %svc.domain, "Connected to aggregate client logic");
@@ -610,7 +610,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let grpc_router = tonic::transport::Server::builder()
                 .layer(grpc_trace_layer())
-                .add_service(AggregateCoordinatorServiceServer::new(aggregate_svc))
+                .add_service(CommandHandlerCoordinatorServiceServer::new(aggregate_svc))
                 .add_service(EventQueryServiceServer::new(event_query));
 
             let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -643,7 +643,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let grpc_router = tonic::transport::Server::builder()
                 .layer(grpc_trace_layer())
-                .add_service(AggregateCoordinatorServiceServer::new(aggregate_svc))
+                .add_service(CommandHandlerCoordinatorServiceServer::new(aggregate_svc))
                 .add_service(EventQueryServiceServer::new(event_query));
 
             // Remove stale socket file if it exists

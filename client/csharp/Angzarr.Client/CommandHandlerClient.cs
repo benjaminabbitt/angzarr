@@ -4,9 +4,9 @@ using Grpc.Net.Client;
 namespace Angzarr.Client;
 
 /// <summary>
-/// Client for sending commands to aggregates through the coordinator.
+/// Client for sending commands to command handlers through the coordinator.
 ///
-/// <para>AggregateClient handles command routing, response parsing, and provides
+/// <para>CommandHandlerClient handles command routing, response parsing, and provides
 /// multiple execution modes:</para>
 /// <list type="bullet">
 ///   <item>Async (fire-and-forget) - for high-throughput scenarios</item>
@@ -16,21 +16,21 @@ namespace Angzarr.Client;
 ///
 /// <example>
 /// <code>
-/// using var client = AggregateClient.Connect("http://localhost:1310");
+/// using var client = CommandHandlerClient.Connect("http://localhost:1310");
 /// var command = buildCommand();
 /// var response = client.Handle(command);
 /// </code>
 /// </example>
 /// </summary>
-public sealed class AggregateClient : IDisposable
+public sealed class CommandHandlerClient : IDisposable
 {
-    private readonly Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient _stub;
+    private readonly Angzarr.CommandHandlerCoordinatorService.CommandHandlerCoordinatorServiceClient _stub;
     private readonly GrpcChannel? _channel;
     private readonly bool _ownsChannel;
 
-    private AggregateClient(
+    private CommandHandlerClient(
         GrpcChannel? channel,
-        Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient stub,
+        Angzarr.CommandHandlerCoordinatorService.CommandHandlerCoordinatorServiceClient stub,
         bool ownsChannel
     )
     {
@@ -40,20 +40,21 @@ public sealed class AggregateClient : IDisposable
     }
 
     /// <summary>
-    /// Connect to an aggregate coordinator at the given endpoint.
+    /// Connect to a command handler coordinator at the given endpoint.
     /// </summary>
     /// <param name="endpoint">The server endpoint (e.g., "http://localhost:1310")</param>
-    /// <returns>A new AggregateClient</returns>
+    /// <returns>A new CommandHandlerClient</returns>
     /// <exception cref="ConnectionError">If connection fails</exception>
-    public static AggregateClient Connect(string endpoint)
+    public static CommandHandlerClient Connect(string endpoint)
     {
         try
         {
             var channel = GrpcChannel.ForAddress(FormatEndpoint(endpoint));
-            var stub = new Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient(
-                channel
-            );
-            return new AggregateClient(channel, stub, true);
+            var stub =
+                new Angzarr.CommandHandlerCoordinatorService.CommandHandlerCoordinatorServiceClient(
+                    channel
+                );
+            return new CommandHandlerClient(channel, stub, true);
         }
         catch (Exception e)
         {
@@ -66,8 +67,8 @@ public sealed class AggregateClient : IDisposable
     /// </summary>
     /// <param name="envVar">The environment variable name</param>
     /// <param name="defaultEndpoint">Fallback endpoint if env var is not set</param>
-    /// <returns>A new AggregateClient</returns>
-    public static AggregateClient FromEnv(string envVar, string defaultEndpoint)
+    /// <returns>A new CommandHandlerClient</returns>
+    public static CommandHandlerClient FromEnv(string envVar, string defaultEndpoint)
     {
         var endpoint = Environment.GetEnvironmentVariable(envVar);
         if (string.IsNullOrEmpty(endpoint))
@@ -79,55 +80,72 @@ public sealed class AggregateClient : IDisposable
     /// Create a client from an existing channel.
     /// </summary>
     /// <param name="channel">The gRPC channel to use</param>
-    /// <returns>A new AggregateClient that does not own the channel</returns>
-    public static AggregateClient FromChannel(GrpcChannel channel)
+    /// <returns>A new CommandHandlerClient that does not own the channel</returns>
+    public static CommandHandlerClient FromChannel(GrpcChannel channel)
     {
-        var stub = new Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient(
-            channel
-        );
-        return new AggregateClient(channel, stub, false);
+        var stub =
+            new Angzarr.CommandHandlerCoordinatorService.CommandHandlerCoordinatorServiceClient(
+                channel
+            );
+        return new CommandHandlerClient(channel, stub, false);
+    }
+
+    /// <summary>
+    /// Execute a command with specified sync mode.
+    ///
+    /// <para>The sync_mode in CommandRequest controls execution behavior:
+    /// - Unspecified (0): async fire-and-forget
+    /// - Simple (1): wait for persistence and sync projectors
+    /// - Cascade (2): full sync including saga cascade</para>
+    /// </summary>
+    /// <param name="command">The command request to execute</param>
+    /// <returns>The command response with resulting events</returns>
+    /// <exception cref="GrpcError">If the gRPC call fails</exception>
+    public Angzarr.CommandResponse HandleCommand(Angzarr.CommandRequest command)
+    {
+        try
+        {
+            return _stub.HandleCommand(command);
+        }
+        catch (RpcException e)
+        {
+            throw new GrpcError(e.Message, e.StatusCode);
+        }
     }
 
     /// <summary>
     /// Execute a command asynchronously (fire-and-forget).
     ///
-    /// <para>Returns immediately after the coordinator accepts the command.
-    /// The command is guaranteed to be processed, but the client doesn't wait.</para>
+    /// <para>Convenience method that wraps CommandBook in CommandRequest with default sync mode.
+    /// Returns immediately after the coordinator accepts the command.</para>
     /// </summary>
     /// <param name="command">The command to execute</param>
     /// <returns>The command response</returns>
     /// <exception cref="GrpcError">If the gRPC call fails</exception>
     public Angzarr.CommandResponse Handle(Angzarr.CommandBook command)
     {
-        try
-        {
-            return _stub.Handle(command);
-        }
-        catch (RpcException e)
-        {
-            throw new GrpcError(e.Message, e.StatusCode);
-        }
+        return HandleCommand(
+            new Angzarr.CommandRequest
+            {
+                Command = command,
+                SyncMode = Angzarr.SyncMode.Unspecified, // Async fire-and-forget
+            }
+        );
     }
 
     /// <summary>
     /// Execute a command synchronously.
     ///
-    /// <para>Blocks until the aggregate processes the command and events are persisted.
+    /// <para>Convenience method that delegates to HandleCommand.
+    /// Blocks until the command handler processes the command and events are persisted.
     /// The response includes the resulting events.</para>
     /// </summary>
-    /// <param name="command">The sync command to execute</param>
+    /// <param name="command">The command request to execute</param>
     /// <returns>The command response with resulting events</returns>
     /// <exception cref="GrpcError">If the gRPC call fails</exception>
-    public Angzarr.CommandResponse HandleSync(Angzarr.SyncCommandBook command)
+    public Angzarr.CommandResponse HandleSync(Angzarr.CommandRequest command)
     {
-        try
-        {
-            return _stub.HandleSync(command);
-        }
-        catch (RpcException e)
-        {
-            throw new GrpcError(e.Message, e.StatusCode);
-        }
+        return HandleCommand(command);
     }
 
     /// <summary>
@@ -138,7 +156,9 @@ public sealed class AggregateClient : IDisposable
     /// <param name="request">The speculative execution request</param>
     /// <returns>The command response with projected events</returns>
     /// <exception cref="GrpcError">If the gRPC call fails</exception>
-    public Angzarr.CommandResponse HandleSyncSpeculative(Angzarr.SpeculateAggregateRequest request)
+    public Angzarr.CommandResponse HandleSyncSpeculative(
+        Angzarr.SpeculateCommandHandlerRequest request
+    )
     {
         try
         {
@@ -153,7 +173,7 @@ public sealed class AggregateClient : IDisposable
     /// <summary>
     /// Start building a command for the given domain and root.
     /// </summary>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="domain">The domain</param>
     /// <param name="root">The aggregate root GUID</param>
     /// <returns>A CommandBuilder for fluent construction</returns>
     public CommandBuilder Command(string domain, Guid root)
@@ -164,7 +184,7 @@ public sealed class AggregateClient : IDisposable
     /// <summary>
     /// Start building a command for a new aggregate (no root yet).
     /// </summary>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="domain">The domain</param>
     /// <returns>A CommandBuilder for fluent construction</returns>
     public CommandBuilder CommandNew(string domain)
     {

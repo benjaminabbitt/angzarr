@@ -12,8 +12,8 @@ use crate::transport::TransportConfig;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
-    /// Port for aggregate gRPC service.
-    pub aggregate_port: u16,
+    /// Port for command handler gRPC service.
+    pub ch_port: u16,
     /// Port for event query gRPC service.
     pub event_query_port: u16,
     /// Host to bind to.
@@ -26,7 +26,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            aggregate_port: 1313,
+            ch_port: 1313,
             event_query_port: 1314,
             // Default to localhost for security - external access requires explicit config
             host: "127.0.0.1".to_string(),
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn test_server_config_default() {
         let server = ServerConfig::default();
-        assert_eq!(server.aggregate_port, 1313);
+        assert_eq!(server.ch_port, 1313);
         assert_eq!(server.event_query_port, 1314);
         // Default to localhost for security
         assert_eq!(server.host, "127.0.0.1");

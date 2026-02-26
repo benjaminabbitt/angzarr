@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert_eq!(config.server.aggregate_port, 1313);
+        assert_eq!(config.server.ch_port, 1313);
         assert!(config.messaging.is_none());
         assert!(config.target.is_none());
     }

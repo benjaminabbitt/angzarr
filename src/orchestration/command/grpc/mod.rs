@@ -1,6 +1,6 @@
 //! gRPC command executor.
 //!
-//! Executes commands via remote `AggregateCoordinatorServiceClient` per domain.
+//! Executes commands via remote `CommandHandlerCoordinatorServiceClient` per domain.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
-use crate::proto::CommandBook;
+use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
+use crate::proto::{CommandBook, CommandRequest};
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::retry::is_retryable_status;
 use crate::utils::sequence_validator::extract_event_book_from_status;
@@ -17,18 +17,21 @@ use crate::utils::sequence_validator::extract_event_book_from_status;
 use super::CommandExecutor;
 use super::CommandOutcome;
 
-/// Executes commands via gRPC `AggregateCoordinatorServiceClient` per domain.
+/// Executes commands via gRPC `CommandHandlerCoordinatorServiceClient` per domain.
 #[derive(Clone)]
 pub struct GrpcCommandExecutor {
     clients: Arc<
-        HashMap<String, Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>>,
+        HashMap<
+            String,
+            Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
+        >,
     >,
 }
 
 impl GrpcCommandExecutor {
     /// Create with domain -> gRPC client mapping.
     pub fn new(
-        clients: HashMap<String, AggregateCoordinatorServiceClient<tonic::transport::Channel>>,
+        clients: HashMap<String, CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>,
     ) -> Self {
         let wrapped = clients
             .into_iter()
@@ -54,8 +57,12 @@ impl GrpcCommandExecutor {
         })?;
 
         let mut client = client.lock().await;
+        let sync_command = CommandRequest {
+            command: Some(command_book),
+            sync_mode: 0, // Unspecified = async
+        };
         client
-            .handle(correlated_request(command_book, &correlation_id))
+            .handle_command(correlated_request(sync_command, &correlation_id))
             .await
             .map(|r| r.into_inner())
     }
@@ -78,18 +85,18 @@ impl CommandExecutor for GrpcCommandExecutor {
     }
 }
 
-/// Executes all commands via a single `AggregateCoordinatorServiceClient`.
+/// Executes all commands via a single `CommandHandlerCoordinatorServiceClient`.
 ///
 /// For deployments with a single aggregate sidecar handling all domains.
 /// Does not route by domain — all commands go to the same client.
 pub struct SingleClientExecutor {
-    client: Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
+    client: Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
 }
 
 impl SingleClientExecutor {
     /// Create with a single gRPC client.
     pub fn new(
-        client: Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
+        client: Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
     ) -> Self {
         Self { client }
     }
@@ -100,8 +107,12 @@ impl CommandExecutor for SingleClientExecutor {
     async fn execute(&self, command: CommandBook) -> CommandOutcome {
         let correlation_id = command.correlation_id().to_string();
         let mut client = self.client.lock().await;
+        let sync_command = CommandRequest {
+            command: Some(command),
+            sync_mode: 0, // Unspecified = async
+        };
         match client
-            .handle(correlated_request(command, &correlation_id))
+            .handle_command(correlated_request(sync_command, &correlation_id))
             .await
         {
             Ok(response) => CommandOutcome::Success(response.into_inner()),

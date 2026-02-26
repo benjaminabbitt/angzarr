@@ -62,9 +62,9 @@ func (c *QueryClientContext) anAggregateWithRootHasEvents(domain, root string, c
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			Sequence:  uint32(i),
-			CreatedAt: timestamppb.Now(),
-			Payload:   &pb.EventPage_Event{Event: evt},
+			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			CreatedAt:    timestamppb.Now(),
+			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book
@@ -84,9 +84,9 @@ func (c *QueryClientContext) anAggregateWithRootHasEventWithData(domain, root, e
 		Value:   []byte(data),
 	}
 	book.Pages = append(book.Pages, &pb.EventPage{
-		Sequence:  0,
-		CreatedAt: timestamppb.Now(),
-		Payload:   &pb.EventPage_Event{Event: evt},
+		SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+		CreatedAt:    timestamppb.Now(),
+		Payload:      &pb.EventPage_Event{Event: evt},
 	})
 	c.eventBooks[c.key(domain, root)] = book
 	return nil
@@ -134,8 +134,8 @@ func (c *QueryClientContext) eventsShouldBeInSequenceOrderTo(from, to int) error
 	}
 	for i, page := range c.lastResult.Pages {
 		expected := uint32(from + i)
-		if page.Sequence != expected {
-			return fmt.Errorf("expected sequence %d at index %d, got %d", expected, i, page.Sequence)
+		if page.GetSequence() != expected {
+			return fmt.Errorf("expected sequence %d at index %d, got %d", expected, i, page.GetSequence())
 		}
 	}
 	return nil
@@ -177,7 +177,7 @@ func (c *QueryClientContext) iQueryEventsForRootFromSequence(domain, root string
 			NextSequence: book.NextSequence,
 		}
 		for _, page := range book.Pages {
-			if page.Sequence >= uint32(from) {
+			if page.GetSequence() >= uint32(from) {
 				result.Pages = append(result.Pages, page)
 			}
 		}
@@ -196,7 +196,7 @@ func (c *QueryClientContext) iQueryEventsForRootFromSequenceTo(domain, root stri
 			NextSequence: book.NextSequence,
 		}
 		for _, page := range book.Pages {
-			if page.Sequence >= uint32(from) && page.Sequence < uint32(to) {
+			if page.GetSequence() >= uint32(from) && page.GetSequence() < uint32(to) {
 				result.Pages = append(result.Pages, page)
 			}
 		}
@@ -211,8 +211,8 @@ func (c *QueryClientContext) theFirstEventShouldHaveSequence(seq int) error {
 	if c.lastResult == nil || len(c.lastResult.Pages) == 0 {
 		return fmt.Errorf("no events received")
 	}
-	if c.lastResult.Pages[0].Sequence != uint32(seq) {
-		return fmt.Errorf("expected first sequence %d, got %d", seq, c.lastResult.Pages[0].Sequence)
+	if c.lastResult.Pages[0].GetSequence() != uint32(seq) {
+		return fmt.Errorf("expected first sequence %d, got %d", seq, c.lastResult.Pages[0].GetSequence())
 	}
 	return nil
 }
@@ -222,8 +222,8 @@ func (c *QueryClientContext) theLastEventShouldHaveSequence(seq int) error {
 		return fmt.Errorf("no events received")
 	}
 	last := c.lastResult.Pages[len(c.lastResult.Pages)-1]
-	if last.Sequence != uint32(seq) {
-		return fmt.Errorf("expected last sequence %d, got %d", seq, last.Sequence)
+	if last.GetSequence() != uint32(seq) {
+		return fmt.Errorf("expected last sequence %d, got %d", seq, last.GetSequence())
 	}
 	return nil
 }
@@ -238,7 +238,7 @@ func (c *QueryClientContext) iQueryEventsForRootAsOfSequence(domain, root string
 			NextSequence: book.NextSequence,
 		}
 		for _, page := range book.Pages {
-			if page.Sequence <= uint32(asOf) {
+			if page.GetSequence() <= uint32(asOf) {
 				result.Pages = append(result.Pages, page)
 			}
 		}
@@ -281,8 +281,8 @@ func (c *QueryClientContext) anAggregateWithRootInEdition(domain, root, edition 
 	}
 	evt, _ := anypb.New(&emptypb.Empty{})
 	c.eventBooks[key].Pages = append(c.eventBooks[key].Pages, &pb.EventPage{
-		Sequence: 0,
-		Payload:  &pb.EventPage_Event{Event: evt},
+		SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+		Payload:      &pb.EventPage_Event{Event: evt},
 	})
 	return nil
 }
@@ -319,8 +319,8 @@ func (c *QueryClientContext) anAggregateWithRootHasEventsInEdition(domain, root 
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			Sequence: uint32(i),
-			Payload:  &pb.EventPage_Event{Event: evt},
+			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[key] = book
@@ -344,8 +344,8 @@ func (c *QueryClientContext) eventsWithCorrelationIDExistInMultipleAggregates(co
 		}
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			Sequence: 0,
-			Payload:  &pb.EventPage_Event{Event: evt},
+			SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 		c.eventBooks[c.key(domain, root)] = book
 		c.correlatedEvents[correlationID] = append(c.correlatedEvents[correlationID], book)
@@ -424,9 +424,9 @@ func (c *QueryClientContext) anAggregateWithRootHasASnapshotAtSequenceAndEvents(
 	for i := 0; i < eventCount; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			Sequence:  uint32(i),
-			CreatedAt: timestamppb.Now(),
-			Payload:   &pb.EventPage_Event{Event: evt},
+			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			CreatedAt:    timestamppb.Now(),
+			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book

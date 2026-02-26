@@ -1,7 +1,7 @@
 //! gRPC handler adapters for standalone mode.
 //!
 //! Bridges between handler traits and gRPC clients, enabling:
-//! - In-process `AggregateHandler` to be used as `ClientLogic` (no TCP bridge)
+//! - In-process `CommandHandler` to be used as `ClientLogic` (no TCP bridge)
 
 use std::sync::Arc;
 
@@ -10,37 +10,37 @@ use prost::Message;
 use tonic::Status;
 use tracing::instrument;
 
-use crate::orchestration::aggregate::ClientLogic;
+use crate::orchestration::aggregate::{ClientLogic, FactContext};
 use crate::proto::business_response::Result as BusinessResult;
 use crate::proto::{BusinessResponse, ContextualCommand, EventBook, Notification};
 
-use super::traits::{AggregateHandler, ProcessManagerHandler};
+use super::traits::{CommandHandler, FactContext as TraitFactContext, ProcessManagerHandler};
 
 pub use crate::orchestration::projector::GrpcProjectorHandler;
 
 /// Type URL suffix for Notification.
 const NOTIFICATION_SUFFIX: &str = "Notification";
 
-/// Adapts an in-process `AggregateHandler` as `ClientLogic`.
+/// Adapts an in-process `CommandHandler` as `ClientLogic`.
 ///
 /// Eliminates the TCP bridge: calls the handler directly and wraps the
 /// result in a `BusinessResponse`. Used by the standalone `Runtime` to avoid
-/// spawning gRPC servers for Rust aggregate handlers.
+/// spawning gRPC servers for Rust command handlers.
 ///
 /// Detects `Notification` and routes to `handle_revocation()` for compensation.
-pub struct AggregateHandlerAdapter {
-    handler: Arc<dyn AggregateHandler>,
+pub struct CommandHandlerAdapter {
+    handler: Arc<dyn CommandHandler>,
 }
 
-impl AggregateHandlerAdapter {
-    /// Wrap an aggregate handler as a `ClientLogic` implementation.
-    pub fn new(handler: Arc<dyn AggregateHandler>) -> Self {
+impl CommandHandlerAdapter {
+    /// Wrap a command handler as a `ClientLogic` implementation.
+    pub fn new(handler: Arc<dyn CommandHandler>) -> Self {
         Self { handler }
     }
 }
 
 #[async_trait]
-impl ClientLogic for AggregateHandlerAdapter {
+impl ClientLogic for CommandHandlerAdapter {
     #[instrument(name = "adapter.aggregate.invoke", skip_all)]
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
         // Check for rejection notifications
@@ -68,6 +68,15 @@ impl ClientLogic for AggregateHandlerAdapter {
         Ok(BusinessResponse {
             result: Some(BusinessResult::Events(events)),
         })
+    }
+
+    async fn invoke_fact(&self, ctx: FactContext) -> Result<EventBook, Status> {
+        // Convert orchestration FactContext to traits FactContext
+        let trait_ctx = TraitFactContext {
+            facts: ctx.facts,
+            prior_events: ctx.prior_events,
+        };
+        self.handler.handle_fact(trait_ctx).await
     }
 
     async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {
@@ -150,6 +159,28 @@ impl ClientLogic for ProcessManagerHandlerAdapter {
         // PM state is rebuilt via the normal PM flow
         Err(Status::unimplemented(
             "PM replay not supported through command adapter",
+        ))
+    }
+}
+
+/// No-op client logic for domains without registered handlers.
+///
+/// Used when injecting facts into a domain that doesn't have an aggregate
+/// handler registered. Facts are passed through unchanged - the coordinator
+/// assigns sequence numbers and persists/publishes them.
+pub struct NoOpClientLogic;
+
+#[async_trait]
+impl ClientLogic for NoOpClientLogic {
+    async fn invoke(&self, _cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+        Err(Status::unimplemented(
+            "No aggregate handler registered for this domain",
+        ))
+    }
+
+    async fn replay(&self, _events: &EventBook) -> Result<prost_types::Any, Status> {
+        Err(Status::unimplemented(
+            "No aggregate handler registered for this domain",
         ))
     }
 }

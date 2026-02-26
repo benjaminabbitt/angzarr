@@ -7,12 +7,13 @@ use prost_types::Any;
 use uuid::Uuid;
 
 use angzarr::proto::{event_page, EventPage};
+use angzarr::proto_ext::EventPageExt;
 use angzarr::storage::EventStore;
 
 /// Create a test event with given sequence and type.
 pub fn make_event(seq: u32, event_type: &str) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: format!("type.example/{}", event_type),
@@ -105,7 +106,8 @@ pub async fn test_add_sequential_batches<S: EventStore>(store: &S) {
     // Verify sequence continuity
     for (i, event) in events.iter().enumerate() {
         assert_eq!(
-            event.sequence, i as u32,
+            event.sequence_num(),
+            i as u32,
             "sequence {} should match index",
             i
         );
@@ -167,7 +169,7 @@ pub async fn test_get_all_events<S: EventStore>(store: &S) {
 
     // Verify order
     for (i, event) in events.iter().enumerate() {
-        assert_eq!(event.sequence, i as u32, "events should be ordered");
+        assert_eq!(event.sequence_num(), i as u32, "events should be ordered");
     }
 }
 
@@ -187,7 +189,7 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     let original = EventPage {
-        sequence: 0,
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: "type.example/TestEvent".to_string(),
@@ -249,7 +251,11 @@ pub async fn test_get_from_middle<S: EventStore>(store: &S) {
         .await
         .expect("get_from should succeed");
     assert_eq!(events.len(), 5, "should return events 5-9");
-    assert_eq!(events[0].sequence, 5, "first event should be sequence 5");
+    assert_eq!(
+        events[0].sequence_num(),
+        5,
+        "first event should be sequence 5"
+    );
 }
 
 pub async fn test_get_from_end<S: EventStore>(store: &S) {
@@ -319,8 +325,8 @@ pub async fn test_get_from_to_partial<S: EventStore>(store: &S) {
         .await
         .expect("get_from_to should succeed");
     assert_eq!(events.len(), 4, "should return 4 events");
-    assert_eq!(events[0].sequence, 3, "first should be 3");
-    assert_eq!(events[3].sequence, 6, "last should be 6");
+    assert_eq!(events[0].sequence_num(), 3, "first should be 3");
+    assert_eq!(events[3].sequence_num(), 6, "last should be 6");
 }
 
 pub async fn test_get_from_to_single<S: EventStore>(store: &S) {
@@ -337,7 +343,7 @@ pub async fn test_get_from_to_single<S: EventStore>(store: &S) {
         .await
         .expect("get_from_to should succeed");
     assert_eq!(events.len(), 1, "should return single event");
-    assert_eq!(events[0].sequence, 2);
+    assert_eq!(events[0].sequence_num(), 2);
 }
 
 pub async fn test_get_from_to_empty<S: EventStore>(store: &S) {
@@ -593,7 +599,7 @@ pub async fn test_large_batch<S: EventStore>(store: &S) {
     assert_eq!(events.len(), 100);
 
     for (i, event) in events.iter().enumerate() {
-        assert_eq!(event.sequence, i as u32);
+        assert_eq!(event.sequence_num(), i as u32);
     }
 }
 

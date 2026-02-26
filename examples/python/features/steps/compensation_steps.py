@@ -13,7 +13,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr_client import (
-    Aggregate,
+    CommandHandler,
     CommandRejectedError,
     CommandRouter,
     ProcessManager,
@@ -76,8 +76,8 @@ class OrderWorkflowState:
 # ============================================================================
 
 
-class TestPlayerAggregate(Aggregate[PlayerState]):
-    """Test player aggregate with @rejected handlers."""
+class TestPlayerAggregate(CommandHandler[PlayerState]):
+    """Test player command handler with @rejected handlers."""
 
     domain = "player"
 
@@ -92,8 +92,8 @@ class TestPlayerAggregate(Aggregate[PlayerState]):
             state.reserved_amount = 0
 
 
-class TestPlayerWithRejectionHandler(Aggregate[PlayerState]):
-    """Player aggregate with custom @rejected handler."""
+class TestPlayerWithRejectionHandler(CommandHandler[PlayerState]):
+    """Player command handler with custom @rejected handler."""
 
     domain = "player"
 
@@ -131,8 +131,8 @@ class TestOrderWorkflowPM(ProcessManager[OrderWorkflowState]):
         return None  # Would return WorkflowFailed
 
 
-class TestAggregateRaisesError(Aggregate[PlayerState]):
-    """Aggregate that raises exception in rejection handler."""
+class TestAggregateRaisesError(CommandHandler[PlayerState]):
+    """Command handler that raises exception in rejection handler."""
 
     domain = "player"
 
@@ -147,8 +147,8 @@ class TestAggregateRaisesError(Aggregate[PlayerState]):
         raise ValueError("Handler error during compensation")
 
 
-class TestAggregateReturnsNone(Aggregate[PlayerState]):
-    """Aggregate that returns None from rejection handler."""
+class TestAggregateReturnsNone(CommandHandler[PlayerState]):
+    """Command handler that returns None from rejection handler."""
 
     domain = "player"
 

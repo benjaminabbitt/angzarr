@@ -18,7 +18,7 @@ pub use static_discovery::StaticServiceDiscovery;
 
 use tonic::transport::Channel;
 
-use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
 
@@ -38,7 +38,7 @@ pub trait ServiceDiscovery: Send + Sync {
     async fn get_aggregate(
         &self,
         domain: &str,
-    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError>;
+    ) -> Result<CommandHandlerCoordinatorServiceClient<Channel>, DiscoveryError>;
 
     /// Get event query client by domain.
     async fn get_event_query(

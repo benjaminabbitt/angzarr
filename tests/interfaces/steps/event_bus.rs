@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use angzarr::bus::EventBus;
 use angzarr::proto::{event_page, Cover, EventBook, EventPage, Uuid as ProtoUuid};
+use angzarr::proto_ext::EventPageExt;
 use angzarr::test_utils::{CapturingHandler, FailingHandler};
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -98,10 +99,11 @@ impl EventBusWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/{}", event_type),
@@ -127,10 +129,11 @@ impl EventBusWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/{}", event_type),
@@ -145,7 +148,7 @@ impl EventBusWorld {
         let root = Uuid::new_v4();
         let pages: Vec<EventPage> = (0..count)
             .map(|i| EventPage {
-                sequence: i as u32,
+                sequence_type: Some(event_page::SequenceType::Sequence(i as u32)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/Event{}", i),
@@ -162,6 +165,7 @@ impl EventBusWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             snapshot: None,
             pages,
@@ -502,10 +506,11 @@ async fn when_events_published_in_order(
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: seq,
+                sequence_type: Some(event_page::SequenceType::Sequence(seq)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/Event{}", seq),
@@ -541,7 +546,7 @@ async fn then_projector_receives_in_order(
     // Extract sequences from received events
     let mut sequences: Vec<u32> = events
         .iter()
-        .flat_map(|e| e.pages.iter().map(|p| p.sequence))
+        .flat_map(|e| e.pages.iter().map(|p| p.sequence_num()))
         .collect();
 
     // For some backends, order may not be guaranteed across separate publishes
@@ -1054,10 +1059,11 @@ async fn when_events_published_concurrently(world: &mut EventBusWorld, count: us
                     }),
                     correlation_id: format!("concurrent-{}", i),
                     edition: None,
+                    external_id: String::new(),
                 }),
                 snapshot: None,
                 pages: vec![EventPage {
-                    sequence: 0,
+                    sequence_type: Some(event_page::SequenceType::Sequence(0)),
                     created_at: None,
                     payload: Some(event_page::Payload::Event(Any {
                         type_url: format!("type.example/ConcurrentEvent{}", i),

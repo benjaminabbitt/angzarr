@@ -28,6 +28,7 @@ fn create_command_with_strategy(
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence,
@@ -59,18 +60,18 @@ impl TrackingAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for TrackingAggregate {
+impl CommandHandler for TrackingAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         self.invoked.store(true, Ordering::SeqCst);
         EchoAggregate::new().handle(ctx).await
     }
 }
 
-/// Wrapper for Arc<TrackingAggregate> to implement AggregateHandler.
+/// Wrapper for Arc<TrackingAggregate> to implement CommandHandler.
 struct TrackingAggregateWrapper(Arc<TrackingAggregate>);
 
 #[async_trait]
-impl AggregateHandler for TrackingAggregateWrapper {
+impl CommandHandler for TrackingAggregateWrapper {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         self.0.handle(ctx).await
     }
@@ -80,7 +81,7 @@ impl AggregateHandler for TrackingAggregateWrapper {
 struct StatefulRejectAggregate;
 
 #[async_trait]
-impl AggregateHandler for StatefulRejectAggregate {
+impl CommandHandler for StatefulRejectAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         // Check current state
         let event_count = ctx.events.as_ref().map(|e| e.pages.len()).unwrap_or(0);
@@ -109,7 +110,7 @@ impl AggregateHandler for StatefulRejectAggregate {
 async fn test_strict_correct_sequence_succeeds() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -139,7 +140,7 @@ async fn test_strict_correct_sequence_succeeds() {
 async fn test_strict_stale_sequence_rejected() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -170,7 +171,7 @@ async fn test_strict_stale_sequence_rejected() {
 async fn test_strict_future_sequence_rejected() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -189,7 +190,7 @@ async fn test_strict_future_sequence_rejected() {
 async fn test_strict_rejection_does_not_persist() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -223,7 +224,7 @@ async fn test_strict_rejection_does_not_persist() {
 async fn test_commutative_correct_sequence_succeeds() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -243,7 +244,7 @@ async fn test_commutative_correct_sequence_succeeds() {
 async fn test_commutative_stale_sequence_returns_retryable() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -277,7 +278,7 @@ async fn test_commutative_stale_sequence_returns_retryable() {
 async fn test_commutative_default_when_unspecified() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -314,7 +315,7 @@ async fn test_aggregate_handles_bypasses_validation() {
 
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", TrackingAggregateWrapper(aggregate_clone))
+        .register_command_handler("orders", TrackingAggregateWrapper(aggregate_clone))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -350,7 +351,7 @@ async fn test_aggregate_handles_bypasses_validation() {
 async fn test_aggregate_handles_aggregate_can_reject() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", StatefulRejectAggregate)
+        .register_command_handler("orders", StatefulRejectAggregate)
         .build()
         .await
         .expect("Failed to build runtime");
@@ -385,7 +386,7 @@ async fn test_aggregate_handles_aggregate_can_reject() {
 async fn test_aggregate_handles_sequence_zero_on_existing() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -427,7 +428,7 @@ async fn test_aggregate_handles_sequence_zero_on_existing() {
 async fn test_different_strategies_same_domain() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -464,7 +465,7 @@ async fn test_different_strategies_same_domain() {
 async fn test_new_aggregate_all_strategies_accept_zero() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -502,6 +503,7 @@ async fn test_empty_pages_defaults_to_commutative() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         saga_origin: None,
@@ -530,7 +532,7 @@ async fn test_strict_stale_sequence_returns_failed_precondition() {
     // to enable update-and-retry flow.
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -592,7 +594,7 @@ async fn test_strict_is_retryable() {
 async fn test_manual_correct_sequence_succeeds() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -613,7 +615,7 @@ async fn test_manual_stale_sequence_sends_to_dlq() {
     // MANUAL should send to DLQ and return ABORTED on sequence mismatch
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -715,7 +717,7 @@ impl StatefulAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for StatefulAggregate {
+impl CommandHandler for StatefulAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command_book = ctx
             .command
@@ -729,7 +731,7 @@ impl AggregateHandler for StatefulAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         // Parse command and emit corresponding event
@@ -741,7 +743,9 @@ impl AggregateHandler for StatefulAggregate {
                 if cmd_value.starts_with("update_field_a:") {
                     let value = cmd_value.strip_prefix("update_field_a:").unwrap_or("0");
                     event_pages.push(EventPage {
-                        sequence: next_seq + event_pages.len() as u32,
+                        sequence_type: Some(event_page::SequenceType::Sequence(
+                            next_seq + event_pages.len() as u32,
+                        )),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldAUpdated".to_string(),
                             value: value.as_bytes().to_vec(),
@@ -751,7 +755,9 @@ impl AggregateHandler for StatefulAggregate {
                 } else if cmd_value.starts_with("update_field_b:") {
                     let value = cmd_value.strip_prefix("update_field_b:").unwrap_or("");
                     event_pages.push(EventPage {
-                        sequence: next_seq + event_pages.len() as u32,
+                        sequence_type: Some(event_page::SequenceType::Sequence(
+                            next_seq + event_pages.len() as u32,
+                        )),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldBUpdated".to_string(),
                             value: value.as_bytes().to_vec(),
@@ -768,7 +774,9 @@ impl AggregateHandler for StatefulAggregate {
                     let b_val = parts.get(1).unwrap_or(&"default");
 
                     event_pages.push(EventPage {
-                        sequence: next_seq + event_pages.len() as u32,
+                        sequence_type: Some(event_page::SequenceType::Sequence(
+                            next_seq + event_pages.len() as u32,
+                        )),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldAUpdated".to_string(),
                             value: a_val.as_bytes().to_vec(),
@@ -776,7 +784,9 @@ impl AggregateHandler for StatefulAggregate {
                         created_at: None,
                     });
                     event_pages.push(EventPage {
-                        sequence: next_seq + event_pages.len() as u32,
+                        sequence_type: Some(event_page::SequenceType::Sequence(
+                            next_seq + event_pages.len() as u32,
+                        )),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldBUpdated".to_string(),
                             value: b_val.as_bytes().to_vec(),
@@ -791,7 +801,9 @@ impl AggregateHandler for StatefulAggregate {
                         None
                     };
                     event_pages.push(EventPage {
-                        sequence: next_seq + event_pages.len() as u32,
+                        sequence_type: Some(event_page::SequenceType::Sequence(
+                            next_seq + event_pages.len() as u32,
+                        )),
                         payload: event.map(event_page::Payload::Event),
                         created_at: None,
                     });
@@ -823,6 +835,7 @@ fn create_field_a_command(domain: &str, root: Uuid, sequence: u32, value: i32) -
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence,
@@ -846,6 +859,7 @@ fn create_field_b_command(domain: &str, root: Uuid, sequence: u32, value: &str) 
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence,
@@ -871,7 +885,7 @@ async fn test_commutative_disjoint_fields_succeeds() {
 
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("stateful", StatefulAggregate::new())
+        .register_command_handler("stateful", StatefulAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -921,7 +935,7 @@ async fn test_commutative_overlapping_fields_returns_retryable() {
 
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("stateful", StatefulAggregate::new())
+        .register_command_handler("stateful", StatefulAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -960,7 +974,7 @@ async fn test_commutative_falls_back_to_retry_when_replay_unavailable() {
     // Use EchoAggregate which doesn't implement Replay (returns Unimplemented)
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");

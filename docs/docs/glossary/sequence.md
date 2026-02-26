@@ -47,13 +47,37 @@ Use sequence for state reconstruction; use timestamp for temporal queries.
 
 ## Fact Sequences
 
-Not all events come from command processing. External facts (payment confirmations, delivery updates) use a **fact sequence** instead of an integer:
+Not all events come from command processing. External facts (payment confirmations, delivery updates) use a **FactSequence** marker instead of an integer:
 
 ```protobuf
-oneof sequence_type {
-  uint64 sequence = 1;        // Normal: position in stream
-  FactSequence fact = 2;      // External fact marker
+message EventPage {
+  oneof sequence_type {
+    uint32 sequence = 1;        // Normal: position in stream
+    FactSequence fact = 5;      // External fact marker
+  }
+}
+
+message FactSequence {
+  string source = 1;            // Origin system (e.g., "stripe")
+  string description = 2;       // Human-readable description
 }
 ```
 
-Fact sequences contain an idempotency key (`external_id`) for deduplication rather than an expected sequence for concurrency control. See [Commands vs Facts](/concepts/commands-vs-facts) for details.
+The idempotency key lives on `Cover.external_id`, not in FactSequence. This ensures:
+- System-wide propagation through sagas, PMs, and projectors
+- Consistent deduplication at every coordinator
+- Full traceability from external source to all effects
+
+### FactSequence Elimination
+
+The `FactSequence` marker is **replaced with a real sequence number at persistence time**. When the coordinator receives a fact event:
+
+1. Routes to aggregate (if `route_facts_to_aggregate = true`, the default)
+2. Aggregate updates state and returns events
+3. Coordinator assigns the next sequence number
+4. Persists with `sequence` instead of `fact`
+5. Publishes event with valid sequence
+
+Downstream consumers (sagas, projectors, process managers) always receive events with proper sequence numbers—they never see `FactSequence` markers.
+
+See [Commands vs Facts](/concepts/commands-vs-facts) for details.

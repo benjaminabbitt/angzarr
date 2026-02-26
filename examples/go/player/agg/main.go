@@ -17,5 +17,5 @@ func main() {
 		OnRejected("table", "JoinTable", handlers.HandleTableJoinRejected)
 	// docs:end:command_router
 
-	angzarr.RunAggregateServer("player", "50201", router)
+	angzarr.RunCommandHandlerServer("player", "50201", router)
 }

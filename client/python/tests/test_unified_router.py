@@ -1,8 +1,8 @@
-"""Tests for unified router pattern: AggregateRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter.
+"""Tests for unified router pattern: CommandHandlerRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter.
 
 These routers wrap handler protocol implementations and provide unified routing
 with two patterns:
-- Single-domain: AggregateRouter, SagaRouter (domain set at construction)
+- Single-domain: CommandHandlerRouter, SagaRouter (domain set at construction)
 - Multi-domain: ProcessManagerRouter, ProjectorRouter (fluent .domain() method)
 """
 
@@ -14,7 +14,7 @@ from google.protobuf import any_pb2
 from angzarr_client import RejectionHandlerResponse
 from angzarr_client.compensation import CompensationContext
 from angzarr_client.handler_protocols import (
-    AggregateDomainHandler,
+    CommandHandlerDomainHandler,
     ProcessManagerDomainHandler,
     ProcessManagerResponse,
     ProjectorDomainHandler,
@@ -23,7 +23,7 @@ from angzarr_client.handler_protocols import (
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import (
     NOTIFICATION_TYPE_URL,
-    AggregateRouter,
+    CommandHandlerRouter,
     ProcessManagerRouter,
     ProjectorRouter,
     SagaRouter,
@@ -85,7 +85,7 @@ PLAYER_STATE_ROUTER = (
 )
 
 
-class MockPlayerHandler(AggregateDomainHandler[PlayerState]):
+class MockPlayerHandler(CommandHandlerDomainHandler[PlayerState]):
     """Test aggregate handler implementation."""
 
     def command_types(self) -> list[str]:
@@ -289,36 +289,36 @@ def make_event_book(
 
 
 # =============================================================================
-# AggregateRouter Tests
+# CommandHandlerRouter Tests
 # =============================================================================
 
 
-class TestAggregateRouter:
-    """Tests for AggregateRouter (single-domain, commands -> events)."""
+class TestCommandHandlerRouter:
+    """Tests for CommandHandlerRouter (single-domain, commands -> events)."""
 
     def test_construction_sets_name_and_domain(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         assert router.name == "player"
         assert router.domain == "player"
 
     def test_command_types_delegates_to_handler(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         assert router.command_types() == ["RegisterPlayer", "DepositFunds"]
 
     def test_subscriptions_returns_domain_and_types(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         subs = router.subscriptions()
         assert subs == [("player", ["RegisterPlayer", "DepositFunds"])]
 
     def test_dispatch_routes_to_handler(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         cmd = make_contextual_command("player", "RegisterPlayer")
         response = router.dispatch(cmd)
@@ -328,7 +328,7 @@ class TestAggregateRouter:
 
     def test_dispatch_rebuilds_state_from_prior_events(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         # Create prior events (player registered with deposit)
         reg_event = PlayerRegistered(player_id="p1", display_name="Test")
@@ -370,7 +370,7 @@ class TestAggregateRouter:
 
     def test_dispatch_raises_on_empty_pages(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         cmd = types.ContextualCommand(
             command=types.CommandBook(cover=types.Cover(domain="player")),
@@ -381,7 +381,7 @@ class TestAggregateRouter:
 
     def test_dispatch_raises_on_missing_type_url(self):
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         cmd = types.ContextualCommand(
             command=types.CommandBook(
@@ -641,7 +641,7 @@ class TestRouterIntegration:
     def test_aggregate_state_rebuilt_correctly(self):
         """Verify state is correctly rebuilt from events."""
         handler = MockPlayerHandler()
-        router = AggregateRouter("player", "player", handler)
+        router = CommandHandlerRouter("player", "player", handler)
 
         # Create a sequence of events
         reg_event = PlayerRegistered(

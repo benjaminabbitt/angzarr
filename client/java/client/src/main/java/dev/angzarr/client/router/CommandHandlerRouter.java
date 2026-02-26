@@ -11,14 +11,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Router for aggregate components (commands -> events, single domain).
+ * Router for command handler components (commands -> events, single domain).
  *
  * <p>Domain is set at construction time. No additional domain registration
  * is possible, enforcing single-domain constraint.
  *
  * <p>Example:
  * <pre>{@code
- * AggregateRouter<PlayerState> router = new AggregateRouter<>(
+ * CommandHandlerRouter<PlayerState> router = new CommandHandlerRouter<>(
  *     "player",           // router name
  *     "player",           // domain
  *     new PlayerHandler() // handler
@@ -31,22 +31,22 @@ import java.util.Map;
  * BusinessResponse response = router.dispatch(contextualCommand);
  * }</pre>
  *
- * @param <S> The state type for this aggregate
+ * @param <S> The state type for this command handler
  */
-public class AggregateRouter<S> {
+public class CommandHandlerRouter<S> {
 
     private final String name;
     private final String domain;
-    private final AggregateDomainHandler<S> handler;
+    private final CommandHandlerDomainHandler<S> handler;
 
     /**
-     * Create a new aggregate router.
+     * Create a new command handler router.
      *
      * @param name The router name
-     * @param domain The domain this aggregate handles
+     * @param domain The domain this command handler handles
      * @param handler The domain handler
      */
-    public AggregateRouter(String name, String domain, AggregateDomainHandler<S> handler) {
+    public CommandHandlerRouter(String name, String domain, CommandHandlerDomainHandler<S> handler) {
         this.name = name;
         this.domain = domain;
         this.handler = handler;
@@ -74,7 +74,7 @@ public class AggregateRouter<S> {
     }
 
     /**
-     * Get subscriptions for this aggregate.
+     * Get subscriptions for this command handler.
      *
      * @return List of (domain, command types) pairs
      */

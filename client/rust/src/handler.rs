@@ -8,7 +8,7 @@ use prost_types::Any;
 use tonic::{Request, Response, Status};
 
 use crate::proto::{
-    aggregate_service_server::AggregateService,
+    command_handler_service_server::CommandHandlerService,
     process_manager_service_server::ProcessManagerService,
     projector_service_server::ProjectorService, saga_service_server::SagaService, BusinessResponse,
     ContextualCommand, EventBook, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
@@ -24,11 +24,11 @@ use crate::router::{
 /// Used by Replay RPC to return state as a serializable message.
 pub type StatePacker<S> = fn(&S) -> Result<Any, Status>;
 
-/// gRPC aggregate service implementation.
+/// gRPC command handler service implementation.
 ///
 /// Wraps an `AggregateRouter` to handle aggregate commands.
 /// Optionally supports Replay RPC for MERGE_COMMUTATIVE conflict detection.
-pub struct AggregateHandler<S, H>
+pub struct CommandHandlerGrpc<S, H>
 where
     S: Default + Send + Sync + 'static,
     H: AggregateDomainHandler<State = S> + 'static,
@@ -38,12 +38,12 @@ where
     state_packer: Option<StatePacker<S>>,
 }
 
-impl<S, H> AggregateHandler<S, H>
+impl<S, H> CommandHandlerGrpc<S, H>
 where
     S: Default + Send + Sync + 'static,
     H: AggregateDomainHandler<State = S> + 'static,
 {
-    /// Create a new aggregate handler from a router.
+    /// Create a new command handler from a router.
     pub fn new(router: AggregateRouter<S, H>) -> Self {
         Self {
             router: Arc::new(router),
@@ -64,7 +64,7 @@ where
 }
 
 #[tonic::async_trait]
-impl<S, H> AggregateService for AggregateHandler<S, H>
+impl<S, H> CommandHandlerService for CommandHandlerGrpc<S, H>
 where
     S: Default + Send + Sync + 'static,
     H: AggregateDomainHandler<State = S> + 'static,

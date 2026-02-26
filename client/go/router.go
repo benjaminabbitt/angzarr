@@ -213,7 +213,7 @@ func (r *CommandRouter[S]) dispatchRejection(notification *pb.Notification, stat
 	}
 
 	return DelegateToFramework(
-		fmt.Sprintf("Aggregate %s has no custom compensation for %s", r.domain, key),
+		fmt.Sprintf("CommandHandler %s has no custom compensation for %s", r.domain, key),
 	), nil
 }
 
@@ -656,28 +656,28 @@ func makeEventApplier[S any](handler any) (string, EventApplier[S]) {
 //
 // Two router patterns based on domain cardinality:
 //
-//   - AggregateRouter/SagaRouter: For single-domain components (domain set at construction)
+//   - CommandHandlerRouter/SagaRouter: For single-domain components (domain set at construction)
 //   - ProcessManagerRouter/ProjectorRouter: For multi-domain components (fluent .Domain() pattern)
 
 // ============================================================================
-// AggregateRouter -- Single Domain
+// CommandHandlerRouter -- Single Domain
 // ============================================================================
 
-// AggregateRouter wraps an AggregateDomainHandler for routing commands.
+// CommandHandlerRouter wraps a CommandHandlerDomainHandler for routing commands.
 //
 // Domain is set at construction time. No Domain() method exists,
 // enforcing single-domain constraint.
-type AggregateRouter[S any] struct {
+type CommandHandlerRouter[S any] struct {
 	name    string
 	domain  string
-	handler AggregateDomainHandler[S]
+	handler CommandHandlerDomainHandler[S]
 }
 
-// NewAggregateRouter creates a new aggregate router.
+// NewCommandHandlerRouter creates a new command handler router.
 //
-// Aggregates handle commands and emit events. Single domain enforced at construction.
-func NewAggregateRouter[S any](name, domain string, handler AggregateDomainHandler[S]) *AggregateRouter[S] {
-	return &AggregateRouter[S]{
+// Command handlers handle commands and emit events. Single domain enforced at construction.
+func NewCommandHandlerRouter[S any](name, domain string, handler CommandHandlerDomainHandler[S]) *CommandHandlerRouter[S] {
+	return &CommandHandlerRouter[S]{
 		name:    name,
 		domain:  domain,
 		handler: handler,
@@ -685,35 +685,35 @@ func NewAggregateRouter[S any](name, domain string, handler AggregateDomainHandl
 }
 
 // Name returns the router name.
-func (r *AggregateRouter[S]) Name() string {
+func (r *CommandHandlerRouter[S]) Name() string {
 	return r.name
 }
 
 // Domain returns the domain.
-func (r *AggregateRouter[S]) Domain() string {
+func (r *CommandHandlerRouter[S]) Domain() string {
 	return r.domain
 }
 
 // CommandTypes returns command types from the handler.
-func (r *AggregateRouter[S]) CommandTypes() []string {
+func (r *CommandHandlerRouter[S]) CommandTypes() []string {
 	return r.handler.CommandTypes()
 }
 
-// Subscriptions returns subscriptions for this aggregate.
+// Subscriptions returns subscriptions for this command handler.
 // Returns a map of domain -> command types.
-func (r *AggregateRouter[S]) Subscriptions() map[string][]string {
+func (r *CommandHandlerRouter[S]) Subscriptions() map[string][]string {
 	return map[string][]string{
 		r.domain: r.handler.CommandTypes(),
 	}
 }
 
 // RebuildState rebuilds state from events using the handler.
-func (r *AggregateRouter[S]) RebuildState(events *pb.EventBook) S {
+func (r *CommandHandlerRouter[S]) RebuildState(events *pb.EventBook) S {
 	return r.handler.Rebuild(events)
 }
 
 // Dispatch routes a contextual command to the handler.
-func (r *AggregateRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (r *CommandHandlerRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	commandBook := cmd.GetCommand()
 	if commandBook == nil {
 		return nil, status.Error(codes.InvalidArgument, "missing command book")
@@ -742,7 +742,7 @@ func (r *AggregateRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessRe
 
 	// Check for Notification (rejection/compensation)
 	if strings.HasSuffix(typeURL, "Notification") {
-		return r.dispatchAggregateNotification(commandAny, state)
+		return r.dispatchCHNotification(commandAny, state)
 	}
 
 	// Execute handler
@@ -756,8 +756,8 @@ func (r *AggregateRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessRe
 	}, nil
 }
 
-// dispatchAggregateNotification routes a Notification to the aggregate's rejection handler.
-func (r *AggregateRouter[S]) dispatchAggregateNotification(commandAny *anypb.Any, state S) (*pb.BusinessResponse, error) {
+// dispatchCHNotification routes a Notification to the command handler's rejection handler.
+func (r *CommandHandlerRouter[S]) dispatchCHNotification(commandAny *anypb.Any, state S) (*pb.BusinessResponse, error) {
 	notification := &pb.Notification{}
 	if err := proto.Unmarshal(commandAny.Value, notification); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to decode Notification: %v", err)

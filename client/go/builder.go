@@ -11,7 +11,7 @@ import (
 
 // CommandBuilder provides fluent construction and execution of commands.
 type CommandBuilder struct {
-	client        *AggregateClient
+	client        *CommandHandlerClient
 	domain        string
 	root          *uuid.UUID
 	correlationID string
@@ -22,7 +22,7 @@ type CommandBuilder struct {
 }
 
 // NewCommandBuilder creates a command builder for an existing aggregate.
-func NewCommandBuilder(client *AggregateClient, domain string, root uuid.UUID) *CommandBuilder {
+func NewCommandBuilder(client *CommandHandlerClient, domain string, root uuid.UUID) *CommandBuilder {
 	return &CommandBuilder{
 		client: client,
 		domain: domain,
@@ -31,7 +31,7 @@ func NewCommandBuilder(client *AggregateClient, domain string, root uuid.UUID) *
 }
 
 // NewCommandBuilderNew creates a command builder for a new aggregate (no root yet).
-func NewCommandBuilderNew(client *AggregateClient, domain string) *CommandBuilder {
+func NewCommandBuilderNew(client *CommandHandlerClient, domain string) *CommandBuilder {
 	return &CommandBuilder{
 		client: client,
 		domain: domain,
@@ -236,12 +236,12 @@ func (b *QueryBuilder) GetPages(ctx context.Context) ([]*pb.EventPage, error) {
 // Convenience methods on clients for builder creation
 
 // Command starts building a command for the given domain and root.
-func (c *AggregateClient) Command(domain string, root uuid.UUID) *CommandBuilder {
+func (c *CommandHandlerClient) Command(domain string, root uuid.UUID) *CommandBuilder {
 	return NewCommandBuilder(c, domain, root)
 }
 
 // CommandNew starts building a command for a new aggregate.
-func (c *AggregateClient) CommandNew(domain string) *CommandBuilder {
+func (c *CommandHandlerClient) CommandNew(domain string) *CommandBuilder {
 	return NewCommandBuilderNew(c, domain)
 }
 
@@ -257,14 +257,14 @@ func (c *QueryClient) QueryDomain(domain string) *QueryBuilder {
 
 // DomainClient convenience methods
 
-// Command starts building a command via the domain client's aggregate.
+// Command starts building a command via the domain client's command handler.
 func (c *DomainClient) Command(domain string, root uuid.UUID) *CommandBuilder {
-	return c.Aggregate.Command(domain, root)
+	return c.CommandHandler.Command(domain, root)
 }
 
 // CommandNew starts building a command for a new aggregate.
 func (c *DomainClient) CommandNew(domain string) *CommandBuilder {
-	return c.Aggregate.CommandNew(domain)
+	return c.CommandHandler.CommandNew(domain)
 }
 
 // NewQuery starts building a query via the domain client's query client.

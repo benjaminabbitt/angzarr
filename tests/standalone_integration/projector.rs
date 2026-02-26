@@ -87,7 +87,7 @@ async fn test_synchronous_projector_blocks_command() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "sync-projector",
             ProjectorWrapper(projector_clone),
@@ -123,7 +123,7 @@ async fn test_async_projector_runs_in_background() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "async-projector",
             ProjectorWrapper(projector_clone),
@@ -162,8 +162,8 @@ async fn test_projector_domain_filtering() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("products", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("products", EchoAggregate::new())
         .register_projector(
             "orders-projector",
             ProjectorWrapper(orders_clone),
@@ -224,7 +224,7 @@ async fn test_multiple_projectors_receive_same_event() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "projector-a",
             ProjectorWrapper(clone_a),
@@ -275,7 +275,7 @@ async fn test_projector_output_available_for_streaming() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "output-projector",
             OutputWrapper(projector_clone),
@@ -397,7 +397,7 @@ async fn test_multiple_projectors_chain_same_events() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "analytics",
             ChainableProjectorWrapper(proj1.clone()),
@@ -504,7 +504,7 @@ async fn test_projector_and_saga_both_receive_events() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "projector",
             ChainableProjectorWrapper(projector.clone()),
@@ -547,7 +547,7 @@ async fn test_sync_and_async_projectors_both_trigger() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "sync",
             ChainableProjectorWrapper(sync_proj.clone()),

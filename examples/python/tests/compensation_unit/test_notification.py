@@ -3,7 +3,7 @@
 import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
 
-from angzarr_client import Aggregate, rejected
+from angzarr_client import CommandHandler, rejected
 from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
 from angzarr_client.proto.angzarr import types_pb2 as types
 
@@ -14,7 +14,7 @@ class PlayerState:
         self.reserved_amount = 0
 
 
-class TestPlayerAggregate(Aggregate[PlayerState]):
+class TestPlayerAggregate(CommandHandler[PlayerState]):
     domain = "player"
 
     def _create_empty_state(self) -> PlayerState:
@@ -101,7 +101,7 @@ class TestNotificationCompensation:
     def test_aggregate_delegates_when_no_handler(self):
         """Aggregate delegates to framework when no @rejected handler matches."""
 
-        class PlayerNoHandlers(Aggregate[PlayerState]):
+        class PlayerNoHandlers(CommandHandler[PlayerState]):
             domain = "player"
 
             def _create_empty_state(self):

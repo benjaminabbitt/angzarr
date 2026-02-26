@@ -9,9 +9,9 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Combined client for aggregate commands and event queries.
+ * Combined client for command handler commands and event queries.
  *
- * <p>DomainClient combines QueryClient and AggregateClient into a single unified
+ * <p>DomainClient combines QueryClient and CommandHandlerClient into a single unified
  * interface. This is the recommended entry point for most applications because:
  * <ul>
  *   <li>Single connection - one endpoint, one channel, reduced resource usage</li>
@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  * </ul>
  *
  * <p>For advanced use cases (separate scaling, different endpoints), use
- * QueryClient and AggregateClient directly.
+ * QueryClient and CommandHandlerClient directly.
  *
  * <p>Usage:
  * <pre>{@code
@@ -42,13 +42,13 @@ import java.util.concurrent.TimeUnit;
  */
 public class DomainClient implements AutoCloseable {
 
-    private final AggregateClient aggregate;
+    private final CommandHandlerClient commandHandler;
     private final QueryClient query;
     private final ManagedChannel channel;
 
-    private DomainClient(ManagedChannel channel, AggregateClient aggregate, QueryClient query) {
+    private DomainClient(ManagedChannel channel, CommandHandlerClient commandHandler, QueryClient query) {
         this.channel = channel;
-        this.aggregate = aggregate;
+        this.commandHandler = commandHandler;
         this.query = query;
     }
 
@@ -67,7 +67,7 @@ public class DomainClient implements AutoCloseable {
                 .build();
             return new DomainClient(
                 channel,
-                AggregateClient.fromChannel(channel),
+                CommandHandlerClient.fromChannel(channel),
                 QueryClient.fromChannel(channel)
             );
         } catch (Exception e) {
@@ -99,18 +99,18 @@ public class DomainClient implements AutoCloseable {
     public static DomainClient fromChannel(ManagedChannel channel) {
         return new DomainClient(
             null, // Don't own the channel
-            AggregateClient.fromChannel(channel),
+            CommandHandlerClient.fromChannel(channel),
             QueryClient.fromChannel(channel)
         );
     }
 
     /**
-     * Get the aggregate client for direct access.
+     * Get the command handler client for direct access.
      *
-     * @return The underlying AggregateClient
+     * @return The underlying CommandHandlerClient
      */
-    public AggregateClient getAggregate() {
-        return aggregate;
+    public CommandHandlerClient getCommandHandler() {
+        return commandHandler;
     }
 
     /**
@@ -123,41 +123,41 @@ public class DomainClient implements AutoCloseable {
     }
 
     /**
-     * Execute a command (convenience method delegating to aggregate).
+     * Execute a command (convenience method delegating to command handler).
      *
      * @param command The command to execute
      * @return The command response
      */
     public CommandResponse execute(CommandBook command) {
-        return aggregate.handle(command);
+        return commandHandler.handle(command);
     }
 
     /**
      * Start building a command for the given domain and root.
      *
-     * @param domain The aggregate domain
-     * @param root The aggregate root UUID
+     * @param domain The domain
+     * @param root The root UUID
      * @return A CommandBuilder for fluent construction
      */
     public CommandBuilder command(String domain, UUID root) {
-        return aggregate.command(domain, root);
+        return commandHandler.command(domain, root);
     }
 
     /**
-     * Start building a command for a new aggregate (no root yet).
+     * Start building a command for a new entity (no root yet).
      *
-     * @param domain The aggregate domain
+     * @param domain The domain
      * @return A CommandBuilder for fluent construction
      */
     public CommandBuilder commandNew(String domain) {
-        return aggregate.commandNew(domain);
+        return commandHandler.commandNew(domain);
     }
 
     /**
      * Start building a query for the given domain and root.
      *
-     * @param domain The aggregate domain
-     * @param root The aggregate root UUID
+     * @param domain The domain
+     * @param root The root UUID
      * @return A QueryBuilder for fluent construction
      */
     public QueryBuilder query(String domain, UUID root) {
@@ -167,7 +167,7 @@ public class DomainClient implements AutoCloseable {
     /**
      * Start building a query by domain only (use with byCorrelationId).
      *
-     * @param domain The aggregate domain
+     * @param domain The domain
      * @return A QueryBuilder for fluent construction
      */
     public QueryBuilder queryDomain(String domain) {
@@ -180,7 +180,7 @@ public class DomainClient implements AutoCloseable {
     @Override
     public void close() {
         // Close individual clients first (they won't close the channel since they don't own it)
-        aggregate.close();
+        commandHandler.close();
         query.close();
 
         // Then close the channel if we own it

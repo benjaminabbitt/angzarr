@@ -219,25 +219,25 @@ type TestState struct {
 	Counter int
 }
 
-// MockAggregateHandler implements AggregateDomainHandler for testing.
-type MockAggregateHandler struct {
+// MockCHHandler implements CommandHandlerDomainHandler for testing.
+type MockCHHandler struct {
 	commandTypes []string
 	handleCalls  int
 }
 
-func NewMockAggregateHandler(types ...string) *MockAggregateHandler {
-	return &MockAggregateHandler{commandTypes: types}
+func NewMockCHHandler(types ...string) *MockCHHandler {
+	return &MockCHHandler{commandTypes: types}
 }
 
-func (h *MockAggregateHandler) CommandTypes() []string {
+func (h *MockCHHandler) CommandTypes() []string {
 	return h.commandTypes
 }
 
-func (h *MockAggregateHandler) Rebuild(events *pb.EventBook) *TestState {
+func (h *MockCHHandler) Rebuild(events *pb.EventBook) *TestState {
 	return &TestState{Value: "rebuilt", Counter: len(events.GetPages())}
 }
 
-func (h *MockAggregateHandler) Handle(
+func (h *MockCHHandler) Handle(
 	cmd *pb.CommandBook,
 	payload *anypb.Any,
 	state *TestState,
@@ -248,14 +248,14 @@ func (h *MockAggregateHandler) Handle(
 		Cover: cmd.Cover,
 		Pages: []*pb.EventPage{
 			{
-				Sequence: seq,
-				Payload:  &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.TestEvent"}},
+				SequenceType: &pb.EventPage_Sequence{Sequence: seq},
+				Payload:      &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.TestEvent"}},
 			},
 		},
 	}, nil
 }
 
-func (h *MockAggregateHandler) OnRejected(
+func (h *MockCHHandler) OnRejected(
 	notification *pb.Notification,
 	state *TestState,
 	targetDomain string,
@@ -380,15 +380,15 @@ func (h *MockProjectorHandler) Project(events *pb.EventBook) (*pb.Projection, er
 }
 
 // ============================================================================
-// AggregateRouter Tests
+// CommandHandlerRouter Tests
 // ============================================================================
 
-func TestAggregateRouterCreation(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing", "test.UpdateThing")
-	router := NewAggregateRouter("test-agg", "things", handler)
+func TestCommandHandlerRouterCreation(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing", "test.UpdateThing")
+	router := NewCommandHandlerRouter("test-ch", "things", handler)
 
-	if router.Name() != "test-agg" {
-		t.Errorf("expected name 'test-agg', got '%s'", router.Name())
+	if router.Name() != "test-ch" {
+		t.Errorf("expected name 'test-ch', got '%s'", router.Name())
 	}
 
 	if router.Domain() != "things" {
@@ -401,9 +401,9 @@ func TestAggregateRouterCreation(t *testing.T) {
 	}
 }
 
-func TestAggregateRouterSubscriptions(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing", "test.UpdateThing")
-	router := NewAggregateRouter("test-agg", "things", handler)
+func TestCommandHandlerRouterSubscriptions(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing", "test.UpdateThing")
+	router := NewCommandHandlerRouter("test-ch", "things", handler)
 
 	subs := router.Subscriptions()
 	if len(subs) != 1 {
@@ -417,14 +417,14 @@ func TestAggregateRouterSubscriptions(t *testing.T) {
 	}
 }
 
-func TestAggregateRouterRebuildState(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing")
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+func TestCommandHandlerRouterRebuildState(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing")
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	events := &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{Sequence: 0},
-			{Sequence: 1},
+			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}},
+			{SequenceType: &pb.EventPage_Sequence{Sequence: 1}},
 		},
 	}
 
@@ -437,9 +437,9 @@ func TestAggregateRouterRebuildState(t *testing.T) {
 	}
 }
 
-func TestAggregateRouterDispatch(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing")
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+func TestCommandHandlerRouterDispatch(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing")
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	cmd := &pb.ContextualCommand{
 		Command: &pb.CommandBook{
@@ -516,7 +516,7 @@ func TestSagaRouterPrepareDestinations(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -542,7 +542,7 @@ func TestSagaRouterDispatch(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -627,7 +627,7 @@ func TestProcessManagerRouterDispatch(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -697,7 +697,7 @@ func TestProjectorRouterDispatch(t *testing.T) {
 		Cover: &pb.Cover{Domain: "player"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.PlayerRegistered"},
 				},
@@ -727,9 +727,9 @@ func TestProjectorRouterDispatch(t *testing.T) {
 // Error Handling Tests
 // ============================================================================
 
-func TestAggregateRouterDispatchMissingCommand(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing")
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+func TestCommandHandlerRouterDispatchMissingCommand(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing")
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	cmd := &pb.ContextualCommand{
 		Command: nil,
@@ -763,7 +763,7 @@ func TestProcessManagerRouterDispatchUnknownDomain(t *testing.T) {
 		Cover: &pb.Cover{Domain: "unknown"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
 				},
@@ -785,7 +785,7 @@ func TestProjectorRouterDispatchUnknownDomain(t *testing.T) {
 		Cover: &pb.Cover{Domain: "unknown"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
 				},
@@ -803,22 +803,22 @@ func TestProjectorRouterDispatchUnknownDomain(t *testing.T) {
 // Notification Handling Tests
 // ============================================================================
 
-// MockAggregateHandlerWithRejection tracks rejection handler calls.
-type MockAggregateHandlerWithRejection struct {
-	*MockAggregateHandler
+// MockCHHandlerWithRejection tracks rejection handler calls.
+type MockCHHandlerWithRejection struct {
+	*MockCHHandler
 	onRejectedCalls  int
 	lastTargetDomain string
 	lastTargetCmd    string
 	returnEvents     *pb.EventBook
 }
 
-func NewMockAggregateHandlerWithRejection(types ...string) *MockAggregateHandlerWithRejection {
-	return &MockAggregateHandlerWithRejection{
-		MockAggregateHandler: NewMockAggregateHandler(types...),
+func NewMockCHHandlerWithRejection(types ...string) *MockCHHandlerWithRejection {
+	return &MockCHHandlerWithRejection{
+		MockCHHandler: NewMockCHHandler(types...),
 	}
 }
 
-func (h *MockAggregateHandlerWithRejection) OnRejected(
+func (h *MockCHHandlerWithRejection) OnRejected(
 	notification *pb.Notification,
 	state *TestState,
 	targetDomain string,
@@ -833,15 +833,15 @@ func (h *MockAggregateHandlerWithRejection) OnRejected(
 	return &RejectionHandlerResponse{}, nil
 }
 
-func TestAggregateRouterDispatchNotification(t *testing.T) {
-	handler := NewMockAggregateHandlerWithRejection("test.CreateThing")
+func TestCommandHandlerRouterDispatchNotification(t *testing.T) {
+	handler := NewMockCHHandlerWithRejection("test.CreateThing")
 	handler.returnEvents = &pb.EventBook{
 		Cover: &pb.Cover{Domain: "things"},
 		Pages: []*pb.EventPage{
-			{Sequence: 0, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.Compensated"}}},
+			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.Compensated"}}},
 		},
 	}
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	// Create a Notification command
 	notification := &pb.Notification{}
@@ -885,10 +885,10 @@ func TestAggregateRouterDispatchNotification(t *testing.T) {
 	}
 }
 
-func TestAggregateRouterDispatchNotificationReturnsRevocation(t *testing.T) {
-	handler := NewMockAggregateHandlerWithRejection("test.CreateThing")
+func TestCommandHandlerRouterDispatchNotificationReturnsRevocation(t *testing.T) {
+	handler := NewMockCHHandlerWithRejection("test.CreateThing")
 	// returnEvents is nil, so OnRejected returns empty response
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	notification := &pb.Notification{}
 	notificationBytes, _ := proto.Marshal(notification)
@@ -961,7 +961,7 @@ func TestProcessManagerRouterDispatchNotification(t *testing.T) {
 	handler.returnEvents = &pb.EventBook{
 		Cover: &pb.Cover{Domain: "order-flow"},
 		Pages: []*pb.EventPage{
-			{Sequence: 0, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.FlowCompensated"}}},
+			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.FlowCompensated"}}},
 		},
 	}
 
@@ -984,8 +984,8 @@ func TestProcessManagerRouterDispatchNotification(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
-				Payload:  &pb.EventPage_Event{Event: notificationAny},
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Payload:      &pb.EventPage_Event{Event: notificationAny},
 			},
 		},
 	}
@@ -1028,7 +1028,7 @@ func TestProcessManagerRouterPrepareDestinations(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -1080,7 +1080,7 @@ func TestProcessManagerRouterPrepareDestinationsUnknownDomain(t *testing.T) {
 		Cover: &pb.Cover{Domain: "unknown"},
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
 				},
@@ -1134,9 +1134,9 @@ func TestSagaRouterPrepareDestinationsEmptyPages(t *testing.T) {
 	}
 }
 
-func TestAggregateRouterDispatchNoPages(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing")
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+func TestCommandHandlerRouterDispatchNoPages(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing")
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	cmd := &pb.ContextualCommand{
 		Command: &pb.CommandBook{
@@ -1152,9 +1152,9 @@ func TestAggregateRouterDispatchNoPages(t *testing.T) {
 	}
 }
 
-func TestAggregateRouterDispatchNilEvents(t *testing.T) {
-	handler := NewMockAggregateHandler("test.CreateThing")
-	router := NewAggregateRouter[*TestState]("test-agg", "things", handler)
+func TestCommandHandlerRouterDispatchNilEvents(t *testing.T) {
+	handler := NewMockCHHandler("test.CreateThing")
+	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
 
 	cmd := &pb.ContextualCommand{
 		Command: &pb.CommandBook{
@@ -1191,7 +1191,7 @@ func TestProjectorRouterDispatchNilCover(t *testing.T) {
 		Cover: nil, // Nil cover
 		Pages: []*pb.EventPage{
 			{
-				Sequence: 0,
+				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.PlayerRegistered"},
 				},

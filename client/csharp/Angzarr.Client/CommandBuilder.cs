@@ -26,7 +26,7 @@ namespace Angzarr.Client;
 /// </summary>
 public class CommandBuilder
 {
-    private readonly AggregateClient _client;
+    private readonly CommandHandlerClient _client;
     private readonly string _domain;
     private readonly Guid? _root;
     private string? _correlationId;
@@ -39,10 +39,10 @@ public class CommandBuilder
     /// <summary>
     /// Create a command builder for an existing aggregate.
     /// </summary>
-    /// <param name="client">The aggregate client to use</param>
-    /// <param name="domain">The aggregate domain</param>
+    /// <param name="client">The command handler client to use</param>
+    /// <param name="domain">The domain</param>
     /// <param name="root">The aggregate root GUID</param>
-    public CommandBuilder(AggregateClient client, string domain, Guid root)
+    public CommandBuilder(CommandHandlerClient client, string domain, Guid root)
     {
         _client = client;
         _domain = domain;
@@ -52,9 +52,9 @@ public class CommandBuilder
     /// <summary>
     /// Create a command builder for a new aggregate (no root yet).
     /// </summary>
-    /// <param name="client">The aggregate client to use</param>
-    /// <param name="domain">The aggregate domain</param>
-    public CommandBuilder(AggregateClient client, string domain)
+    /// <param name="client">The command handler client to use</param>
+    /// <param name="domain">The domain</param>
+    public CommandBuilder(CommandHandlerClient client, string domain)
     {
         _client = client;
         _domain = domain;

@@ -1,8 +1,8 @@
-// Table aggregate - rich domain model using OO pattern.
+// Table command handler - rich domain model using OO pattern.
 //
-// This aggregate uses the OO-style pattern with embedded AggregateBase,
+// This command handler uses the OO-style pattern with embedded CommandHandlerBase,
 // method-based handlers, and fluent registration. This contrasts with
-// the player aggregate which uses the functional CommandRouter pattern.
+// the player command handler which uses the functional CommandRouter pattern.
 package main
 
 import (
@@ -45,12 +45,12 @@ type SeatState struct {
 	IsSittingOut bool
 }
 
-// Table aggregate with event sourcing using OO pattern.
+// Table command handler with event sourcing using OO pattern.
 type Table struct {
-	angzarr.AggregateBase[TableState]
+	angzarr.CommandHandlerBase[TableState]
 }
 
-// NewTable creates a new Table aggregate with prior events for state reconstruction.
+// NewTable creates a new Table command handler with prior events for state reconstruction.
 func NewTable(eventBook *pb.EventBook) *Table {
 	t := &Table{}
 	t.Init(eventBook, func() TableState {

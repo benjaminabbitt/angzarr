@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::client_traits::{self, ClientError};
 use crate::proto::{
     CommandBook, CommandPage, CommandResponse, Cover, Edition, EventBook, MergeStrategy,
-    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculateAggregateRequest,
+    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculateCommandHandlerRequest,
     SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
@@ -268,12 +268,14 @@ impl SpeculativeClient {
 
 #[async_trait]
 impl client_traits::SpeculativeClient for SpeculativeClient {
-    async fn aggregate(
+    async fn command_handler(
         &self,
-        request: SpeculateAggregateRequest,
+        request: SpeculateCommandHandlerRequest,
     ) -> client_traits::Result<CommandResponse> {
         let command = request.command.ok_or_else(|| {
-            ClientError::InvalidArgument("SpeculateAggregateRequest missing command".to_string())
+            ClientError::InvalidArgument(
+                "SpeculateCommandHandlerRequest missing command".to_string(),
+            )
         })?;
 
         let (as_of_sequence, as_of_timestamp) = extract_temporal_params(&request.point_in_time)?;
@@ -516,6 +518,7 @@ impl CommandBuilder {
                     name,
                     divergences: vec![],
                 }),
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),
@@ -576,6 +579,7 @@ mod tests {
                 }),
                 correlation_id: "test-id".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence: 0,

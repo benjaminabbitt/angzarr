@@ -45,10 +45,10 @@ class SpeculativeClientTest {
     // =========================================================================
 
     @Test
-    void should_have_aggregate_method() throws NoSuchMethodException {
-        // Verify aggregate speculative method exists
-        var method = SpeculativeClient.class.getMethod("aggregate",
-            dev.angzarr.SpeculateAggregateRequest.class);
+    void should_have_commandHandler_method() throws NoSuchMethodException {
+        // Verify command handler speculative method exists
+        var method = SpeculativeClient.class.getMethod("commandHandler",
+            dev.angzarr.SpeculateCommandHandlerRequest.class);
         assertThat(method.getReturnType()).isEqualTo(dev.angzarr.CommandResponse.class);
     }
 

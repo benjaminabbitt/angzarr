@@ -1,5 +1,6 @@
 use super::*;
 use crate::proto::{event_page, EventPage, Snapshot, SnapshotRetention};
+use crate::proto_ext::EventPageExt;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use crate::test_utils::{make_event_book_with_root, make_event_page};
 
@@ -134,6 +135,7 @@ async fn test_put_missing_root_returns_error() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -159,6 +161,7 @@ async fn test_put_invalid_uuid_returns_error() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -334,7 +337,7 @@ mod mock_integration {
 
     fn test_event(sequence: u32, event_type: &str) -> EventPage {
         EventPage {
-            sequence,
+            sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
             created_at: Some(Timestamp {
                 seconds: 1704067200 + sequence as i64,
                 nanos: 0,
@@ -396,8 +399,8 @@ mod mock_integration {
 
         let retrieved = repo.get(domain, "test", root).await.unwrap();
         assert_eq!(retrieved.pages.len(), 2);
-        assert_eq!(retrieved.pages[0].sequence, 0);
-        assert_eq!(retrieved.pages[1].sequence, 1);
+        assert_eq!(retrieved.pages[0].sequence_num(), 0);
+        assert_eq!(retrieved.pages[1].sequence_num(), 1);
     }
 
     #[tokio::test]
@@ -437,7 +440,7 @@ mod mock_integration {
         assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
         // Snapshot contains state through seq 3, so only events 4+ are loaded
         assert_eq!(book.pages.len(), 1);
-        assert_eq!(book.pages[0].sequence, 4);
+        assert_eq!(book.pages[0].sequence_num(), 4);
     }
 
     #[tokio::test]
@@ -469,8 +472,8 @@ mod mock_integration {
 
         assert!(book.snapshot.is_none());
         assert_eq!(book.pages.len(), 3);
-        assert_eq!(book.pages[0].sequence, 1);
-        assert_eq!(book.pages[2].sequence, 3);
+        assert_eq!(book.pages[0].sequence_num(), 1);
+        assert_eq!(book.pages[2].sequence_num(), 3);
     }
 
     #[tokio::test]
@@ -528,8 +531,8 @@ mod mock_integration {
 
         assert!(book.snapshot.is_none());
         assert_eq!(book.pages.len(), 5);
-        assert_eq!(book.pages[0].sequence, 0);
-        assert_eq!(book.pages[4].sequence, 4);
+        assert_eq!(book.pages[0].sequence_num(), 0);
+        assert_eq!(book.pages[4].sequence_num(), 4);
     }
 
     #[tokio::test]
@@ -615,8 +618,8 @@ mod mock_integration {
 
         assert!(book.snapshot.is_none());
         assert_eq!(book.pages.len(), 3);
-        assert_eq!(book.pages[0].sequence, 0);
-        assert_eq!(book.pages[2].sequence, 2);
+        assert_eq!(book.pages[0].sequence_num(), 0);
+        assert_eq!(book.pages[2].sequence_num(), 2);
     }
 
     #[tokio::test]
@@ -645,6 +648,6 @@ mod mock_integration {
             .unwrap();
 
         assert_eq!(book.pages.len(), 1);
-        assert_eq!(book.pages[0].sequence, 0);
+        assert_eq!(book.pages[0].sequence_num(), 0);
     }
 }

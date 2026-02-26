@@ -1,4 +1,4 @@
-"""Tests for AggregateHandler."""
+"""Tests for CommandHandlerGrpc."""
 
 from dataclasses import dataclass
 from unittest.mock import MagicMock
@@ -8,11 +8,11 @@ import pytest
 from google.protobuf import any_pb2
 
 from angzarr_client import RejectionHandlerResponse
-from angzarr_client.aggregate_handler import AggregateHandler
+from angzarr_client.aggregate_handler import CommandHandlerGrpc
 from angzarr_client.errors import CommandRejectedError
-from angzarr_client.handler_protocols import AggregateDomainHandler
+from angzarr_client.handler_protocols import CommandHandlerDomainHandler
 from angzarr_client.proto.angzarr import types_pb2 as angzarr
-from angzarr_client.router import AggregateRouter
+from angzarr_client.router import CommandHandlerRouter
 from angzarr_client.state_builder import StateRouter
 
 # ============================================================================
@@ -49,7 +49,7 @@ def apply_fake_event(state: FakeState, event: _FakeTestEvent) -> None:
 FAKE_STATE_ROUTER = StateRouter(FakeState).on(_FakeTestEvent, apply_fake_event)
 
 
-class TestAggregateHandler(AggregateDomainHandler[FakeState]):
+class TestCommandHandlerImpl(CommandHandlerDomainHandler[FakeState]):
     """Test handler that emits events."""
 
     def __init__(
@@ -118,45 +118,45 @@ def make_contextual_command(type_url, prior_events=None):
 
 
 # ============================================================================
-# AggregateHandler tests
+# CommandHandlerGrpc tests
 # ============================================================================
 
 
-class TestAggregateHandlerDispatch:
+class TestCommandHandlerGrpcDispatch:
     def test_handle_dispatches_via_router(self):
-        handler = TestAggregateHandler()
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+        handler = TestCommandHandlerImpl()
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A)
-        resp = agg_handler.Handle(cmd, context)
+        resp = ch_handler.Handle(cmd, context)
 
         assert resp.WhichOneof("result") == "events"
         assert len(resp.events.pages) == 1
         assert resp.events.pages[0].event.type_url == "handled_a:seq=0"
 
     def test_handle_sync_dispatches_via_router(self):
-        handler = TestAggregateHandler()
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+        handler = TestCommandHandlerImpl()
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A)
-        resp = agg_handler.HandleSync(cmd, context)
+        resp = ch_handler.HandleSync(cmd, context)
 
         assert resp.WhichOneof("result") == "events"
 
     def test_maps_command_rejected_to_failed_precondition(self):
-        handler = TestAggregateHandler(should_reject=True)
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+        handler = TestCommandHandlerImpl(should_reject=True)
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
         context.abort.side_effect = grpc.RpcError()
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A)
         with pytest.raises(grpc.RpcError):
-            agg_handler.Handle(cmd, context)
+            ch_handler.Handle(cmd, context)
 
         context.abort.assert_called_once_with(
             grpc.StatusCode.FAILED_PRECONDITION,
@@ -164,15 +164,15 @@ class TestAggregateHandlerDispatch:
         )
 
     def test_maps_value_error_to_invalid_argument(self):
-        handler = TestAggregateHandler(should_raise_value_error=True)
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+        handler = TestCommandHandlerImpl(should_raise_value_error=True)
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
         context.abort.side_effect = grpc.RpcError()
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A)
         with pytest.raises(grpc.RpcError):
-            agg_handler.Handle(cmd, context)
+            ch_handler.Handle(cmd, context)
 
         context.abort.assert_called_once_with(
             grpc.StatusCode.INVALID_ARGUMENT,
@@ -180,15 +180,15 @@ class TestAggregateHandlerDispatch:
         )
 
     def test_unknown_command_maps_to_invalid_argument(self):
-        handler = TestAggregateHandler()
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+        handler = TestCommandHandlerImpl()
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
         context.abort.side_effect = grpc.RpcError()
 
         cmd = make_contextual_command(TYPE_URL_UNKNOWN)
         with pytest.raises(grpc.RpcError):
-            agg_handler.Handle(cmd, context)
+            ch_handler.Handle(cmd, context)
 
         context.abort.assert_called_once()
         assert context.abort.call_args[0][0] == grpc.StatusCode.INVALID_ARGUMENT
@@ -198,22 +198,22 @@ class TestAggregateHandlerDispatch:
             pages=[angzarr.EventPage(), angzarr.EventPage(), angzarr.EventPage()],
         )
 
-        handler = TestAggregateHandler()
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+        handler = TestCommandHandlerImpl()
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A, prior)
-        resp = agg_handler.Handle(cmd, context)
+        resp = ch_handler.Handle(cmd, context)
 
         assert resp.events.pages[0].event.type_url == "handled_a:seq=3"
 
 
-class TestAggregateHandlerWithAggregateClass:
-    """Test AggregateHandler with Aggregate class (OO approach)."""
+class TestCommandHandlerGrpcWithCommandHandlerClass:
+    """Test CommandHandlerGrpc with CommandHandler class (OO approach)."""
 
-    def test_aggregate_class_dispatch(self):
-        from angzarr_client import Aggregate, handles
+    def test_command_handler_class_dispatch(self):
+        from angzarr_client import CommandHandler, handles
 
         class FakeCommand:
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
@@ -237,8 +237,8 @@ class TestAggregateHandlerWithAggregateClass:
         class TestState:
             initialized: bool = False
 
-        class TestAgg(Aggregate[TestState]):
-            domain = "testagg"
+        class TestCH(CommandHandler[TestState]):
+            domain = "testch"
 
             def _create_empty_state(self):
                 return TestState()
@@ -251,7 +251,7 @@ class TestAggregateHandlerWithAggregateClass:
             def do_something(self, cmd: FakeCommand) -> FakeEvent:
                 return FakeEvent(result="done")
 
-        handler = AggregateHandler(TestAgg)
+        handler = CommandHandlerGrpc(TestCH)
         context = MagicMock(spec=grpc.ServicerContext)
 
         cmd = angzarr.ContextualCommand(
@@ -268,15 +268,15 @@ class TestAggregateHandlerWithAggregateClass:
         assert resp.WhichOneof("result") == "events"
         assert len(resp.events.pages) == 1
 
-    def test_aggregate_class_domain_property(self):
-        from angzarr_client import Aggregate
+    def test_command_handler_class_domain_property(self):
+        from angzarr_client import CommandHandler
 
         @dataclass
         class TestState:
             pass
 
-        class TestAgg(Aggregate[TestState]):
-            domain = "myagg"
+        class TestCH(CommandHandler[TestState]):
+            domain = "mych"
 
             def _create_empty_state(self):
                 return TestState()
@@ -284,18 +284,18 @@ class TestAggregateHandlerWithAggregateClass:
             def _apply_event(self, state, event_any):
                 pass
 
-        handler = AggregateHandler(TestAgg)
-        assert handler.domain == "myagg"
+        handler = CommandHandlerGrpc(TestCH)
+        assert handler.domain == "mych"
 
 
-class TestAggregateHandlerReplay:
-    """Test Replay RPC for Aggregate class handlers."""
+class TestCommandHandlerGrpcReplay:
+    """Test Replay RPC for CommandHandler class handlers."""
 
-    def test_replay_with_aggregate_class(self):
+    def test_replay_with_command_handler_class(self):
         from google.protobuf import any_pb2
 
-        from angzarr_client import Aggregate, handles
-        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+        from angzarr_client import CommandHandler, handles
+        from angzarr_client.proto.angzarr import command_handler_pb2 as command_handler
 
         class FakeCommand:
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
@@ -323,7 +323,7 @@ class TestAggregateHandlerReplay:
             def SerializeToString(self, deterministic=None):
                 return b"1" if self.initialized else b"0"
 
-        class ReplayableAgg(Aggregate[TestState]):
+        class ReplayableCH(CommandHandler[TestState]):
             domain = "replayable"
 
             def _create_empty_state(self):
@@ -337,11 +337,11 @@ class TestAggregateHandlerReplay:
             def do_something(self, cmd: FakeCommand):
                 return FakeEvent(result="done")
 
-        handler = AggregateHandler(ReplayableAgg)
+        handler = CommandHandlerGrpc(ReplayableCH)
         context = MagicMock(spec=grpc.ServicerContext)
 
         event_any = any_pb2.Any(type_url="test.FakeEvent", value=b"test")
-        request = aggregate.ReplayRequest(
+        request = command_handler.ReplayRequest(
             events=[angzarr.EventPage(event=event_any)],
         )
 
@@ -351,21 +351,21 @@ class TestAggregateHandlerReplay:
         assert response.state.type_url != ""
         context.abort.assert_not_called()
 
-    def test_replay_not_supported_for_aggregate_router(self):
-        handler = TestAggregateHandler()
-        router = AggregateRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
-        agg_handler = AggregateHandler(router)
+    def test_replay_not_supported_for_command_handler_router(self):
+        handler = TestCommandHandlerImpl()
+        router = CommandHandlerRouter(DOMAIN_TEST, DOMAIN_TEST, handler)
+        ch_handler = CommandHandlerGrpc(router)
         context = MagicMock(spec=grpc.ServicerContext)
         context.abort.side_effect = grpc.RpcError()
 
-        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+        from angzarr_client.proto.angzarr import command_handler_pb2 as command_handler
 
-        request = aggregate.ReplayRequest()
+        request = command_handler.ReplayRequest()
 
         with pytest.raises(grpc.RpcError):
-            agg_handler.Replay(request, context)
+            ch_handler.Replay(request, context)
 
         context.abort.assert_called_once_with(
             grpc.StatusCode.UNIMPLEMENTED,
-            "Replay not supported for router-based aggregates",
+            "Replay not supported for router-based command handlers",
         )

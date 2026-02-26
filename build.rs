@@ -4,7 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Rerun if proto files or migration files change
     println!("cargo:rerun-if-changed=proto/angzarr/types.proto");
     println!("cargo:rerun-if-changed=migrations");
-    println!("cargo:rerun-if-changed=proto/angzarr/aggregate.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/command_handler.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/projector.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/saga.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/process_manager.proto");
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             prost_config,
             &[
                 "proto/angzarr/types.proto",
-                "proto/angzarr/aggregate.proto",
+                "proto/angzarr/command_handler.proto",
                 "proto/angzarr/projector.proto",
                 "proto/angzarr/saga.proto",
                 "proto/angzarr/process_manager.proto",

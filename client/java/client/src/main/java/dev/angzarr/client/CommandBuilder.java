@@ -31,7 +31,7 @@ import java.util.UUID;
  */
 public class CommandBuilder {
 
-    private final AggregateClient client;
+    private final CommandHandlerClient client;
     private final String domain;
     private final UUID root;
     private String correlationId;
@@ -41,25 +41,25 @@ public class CommandBuilder {
     private RuntimeException err;
 
     /**
-     * Create a command builder for an existing aggregate.
+     * Create a command builder for an existing entity.
      *
-     * @param client The aggregate client to use
-     * @param domain The aggregate domain
-     * @param root The aggregate root UUID
+     * @param client The command handler client to use
+     * @param domain The domain
+     * @param root The root UUID
      */
-    public CommandBuilder(AggregateClient client, String domain, UUID root) {
+    public CommandBuilder(CommandHandlerClient client, String domain, UUID root) {
         this.client = client;
         this.domain = domain;
         this.root = root;
     }
 
     /**
-     * Create a command builder for a new aggregate (no root yet).
+     * Create a command builder for a new entity (no root yet).
      *
-     * @param client The aggregate client to use
-     * @param domain The aggregate domain
+     * @param client The command handler client to use
+     * @param domain The domain
      */
-    public CommandBuilder(AggregateClient client, String domain) {
+    public CommandBuilder(CommandHandlerClient client, String domain) {
         this.client = client;
         this.domain = domain;
         this.root = null;
@@ -82,7 +82,7 @@ public class CommandBuilder {
     /**
      * Set the expected sequence number for optimistic locking.
      *
-     * <p>Defaults to 0 for new aggregates.
+     * <p>Defaults to 0 for new entities.
      *
      * @param seq The sequence number
      * @return This builder for chaining

@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 struct FailingAggregate;
 
 #[async_trait]
-impl AggregateHandler for FailingAggregate {
+impl CommandHandler for FailingAggregate {
     async fn handle(&self, _ctx: ContextualCommand) -> Result<EventBook, Status> {
         Err(Status::internal("Aggregate intentionally failed"))
     }
@@ -32,7 +32,7 @@ impl ConditionalFailAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for ConditionalFailAggregate {
+impl CommandHandler for ConditionalFailAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command = ctx.command.as_ref().unwrap();
         if let Some(page) = command.pages.first() {
@@ -71,7 +71,7 @@ impl SelectiveFailAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for SelectiveFailAggregate {
+impl CommandHandler for SelectiveFailAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command_book = ctx
             .command
@@ -95,7 +95,7 @@ impl AggregateHandler for SelectiveFailAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         let event = if let Some(command_page::Payload::Command(c)) = &command_book.pages[0].payload
@@ -108,7 +108,7 @@ impl AggregateHandler for SelectiveFailAggregate {
         Ok(EventBook {
             cover,
             pages: vec![EventPage {
-                sequence: next_seq,
+                sequence_type: Some(event_page::SequenceType::Sequence(next_seq)),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
             }],
@@ -124,7 +124,7 @@ fn get_seq(response: &angzarr::proto::CommandResponse) -> u32 {
         .events
         .as_ref()
         .and_then(|e| e.pages.last())
-        .map(|p| p.sequence)
+        .map(|p| p.sequence_num())
         .unwrap_or(0)
 }
 
@@ -136,7 +136,7 @@ fn get_seq(response: &angzarr::proto::CommandResponse) -> u32 {
 async fn test_aggregate_failure_returns_error() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", FailingAggregate)
+        .register_command_handler("orders", FailingAggregate)
         .build()
         .await
         .expect("Failed to build runtime");
@@ -160,7 +160,7 @@ async fn test_aggregate_failure_returns_error() {
 async fn test_unknown_domain_returns_error() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -184,7 +184,7 @@ async fn test_unknown_domain_returns_error() {
 async fn test_conditional_failure_isolates_to_single_command() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", ConditionalFailAggregate::new("BadCommand"))
+        .register_command_handler("orders", ConditionalFailAggregate::new("BadCommand"))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -246,7 +246,7 @@ async fn test_conditional_failure_isolates_to_single_command() {
 async fn test_missing_cover_returns_error() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -268,7 +268,7 @@ async fn test_missing_cover_returns_error() {
 async fn test_missing_root_uuid_returns_error() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -282,6 +282,7 @@ async fn test_missing_root_uuid_returns_error() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         saga_origin: None,
@@ -299,7 +300,7 @@ async fn test_missing_root_uuid_returns_error() {
 async fn test_failed_command_does_not_persist_events() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", SelectiveFailAggregate::new("FAIL"))
+        .register_command_handler("orders", SelectiveFailAggregate::new("FAIL"))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -329,7 +330,7 @@ async fn test_failed_command_does_not_persist_events() {
 async fn test_success_after_failure_on_same_aggregate() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", SelectiveFailAggregate::new("FAIL"))
+        .register_command_handler("orders", SelectiveFailAggregate::new("FAIL"))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -360,7 +361,7 @@ async fn test_success_after_failure_on_same_aggregate() {
 async fn test_partial_failure_isolates_between_aggregates() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", SelectiveFailAggregate::new("FAIL"))
+        .register_command_handler("orders", SelectiveFailAggregate::new("FAIL"))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -400,7 +401,7 @@ async fn test_partial_failure_isolates_between_aggregates() {
 async fn test_recovery_continues_sequence_correctly() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", SelectiveFailAggregate::new("FAIL"))
+        .register_command_handler("orders", SelectiveFailAggregate::new("FAIL"))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -451,7 +452,7 @@ async fn test_projector_failure_does_not_rollback_events() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector("failing", FailingProjector, ProjectorConfig::async_())
         .build()
         .await
@@ -498,7 +499,7 @@ async fn test_sync_projector_failure_fails_command() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector(
             "failing-sync",
             FailingSyncProjector,
@@ -538,7 +539,7 @@ async fn test_sync_projector_failure_fails_command() {
 async fn test_concurrent_failures_isolated() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", SelectiveFailAggregate::new("FAIL"))
+        .register_command_handler("orders", SelectiveFailAggregate::new("FAIL"))
         .build()
         .await
         .expect("Failed to build runtime");

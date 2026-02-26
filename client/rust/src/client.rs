@@ -2,14 +2,14 @@
 
 use crate::error::{ClientError, Result};
 use crate::proto::{
-    aggregate_coordinator_service_client::AggregateCoordinatorServiceClient as TonicAggregateClient,
+    command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient as TonicCommandHandlerClient,
     event_query_service_client::EventQueryServiceClient as TonicQueryClient,
     process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient as TonicPmClient,
     projector_coordinator_service_client::ProjectorCoordinatorServiceClient as TonicProjectorClient,
     saga_coordinator_service_client::SagaCoordinatorServiceClient as TonicSagaClient, CommandBook,
-    CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query, SagaResponse,
-    SpeculateAggregateRequest, SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest,
-    SyncCommandBook,
+    CommandRequest, CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query,
+    SagaResponse, SpeculateCommandHandlerRequest, SpeculatePmRequest, SpeculateProjectorRequest,
+    SpeculateSagaRequest,
 };
 use crate::traits;
 use async_trait::async_trait;
@@ -93,14 +93,14 @@ impl traits::QueryClient for QueryClient {
     }
 }
 
-/// Default aggregate coordinator client using tonic gRPC.
+/// Default command handler coordinator client using tonic gRPC.
 #[derive(Clone)]
-pub struct AggregateClient {
-    inner: TonicAggregateClient<Channel>,
+pub struct CommandHandlerClient {
+    inner: TonicCommandHandlerClient<Channel>,
 }
 
-impl AggregateClient {
-    /// Connect to an aggregate coordinator at the given endpoint.
+impl CommandHandlerClient {
+    /// Connect to a command handler coordinator at the given endpoint.
     ///
     /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
@@ -117,26 +117,35 @@ impl AggregateClient {
     /// Create a client from an existing channel.
     pub fn from_channel(channel: Channel) -> Self {
         Self {
-            inner: TonicAggregateClient::new(channel),
+            inner: TonicCommandHandlerClient::new(channel),
         }
     }
 
-    /// Execute a command asynchronously.
-    pub async fn handle(&self, command: CommandBook) -> Result<CommandResponse> {
-        let response = self.inner.clone().handle(command).await?;
+    /// Execute a command with specified sync mode.
+    ///
+    /// Use `SyncMode::Unspecified` (0) for async fire-and-forget.
+    /// Use `SyncMode::Simple` (1) to wait for sync projectors.
+    /// Use `SyncMode::Cascade` (2) for full sync including saga cascade.
+    pub async fn handle_command(&self, command: CommandRequest) -> Result<CommandResponse> {
+        let response = self.inner.clone().handle_command(command).await?;
         Ok(response.into_inner())
     }
 
-    /// Execute a command synchronously with specified sync mode.
-    pub async fn handle_sync(&self, command: SyncCommandBook) -> Result<CommandResponse> {
-        let response = self.inner.clone().handle_sync(command).await?;
-        Ok(response.into_inner())
+    /// Execute a command asynchronously (fire-and-forget).
+    ///
+    /// Convenience method that wraps CommandBook in CommandRequest with default sync mode.
+    pub async fn handle(&self, command: CommandBook) -> Result<CommandResponse> {
+        self.handle_command(CommandRequest {
+            command: Some(command),
+            sync_mode: 0, // Unspecified = async
+        })
+        .await
     }
 
     /// Speculative execution against temporal state.
     pub async fn handle_sync_speculative(
         &self,
-        request: SpeculateAggregateRequest,
+        request: SpeculateCommandHandlerRequest,
     ) -> Result<CommandResponse> {
         let response = self.inner.clone().handle_sync_speculative(request).await?;
         Ok(response.into_inner())
@@ -144,21 +153,21 @@ impl AggregateClient {
 }
 
 #[async_trait]
-impl traits::GatewayClient for AggregateClient {
+impl traits::GatewayClient for CommandHandlerClient {
     async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
         self.handle(command).await
     }
 }
 
-/// Per-domain client combining aggregate coordinator and event query.
+/// Per-domain client combining command handler coordinator and event query.
 ///
 /// Connects to a single domain's endpoint and provides both command execution
 /// and event querying. Matches the distributed architecture where each domain
 /// has its own coordinator service.
 #[derive(Clone)]
 pub struct DomainClient {
-    /// Aggregate client for command execution.
-    pub aggregate: AggregateClient,
+    /// Command handler client for command execution.
+    pub command_handler: CommandHandlerClient,
     /// Query client for event retrieval.
     pub query: QueryClient,
 }
@@ -181,14 +190,14 @@ impl DomainClient {
     /// Create a client from an existing channel.
     pub fn from_channel(channel: Channel) -> Self {
         Self {
-            aggregate: AggregateClient::from_channel(channel.clone()),
+            command_handler: CommandHandlerClient::from_channel(channel.clone()),
             query: QueryClient::from_channel(channel),
         }
     }
 
-    /// Execute a command (delegates to aggregate client).
+    /// Execute a command (delegates to command handler client).
     pub async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
-        self.aggregate.handle(command).await
+        self.command_handler.handle(command).await
     }
 }
 
@@ -198,7 +207,7 @@ impl DomainClient {
 /// Each method targets a specific coordinator's speculative RPC.
 #[derive(Clone)]
 pub struct SpeculativeClient {
-    aggregate: TonicAggregateClient<Channel>,
+    command_handler: TonicCommandHandlerClient<Channel>,
     projector: TonicProjectorClient<Channel>,
     saga: TonicSagaClient<Channel>,
     pm: TonicPmClient<Channel>,
@@ -222,7 +231,7 @@ impl SpeculativeClient {
     /// Create a client from an existing channel.
     pub fn from_channel(channel: Channel) -> Self {
         Self {
-            aggregate: TonicAggregateClient::new(channel.clone()),
+            command_handler: TonicCommandHandlerClient::new(channel.clone()),
             projector: TonicProjectorClient::new(channel.clone()),
             saga: TonicSagaClient::new(channel.clone()),
             pm: TonicPmClient::new(channel),
@@ -232,9 +241,12 @@ impl SpeculativeClient {
 
 #[async_trait]
 impl traits::SpeculativeClient for SpeculativeClient {
-    async fn aggregate(&self, request: SpeculateAggregateRequest) -> Result<CommandResponse> {
+    async fn command_handler(
+        &self,
+        request: SpeculateCommandHandlerRequest,
+    ) -> Result<CommandResponse> {
         let response = self
-            .aggregate
+            .command_handler
             .clone()
             .handle_sync_speculative(request)
             .await?;
@@ -260,11 +272,11 @@ impl traits::SpeculativeClient for SpeculativeClient {
     }
 }
 
-/// Combined client providing aggregate, query, and speculative operations.
+/// Combined client providing command handler, query, and speculative operations.
 #[derive(Clone)]
 pub struct Client {
-    /// Aggregate client for command execution.
-    pub aggregate: AggregateClient,
+    /// Command handler client for command execution.
+    pub command_handler: CommandHandlerClient,
     /// Query client for event retrieval.
     pub query: QueryClient,
     /// Speculative client for dry-run and what-if scenarios.
@@ -272,7 +284,7 @@ pub struct Client {
 }
 
 impl Client {
-    /// Connect to a server providing aggregate, query, and speculative services.
+    /// Connect to a server providing command handler, query, and speculative services.
     ///
     /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
@@ -289,15 +301,15 @@ impl Client {
     /// Create a client from an existing channel.
     pub fn from_channel(channel: Channel) -> Self {
         Self {
-            aggregate: AggregateClient::from_channel(channel.clone()),
+            command_handler: CommandHandlerClient::from_channel(channel.clone()),
             query: QueryClient::from_channel(channel.clone()),
             speculative: SpeculativeClient::from_channel(channel),
         }
     }
 
-    /// Execute a command (delegates to aggregate client).
+    /// Execute a command (delegates to command handler client).
     pub async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
-        self.aggregate.handle(command).await
+        self.command_handler.handle(command).await
     }
 
     /// Query events (delegates to query client).

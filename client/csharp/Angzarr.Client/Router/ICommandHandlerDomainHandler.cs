@@ -4,14 +4,14 @@ using Google.Protobuf.WellKnownTypes;
 namespace Angzarr.Client.Router;
 
 /// <summary>
-/// Handler for a single domain's aggregate commands.
+/// Handler for a single domain's commands.
 ///
-/// Aggregates receive commands and emit events. They maintain state
+/// Command handlers receive commands and emit events. They maintain state
 /// that is rebuilt from events using a StateRouter.
 ///
 /// Example:
 /// <code>
-/// public class PlayerHandler : IAggregateDomainHandler&lt;PlayerState&gt;
+/// public class PlayerHandler : ICommandHandlerDomainHandler&lt;PlayerState&gt;
 /// {
 ///     private readonly StateRouter&lt;PlayerState&gt; _stateRouter;
 ///
@@ -42,8 +42,8 @@ namespace Angzarr.Client.Router;
 /// }
 /// </code>
 /// </summary>
-/// <typeparam name="TState">The state type for this aggregate.</typeparam>
-public interface IAggregateDomainHandler<TState>
+/// <typeparam name="TState">The state type for this command handler.</typeparam>
+public interface ICommandHandlerDomainHandler<TState>
     where TState : new()
 {
     /// <summary>
@@ -72,19 +72,19 @@ public interface IAggregateDomainHandler<TState>
     /// </summary>
     /// <param name="cmd">The command book containing metadata.</param>
     /// <param name="payload">The command payload as Any.</param>
-    /// <param name="state">Current aggregate state.</param>
+    /// <param name="state">Current state.</param>
     /// <param name="seq">Next sequence number for events.</param>
     /// <returns>EventBook containing resulting events.</returns>
     Angzarr.EventBook Handle(Angzarr.CommandBook cmd, Any payload, TState state, int seq);
 
     /// <summary>
     /// Handle a rejection notification.
-    /// Called when a command issued by a saga/PM targeting this aggregate's
+    /// Called when a command issued by a saga/PM targeting this
     /// domain was rejected. Override to provide custom compensation logic.
     /// Default implementation returns an empty response (framework handles).
     /// </summary>
     /// <param name="notification">The rejection notification.</param>
-    /// <param name="state">Current aggregate state.</param>
+    /// <param name="state">Current state.</param>
     /// <param name="targetDomain">Domain of the rejected command.</param>
     /// <param name="targetCommand">Command type that was rejected.</param>
     /// <returns>Response with optional compensation events or notification.</returns>

@@ -1,10 +1,10 @@
 package dev.angzarr.client;
 
 import dev.angzarr.CommandBook;
+import dev.angzarr.CommandRequest;
 import dev.angzarr.CommandResponse;
-import dev.angzarr.SpeculateAggregateRequest;
-import dev.angzarr.SyncCommandBook;
-import dev.angzarr.AggregateCoordinatorServiceGrpc;
+import dev.angzarr.SpeculateCommandHandlerRequest;
+import dev.angzarr.CommandHandlerCoordinatorServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
@@ -13,9 +13,9 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Client for sending commands to aggregates through the coordinator.
+ * Client for sending commands to command handlers through the coordinator.
  *
- * <p>AggregateClient handles command routing, response parsing, and provides
+ * <p>CommandHandlerClient handles command routing, response parsing, and provides
  * multiple execution modes:
  * <ul>
  *   <li>Async (fire-and-forget) - for high-throughput scenarios</li>
@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Usage:
  * <pre>{@code
- * AggregateClient client = AggregateClient.connect("localhost:1310");
+ * CommandHandlerClient client = CommandHandlerClient.connect("localhost:1310");
  * try {
  *     CommandBook command = buildCommand();
  *     CommandResponse response = client.handle(command);
@@ -34,32 +34,32 @@ import java.util.concurrent.TimeUnit;
  * }
  * }</pre>
  */
-public class AggregateClient implements AutoCloseable {
+public class CommandHandlerClient implements AutoCloseable {
 
-    private final AggregateCoordinatorServiceGrpc.AggregateCoordinatorServiceBlockingStub stub;
+    private final CommandHandlerCoordinatorServiceGrpc.CommandHandlerCoordinatorServiceBlockingStub stub;
     private final ManagedChannel channel;
     private final boolean ownsChannel;
 
-    private AggregateClient(ManagedChannel channel, boolean ownsChannel) {
+    private CommandHandlerClient(ManagedChannel channel, boolean ownsChannel) {
         this.channel = channel;
         this.ownsChannel = ownsChannel;
-        this.stub = AggregateCoordinatorServiceGrpc.newBlockingStub(channel);
+        this.stub = CommandHandlerCoordinatorServiceGrpc.newBlockingStub(channel);
     }
 
     /**
-     * Connect to an aggregate coordinator at the given endpoint.
+     * Connect to a command handler coordinator at the given endpoint.
      *
      * @param endpoint The server endpoint (host:port or unix:///path for UDS)
-     * @return A new AggregateClient
+     * @return A new CommandHandlerClient
      * @throws Errors.ConnectionError if connection fails
      */
-    public static AggregateClient connect(String endpoint) {
+    public static CommandHandlerClient connect(String endpoint) {
         try {
             ManagedChannel channel = ManagedChannelBuilder
                 .forTarget(formatEndpoint(endpoint))
                 .usePlaintext()
                 .build();
-            return new AggregateClient(channel, true);
+            return new CommandHandlerClient(channel, true);
         } catch (Exception e) {
             throw new Errors.ConnectionError("Failed to connect to " + endpoint, e);
         }
@@ -70,9 +70,9 @@ public class AggregateClient implements AutoCloseable {
      *
      * @param envVar The environment variable name
      * @param defaultEndpoint Fallback endpoint if env var is not set
-     * @return A new AggregateClient
+     * @return A new CommandHandlerClient
      */
-    public static AggregateClient fromEnv(String envVar, String defaultEndpoint) {
+    public static CommandHandlerClient fromEnv(String envVar, String defaultEndpoint) {
         String endpoint = System.getenv(envVar);
         if (endpoint == null || endpoint.isEmpty()) {
             endpoint = defaultEndpoint;
@@ -84,10 +84,10 @@ public class AggregateClient implements AutoCloseable {
      * Create a client from an existing channel.
      *
      * @param channel The gRPC channel to use
-     * @return A new AggregateClient that does not own the channel
+     * @return A new CommandHandlerClient that does not own the channel
      */
-    public static AggregateClient fromChannel(ManagedChannel channel) {
-        return new AggregateClient(channel, false);
+    public static CommandHandlerClient fromChannel(ManagedChannel channel) {
+        return new CommandHandlerClient(channel, false);
     }
 
     /**
@@ -102,7 +102,10 @@ public class AggregateClient implements AutoCloseable {
      */
     public CommandResponse handle(CommandBook command) {
         try {
-            return stub.handle(command);
+            CommandRequest request = CommandRequest.newBuilder()
+                .setCommand(command)
+                .build();
+            return stub.handleCommand(request);
         } catch (StatusRuntimeException e) {
             throw new Errors.GrpcError(e.getMessage(), e.getStatus().getCode());
         }
@@ -111,16 +114,16 @@ public class AggregateClient implements AutoCloseable {
     /**
      * Execute a command synchronously.
      *
-     * <p>Blocks until the aggregate processes the command and events are persisted.
+     * <p>Blocks until the command handler processes the command and events are persisted.
      * The response includes the resulting events.
      *
-     * @param command The sync command to execute
+     * @param request The command request to execute
      * @return The command response with resulting events
      * @throws Errors.GrpcError if the gRPC call fails
      */
-    public CommandResponse handleSync(SyncCommandBook command) {
+    public CommandResponse handleCommand(CommandRequest request) {
         try {
-            return stub.handleSync(command);
+            return stub.handleCommand(request);
         } catch (StatusRuntimeException e) {
             throw new Errors.GrpcError(e.getMessage(), e.getStatus().getCode());
         }
@@ -140,7 +143,7 @@ public class AggregateClient implements AutoCloseable {
      * @return The command response with projected events
      * @throws Errors.GrpcError if the gRPC call fails
      */
-    public CommandResponse handleSyncSpeculative(SpeculateAggregateRequest request) {
+    public CommandResponse handleSyncSpeculative(SpeculateCommandHandlerRequest request) {
         try {
             return stub.handleSyncSpeculative(request);
         } catch (StatusRuntimeException e) {
@@ -151,8 +154,8 @@ public class AggregateClient implements AutoCloseable {
     /**
      * Start building a command for the given domain and root.
      *
-     * @param domain The aggregate domain
-     * @param root The aggregate root UUID
+     * @param domain The domain
+     * @param root The root UUID
      * @return A CommandBuilder for fluent construction
      */
     public CommandBuilder command(String domain, UUID root) {
@@ -160,9 +163,9 @@ public class AggregateClient implements AutoCloseable {
     }
 
     /**
-     * Start building a command for a new aggregate (no root yet).
+     * Start building a command for a new entity (no root yet).
      *
-     * @param domain The aggregate domain
+     * @param domain The domain
      * @return A CommandBuilder for fluent construction
      */
     public CommandBuilder commandNew(String domain) {

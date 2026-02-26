@@ -1,16 +1,16 @@
-"""Base aggregate class and decorators for rich domain models.
+"""Base command handler class and decorators for rich domain models.
 
 This module provides the framework for implementing event-sourced aggregates
 using the rich domain model pattern. Business logic lives as methods on the
-aggregate class, with decorators registering handlers:
+command handler class, with decorators registering handlers:
 
 - @handles: Register command handlers that emit events
 - @applies: Register event appliers that mutate state
 
 Example usage:
-    from angzarr_client import Aggregate, handles, applies
+    from angzarr_client import CommandHandler, handles, applies
 
-    class Player(Aggregate[PlayerState]):
+    class Player(CommandHandler[PlayerState]):
         domain = "player"
 
         @applies(PlayerRegistered)
@@ -44,14 +44,14 @@ from typing import Callable, Generic, TypeVar
 
 from google.protobuf.any_pb2 import Any
 
-from .proto.angzarr import aggregate_pb2 as aggregate
+from .proto.angzarr import command_handler_pb2 as command_handler
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 from .router import validate_command_handler
 
 
 def handles(command_type: type):
-    """Decorator for command handler methods on Aggregate subclasses.
+    """Decorator for command handler methods on CommandHandler subclasses.
 
     Registers the method as a handler for the given command type.
     Validates that command_type matches the method's type hint.
@@ -95,7 +95,7 @@ def handles(command_type: type):
 
 
 def applies(event_type: type):
-    """Decorator for event applier methods on Aggregate subclasses.
+    """Decorator for event applier methods on CommandHandler subclasses.
 
     Registers the method as an applier for the given event type.
     The base class discovers these methods and generates _apply_event().
@@ -136,7 +136,7 @@ def applies(event_type: type):
 StateT = TypeVar("StateT")
 
 
-class Aggregate(Generic[StateT], ABC):
+class CommandHandler(Generic[StateT], ABC):
     """Base class for event-sourced aggregates.
 
     Provides:
@@ -155,7 +155,7 @@ class Aggregate(Generic[StateT], ABC):
     - Optionally decorate rejection handlers with `@rejected(domain, command)`
 
     Usage:
-        class Player(Aggregate[PlayerState]):
+        class Player(CommandHandler[PlayerState]):
             domain = "player"
 
             def _create_empty_state(self) -> PlayerState:
@@ -292,7 +292,9 @@ class Aggregate(Generic[StateT], ABC):
         raise ValueError(f"Unknown command: {type_url}")
 
     @classmethod
-    def handle(cls, request: types.ContextualCommand) -> aggregate.BusinessResponse:
+    def handle(
+        cls, request: types.ContextualCommand
+    ) -> command_handler.BusinessResponse:
         """Handle a full gRPC request.
 
         Creates aggregate instance, dispatches command, returns event book.
@@ -322,11 +324,11 @@ class Aggregate(Generic[StateT], ABC):
             return agg.handle_revocation(notification)
 
         agg.dispatch(command_any)
-        return aggregate.BusinessResponse(events=agg.event_book())
+        return command_handler.BusinessResponse(events=agg.event_book())
 
     def handle_revocation(
         self, notification: types.Notification
-    ) -> aggregate.BusinessResponse:
+    ) -> command_handler.BusinessResponse:
         """Handle a rejection notification.
 
         Called when a saga/PM command is rejected and compensation is needed.
@@ -378,18 +380,20 @@ class Aggregate(Generic[StateT], ABC):
                 _ = self._get_state()
                 # Call the handler (wrapper will auto-apply events)
                 getattr(self, method_name)(notification)
-                return aggregate.BusinessResponse(events=self.event_book())
+                return command_handler.BusinessResponse(events=self.event_book())
 
         # Default: request framework to emit system revocation event
-        return aggregate.BusinessResponse(
-            revocation=aggregate.RevocationResponse(
+        return command_handler.BusinessResponse(
+            revocation=command_handler.RevocationResponse(
                 emit_system_revocation=True,
                 reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_suffix}",
             )
         )
 
     @classmethod
-    def replay(cls, request: aggregate.ReplayRequest) -> aggregate.ReplayResponse:
+    def replay(
+        cls, request: command_handler.ReplayRequest
+    ) -> command_handler.ReplayResponse:
         """Replay events to compute state (for conflict detection).
 
         Creates aggregate from base snapshot, applies events, returns final state.
@@ -417,7 +421,7 @@ class Aggregate(Generic[StateT], ABC):
         state_any = Any()
         state_any.Pack(state, type_url_prefix="type.googleapis.com/")
 
-        return aggregate.ReplayResponse(state=state_any)
+        return command_handler.ReplayResponse(state=state_any)
 
     def event_book(self) -> types.EventBook:
         """Return the event book for persistence.

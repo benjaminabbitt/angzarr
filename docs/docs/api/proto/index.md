@@ -15,9 +15,9 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [ReplayResponse](#angzarr-ReplayResponse)
     - [RevocationResponse](#angzarr-RevocationResponse)
     - [SpeculateAggregateRequest](#angzarr-SpeculateAggregateRequest)
-  
-    - [AggregateCoordinatorService](#angzarr-AggregateCoordinatorService)
-    - [AggregateService](#angzarr-AggregateService)
+
+    - [CommandHandlerCoordinatorService](#angzarr-CommandHandlerCoordinatorService)
+    - [CommandHandlerService](#angzarr-CommandHandlerService)
   
 - [angzarr/cloudevents.proto](#angzarr_cloudevents-proto)
     - [CloudEvent](#angzarr-CloudEvent)
@@ -325,10 +325,10 @@ Request for speculative command execution against temporal state.
  
 
 
-<a name="angzarr-AggregateCoordinatorService"></a>
+<a name="angzarr-CommandHandlerCoordinatorService"></a>
 
-### AggregateCoordinatorService
-AggregateCoordinatorService: orchestrates command processing for aggregates
+### CommandHandlerCoordinatorService
+CommandHandlerCoordinatorService: orchestrates command processing for aggregates
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -338,11 +338,10 @@ AggregateCoordinatorService: orchestrates command processing for aggregates
 | HandleCompensation | [CommandBook](#angzarr-CommandBook) | [BusinessResponse](#angzarr-BusinessResponse) | Compensation flow - returns BusinessResponse for saga compensation handling. If business returns events, persists them. Caller handles revocation flags. |
 
 
-<a name="angzarr-AggregateService"></a>
+<a name="angzarr-CommandHandlerService"></a>
 
-### AggregateService
-AggregateService: client logic that processes commands and emits events
-Also known as Command Handler in CQRS terminology
+### CommandHandlerService
+CommandHandlerService: client logic that processes commands and emits events
 client logic doesn&#39;t care about sync - coordinator decides
 
 | Method Name | Request Type | Response Type | Description |
@@ -522,7 +521,7 @@ Phase 2 response: commands and PM events.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | commands | [CommandBook](#angzarr-CommandBook) | repeated | Commands to issue to other aggregates. |
-| process_events | [EventBook](#angzarr-EventBook) |  | Events for the process manager&#39;s own domain (non-duplicative workflow state). These are persisted via AggregateCoordinator to the PM&#39;s domain. |
+| process_events | [EventBook](#angzarr-EventBook) |  | Events for the process manager&#39;s own domain (non-duplicative workflow state). These are persisted via CommandHandlerCoordinator to the PM&#39;s domain. |
 
 
 
@@ -609,7 +608,7 @@ Process Manager is warranted when:
 - You must react to events from MULTIPLE domains (saga recommends single domain)
 
 Process Manager IS an aggregate with its own domain, events, and state.
-It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
+It reuses all aggregate infrastructure (EventStore, SnapshotStore, CommandHandlerCoordinator).
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -1596,7 +1595,7 @@ Controls synchronous processing behavior
 
 ### UpcasterService
 UpcasterService: transforms old event versions to current versions
-Implemented by the client alongside AggregateService on the same gRPC server.
+Implemented by the client alongside CommandHandlerService on the same gRPC server.
 Optionally can be deployed as a separate binary for testing or complex migrations.
 
 | Method Name | Request Type | Response Type | Description |

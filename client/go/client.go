@@ -25,28 +25,28 @@ const (
 const (
 	DefaultUDSBase       = "/tmp/angzarr"
 	DefaultNamespace     = "angzarr"
-	DefaultAggregatePort = 1310
+	DefaultCHPort        = 1310
 	DefaultTransportMode = TransportDistributed
 )
 
 // Environment variable names.
 const (
-	EnvMode          = "ANGZARR_MODE"
-	EnvUDSBase       = "ANGZARR_UDS_BASE"
-	EnvNamespace     = "ANGZARR_NAMESPACE"
-	EnvAggregatePort = "ANGZARR_AGGREGATE_PORT"
+	EnvMode      = "ANGZARR_MODE"
+	EnvUDSBase   = "ANGZARR_UDS_BASE"
+	EnvNamespace = "ANGZARR_NAMESPACE"
+	EnvCHPort    = "ANGZARR_CH_PORT"
 )
 
-// ResolveAggregateEndpoint resolves a domain name to an aggregate coordinator endpoint.
+// ResolveCHEndpoint resolves a domain name to a command handler endpoint.
 //
 // In standalone mode, returns a Unix Domain Socket path.
 // In distributed mode, returns a Kubernetes DNS name with port.
 //
-// Both modes use the {domain}-aggregate naming convention for consistency.
+// Both modes use the ch-{domain} naming convention for consistency.
 //
 // The mode is detected from ANGZARR_MODE env var if not specified.
-// Other env vars: ANGZARR_UDS_BASE, ANGZARR_NAMESPACE, ANGZARR_AGGREGATE_PORT.
-func ResolveAggregateEndpoint(domain string, mode TransportMode) string {
+// Other env vars: ANGZARR_UDS_BASE, ANGZARR_NAMESPACE, ANGZARR_CH_PORT.
+func ResolveCHEndpoint(domain string, mode TransportMode) string {
 	if mode == "" {
 		modeStr := os.Getenv(EnvMode)
 		if modeStr == "" {
@@ -61,7 +61,7 @@ func ResolveAggregateEndpoint(domain string, mode TransportMode) string {
 		if base == "" {
 			base = DefaultUDSBase
 		}
-		return fmt.Sprintf("%s/%s-aggregate.sock", base, domain)
+		return fmt.Sprintf("%s/ch-%s.sock", base, domain)
 	}
 
 	// Distributed mode - K8s DNS
@@ -69,14 +69,14 @@ func ResolveAggregateEndpoint(domain string, mode TransportMode) string {
 	if namespace == "" {
 		namespace = DefaultNamespace
 	}
-	portStr := os.Getenv(EnvAggregatePort)
-	port := DefaultAggregatePort
+	portStr := os.Getenv(EnvCHPort)
+	port := DefaultCHPort
 	if portStr != "" {
 		if p, err := fmt.Sscanf(portStr, "%d", &port); p != 1 || err != nil {
-			port = DefaultAggregatePort
+			port = DefaultCHPort
 		}
 	}
-	return fmt.Sprintf("%s-aggregate.%s.svc:%d", domain, namespace, port)
+	return fmt.Sprintf("ch-%s.%s.svc:%d", domain, namespace, port)
 }
 
 // formatEndpoint converts an endpoint to gRPC target format.
@@ -162,53 +162,54 @@ func (c *QueryClient) Close() error {
 	return nil
 }
 
-// AggregateClient wraps the AggregateCoordinatorService for command execution.
-type AggregateClient struct {
-	inner pb.AggregateCoordinatorServiceClient
+// CommandHandlerClient wraps the CommandHandlerCoordinatorService for command execution.
+type CommandHandlerClient struct {
+	inner pb.CommandHandlerCoordinatorServiceClient
 	conn  *grpc.ClientConn
 }
 
-// NewAggregateClient connects to an aggregate coordinator at the given endpoint.
-func NewAggregateClient(endpoint string) (*AggregateClient, error) {
+// NewCommandHandlerClient connects to a command handler at the given endpoint.
+func NewCommandHandlerClient(endpoint string) (*CommandHandlerClient, error) {
 	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}
-	return &AggregateClient{
-		inner: pb.NewAggregateCoordinatorServiceClient(conn),
+	return &CommandHandlerClient{
+		inner: pb.NewCommandHandlerCoordinatorServiceClient(conn),
 		conn:  conn,
 	}, nil
 }
 
-// AggregateClientFromEnv connects using an environment variable with fallback.
-func AggregateClientFromEnv(envVar, defaultEndpoint string) (*AggregateClient, error) {
+// CommandHandlerClientFromEnv connects using an environment variable with fallback.
+func CommandHandlerClientFromEnv(envVar, defaultEndpoint string) (*CommandHandlerClient, error) {
 	endpoint := os.Getenv(envVar)
 	if endpoint == "" {
 		endpoint = defaultEndpoint
 	}
-	return NewAggregateClient(endpoint)
+	return NewCommandHandlerClient(endpoint)
 }
 
-// AggregateClientFromConn creates a client from an existing connection.
-func AggregateClientFromConn(conn *grpc.ClientConn) *AggregateClient {
-	return &AggregateClient{
-		inner: pb.NewAggregateCoordinatorServiceClient(conn),
+// CommandHandlerClientFromConn creates a client from an existing connection.
+func CommandHandlerClientFromConn(conn *grpc.ClientConn) *CommandHandlerClient {
+	return &CommandHandlerClient{
+		inner: pb.NewCommandHandlerCoordinatorServiceClient(conn),
 		conn:  conn,
 	}
 }
 
-// Handle executes a command asynchronously.
-func (c *AggregateClient) Handle(ctx context.Context, cmd *pb.CommandBook) (*pb.CommandResponse, error) {
-	resp, err := c.inner.Handle(ctx, cmd)
-	if err != nil {
-		return nil, GRPCError(err)
+// Handle executes a command asynchronously (fire-and-forget).
+// Convenience method that wraps CommandBook in CommandRequest with default sync mode.
+func (c *CommandHandlerClient) Handle(ctx context.Context, cmd *pb.CommandBook) (*pb.CommandResponse, error) {
+	request := &pb.CommandRequest{
+		Command:  cmd,
+		SyncMode: pb.SyncMode_SYNC_MODE_UNSPECIFIED,
 	}
-	return resp, nil
+	return c.HandleCommand(ctx, request)
 }
 
-// HandleSync executes a command synchronously with the specified sync mode.
-func (c *AggregateClient) HandleSync(ctx context.Context, cmd *pb.SyncCommandBook) (*pb.CommandResponse, error) {
-	resp, err := c.inner.HandleSync(ctx, cmd)
+// HandleCommand executes a command with the specified sync mode.
+func (c *CommandHandlerClient) HandleCommand(ctx context.Context, request *pb.CommandRequest) (*pb.CommandResponse, error) {
+	resp, err := c.inner.HandleCommand(ctx, request)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
@@ -216,7 +217,7 @@ func (c *AggregateClient) HandleSync(ctx context.Context, cmd *pb.SyncCommandBoo
 }
 
 // HandleSyncSpeculative executes a command speculatively against temporal state (no persistence).
-func (c *AggregateClient) HandleSyncSpeculative(ctx context.Context, req *pb.SpeculateAggregateRequest) (*pb.CommandResponse, error) {
+func (c *CommandHandlerClient) HandleSyncSpeculative(ctx context.Context, req *pb.SpeculateCommandHandlerRequest) (*pb.CommandResponse, error) {
 	resp, err := c.inner.HandleSyncSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
@@ -225,7 +226,7 @@ func (c *AggregateClient) HandleSyncSpeculative(ctx context.Context, req *pb.Spe
 }
 
 // Close closes the underlying connection.
-func (c *AggregateClient) Close() error {
+func (c *CommandHandlerClient) Close() error {
 	if c.conn != nil {
 		return c.conn.Close()
 	}
@@ -235,7 +236,7 @@ func (c *AggregateClient) Close() error {
 // SpeculativeClient wraps coordinator services for speculative execution.
 // Speculative execution runs commands/events against temporal state without persistence.
 type SpeculativeClient struct {
-	aggregateStub pb.AggregateCoordinatorServiceClient
+	chStub        pb.CommandHandlerCoordinatorServiceClient
 	sagaStub      pb.SagaCoordinatorServiceClient
 	projectorStub pb.ProjectorCoordinatorServiceClient
 	pmStub        pb.ProcessManagerCoordinatorServiceClient
@@ -249,7 +250,7 @@ func NewSpeculativeClient(endpoint string) (*SpeculativeClient, error) {
 		return nil, TransportError(err)
 	}
 	return &SpeculativeClient{
-		aggregateStub: pb.NewAggregateCoordinatorServiceClient(conn),
+		chStub:        pb.NewCommandHandlerCoordinatorServiceClient(conn),
 		sagaStub:      pb.NewSagaCoordinatorServiceClient(conn),
 		projectorStub: pb.NewProjectorCoordinatorServiceClient(conn),
 		pmStub:        pb.NewProcessManagerCoordinatorServiceClient(conn),
@@ -269,7 +270,7 @@ func SpeculativeClientFromEnv(envVar, defaultEndpoint string) (*SpeculativeClien
 // SpeculativeClientFromConn creates a client from an existing connection.
 func SpeculativeClientFromConn(conn *grpc.ClientConn) *SpeculativeClient {
 	return &SpeculativeClient{
-		aggregateStub: pb.NewAggregateCoordinatorServiceClient(conn),
+		chStub:        pb.NewCommandHandlerCoordinatorServiceClient(conn),
 		sagaStub:      pb.NewSagaCoordinatorServiceClient(conn),
 		projectorStub: pb.NewProjectorCoordinatorServiceClient(conn),
 		pmStub:        pb.NewProcessManagerCoordinatorServiceClient(conn),
@@ -277,9 +278,9 @@ func SpeculativeClientFromConn(conn *grpc.ClientConn) *SpeculativeClient {
 	}
 }
 
-// Aggregate executes a command speculatively against temporal state.
-func (c *SpeculativeClient) Aggregate(ctx context.Context, req *pb.SpeculateAggregateRequest) (*pb.CommandResponse, error) {
-	resp, err := c.aggregateStub.HandleSyncSpeculative(ctx, req)
+// CommandHandler executes a command speculatively against temporal state.
+func (c *SpeculativeClient) CommandHandler(ctx context.Context, req *pb.SpeculateCommandHandlerRequest) (*pb.CommandResponse, error) {
+	resp, err := c.chStub.HandleSyncSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
@@ -321,11 +322,11 @@ func (c *SpeculativeClient) Close() error {
 	return nil
 }
 
-// DomainClient combines aggregate and query clients for a single domain.
+// DomainClient combines command handler and query clients for a single domain.
 type DomainClient struct {
-	Aggregate *AggregateClient
-	Query     *QueryClient
-	conn      *grpc.ClientConn
+	CommandHandler *CommandHandlerClient
+	Query          *QueryClient
+	conn           *grpc.ClientConn
 }
 
 // NewDomainClient connects to a domain's coordinator at the given endpoint.
@@ -335,9 +336,9 @@ func NewDomainClient(endpoint string) (*DomainClient, error) {
 		return nil, TransportError(err)
 	}
 	return &DomainClient{
-		Aggregate: AggregateClientFromConn(conn),
-		Query:     QueryClientFromConn(conn),
-		conn:      conn,
+		CommandHandler: CommandHandlerClientFromConn(conn),
+		Query:          QueryClientFromConn(conn),
+		conn:           conn,
 	}, nil
 }
 
@@ -353,13 +354,13 @@ func DomainClientFromEnv(envVar, defaultEndpoint string) (*DomainClient, error) 
 // DomainClientFromConn creates a client from an existing connection.
 func DomainClientFromConn(conn *grpc.ClientConn) *DomainClient {
 	return &DomainClient{
-		Aggregate: AggregateClientFromConn(conn),
-		Query:     QueryClientFromConn(conn),
-		conn:      conn,
+		CommandHandler: CommandHandlerClientFromConn(conn),
+		Query:          QueryClientFromConn(conn),
+		conn:           conn,
 	}
 }
 
-// DomainClientForDomain connects to a domain's aggregate coordinator.
+// DomainClientForDomain connects to a domain's command handler.
 //
 // Resolves the domain name to the appropriate endpoint based on transport mode.
 // Pass an empty string for mode to auto-detect from ANGZARR_MODE env var.
@@ -375,13 +376,13 @@ func DomainClientFromConn(conn *grpc.ClientConn) *DomainClient {
 //	// Explicitly use distributed mode (K8s DNS)
 //	player, err := DomainClientForDomain("player", TransportDistributed)
 func DomainClientForDomain(domain string, mode TransportMode) (*DomainClient, error) {
-	endpoint := ResolveAggregateEndpoint(domain, mode)
+	endpoint := ResolveCHEndpoint(domain, mode)
 	return NewDomainClient(endpoint)
 }
 
-// Execute is a convenience method that delegates to Aggregate.Handle.
+// Execute is a convenience method that delegates to CommandHandler.Handle.
 func (c *DomainClient) Execute(ctx context.Context, cmd *pb.CommandBook) (*pb.CommandResponse, error) {
-	return c.Aggregate.Handle(ctx, cmd)
+	return c.CommandHandler.Handle(ctx, cmd)
 }
 
 // Close closes the underlying connection.
@@ -392,12 +393,12 @@ func (c *DomainClient) Close() error {
 	return nil
 }
 
-// Client combines aggregate, query, and speculative clients.
+// Client combines command handler, query, and speculative clients.
 type Client struct {
-	Aggregate   *AggregateClient
-	Query       *QueryClient
-	Speculative *SpeculativeClient
-	conn        *grpc.ClientConn
+	CommandHandler *CommandHandlerClient
+	Query          *QueryClient
+	Speculative    *SpeculativeClient
+	conn           *grpc.ClientConn
 }
 
 // NewClient connects to a server providing all services.
@@ -407,10 +408,10 @@ func NewClient(endpoint string) (*Client, error) {
 		return nil, TransportError(err)
 	}
 	return &Client{
-		Aggregate:   AggregateClientFromConn(conn),
-		Query:       QueryClientFromConn(conn),
-		Speculative: SpeculativeClientFromConn(conn),
-		conn:        conn,
+		CommandHandler: CommandHandlerClientFromConn(conn),
+		Query:          QueryClientFromConn(conn),
+		Speculative:    SpeculativeClientFromConn(conn),
+		conn:           conn,
 	}, nil
 }
 
@@ -426,10 +427,10 @@ func ClientFromEnv(envVar, defaultEndpoint string) (*Client, error) {
 // ClientFromConn creates a client from an existing connection.
 func ClientFromConn(conn *grpc.ClientConn) *Client {
 	return &Client{
-		Aggregate:   AggregateClientFromConn(conn),
-		Query:       QueryClientFromConn(conn),
-		Speculative: SpeculativeClientFromConn(conn),
-		conn:        conn,
+		CommandHandler: CommandHandlerClientFromConn(conn),
+		Query:          QueryClientFromConn(conn),
+		Speculative:    SpeculativeClientFromConn(conn),
+		conn:           conn,
 	}
 }
 

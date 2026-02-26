@@ -15,10 +15,12 @@ use uuid::Uuid;
 
 // Trait modules
 mod event_store;
+mod idempotency_store;
 mod position_store;
 mod snapshot_store;
 
 pub use event_store::EventStore;
+pub use idempotency_store::{IdempotencyRecord, IdempotencyStore};
 pub use position_store::PositionStore;
 pub use snapshot_store::SnapshotStore;
 
@@ -62,7 +64,9 @@ pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotSt
 #[cfg(feature = "redis")]
 pub use redis::RedisSnapshotStore;
 #[cfg(feature = "sqlite")]
-pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
+pub use sqlite::{
+    SqliteEventStore, SqliteIdempotencyStore, SqlitePositionStore, SqliteSnapshotStore,
+};
 
 // ============================================================================
 // Error Types

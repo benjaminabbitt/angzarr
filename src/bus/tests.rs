@@ -12,12 +12,13 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
             }),
             correlation_id: "test-correlation".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: event_types
             .iter()
             .enumerate()
             .map(|(i, et)| EventPage {
-                sequence: i as u32,
+                sequence_type: Some(event_page::SequenceType::Sequence(i as u32)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.googleapis.com/example.{}", et),

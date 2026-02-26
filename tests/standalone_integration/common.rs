@@ -17,15 +17,16 @@ pub use angzarr::proto::{
     command_page, event_page, CommandBook, CommandPage, ContextualCommand, Cover, EventBook,
     EventPage, MergeStrategy, Projection, SagaResponse, Uuid as ProtoUuid,
 };
+pub use angzarr::proto_ext::EventPageExt;
 pub use angzarr::standalone::{
-    AggregateHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder,
-    SagaConfig, SagaHandler,
+    CommandHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder, SagaConfig,
+    SagaHandler,
 };
 
 pub use std::os::unix::fs::FileTypeExt;
 pub use std::time::Duration;
 
-/// Simple test aggregate that echoes commands as events.
+/// Simple test command handler that echoes commands as events.
 pub struct EchoAggregate {
     call_count: AtomicU32,
 }
@@ -43,7 +44,7 @@ impl EchoAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for EchoAggregate {
+impl CommandHandler for EchoAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
 
@@ -59,7 +60,7 @@ impl AggregateHandler for EchoAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         // Echo command as event
@@ -73,7 +74,7 @@ impl AggregateHandler for EchoAggregate {
                     _ => None,
                 };
                 EventPage {
-                    sequence: next_seq + i as u32,
+                    sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i as u32)),
                     payload: event.map(event_page::Payload::Event),
                     created_at: None,
                 }
@@ -89,17 +90,17 @@ impl AggregateHandler for EchoAggregate {
     }
 }
 
-/// Wrapper for Arc<EchoAggregate> to implement AggregateHandler.
+/// Wrapper for Arc<EchoAggregate> to implement CommandHandler.
 pub struct EchoAggregateWrapper(pub Arc<EchoAggregate>);
 
 #[async_trait]
-impl AggregateHandler for EchoAggregateWrapper {
+impl CommandHandler for EchoAggregateWrapper {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         self.0.handle(ctx).await
     }
 }
 
-/// Aggregate that produces N events per command.
+/// Command handler that produces N events per command.
 pub struct MultiEventAggregate {
     events_per_command: u32,
 }
@@ -111,7 +112,7 @@ impl MultiEventAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for MultiEventAggregate {
+impl CommandHandler for MultiEventAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command_book = ctx
             .command
@@ -124,12 +125,12 @@ impl AggregateHandler for MultiEventAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         let pages: Vec<EventPage> = (0..self.events_per_command)
             .map(|i| EventPage {
-                sequence: next_seq + i,
+                sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i)),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("test.Event{}", i),
                     value: vec![i as u8],
@@ -202,6 +203,7 @@ pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32)
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence,
@@ -224,9 +226,10 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence,
+            sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.TestEvent".to_string(),
                 value: vec![1, 2, 3],

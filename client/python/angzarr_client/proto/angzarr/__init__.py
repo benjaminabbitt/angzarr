@@ -1,11 +1,12 @@
 """Angzarr proto definitions."""
 
-from .aggregate_pb2 import (
+from .command_handler_pb2 import (
     BusinessResponse,
     CommandResponse,
-    SpeculateAggregateRequest,
+    RevocationResponse,
+    SpeculateCommandHandlerRequest,
 )
-from .aggregate_pb2_grpc import AggregateCoordinatorServiceStub
+from .command_handler_pb2_grpc import CommandHandlerCoordinatorServiceStub
 from .process_manager_pb2 import ProcessManagerHandleResponse, SpeculatePmRequest
 from .process_manager_pb2_grpc import ProcessManagerCoordinatorServiceStub
 from .projector_pb2 import SpeculateProjectorRequest
@@ -23,6 +24,7 @@ from .types_pb2 import (
     UUID,
     CommandBook,
     CommandPage,
+    CommandRequest,
     ComponentDescriptor,
     ContextualCommand,
     Cover,
@@ -30,14 +32,13 @@ from .types_pb2 import (
     Edition,
     EventBook,
     EventPage,
+    EventRequest,
     GetDescriptorRequest,
     Projection,
     Query,
     SequenceRange,
     SequenceSet,
     Snapshot,
-    SyncCommandBook,
-    SyncEventBook,
     SyncMode,
     Target,
     TemporalQuery,
@@ -54,11 +55,11 @@ __all__ = [
     "Snapshot",
     "CommandPage",
     "CommandBook",
+    "CommandRequest",
     "CommandResponse",
     "ComponentDescriptor",
+    "EventRequest",
     "GetDescriptorRequest",
-    "SyncCommandBook",
-    "SyncEventBook",
     "Query",
     "SequenceRange",
     "SequenceSet",
@@ -67,17 +68,19 @@ __all__ = [
     "Projection",
     "SyncMode",
     # Speculative
-    "SpeculateAggregateRequest",
+    "SpeculateCommandHandlerRequest",
     "SpeculateProjectorRequest",
     "SpeculateSagaRequest",
     "SpeculatePmRequest",
     # Stubs
-    "AggregateCoordinatorServiceStub",
+    "CommandHandlerCoordinatorServiceStub",
     "SagaCoordinatorServiceStub",
     "ProjectorCoordinatorServiceStub",
     "ProcessManagerCoordinatorServiceStub",
     "EventQueryServiceStub",
     # Responses
+    "BusinessResponse",
+    "RevocationResponse",
     "SagaResponse",
     "ProcessManagerHandleResponse",
 ]

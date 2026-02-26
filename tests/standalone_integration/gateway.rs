@@ -29,7 +29,7 @@ impl ProjectorHandler for GatewayTestProjector {
 async fn test_execute_returns_events_with_sequence() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -53,7 +53,7 @@ async fn test_execute_returns_events_with_sequence() {
 
     // Verify sequence is set
     let first_page = &events.pages[0];
-    assert_eq!(first_page.sequence, 0, "First event should be seq 0");
+    assert_eq!(first_page.sequence_num(), 0, "First event should be seq 0");
 }
 
 /// Test query-like access to events after command.
@@ -61,7 +61,7 @@ async fn test_execute_returns_events_with_sequence() {
 async fn test_query_events_after_command() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -90,7 +90,7 @@ async fn test_query_events_after_command() {
 async fn test_query_events_with_bounds() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -138,7 +138,7 @@ async fn test_query_events_with_bounds() {
 async fn test_execute_returns_sync_projections() {
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector("receipt", GatewayTestProjector, ProjectorConfig::sync())
         .build()
         .await
@@ -168,9 +168,9 @@ async fn test_execute_returns_sync_projections() {
 async fn test_list_registered_domains() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("products", EchoAggregate::new())
-        .register_aggregate("customers", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("products", EchoAggregate::new())
+        .register_command_handler("customers", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -189,7 +189,7 @@ async fn test_list_registered_domains() {
 async fn test_list_roots_in_domain() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");

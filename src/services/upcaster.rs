@@ -28,6 +28,8 @@ use tracing::{debug, info, instrument};
 use crate::config::{UPCASTER_ADDRESS_ENV_VAR, UPCASTER_ENABLED_ENV_VAR};
 use crate::proto::{upcaster_service_client::UpcasterServiceClient, EventPage, UpcastRequest};
 use crate::proto_ext::correlated_request;
+#[cfg(test)]
+use crate::proto_ext::EventPageExt;
 
 // ============================================================================
 // Configuration
@@ -184,7 +186,7 @@ mod tests {
         let upcaster = Upcaster::disabled();
 
         let events = vec![EventPage {
-            sequence: 1,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(1)),
             created_at: None,
             payload: None,
         }];
@@ -295,7 +297,7 @@ mod grpc_tests {
 
     fn make_test_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             created_at: None,
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: type_url.to_string(),
@@ -374,9 +376,9 @@ mod grpc_tests {
         let result = upcaster.upcast("test", events).await.unwrap();
 
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].sequence, 5);
-        assert_eq!(result[1].sequence, 6);
-        assert_eq!(result[2].sequence, 7);
+        assert_eq!(result[0].sequence_num(), 5);
+        assert_eq!(result[1].sequence_num(), 6);
+        assert_eq!(result[2].sequence_num(), 7);
     }
 
     #[tokio::test]

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use crate::error::Result;
 use crate::proto::{
     CommandBook, CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query,
-    SagaResponse, SpeculateAggregateRequest, SpeculatePmRequest, SpeculateProjectorRequest,
+    SagaResponse, SpeculateCommandHandlerRequest, SpeculatePmRequest, SpeculateProjectorRequest,
     SpeculateSagaRequest,
 };
 
@@ -30,7 +30,10 @@ pub trait GatewayClient: Send + Sync {
 #[async_trait]
 pub trait SpeculativeClient: Send + Sync {
     /// Execute a command speculatively (no persistence).
-    async fn aggregate(&self, request: SpeculateAggregateRequest) -> Result<CommandResponse>;
+    async fn command_handler(
+        &self,
+        request: SpeculateCommandHandlerRequest,
+    ) -> Result<CommandResponse>;
 
     /// Speculatively execute a projector against events.
     async fn projector(&self, request: SpeculateProjectorRequest) -> Result<Projection>;

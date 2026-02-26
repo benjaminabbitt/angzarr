@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
-from angzarr_client import Aggregate, handles, now
+from angzarr_client import CommandHandler, handles, now
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.examples import table_pb2 as table_proto
@@ -41,7 +41,7 @@ class _TableState:
     status: str = ""
 
 
-class Table(Aggregate[_TableState]):
+class Table(CommandHandler[_TableState]):
     """Table aggregate with event sourcing."""
 
     domain = "table"

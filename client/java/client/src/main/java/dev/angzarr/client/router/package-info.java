@@ -1,12 +1,12 @@
 /**
- * Unified router pattern for aggregates, sagas, process managers, and projectors.
+ * Unified router pattern for command handlers, sagas, process managers, and projectors.
  *
  * <h2>Overview</h2>
  *
  * <p>Two router categories based on domain cardinality:
  *
  * <ul>
- *   <li><strong>Single-domain routers</strong>: {@link AggregateRouter} and {@link SagaRouter}
+ *   <li><strong>Single-domain routers</strong>: {@link CommandHandlerRouter} and {@link SagaRouter}
  *       take their domain at construction time.</li>
  *   <li><strong>Multi-domain routers</strong>: {@link ProcessManagerRouter} and
  *       {@link ProjectorRouter} use fluent {@code .domain()} registration.</li>
@@ -17,7 +17,7 @@
  * <p>Each component type has a corresponding handler interface:
  *
  * <ul>
- *   <li>{@link AggregateDomainHandler} - commands -> events, with state</li>
+ *   <li>{@link CommandHandlerDomainHandler} - commands -> events, with state</li>
  *   <li>{@link SagaDomainHandler} - events -> commands, stateless</li>
  *   <li>{@link ProcessManagerDomainHandler} - events -> commands + PM events, with shared state</li>
  *   <li>{@link ProjectorDomainHandler} - events -> external output</li>
@@ -25,9 +25,9 @@
  *
  * <h2>Usage Examples</h2>
  *
- * <h3>Aggregate (single domain - domain in constructor)</h3>
+ * <h3>Command Handler (single domain - domain in constructor)</h3>
  * <pre>{@code
- * AggregateRouter<PlayerState> router = new AggregateRouter<>(
+ * CommandHandlerRouter<PlayerState> router = new CommandHandlerRouter<>(
  *     "player", "player", new PlayerHandler());
  * }</pre>
  *
@@ -65,7 +65,7 @@
  *   <li>{@code dispatch()} - execute with fetched destination state</li>
  * </ol>
  *
- * @see AggregateRouter
+ * @see CommandHandlerRouter
  * @see SagaRouter
  * @see ProcessManagerRouter
  * @see ProjectorRouter

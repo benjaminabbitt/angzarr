@@ -123,7 +123,7 @@ mod sequence_tests {
     #[test]
     fn test_get_sequence() {
         let event = EventPage {
-            sequence: 42,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(42)),
             payload: None,
             created_at: None,
         };
@@ -133,7 +133,7 @@ mod sequence_tests {
     #[test]
     fn test_get_sequence_zero() {
         let event = EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             payload: None,
             created_at: None,
         };
@@ -199,7 +199,7 @@ mod mutation_tests {
     fn test_build_event_mutations() {
         use crate::proto::event_page;
         let event = EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
                 value: vec![1, 2, 3],

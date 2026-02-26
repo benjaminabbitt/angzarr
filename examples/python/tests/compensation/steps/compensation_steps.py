@@ -13,7 +13,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr_client import (
-    Aggregate,
+    CommandHandler,
     CommandRejectedError,
     CommandRouter,
     ProcessManager,
@@ -76,8 +76,8 @@ class OrderWorkflowState:
 # ============================================================================
 
 
-class TestPlayerAggregate(Aggregate[PlayerState]):
-    """Test player aggregate with @rejected handlers."""
+class TestPlayerAggregate(CommandHandler[PlayerState]):
+    """Test player command handler with @rejected handlers."""
 
     domain = "player"
 
@@ -92,8 +92,8 @@ class TestPlayerAggregate(Aggregate[PlayerState]):
             state.reserved_amount = 0
 
 
-class TestPlayerWithRejectionHandler(Aggregate[PlayerState]):
-    """Player aggregate with custom @rejected handler."""
+class TestPlayerWithRejectionHandler(CommandHandler[PlayerState]):
+    """Player command handler with custom @rejected handler."""
 
     domain = "player"
 

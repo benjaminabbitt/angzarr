@@ -114,19 +114,32 @@ When the aggregate coordinator receives a fact event:
 The sequence field uses a `oneof` to distinguish:
 
 ```protobuf
+message Cover {
+  string domain = 2;
+  UUID root = 1;
+  string correlation_id = 3;  // Workflow correlation
+  Edition edition = 4;
+  string external_id = 5;     // Idempotency key for fact events - propagates system-wide
+}
+
 message EventPage {
   oneof sequence_type {
-    uint64 sequence = 1;           // Normal: position in stream
-    FactSequence fact = 2;         // Fact: external reality marker
+    uint32 sequence = 1;           // Normal: position in stream
+    FactSequence fact = 5;         // Fact: external reality marker
   }
   // ... rest of event
 }
 
 message FactSequence {
-  string external_id = 1;          // Idempotency key (e.g., Stripe payment ID)
-  string source = 2;               // Origin system identifier
+  string source = 1;               // Origin system identifier (e.g., "stripe", "fedex")
+  string description = 2;          // Human-readable description (optional)
 }
 ```
+
+**Key design:** The `external_id` lives on `Cover`, not `FactSequence`. This ensures:
+- Idempotency key propagates through the entire system (sagas, PMs, projectors)
+- Consistent deduplication at every coordinator
+- Full traceability from external system to all downstream effects
 
 ### Flow Comparison
 
@@ -140,9 +153,55 @@ Aggregate:     Validate → Accept/Reject → Emit PaymentRecorded
 **Angzarr fact flow:**
 ```
 Saga receives: OrderCompleted
-Saga emits:    PaymentRecorded event (fact={external_id: "pi_xxx"})
-Aggregate:     Idempotency check → Append → Update state
+Saga emits:    PaymentRecorded event
+               - Cover.external_id = "pi_xxx" (Stripe payment ID)
+               - EventPage.fact = { source: "stripe" }
+Coordinator:   Check external_id → Assign sequence → Append → Publish
+               (external_id propagates to downstream sagas/projectors)
 ```
+
+### Fact Processing Pipeline
+
+The coordinator handles fact events through a configurable pipeline:
+
+```
+Fact Event arrives (with FactSequence marker)
+        ↓
+Check idempotency (Cover.external_id)
+        ↓
+[If route_facts_to_aggregate = true]  ←── Default: true
+        ↓
+Route to aggregate for state update
+        ↓
+Aggregate returns event (still has FactSequence)
+        ↓
+Coordinator assigns real sequence number
+        ↓
+Persist event (FactSequence replaced with sequence)
+        ↓
+Publish event (propagates with valid sequence)
+```
+
+**Key behavior:** The `FactSequence` marker is **eliminated at persistence time**. When the aggregate returns events, the coordinator:
+
+1. Takes the next available sequence number for the aggregate root
+2. Replaces `EventPage.fact` with `EventPage.sequence`
+3. Persists and publishes the event with a valid sequence
+
+This means downstream consumers (sagas, projectors, process managers) always receive events with proper sequence numbers. The `FactSequence` is purely an ingestion-time marker.
+
+#### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `route_facts_to_aggregate` | `true` | When true, fact events are routed to the aggregate for state updates before persistence. When false, facts are persisted directly without aggregate involvement. |
+
+Setting `route_facts_to_aggregate = true` (the default) allows aggregates to:
+- Update their internal state based on the fact
+- Emit additional events in response to the fact
+- Maintain consistency with their domain model
+
+Setting it to `false` is useful for pure append-only fact logging where aggregate state isn't needed.
 
 ### Benefits
 
@@ -202,20 +261,30 @@ fn execute(&self, event: OrderCompleted, dest: &EventBook) -> CommandBook {
 
 // Angzarr: emit fact event
 fn execute(&self, event: OrderCompleted, dest: &EventBook) -> EventBook {
-    EventBook::fact(
-        PaymentRecorded { order_id: event.order_id, amount: event.total },
-        FactSequence {
-            external_id: event.payment_id,  // Stripe ID for idempotency
-            source: "stripe",
-        },
-    )
+    EventBook {
+        cover: Some(Cover {
+            domain: "order".into(),
+            root: event.order_id.into(),
+            external_id: event.payment_id.clone(),  // Stripe ID for idempotency
+            ..Default::default()
+        }),
+        pages: vec![EventPage::fact(
+            PaymentRecorded { order_id: event.order_id, amount: event.total },
+            FactSequence {
+                source: "stripe".into(),
+                description: "Payment confirmed by Stripe webhook".into(),
+            },
+        )],
+        ..Default::default()
+    }
 }
 ```
 
 The aggregate coordinator handles fact events differently:
-- Checks idempotency via `external_id`
+- Checks idempotency via `Cover.external_id`
 - Skips business validation (fact already happened)
 - Appends directly to event stream
+- Propagates `external_id` to all downstream events
 
 ---
 

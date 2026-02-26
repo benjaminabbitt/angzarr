@@ -39,6 +39,7 @@ pub trait DestinationFetcher: Send + Sync {
                 divergences: vec![],
             }),
             correlation_id: String::new(),
+            external_id: String::new(),
         };
         self.fetch(&cover).await
     }

@@ -80,6 +80,7 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
                 root: self.root.map(uuid_to_proto),
                 correlation_id,
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence,
@@ -182,6 +183,7 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
                 root: self.root.map(uuid_to_proto),
                 correlation_id: self.correlation_id.clone().unwrap_or_default(),
                 edition: self.edition.clone().map(Edition::from),
+                external_id: String::new(),
             }),
             selection: self.selection.clone(),
         }

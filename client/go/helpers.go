@@ -231,9 +231,9 @@ func NewEventBook(cover *pb.Cover, seq uint32, event *anypb.Any) *pb.EventBook {
 		Cover: cover,
 		Pages: []*pb.EventPage{
 			{
-				Sequence:  seq,
-				Payload:   &pb.EventPage_Event{Event: event},
-				CreatedAt: timestamppb.Now(),
+				SequenceType: &pb.EventPage_Sequence{Sequence: seq},
+				Payload:      &pb.EventPage_Event{Event: event},
+				CreatedAt:    timestamppb.Now(),
 			},
 		},
 	}
@@ -246,9 +246,9 @@ func NewEventBookMulti(cover *pb.Cover, startSeq uint32, events ...*anypb.Any) *
 	now := timestamppb.Now()
 	for i, event := range events {
 		pages[i] = &pb.EventPage{
-			Sequence:  startSeq + uint32(i),
-			Payload:   &pb.EventPage_Event{Event: event},
-			CreatedAt: now,
+			SequenceType: &pb.EventPage_Sequence{Sequence: startSeq + uint32(i)},
+			Payload:      &pb.EventPage_Event{Event: event},
+			CreatedAt:    now,
 		}
 	}
 	return &pb.EventBook{

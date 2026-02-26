@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let protos: Vec<String> = vec![
         format!("{}/angzarr/types.proto", proto_root),
-        format!("{}/angzarr/aggregate.proto", proto_root),
+        format!("{}/angzarr/command_handler.proto", proto_root),
         format!("{}/angzarr/projector.proto", proto_root),
         format!("{}/angzarr/saga.proto", proto_root),
         format!("{}/angzarr/process_manager.proto", proto_root),

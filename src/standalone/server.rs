@@ -16,11 +16,11 @@ use tonic::{Request, Response, Status};
 use tracing::error;
 
 use crate::config::ResourceLimits;
-use crate::proto::aggregate_coordinator_service_server::AggregateCoordinatorService;
+use crate::proto::command_handler_coordinator_service_server::CommandHandlerCoordinatorService;
 use crate::proto::event_query_service_server::EventQueryService as EventQueryTrait;
 use crate::proto::{
-    AggregateRoot, BusinessResponse, CommandBook, CommandResponse, EventBook, Query,
-    SpeculateAggregateRequest, SyncCommandBook, Uuid as ProtoUuid,
+    AggregateRoot, BusinessResponse, CommandBook, CommandRequest, CommandResponse, EventBook,
+    EventRequest, FactInjectionResponse, Query, SpeculateCommandHandlerRequest, Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
@@ -75,26 +75,15 @@ impl StandaloneAggregateService {
 }
 
 #[tonic::async_trait]
-impl AggregateCoordinatorService for StandaloneAggregateService {
-    async fn handle(
+impl CommandHandlerCoordinatorService for StandaloneAggregateService {
+    async fn handle_command(
         &self,
-        request: Request<CommandBook>,
-    ) -> Result<Response<CommandResponse>, Status> {
-        let command = request.into_inner();
-        self.validate_domain(&command)?;
-        validation::validate_command_book(&command, &self.limits)?;
-        let response = self.router.execute(command).await?;
-        Ok(Response::new(response))
-    }
-
-    async fn handle_sync(
-        &self,
-        request: Request<SyncCommandBook>,
+        request: Request<CommandRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_cmd = request.into_inner();
         let command = sync_cmd
             .command
-            .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
+            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
         self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
         // Standalone mode doesn't differentiate sync modes - all execution is synchronous
@@ -104,11 +93,11 @@ impl AggregateCoordinatorService for StandaloneAggregateService {
 
     async fn handle_sync_speculative(
         &self,
-        request: Request<SpeculateAggregateRequest>,
+        request: Request<SpeculateCommandHandlerRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let speculate_req = request.into_inner();
         let command = speculate_req.command.ok_or_else(|| {
-            Status::invalid_argument("SpeculateAggregateRequest must have a command")
+            Status::invalid_argument("SpeculateCommandHandlerRequest must have a command")
         })?;
         self.validate_domain(&command)?;
 
@@ -135,13 +124,50 @@ impl AggregateCoordinatorService for StandaloneAggregateService {
 
     async fn handle_compensation(
         &self,
-        request: Request<CommandBook>,
+        request: Request<CommandRequest>,
     ) -> Result<Response<BusinessResponse>, Status> {
-        let command = request.into_inner();
+        let sync_cmd = request.into_inner();
+        let command = sync_cmd
+            .command
+            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
         self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
         let response = self.router.execute_compensation(command).await?;
         Ok(Response::new(response))
+    }
+
+    async fn handle_event(
+        &self,
+        request: Request<EventRequest>,
+    ) -> Result<Response<FactInjectionResponse>, Status> {
+        let sync_event_book = request.into_inner();
+        let fact_events = sync_event_book
+            .events
+            .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
+
+        // Validate domain matches
+        let fact_domain = fact_events
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+        if fact_domain != self.domain {
+            return Err(Status::invalid_argument(format!(
+                "Event domain '{}' does not match service domain '{}'",
+                fact_domain, self.domain
+            )));
+        }
+
+        let fact_response = self
+            .router
+            .inject_fact(fact_events, sync_event_book.route_to_handler)
+            .await?;
+
+        Ok(Response::new(FactInjectionResponse {
+            events: Some(fact_response.events),
+            already_processed: fact_response.already_processed,
+            projections: fact_response.projections,
+        }))
     }
 }
 

@@ -114,7 +114,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
                             );
 
                             new_pages.push(EventPage {
-                                sequence: page.sequence,
+                                sequence_type: page.sequence_type.clone(),
                                 created_at: page.created_at,
                                 payload: Some(Payload::External(reference)),
                             });
@@ -155,7 +155,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
                         match prost_types::Any::decode(payload_bytes.as_slice()) {
                             Ok(event) => {
                                 new_pages.push(EventPage {
-                                    sequence: page.sequence,
+                                    sequence_type: page.sequence_type.clone(),
                                     created_at: page.created_at,
                                     payload: Some(Payload::Event(event)),
                                 });
@@ -261,7 +261,7 @@ mod tests {
         EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence: 0,
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: "test.Event".to_string(),

@@ -111,7 +111,7 @@ async fn start_upcaster_service() -> (String, Arc<TestUpcasterService>) {
 
 fn make_v1_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         created_at: None,
         payload: Some(event_page::Payload::Event(prost_types::Any {
             type_url: type_url.to_string(),
@@ -190,9 +190,9 @@ async fn test_upcaster_integration_preserves_ordering() {
     let result = upcaster.upcast("order", stored_events).await.unwrap();
 
     assert_eq!(result.len(), 3);
-    assert_eq!(result[0].sequence, 10);
-    assert_eq!(result[1].sequence, 15);
-    assert_eq!(result[2].sequence, 20);
+    assert_eq!(result[0].sequence_num(), 10);
+    assert_eq!(result[1].sequence_num(), 15);
+    assert_eq!(result[2].sequence_num(), 20);
 }
 
 /// Test multiple sequential upcast calls (simulating multiple aggregate loads).
@@ -242,7 +242,7 @@ async fn test_upcaster_integration_events_without_payload() {
     let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
         created_at: None,
         payload: None, // No payload
     }];
@@ -278,6 +278,6 @@ async fn test_upcaster_integration_large_batch() {
             _ => panic!("Expected event payload"),
         };
         assert_eq!(event.type_url, "example.OrderCreatedV2");
-        assert_eq!(page.sequence, i as u32);
+        assert_eq!(page.sequence_num(), i as u32);
     }
 }

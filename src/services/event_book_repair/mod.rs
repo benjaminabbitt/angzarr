@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::proto::{
     event_query_service_client::EventQueryServiceClient, EventBook, Query, Uuid as ProtoUuid,
 };
+use crate::proto_ext::EventPageExt;
 
 /// Result type for repair operations.
 pub type Result<T> = std::result::Result<T, RepairError>;
@@ -67,7 +68,7 @@ pub fn is_complete(book: &EventBook) -> bool {
 
     // Check if first event is sequence 0
     if let Some(first_page) = book.pages.first() {
-        return first_page.sequence == 0;
+        return first_page.sequence_num() == 0;
     }
 
     false
@@ -98,6 +99,7 @@ pub async fn fetch_complete(
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None, // Full query - all events
     };

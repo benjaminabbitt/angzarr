@@ -1,3 +1,6 @@
+// tonic::Status is 176 bytes - acceptable for gRPC error handling
+#![allow(clippy::result_large_err)]
+
 //! Unified router for aggregates, sagas, process managers, and projectors.
 //!
 //! # Overview

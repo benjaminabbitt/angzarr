@@ -1,11 +1,11 @@
 //! Tests for gRPC communication over Unix Domain Sockets (UDS).
 
 use crate::common::*;
-use angzarr::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
-use angzarr::proto::aggregate_coordinator_service_server::{
-    AggregateCoordinatorService, AggregateCoordinatorServiceServer,
+use angzarr::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
+use angzarr::proto::command_handler_coordinator_service_server::{
+    CommandHandlerCoordinatorService, CommandHandlerCoordinatorServiceServer,
 };
-use angzarr::proto::{command_page, event_page, CommandResponse, SyncCommandBook};
+use angzarr::proto::{command_page, event_page, CommandRequest, CommandResponse, EventRequest};
 use angzarr::transport::{connect_to_address, prepare_uds_socket};
 use tokio::net::UnixListener;
 use tokio_stream::wrappers::UnixListenerStream;
@@ -26,42 +26,10 @@ impl MockAggregateService {
 }
 
 #[tonic::async_trait]
-impl AggregateCoordinatorService for MockAggregateService {
-    async fn handle(
+impl CommandHandlerCoordinatorService for MockAggregateService {
+    async fn handle_command(
         &self,
-        request: Request<CommandBook>,
-    ) -> Result<Response<CommandResponse>, Status> {
-        self.call_count.fetch_add(1, Ordering::SeqCst);
-        let cmd = request.into_inner();
-
-        // Echo command as event
-        let event = cmd.pages.first().and_then(|p| {
-            if let Some(command_page::Payload::Command(c)) = &p.payload {
-                Some(c.clone())
-            } else {
-                None
-            }
-        });
-        let events = EventBook {
-            cover: cmd.cover,
-            pages: vec![EventPage {
-                sequence: 0,
-                payload: event.map(event_page::Payload::Event),
-                created_at: None,
-            }],
-            snapshot: None,
-            ..Default::default()
-        };
-
-        Ok(Response::new(CommandResponse {
-            events: Some(events),
-            projections: Vec::new(),
-        }))
-    }
-
-    async fn handle_sync(
-        &self,
-        request: Request<SyncCommandBook>,
+        request: Request<CommandRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_cmd = request.into_inner();
         let cmd = sync_cmd.command.unwrap_or_default();
@@ -78,7 +46,7 @@ impl AggregateCoordinatorService for MockAggregateService {
         let events = EventBook {
             cover: cmd.cover,
             pages: vec![EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
             }],
@@ -92,21 +60,57 @@ impl AggregateCoordinatorService for MockAggregateService {
         }))
     }
 
+    async fn handle_event(
+        &self,
+        request: Request<EventRequest>,
+    ) -> Result<Response<angzarr::proto::FactInjectionResponse>, Status> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        let sync_event_book = request.into_inner();
+        let facts = sync_event_book.events.unwrap_or_default();
+
+        // Return facts with sequence assigned
+        let events = EventBook {
+            cover: facts.cover,
+            pages: facts
+                .pages
+                .into_iter()
+                .enumerate()
+                .map(|(i, mut p)| {
+                    p.sequence_type = Some(event_page::SequenceType::Sequence(i as u32));
+                    p
+                })
+                .collect(),
+            snapshot: None,
+            ..Default::default()
+        };
+
+        Ok(Response::new(angzarr::proto::FactInjectionResponse {
+            events: Some(events),
+            already_processed: false,
+            projections: Vec::new(),
+        }))
+    }
+
     async fn handle_sync_speculative(
         &self,
-        request: Request<angzarr::proto::SpeculateAggregateRequest>,
+        request: Request<angzarr::proto::SpeculateCommandHandlerRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let speculate = request.into_inner();
         let cmd = speculate.command.unwrap_or_default();
-        self.handle(Request::new(cmd)).await
+        self.handle_command(Request::new(CommandRequest {
+            command: Some(cmd),
+            sync_mode: 0,
+        }))
+        .await
     }
 
     async fn handle_compensation(
         &self,
-        request: Request<CommandBook>,
+        request: Request<CommandRequest>,
     ) -> Result<Response<angzarr::proto::BusinessResponse>, Status> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
-        let cmd = request.into_inner();
+        let sync_cmd = request.into_inner();
+        let cmd = sync_cmd.command.unwrap_or_default();
 
         // Echo command as compensation event
         let event = cmd.pages.first().and_then(|p| {
@@ -119,7 +123,7 @@ impl AggregateCoordinatorService for MockAggregateService {
         let events = EventBook {
             cover: cmd.cover,
             pages: vec![EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
             }],
@@ -144,7 +148,8 @@ async fn test_grpc_server_and_client_over_uds() {
     let uds_stream = UnixListenerStream::new(uds);
 
     let service = MockAggregateService::new();
-    let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
+    let server =
+        Server::builder().add_service(CommandHandlerCoordinatorServiceServer::new(service));
 
     // Run server in background
     let server_task = tokio::spawn(async move {
@@ -158,11 +163,18 @@ async fn test_grpc_server_and_client_over_uds() {
     let channel = connect_to_address(socket_path.to_str().unwrap())
         .await
         .expect("Failed to connect");
-    let mut client = AggregateCoordinatorServiceClient::new(channel);
+    let mut client = CommandHandlerCoordinatorServiceClient::new(channel);
 
     // Execute command
     let command = create_test_command("orders", Uuid::new_v4(), b"test-data", 0);
-    let response = client.handle(command).await.expect("RPC failed");
+    let sync_command = CommandRequest {
+        command: Some(command),
+        sync_mode: 0,
+    };
+    let response = client
+        .handle_command(sync_command)
+        .await
+        .expect("RPC failed");
     let sync_resp = response.into_inner();
 
     assert!(sync_resp.events.is_some(), "Should return events");
@@ -186,7 +198,8 @@ async fn test_multiple_concurrent_uds_requests() {
     let uds_stream = UnixListenerStream::new(uds);
 
     let service = MockAggregateService::new();
-    let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
+    let server =
+        Server::builder().add_service(CommandHandlerCoordinatorServiceServer::new(service));
 
     let server_task = tokio::spawn(async move {
         server.serve_with_incoming(uds_stream).await.unwrap();
@@ -202,7 +215,7 @@ async fn test_multiple_concurrent_uds_requests() {
             let channel = connect_to_address(path.to_str().unwrap())
                 .await
                 .expect("Failed to connect");
-            let mut client = AggregateCoordinatorServiceClient::new(channel);
+            let mut client = CommandHandlerCoordinatorServiceClient::new(channel);
 
             let command = create_test_command(
                 "orders",
@@ -210,7 +223,14 @@ async fn test_multiple_concurrent_uds_requests() {
                 format!("request-{}", i).as_bytes(),
                 0,
             );
-            client.handle(command).await.expect("RPC failed")
+            let sync_command = CommandRequest {
+                command: Some(command),
+                sync_mode: 0,
+            };
+            client
+                .handle_command(sync_command)
+                .await
+                .expect("RPC failed")
         });
         handles.push(handle);
     }
@@ -237,7 +257,8 @@ async fn test_uds_socket_cleanup_on_server_restart() {
         let uds_stream = UnixListenerStream::new(uds);
 
         let service = MockAggregateService::new();
-        let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
+        let server =
+            Server::builder().add_service(CommandHandlerCoordinatorServiceServer::new(service));
 
         let server_task = tokio::spawn(async move {
             server.serve_with_incoming(uds_stream).await.unwrap();
@@ -253,7 +274,8 @@ async fn test_uds_socket_cleanup_on_server_restart() {
     let uds_stream = UnixListenerStream::new(uds);
 
     let service = MockAggregateService::new();
-    let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
+    let server =
+        Server::builder().add_service(CommandHandlerCoordinatorServiceServer::new(service));
 
     let server_task = tokio::spawn(async move {
         server.serve_with_incoming(uds_stream).await.unwrap();
@@ -265,11 +287,15 @@ async fn test_uds_socket_cleanup_on_server_restart() {
     let channel = connect_to_address(socket_path.to_str().unwrap())
         .await
         .expect("Failed to connect to restarted server");
-    let mut client = AggregateCoordinatorServiceClient::new(channel);
+    let mut client = CommandHandlerCoordinatorServiceClient::new(channel);
 
     let command = create_test_command("orders", Uuid::new_v4(), b"after-restart", 0);
+    let sync_command = CommandRequest {
+        command: Some(command),
+        sync_mode: 0,
+    };
     let response = client
-        .handle(command)
+        .handle_command(sync_command)
         .await
         .expect("RPC to restarted server failed");
     assert!(response.into_inner().events.is_some());

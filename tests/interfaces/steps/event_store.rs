@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use angzarr::proto::{event_page, EventBook, EventPage};
+use angzarr::proto_ext::EventPageExt;
 use angzarr::storage::EventStore;
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -67,7 +68,7 @@ impl EventStoreWorld {
 
     fn make_event_page(&self, seq: u32, type_url: &str, payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
@@ -426,9 +427,11 @@ async fn then_aggregate_has_events(world: &mut EventStoreWorld, count: u32) {
 fn then_first_event_sequence(world: &mut EventStoreWorld, seq: u32) {
     let event = world.last_events.first().expect("No events found");
     assert_eq!(
-        event.sequence, seq,
+        event.sequence_num(),
+        seq,
         "Expected sequence {}, got {}",
-        seq, event.sequence
+        seq,
+        event.sequence_num()
     );
 }
 
@@ -436,9 +439,11 @@ fn then_first_event_sequence(world: &mut EventStoreWorld, seq: u32) {
 fn then_last_event_sequence(world: &mut EventStoreWorld, seq: u32) {
     let event = world.last_events.last().expect("No events found");
     assert_eq!(
-        event.sequence, seq,
+        event.sequence_num(),
+        seq,
         "Expected sequence {}, got {}",
-        seq, event.sequence
+        seq,
+        event.sequence_num()
     );
 }
 
@@ -446,9 +451,11 @@ fn then_last_event_sequence(world: &mut EventStoreWorld, seq: u32) {
 fn then_consecutive_sequences_from_zero(world: &mut EventStoreWorld) {
     for (i, event) in world.last_events.iter().enumerate() {
         assert_eq!(
-            event.sequence, i as u32,
+            event.sequence_num(),
+            i as u32,
             "Expected sequence {}, got {}",
-            i, event.sequence
+            i,
+            event.sequence_num()
         );
     }
 }
@@ -483,7 +490,7 @@ fn then_receive_events(world: &mut EventStoreWorld, count: u32) {
 fn then_events_ordered(world: &mut EventStoreWorld) {
     let mut prev_seq: Option<u32> = None;
     for event in &world.last_events {
-        let seq = event.sequence;
+        let seq = event.sequence_num();
         if let Some(prev) = prev_seq {
             assert!(seq > prev, "Events not ordered: {} after {}", seq, prev);
         }
@@ -876,7 +883,7 @@ async fn when_add_event_with_known_timestamp(world: &mut EventStoreWorld) {
     world.stored_timestamp = Some(timestamp);
 
     let page = EventPage {
-        sequence: state.event_count,
+        sequence_type: Some(event_page::SequenceType::Sequence(state.event_count)),
         created_at: Some(timestamp),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "type.test/TimestampEvent".to_string(),

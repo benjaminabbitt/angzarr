@@ -4,12 +4,12 @@ from importlib.metadata import version as _version
 
 __version__ = _version("angzarr-client")
 
-from .aggregate import Aggregate, applies, handles
-from .aggregate_handler import AggregateHandler, run_aggregate_server
+from .aggregate import CommandHandler, applies, handles
+from .aggregate_handler import CommandHandlerGrpc, run_command_handler_server
 from .builder import CommandBuilder, QueryBuilder
 from .client import (
-    AggregateClient,
     Client,
+    CommandHandlerClient,
     DomainClient,
     QueryClient,
     SpeculativeClient,
@@ -33,7 +33,7 @@ from .errors import (
 )
 from .event_packing import new_event_book, new_event_book_multi, pack_event, pack_events
 from .handler_protocols import (
-    AggregateDomainHandler,
+    CommandHandlerDomainHandler,
     ProcessManagerDomainHandler,
     ProcessManagerResponse,
     ProjectorDomainHandler,
@@ -84,7 +84,7 @@ from .projector_handler import (
 from .router import (
     ERRMSG_NO_COMMAND_PAGES,
     ERRMSG_UNKNOWN_COMMAND,
-    AggregateRouter,
+    CommandHandlerRouter,
     ProcessManagerRouter,
     ProjectorRouter,
     SagaRouter,
@@ -136,7 +136,7 @@ from .wrappers import (
 
 __all__ = [
     # Clients
-    "AggregateClient",
+    "CommandHandlerClient",
     "QueryClient",
     "SpeculativeClient",
     "DomainClient",
@@ -191,8 +191,8 @@ __all__ = [
     "run_server",
     "cleanup_socket",
     # Handlers
-    "AggregateHandler",
-    "run_aggregate_server",
+    "CommandHandlerGrpc",
+    "run_command_handler_server",
     "SagaHandler",
     "run_saga_server",
     "PrepareFunc",
@@ -235,7 +235,7 @@ __all__ = [
     "SnapshotLoader",
     "StateFactory",
     # Component base classes
-    "Aggregate",
+    "CommandHandler",
     "handles",
     "applies",
     "Saga",
@@ -254,12 +254,12 @@ __all__ = [
     "pm_delegate_to_framework",
     "pm_emit_compensation_events",
     # Unified Router (handler-protocol pattern)
-    "AggregateRouter",
+    "CommandHandlerRouter",
     "SagaRouter",
     "ProcessManagerRouter",
     "ProjectorRouter",
     # Handler Protocols
-    "AggregateDomainHandler",
+    "CommandHandlerDomainHandler",
     "SagaDomainHandler",
     "ProcessManagerDomainHandler",
     "ProjectorDomainHandler",

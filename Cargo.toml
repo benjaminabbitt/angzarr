@@ -288,6 +288,7 @@ rand = "0.9"
 name = "interfaces"
 path = "tests/interfaces/main.rs"
 harness = false
+required-features = ["test-utils"]
 
 [[test]]
 name = "storage_redis"

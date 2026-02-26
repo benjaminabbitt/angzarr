@@ -3,7 +3,7 @@
 This module provides:
 
 1. Protocol-based Routers (wrap handler objects):
-   - AggregateRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter
+   - CommandHandlerRouter, SagaRouter, ProcessManagerRouter, ProjectorRouter
    - Wrap handler protocol implementations
    - Provide subscriptions() and dispatch() methods
 
@@ -14,7 +14,7 @@ This module provides:
    - @rejected (for rejection/compensation handlers)
 
 Usage (Protocol-based):
-    router = AggregateRouter("player", "player", PlayerHandler())
+    router = CommandHandlerRouter("player", "player", PlayerHandler())
     router = SagaRouter("saga-order-fulfillment", "order", OrderHandler())
 
 Usage (OO with decorators):
@@ -38,14 +38,14 @@ from google.protobuf import any_pb2
 
 from .errors import CommandRejectedError
 from .handler_protocols import (
-    AggregateDomainHandler,
+    CommandHandlerDomainHandler,
     ProcessManagerDomainHandler,
     ProcessManagerResponse,
     ProjectorDomainHandler,
     SagaDomainHandler,
 )
 from .helpers import TYPE_URL_PREFIX
-from .proto.angzarr import aggregate_pb2 as aggregate
+from .proto.angzarr import command_handler_pb2 as command_handler
 from .proto.angzarr import process_manager_pb2 as pm
 from .proto.angzarr import projector_pb2 as projector
 from .proto.angzarr import saga_pb2 as saga
@@ -377,21 +377,21 @@ def projects(event_type: type):
 
 
 # ============================================================================
-# Protocol-based Routers (AggregateRouter, SagaRouter, etc.)
+# Protocol-based Routers (CommandHandlerRouter, SagaRouter, etc.)
 # ============================================================================
 
 
-class AggregateRouter(Generic[S]):
-    """Router for aggregate components (commands -> events, single domain).
+class CommandHandlerRouter(Generic[S]):
+    """Router for command handler components (commands -> events, single domain).
 
-    Wraps an AggregateDomainHandler and provides command dispatch with
+    Wraps a CommandHandlerDomainHandler and provides command dispatch with
     automatic state reconstruction and type-URL routing.
 
     Domain is set at construction time - no .domain() method exists,
     enforcing single-domain constraint.
 
     Example:
-        class PlayerHandler(AggregateDomainHandler[PlayerState]):
+        class PlayerHandler(CommandHandlerDomainHandler[PlayerState]):
             def command_types(self) -> list[str]:
                 return ["RegisterPlayer", "DepositFunds"]
 
@@ -401,7 +401,7 @@ class AggregateRouter(Generic[S]):
             def handle(self, cmd_book, payload, state, seq) -> EventBook:
                 # Dispatch by type_url...
 
-        router = AggregateRouter("player", "player", PlayerHandler())
+        router = CommandHandlerRouter("player", "player", PlayerHandler())
         response = router.dispatch(contextual_command)
     """
 
@@ -409,9 +409,9 @@ class AggregateRouter(Generic[S]):
         self,
         name: str,
         domain: str,
-        handler: AggregateDomainHandler[S],
+        handler: CommandHandlerDomainHandler[S],
     ) -> None:
-        """Create a new aggregate router.
+        """Create a new command handler router.
 
         Args:
             name: Router name (typically same as domain for aggregates).
@@ -448,7 +448,9 @@ class AggregateRouter(Generic[S]):
         """Rebuild state from events using the handler's state router."""
         return self._handler.state_router().with_event_book(events)
 
-    def dispatch(self, cmd: types.ContextualCommand) -> aggregate.BusinessResponse:
+    def dispatch(
+        self, cmd: types.ContextualCommand
+    ) -> command_handler.BusinessResponse:
         """Dispatch a ContextualCommand to the handler.
 
         Extracts command + prior events, rebuilds state, matches type_url,
@@ -493,13 +495,13 @@ class AggregateRouter(Generic[S]):
 
         # Execute handler
         events = self._handler.handle(command_book, command_any, state, seq)
-        return aggregate.BusinessResponse(events=events)
+        return command_handler.BusinessResponse(events=events)
 
     def _dispatch_rejection(
         self,
         notification: types.Notification,
         state: S,
-    ) -> aggregate.BusinessResponse:
+    ) -> command_handler.BusinessResponse:
         """Dispatch a rejection Notification to the handler's on_rejected."""
         # Unpack rejection details from notification payload
         rejection = types.RejectionNotification()
@@ -513,12 +515,12 @@ class AggregateRouter(Generic[S]):
         )
 
         if response.events is not None:
-            return aggregate.BusinessResponse(events=response.events)
+            return command_handler.BusinessResponse(events=response.events)
         elif response.notification is not None:
-            return aggregate.BusinessResponse(notification=response.notification)
+            return command_handler.BusinessResponse(notification=response.notification)
         else:
-            return aggregate.BusinessResponse(
-                revocation=aggregate.RevocationResponse(
+            return command_handler.BusinessResponse(
+                revocation=command_handler.RevocationResponse(
                     emit_system_revocation=True,
                     reason=f"Handler returned empty response for {domain}/{command_type_name}",
                 )

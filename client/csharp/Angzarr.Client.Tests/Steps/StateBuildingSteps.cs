@@ -959,6 +959,12 @@ public class StateBuildingSteps
     {
         // Language-specific behavior
     }
+
+    [Then(@"the built state should have (\d+) items")]
+    public void ThenTheBuiltStateShouldHaveItems(int count)
+    {
+        _state!.Items.Count.Should().Be(count);
+    }
 }
 
 /// <summary>

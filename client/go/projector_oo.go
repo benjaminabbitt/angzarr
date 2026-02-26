@@ -149,7 +149,7 @@ func (p *ProjectorBase) Handle(events *pb.EventBook) (*pb.Projection, error) {
 		}
 
 		// Extract sequence
-		lastSeq = page.Sequence
+		lastSeq = page.GetSequence()
 
 		typeURL := event.TypeUrl
 

@@ -10,7 +10,18 @@ use crate::proto::{
     RejectionNotification, RevocationResponse, SagaResponse,
 };
 
-/// client logic handler for a domain aggregate.
+/// Context for fact event handling.
+///
+/// Contains the fact events to record and the aggregate's prior events.
+#[derive(Debug, Clone)]
+pub struct FactContext {
+    /// The fact events to record (with FactSequence markers).
+    pub facts: EventBook,
+    /// Prior events for this aggregate root (for state reconstruction).
+    pub prior_events: Option<EventBook>,
+}
+
+/// Command handler for a domain aggregate.
 ///
 /// Implement this trait to handle commands for a specific domain.
 /// The handler receives a contextual command (command + prior events)
@@ -19,13 +30,13 @@ use crate::proto::{
 /// # Example
 ///
 /// ```ignore
-/// use angzarr::standalone::AggregateHandler;
+/// use angzarr::standalone::CommandHandler;
 /// use angzarr::proto::{ContextualCommand, EventBook};
 ///
 /// struct OrdersHandler;
 ///
 /// #[async_trait::async_trait]
-/// impl AggregateHandler for OrdersHandler {
+/// impl CommandHandler for OrdersHandler {
 ///     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, tonic::Status> {
 ///         // Rebuild state from prior events
 ///         let state = rebuild_state(&ctx.existing);
@@ -41,9 +52,48 @@ use crate::proto::{
 /// }
 /// ```
 #[async_trait]
-pub trait AggregateHandler: Send + Sync + 'static {
+pub trait CommandHandler: Send + Sync + 'static {
     /// Handle a contextual command and return new events.
     async fn handle(&self, command: ContextualCommand) -> Result<EventBook, Status>;
+
+    /// Handle fact events from external systems.
+    ///
+    /// Called when fact events (with FactSequence markers) are injected into
+    /// the aggregate. Facts represent external realities that cannot be rejected.
+    /// The aggregate should update its state to reflect these facts.
+    ///
+    /// The coordinator will:
+    /// 1. Check idempotency via `Cover.external_id`
+    /// 2. Call this method to let aggregate update state
+    /// 3. Assign real sequence numbers (replacing FactSequence markers)
+    /// 4. Persist and publish the events
+    ///
+    /// Return events to persist. The events SHOULD have FactSequence markers
+    /// (same as input) - the coordinator will replace them with real sequences.
+    ///
+    /// Default: Returns the input facts unchanged (pass-through).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// async fn handle_fact(&self, ctx: FactContext) -> Result<EventBook, Status> {
+    ///     // Rebuild state from prior events
+    ///     let state = rebuild_state(&ctx.prior_events);
+    ///
+    ///     // Process facts - update state, possibly emit additional events
+    ///     let mut events = ctx.facts.clone();
+    ///     for page in &ctx.facts.pages {
+    ///         // Update internal state based on fact
+    ///         // Optionally add derived events
+    ///     }
+    ///
+    ///     Ok(events)
+    /// }
+    /// ```
+    async fn handle_fact(&self, ctx: FactContext) -> Result<EventBook, Status> {
+        // Default: pass through facts unchanged
+        Ok(ctx.facts)
+    }
 
     /// Replay events to compute state for COMMUTATIVE merge detection.
     ///
@@ -118,7 +168,10 @@ pub trait AggregateHandler: Send + Sync + 'static {
             result: Some(crate::proto::business_response::Result::Revocation(
                 RevocationResponse {
                     emit_system_revocation: true,
-                    reason: format!("Aggregate has no custom compensation for {}", issuer_name),
+                    reason: format!(
+                        "CommandHandler has no custom compensation for {}",
+                        issuer_name
+                    ),
                     ..Default::default()
                 },
             )),

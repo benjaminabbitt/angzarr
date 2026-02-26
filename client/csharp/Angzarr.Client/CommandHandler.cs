@@ -6,7 +6,7 @@ using Type = System.Type;
 namespace Angzarr.Client;
 
 /// <summary>
-/// Base class for event-sourced aggregates using the OO pattern.
+/// Base class for event-sourced command handlers using the OO pattern.
 ///
 /// Subclasses must:
 /// - Override Domain property
@@ -15,7 +15,7 @@ namespace Angzarr.Client;
 /// - Decorate event appliers with [Applies(typeof(EventType))]
 /// - Optionally decorate rejection handlers with [Rejected("domain", "command")]
 /// </summary>
-public abstract class Aggregate<TState>
+public abstract class CommandHandler<TState>
     where TState : class
 {
     private Angzarr.EventBook _eventBook;
@@ -34,7 +34,7 @@ public abstract class Aggregate<TState>
         new();
 
     /// <summary>
-    /// The domain this aggregate belongs to.
+    /// The domain this command handler belongs to.
     /// </summary>
     public abstract string Domain { get; }
 
@@ -43,7 +43,7 @@ public abstract class Aggregate<TState>
     /// </summary>
     protected abstract TState CreateEmptyState();
 
-    protected Aggregate(Angzarr.EventBook? eventBook = null)
+    protected CommandHandler(Angzarr.EventBook? eventBook = null)
     {
         _eventBook = eventBook ?? new Angzarr.EventBook();
         EnsureDispatchTablesBuilt();
@@ -117,10 +117,10 @@ public abstract class Aggregate<TState>
     /// Handle a gRPC request.
     /// </summary>
     public static Angzarr.BusinessResponse Handle<T>(Angzarr.ContextualCommand request)
-        where T : Aggregate<TState>, new()
+        where T : CommandHandler<TState>, new()
     {
         var priorEvents = request.Events;
-        var agg = (T)Activator.CreateInstance(typeof(T), priorEvents)!;
+        var handler = (T)Activator.CreateInstance(typeof(T), priorEvents)!;
 
         if (request.Command.Pages.Count == 0)
             throw new InvalidArgumentError("No command pages");
@@ -131,11 +131,11 @@ public abstract class Aggregate<TState>
         if (commandAny.TypeUrl.EndsWith("Notification"))
         {
             var notification = commandAny.Unpack<Angzarr.Notification>();
-            return agg.HandleRevocation(notification);
+            return handler.HandleRevocation(notification);
         }
 
-        agg.Dispatch(commandAny);
-        return new Angzarr.BusinessResponse { Events = agg.EventBook() };
+        handler.Dispatch(commandAny);
+        return new Angzarr.BusinessResponse { Events = handler.EventBook() };
     }
 
     /// <summary>
@@ -197,7 +197,7 @@ public abstract class Aggregate<TState>
             {
                 EmitSystemRevocation = true,
                 Reason =
-                    $"Aggregate {Domain} has no custom compensation for {domain}/{commandSuffix}",
+                    $"CommandHandler {Domain} has no custom compensation for {domain}/{commandSuffix}",
             },
         };
     }
@@ -227,7 +227,7 @@ public abstract class Aggregate<TState>
     public TState State => GetState();
 
     /// <summary>
-    /// Check if this aggregate has prior events.
+    /// Check if this command handler has prior events.
     /// </summary>
     public bool Exists => _state != null || _eventBook.Pages.Count > 0;
 

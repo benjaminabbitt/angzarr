@@ -9,8 +9,10 @@ use std::path::PathBuf;
 use tonic::transport::Server;
 use tracing::info;
 
-use crate::handler::{AggregateHandler, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler};
-use crate::proto::aggregate_service_server::AggregateServiceServer;
+use crate::handler::{
+    CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler,
+};
+use crate::proto::command_handler_service_server::CommandHandlerServiceServer;
 use crate::proto::process_manager_service_server::ProcessManagerServiceServer;
 use crate::proto::projector_service_server::ProjectorServiceServer;
 use crate::proto::saga_service_server::SagaServiceServer;
@@ -66,7 +68,7 @@ impl ServerConfig {
     }
 }
 
-/// Run an aggregate service with the given router.
+/// Run a command handler service with the given router.
 ///
 /// Supports both TCP and Unix domain socket (UDS) transport.
 /// UDS is used when `UDS_BASE_PATH`, `SERVICE_NAME`, and `DOMAIN` env vars are set.
@@ -74,16 +76,16 @@ impl ServerConfig {
 /// # Example
 ///
 /// ```rust,ignore
-/// use angzarr_client::{run_aggregate_server, AggregateRouter};
+/// use angzarr_client::{run_command_handler_server, AggregateRouter};
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let router = AggregateRouter::new("player", "player", PlayerHandler::new());
 ///
-///     run_aggregate_server("player", 50001, router).await;
+///     run_command_handler_server("player", 50001, router).await;
 /// }
 /// ```
-pub async fn run_aggregate_server<S, H>(
+pub async fn run_command_handler_server<S, H>(
     domain: &str,
     default_port: u16,
     router: AggregateRouter<S, H>,
@@ -93,15 +95,15 @@ where
     H: AggregateDomainHandler<State = S> + 'static,
 {
     let config = ServerConfig::from_env(default_port);
-    let handler = AggregateHandler::new(router);
-    let service = AggregateServiceServer::new(handler);
+    let handler = CommandHandlerGrpc::new(router);
+    let service = CommandHandlerServiceServer::new(handler);
 
     if let Some(uds_path) = &config.uds_path {
         // UDS mode (standalone)
         info!(
             domain = domain,
             path = %uds_path.display(),
-            "Starting aggregate server (UDS)"
+            "Starting command handler server (UDS)"
         );
 
         // Remove existing socket file if present
@@ -121,7 +123,7 @@ where
         info!(
             domain = domain,
             port = config.port,
-            "Starting aggregate server"
+            "Starting command handler server"
         );
 
         Server::builder().add_service(service).serve(addr).await

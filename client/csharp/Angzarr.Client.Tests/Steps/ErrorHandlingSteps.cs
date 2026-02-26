@@ -795,6 +795,7 @@ public class ErrorHandlingSteps
     public void GivenTheSpeculativeServiceIsUnavailable()
     {
         _error = new ConnectionError("Speculative service unavailable");
+        _ctx["error"] = _error;
     }
 
     [Given(@"various error types")]
@@ -864,5 +865,25 @@ public class ErrorHandlingSteps
     public void ThenNoCrashShouldOccur()
     {
         // No exception thrown
+    }
+
+    [Given(@"the server aggregate is at sequence (\d+)")]
+    public void GivenTheServerAggregateIsAtSequence(int sequence)
+    {
+        _ctx["server_sequence"] = sequence;
+    }
+
+    [When(@"I execute a mock command at sequence (\d+)")]
+    public void WhenIExecuteAMockCommandAtSequence(int sequence)
+    {
+        var serverSeq = _ctx.ContainsKey("server_sequence") ? (int)_ctx["server_sequence"] : 0;
+        if (sequence != serverSeq)
+        {
+            _error = new GrpcError(
+                "Sequence mismatch: optimistic lock failure",
+                StatusCode.FailedPrecondition
+            );
+            _ctx["error"] = _error;
+        }
     }
 }

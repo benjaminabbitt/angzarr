@@ -52,6 +52,7 @@ mod tests {
                     String::new()
                 },
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence: 0,

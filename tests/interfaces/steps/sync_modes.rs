@@ -8,9 +8,10 @@ use angzarr::proto::{
     command_page, event_page, CommandBook, CommandPage, CommandResponse, ContextualCommand, Cover,
     EventBook, EventPage, MergeStrategy, Projection, SagaResponse, Uuid as ProtoUuid,
 };
+use angzarr::proto_ext::EventPageExt;
 use angzarr::standalone::{
-    AggregateHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder,
-    SagaConfig, SagaHandler,
+    CommandHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder, SagaConfig,
+    SagaHandler,
 };
 use async_trait::async_trait;
 use cucumber::{given, then, when, World};
@@ -109,11 +110,11 @@ impl SyncModeWorld {
     }
 }
 
-/// Simple test aggregate that echoes commands as events.
+/// Simple test command handler that echoes commands as events.
 struct EchoAggregate;
 
 #[async_trait]
-impl AggregateHandler for EchoAggregate {
+impl CommandHandler for EchoAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command_book = ctx
             .command
@@ -126,7 +127,7 @@ impl AggregateHandler for EchoAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         let event_pages: Vec<EventPage> = command_book
@@ -139,7 +140,7 @@ impl AggregateHandler for EchoAggregate {
                     _ => None,
                 };
                 EventPage {
-                    sequence: next_seq + i as u32,
+                    sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i as u32)),
                     payload: event.map(event_page::Payload::Event),
                     created_at: None,
                 }
@@ -155,7 +156,7 @@ impl AggregateHandler for EchoAggregate {
     }
 }
 
-/// Aggregate that produces N events per command.
+/// Command handler that produces N events per command.
 struct MultiEventAggregate {
     events_per_command: u32,
 }
@@ -167,7 +168,7 @@ impl MultiEventAggregate {
 }
 
 #[async_trait]
-impl AggregateHandler for MultiEventAggregate {
+impl CommandHandler for MultiEventAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command_book = ctx
             .command
@@ -180,12 +181,12 @@ impl AggregateHandler for MultiEventAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         let pages: Vec<EventPage> = (0..self.events_per_command)
             .map(|i| EventPage {
-                sequence: next_seq + i,
+                sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i)),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("test.Event{}", i),
                     value: vec![i as u8],
@@ -294,6 +295,7 @@ fn create_test_command(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence,
@@ -317,7 +319,7 @@ async fn given_sync_mode_environment(world: &mut SyncModeWorld) {
     world.runtime = Some(
         RuntimeBuilder::new()
             .with_sqlite_memory()
-            .register_aggregate("orders", EchoAggregate),
+            .register_command_handler("orders", EchoAggregate),
     );
     world.started_runtime = None;
     world.last_response = None;
@@ -460,7 +462,7 @@ async fn start_and_execute(world: &mut SyncModeWorld, domain: &str, event_count:
     // Build runtime with multi-event aggregate if needed
     let runtime = world.take_runtime();
     let runtime = if let Some(count) = event_count {
-        runtime.register_aggregate(domain, MultiEventAggregate::new(count))
+        runtime.register_command_handler(domain, MultiEventAggregate::new(count))
     } else {
         runtime
     };
@@ -516,7 +518,7 @@ async fn when_execute_multi_event_simple(world: &mut SyncModeWorld, count: u32) 
 async fn when_execute_domain_simple(world: &mut SyncModeWorld, domain: String) {
     // Register aggregate for the domain
     let runtime = world.take_runtime();
-    let runtime = runtime.register_aggregate(&domain, EchoAggregate);
+    let runtime = runtime.register_command_handler(&domain, EchoAggregate);
     world.set_runtime(runtime);
 
     start_and_execute(world, &domain, None).await;

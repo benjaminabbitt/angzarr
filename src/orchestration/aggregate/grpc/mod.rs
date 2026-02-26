@@ -14,8 +14,8 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
 use crate::proto::{
-    CommandBook, Cover, EventBook, MergeStrategy, Projection, Snapshot, SnapshotRetention,
-    SyncEventBook, Uuid as ProtoUuid,
+    CommandBook, Cover, EventBook, EventRequest, MergeStrategy, Projection, Snapshot,
+    SnapshotRetention, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
@@ -142,9 +142,10 @@ impl GrpcAggregateContext {
         let mut projections = Vec::new();
         for mut client in clients {
             let request = correlated_request(
-                SyncEventBook {
+                EventRequest {
                     events: Some(events.clone()),
                     sync_mode: sync_mode.into(),
+                    route_to_handler: false, // Projectors don't route to aggregates
                 },
                 correlation_id,
             );
@@ -243,6 +244,7 @@ impl AggregateContext for GrpcAggregateContext {
                     }),
                     correlation_id: correlation_id.to_string(),
                     edition: None,
+                    external_id: String::new(),
                 })
             });
             let events_to_persist = EventBook {
@@ -299,6 +301,7 @@ impl AggregateContext for GrpcAggregateContext {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
+                external_id: String::new(),
             })
         });
         Ok(EventBook {

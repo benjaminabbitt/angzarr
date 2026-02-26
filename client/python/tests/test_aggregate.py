@@ -1,9 +1,9 @@
-"""Tests for Aggregate ABC and @handles decorator."""
+"""Tests for CommandHandler ABC and @handles decorator."""
 
 import pytest
 from google.protobuf import any_pb2
 
-from angzarr_client import Aggregate, handles
+from angzarr_client import CommandHandler, handles
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import types_pb2 as types
 
@@ -67,8 +67,8 @@ class AggState:
 # =============================================================================
 
 
-class SampleAggregate(Aggregate[AggState]):
-    """Test aggregate for unit tests."""
+class SampleCommandHandler(CommandHandler[AggState]):
+    """Test command handler for unit tests."""
 
     domain = "test"
 
@@ -87,8 +87,8 @@ class SampleAggregate(Aggregate[AggState]):
         return FakeEvent(result=f"processed:{cmd.value}")
 
 
-class MultiEventAggregate(Aggregate[AggState]):
-    """Aggregate that returns multiple events."""
+class MultiEventCommandHandler(CommandHandler[AggState]):
+    """Command handler that returns multiple events."""
 
     domain = "multi"
 
@@ -113,7 +113,7 @@ class TestHandlesDecorator:
 
     def test_decorator_marks_handler(self):
         # Check the decorated method has the right attributes
-        method = SampleAggregate.do_something
+        method = SampleCommandHandler.do_something
         assert hasattr(method, "_is_handler")
         assert method._is_handler is True
         assert method._command_type == FakeCommand
@@ -140,20 +140,20 @@ class TestHandlesDecorator:
                 pass
 
     def test_decorator_preserves_function_name(self):
-        method = SampleAggregate.do_something
+        method = SampleCommandHandler.do_something
         assert method.__name__ == "do_something"
 
 
 # =============================================================================
-# Tests for Aggregate ABC
+# Tests for CommandHandler ABC
 # =============================================================================
 
 
-class TestAggregateInit:
-    """Test Aggregate initialization."""
+class TestCommandHandlerInit:
+    """Test CommandHandler initialization."""
 
     def test_init_without_event_book(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         eb = agg.event_book()
         assert len(eb.pages) == 0
 
@@ -162,7 +162,7 @@ class TestAggregateInit:
         event_any = any_pb2.Any(type_url="test.FakeEvent", value=b"prior")
         prior_events.pages.append(types.EventPage(event=event_any))
 
-        agg = SampleAggregate(prior_events)
+        agg = SampleCommandHandler(prior_events)
         # Access state to trigger rebuild
         state = agg._get_state()
         assert state.initialized is True
@@ -172,7 +172,7 @@ class TestAggregateInit:
         event_any = any_pb2.Any(type_url="test.FakeEvent", value=b"prior")
         prior_events.pages.append(types.EventPage(event=event_any))
 
-        agg = SampleAggregate(prior_events)
+        agg = SampleCommandHandler(prior_events)
         # Trigger rebuild
         agg._get_state()
 
@@ -180,11 +180,11 @@ class TestAggregateInit:
         assert len(agg.event_book().pages) == 0
 
 
-class TestAggregateDispatch:
-    """Test Aggregate command dispatch."""
+class TestCommandHandlerDispatch:
+    """Test CommandHandler command dispatch."""
 
     def test_dispatch_finds_handler(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         cmd_any = any_pb2.Any(type_url="test.FakeCommand", value=b"hello")
         agg.dispatch(cmd_any)
 
@@ -192,7 +192,7 @@ class TestAggregateDispatch:
         assert len(agg.event_book().pages) == 1
 
     def test_dispatch_unknown_command(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         cmd_any = any_pb2.Any(type_url="test.UnknownCommand", value=b"")
 
         with pytest.raises(ValueError, match="Unknown command"):
@@ -200,7 +200,7 @@ class TestAggregateDispatch:
 
     def test_handler_can_reject(self):
         # First call succeeds
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         cmd_any = any_pb2.Any(type_url="test.FakeCommand", value=b"first")
         agg.dispatch(cmd_any)
 
@@ -209,11 +209,11 @@ class TestAggregateDispatch:
             agg.dispatch(cmd_any)
 
 
-class TestAggregateMultiEvent:
-    """Test aggregate returning multiple events."""
+class TestCommandHandlerMultiEvent:
+    """Test command handler returning multiple events."""
 
     def test_multi_event_records_all(self):
-        agg = MultiEventAggregate()
+        agg = MultiEventCommandHandler()
         cmd_any = any_pb2.Any(type_url="test.FakeCommand", value=b"")
         agg.dispatch(cmd_any)
 
@@ -221,7 +221,7 @@ class TestAggregateMultiEvent:
         assert len(eb.pages) == 2
 
 
-class TestAggregateHandle:
+class TestCommandHandlerHandle:
     """Test classmethod handle() for gRPC integration."""
 
     def test_handle_creates_instance_and_dispatches(self):
@@ -238,7 +238,7 @@ class TestAggregateHandle:
             ),
         )
 
-        response = SampleAggregate.handle(request)
+        response = SampleCommandHandler.handle(request)
 
         assert len(response.events.pages) == 1
 
@@ -264,7 +264,7 @@ class TestAggregateHandle:
 
         # Should fail because state is already initialized
         with pytest.raises(CommandRejectedError, match="Already initialized"):
-            SampleAggregate.handle(request)
+            SampleCommandHandler.handle(request)
 
     def test_handle_requires_command_pages(self):
         request = types.ContextualCommand(
@@ -272,14 +272,14 @@ class TestAggregateHandle:
         )
 
         with pytest.raises(ValueError, match="No command pages"):
-            SampleAggregate.handle(request)
+            SampleCommandHandler.handle(request)
 
 
-class TestAggregateApplyAndRecord:
+class TestCommandHandlerApplyAndRecord:
     """Test _apply_and_record method."""
 
     def test_apply_and_record_packs_event(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         agg._get_state()  # Initialize state
         event = FakeEvent(result="test")
 
@@ -290,7 +290,7 @@ class TestAggregateApplyAndRecord:
         assert "FakeEvent" in eb.pages[0].event.type_url
 
     def test_apply_and_record_updates_cached_state(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         state = agg._get_state()
         assert state.initialized is False
 
@@ -306,13 +306,13 @@ class TestAggregateApplyAndRecord:
 # =============================================================================
 
 
-class TestAggregateSubclassValidation:
-    """Test aggregate subclass validation."""
+class TestCommandHandlerSubclassValidation:
+    """Test command handler subclass validation."""
 
     def test_missing_domain_raises(self):
         with pytest.raises(TypeError, match="must define 'domain'"):
 
-            class BadAggregate(Aggregate[AggState]):
+            class BadCommandHandler(CommandHandler[AggState]):
                 def _create_empty_state(self):
                     return AggState()
 
@@ -322,7 +322,7 @@ class TestAggregateSubclassValidation:
     def test_duplicate_handler_raises(self):
         with pytest.raises(TypeError, match="duplicate handler"):
 
-            class DuplicateAggregate(Aggregate[AggState]):
+            class DuplicateCommandHandler(CommandHandler[AggState]):
                 domain = "dup"
 
                 def _create_empty_state(self):
@@ -340,11 +340,11 @@ class TestAggregateSubclassValidation:
                     pass
 
 
-class TestAggregateStateCaching:
+class TestCommandHandlerStateCaching:
     """Test state caching behavior."""
 
     def test_state_lazily_rebuilt(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         assert agg._state is None
 
         # Access state triggers rebuild
@@ -353,39 +353,39 @@ class TestAggregateStateCaching:
         assert agg._state is state
 
     def test_state_cached_across_calls(self):
-        agg = SampleAggregate()
+        agg = SampleCommandHandler()
         state1 = agg._get_state()
         state2 = agg._get_state()
         assert state1 is state2
 
 
 # =============================================================================
-# Tests for Aggregate.replay() classmethod
+# Tests for CommandHandler.replay() classmethod
 # =============================================================================
 
 
-class TestAggregateReplay:
+class TestCommandHandlerReplay:
     """Test replay() classmethod for conflict detection."""
 
     def test_replay_empty_events(self):
-        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+        from angzarr_client.proto.angzarr import command_handler_pb2 as command_handler
 
-        request = aggregate.ReplayRequest()
-        response = SampleAggregate.replay(request)
+        request = command_handler.ReplayRequest()
+        response = SampleCommandHandler.replay(request)
 
         # Should return packed empty state
         assert response.state.type_url != ""
         assert "AggState" in response.state.type_url
 
     def test_replay_with_events(self):
-        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+        from angzarr_client.proto.angzarr import command_handler_pb2 as command_handler
 
         event_any = any_pb2.Any(type_url="test.FakeEvent", value=b"replay_value")
 
-        request = aggregate.ReplayRequest(
+        request = command_handler.ReplayRequest(
             events=[types.EventPage(event=event_any)],
         )
-        response = SampleAggregate.replay(request)
+        response = SampleCommandHandler.replay(request)
 
         # Should return state with event applied
         assert response.state.type_url != ""
@@ -393,7 +393,7 @@ class TestAggregateReplay:
         assert response.state.value != b""
 
     def test_replay_with_snapshot(self):
-        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+        from angzarr_client.proto.angzarr import command_handler_pb2 as command_handler
 
         # Create a snapshot with serialized state
         state = AggState(initialized=True, value="snapped")
@@ -404,11 +404,11 @@ class TestAggregateReplay:
 
         snapshot = types.Snapshot(sequence=5, state=state_any)
 
-        request = aggregate.ReplayRequest(
+        request = command_handler.ReplayRequest(
             base_snapshot=snapshot,
             events=[],
         )
-        response = SampleAggregate.replay(request)
+        response = SampleCommandHandler.replay(request)
 
         # Should return state from snapshot
         assert response.state.type_url != ""

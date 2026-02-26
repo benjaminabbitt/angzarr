@@ -22,7 +22,7 @@ service ProjectorService {
 // ProjectorCoordinatorService: orchestrates projection processing
 service ProjectorCoordinatorService {
   // Sync processing - returns projection based on sync_mode
-  rpc HandleSync (SyncEventBook) returns (Projection) {
+  rpc HandleSync (EventRequest) returns (Projection) {
     option (google.api.http) = {
       post: "/v1/projector/sync"
       body: "*"

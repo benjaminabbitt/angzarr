@@ -12,6 +12,7 @@ fn make_saga_origin() -> SagaCommandOrigin {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         triggering_event_sequence: 5,
     }
@@ -26,6 +27,7 @@ fn make_test_command() -> CommandBook {
             }),
             correlation_id: "corr-123".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence: 0,
@@ -143,9 +145,10 @@ async fn test_handle_business_response_with_events() {
                 root: None,
                 correlation_id: "corr-123".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![EventPage {
-                sequence: 6,
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(6)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: "test.Compensated".to_string(),

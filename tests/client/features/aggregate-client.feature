@@ -13,7 +13,7 @@ Feature: AggregateClient
 
   Background:
     Given a running aggregate coordinator for domain "test"
-    And a registered aggregate handler for domain "test"
+    And a registered command handler for domain "test"
 
   Scenario: Send command asynchronously (fire-and-forget)
     # Async commands return immediately after the coordinator accepts them.
@@ -37,7 +37,7 @@ Feature: AggregateClient
     # item out of stock, invalid state transition). The SDK must surface these
     # rejections with the aggregate's rejection reason intact, not as generic errors.
     # This enables clients to display user-friendly error messages.
-    Given an aggregate handler that rejects commands with reason "invalid state"
+    Given a command handler that rejects commands with reason "invalid state"
     When I create an AggregateClient for the coordinator endpoint
     And I send a command that will be rejected
     Then I should receive a CommandResponse with rejection reason "invalid state"

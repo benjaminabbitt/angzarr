@@ -23,7 +23,7 @@ use tonic::transport::Channel;
 use tracing::{debug, info, warn};
 
 use crate::config::EVENT_QUERY_ADDRESS_ENV_VAR;
-use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
 use crate::proto_ext::WILDCARD_DOMAIN;
@@ -51,7 +51,8 @@ struct ProjectorEntry {
 pub struct StaticServiceDiscovery {
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     projectors: Arc<RwLock<HashMap<String, DiscoveredService>>>,
-    aggregate_clients: Arc<RwLock<HashMap<String, AggregateCoordinatorServiceClient<Channel>>>>,
+    aggregate_clients:
+        Arc<RwLock<HashMap<String, CommandHandlerCoordinatorServiceClient<Channel>>>>,
     event_query_clients: Arc<RwLock<HashMap<String, EventQueryServiceClient<Channel>>>>,
     projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorServiceClient<Channel>>>>,
 }
@@ -179,12 +180,12 @@ impl StaticServiceDiscovery {
     async fn get_or_create_aggregate_client(
         &self,
         service: &DiscoveredService,
-    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
+    ) -> Result<CommandHandlerCoordinatorServiceClient<Channel>, DiscoveryError> {
         get_or_create_client(
             &self.aggregate_clients,
             service,
             "aggregate",
-            AggregateCoordinatorServiceClient::new,
+            CommandHandlerCoordinatorServiceClient::new,
         )
         .await
     }
@@ -260,7 +261,7 @@ impl super::ServiceDiscovery for StaticServiceDiscovery {
     async fn get_aggregate(
         &self,
         domain: &str,
-    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
+    ) -> Result<CommandHandlerCoordinatorServiceClient<Channel>, DiscoveryError> {
         let aggregates = self.aggregates.read().await;
 
         // Find service matching domain, or wildcard

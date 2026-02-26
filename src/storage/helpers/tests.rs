@@ -1,9 +1,10 @@
 use super::*;
+use crate::proto::event_page;
 use prost_types::Timestamp;
 
 fn make_event_with_sequence(seq: u32) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         payload: None,
         created_at: None,
     }
@@ -42,7 +43,7 @@ fn test_resolve_sequence_zero() {
 #[test]
 fn test_parse_timestamp_present() {
     let event = EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: None,
         created_at: Some(Timestamp {
             seconds: 1704067200, // 2024-01-01 00:00:00 UTC
@@ -56,7 +57,7 @@ fn test_parse_timestamp_present() {
 #[test]
 fn test_parse_timestamp_missing_uses_now() {
     let event = EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: None,
         created_at: None,
     };
@@ -68,7 +69,7 @@ fn test_parse_timestamp_missing_uses_now() {
 #[test]
 fn test_parse_timestamp_invalid() {
     let event = EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: None,
         created_at: Some(Timestamp {
             seconds: i64::MAX,

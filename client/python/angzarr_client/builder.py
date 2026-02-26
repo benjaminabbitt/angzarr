@@ -7,7 +7,7 @@ from uuid import uuid4
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message
 
-from .client import AggregateClient, QueryClient
+from .client import CommandHandlerClient, QueryClient
 from .errors import InvalidArgumentError
 from .helpers import implicit_edition, parse_timestamp, uuid_to_proto
 from .proto.angzarr import (
@@ -29,7 +29,7 @@ class CommandBuilder:
 
     def __init__(
         self,
-        client: AggregateClient,
+        client: CommandHandlerClient,
         domain: str,
         root: Optional[PyUUID] = None,
     ):
@@ -188,12 +188,12 @@ class QueryBuilder:
 # Convenience functions for creating builders
 
 
-def command(client: AggregateClient, domain: str, root: PyUUID) -> CommandBuilder:
+def command(client: CommandHandlerClient, domain: str, root: PyUUID) -> CommandBuilder:
     """Start building a command for an existing aggregate."""
     return CommandBuilder(client, domain, root)
 
 
-def command_new(client: AggregateClient, domain: str) -> CommandBuilder:
+def command_new(client: CommandHandlerClient, domain: str) -> CommandBuilder:
     """Start building a command for a new aggregate."""
     return CommandBuilder(client, domain)
 

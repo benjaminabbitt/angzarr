@@ -81,7 +81,7 @@ async fn test_runtime_with_passthrough_bus() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
         .with_event_bus(passthrough_bus)
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -133,7 +133,7 @@ async fn test_runtime_with_deterministic_drops() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
         .with_event_bus(lossy_bus)
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -191,7 +191,7 @@ async fn test_lossy_bus_commands_still_succeed() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
         .with_event_bus(drop_all_bus)
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");

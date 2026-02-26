@@ -38,6 +38,7 @@ async fn test_get_event_book_empty_aggregate() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -55,7 +56,7 @@ async fn test_get_event_book_with_data() {
     let root = uuid::Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -75,6 +76,7 @@ async fn test_get_event_book_with_data() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -96,6 +98,7 @@ async fn test_get_event_book_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -119,6 +122,7 @@ async fn test_get_event_book_invalid_uuid() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -138,7 +142,7 @@ async fn test_get_event_book_with_range() {
     // Add multiple events
     for i in 0..5 {
         let events = vec![EventPage {
-            sequence: i,
+            sequence_type: Some(event_page::SequenceType::Sequence(i)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("test.Event{}", i),
                 value: vec![],
@@ -160,6 +164,7 @@ async fn test_get_event_book_with_range() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Range(SequenceRange {
             lower: 2,
@@ -187,6 +192,7 @@ async fn test_get_events_empty_aggregate() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -208,7 +214,7 @@ async fn test_get_events_with_data() {
 
     // First add some events via the store directly
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -228,6 +234,7 @@ async fn test_get_events_with_data() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -252,6 +259,7 @@ async fn test_get_events_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -275,6 +283,7 @@ async fn test_get_events_invalid_uuid() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -357,7 +366,7 @@ async fn test_get_event_book_by_correlation_id() {
 
     // Add events with correlation ID
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -376,6 +385,7 @@ async fn test_get_event_book_by_correlation_id() {
             root: None,
             correlation_id: correlation_id.to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -397,6 +407,7 @@ async fn test_get_event_book_by_correlation_id_not_found() {
             root: None,
             correlation_id: "nonexistent".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -419,7 +430,7 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
         ("inventory", uuid::Uuid::new_v4()),
     ] {
         let events = vec![EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("{}.Event", domain),
                 value: vec![],
@@ -439,6 +450,7 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
             root: None,
             correlation_id: correlation_id.to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -458,7 +470,7 @@ async fn test_get_event_book_temporal_by_time() {
 
     let events = vec![
         EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event0".to_string(),
                 value: vec![],
@@ -469,7 +481,7 @@ async fn test_get_event_book_temporal_by_time() {
             }),
         },
         EventPage {
-            sequence: 1,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(1)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event1".to_string(),
                 value: vec![],
@@ -480,7 +492,7 @@ async fn test_get_event_book_temporal_by_time() {
             }),
         },
         EventPage {
-            sequence: 2,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(2)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event2".to_string(),
                 value: vec![],
@@ -505,6 +517,7 @@ async fn test_get_event_book_temporal_by_time() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: Some(PointInTime::AsOfTime(Timestamp {
@@ -529,7 +542,7 @@ async fn test_get_event_book_temporal_by_sequence() {
 
     for i in 0..5 {
         let events = vec![EventPage {
-            sequence: i,
+            sequence_type: Some(event_page::SequenceType::Sequence(i)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("test.Event{}", i),
                 value: vec![],
@@ -551,6 +564,7 @@ async fn test_get_event_book_temporal_by_sequence() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: Some(PointInTime::AsOfSequence(2)),
@@ -578,6 +592,7 @@ async fn test_get_event_book_temporal_empty_point_in_time() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: None,
@@ -597,7 +612,7 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
 
     // Add an event at sequence 0
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.CustomerCreated".to_string(),
             value: vec![],
@@ -632,6 +647,7 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };

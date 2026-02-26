@@ -23,6 +23,9 @@ message Cover {
   UUID root = 1;
   string correlation_id = 3;  // Workflow correlation - flows through all commands/events
   Edition edition = 4;        // Edition for diverged timelines; empty name = main timeline
+  string external_id = 5;     // Idempotency key for fact events (e.g., Stripe payment ID, tracking number)
+                              // Used by coordinator for deduplication when FactSequence is set.
+                              // Propagates through entire system alongside correlation_id.
 }
 // docs:end:cover
 
@@ -101,9 +104,29 @@ message PayloadReference {
 }
 // docs:end:payload_reference
 
+// docs:start:fact_sequence
+// Marker for fact events - external realities that must be recorded.
+// Facts are events that already happened in the external world and cannot be rejected.
+// The coordinator assigns the actual sequence number on receipt.
+//
+// IMPORTANT: When using FactSequence, set Cover.external_id for idempotency.
+// The coordinator uses Cover.external_id to deduplicate fact events.
+// Cover.external_id propagates through the entire system for tracing.
+message FactSequence {
+  string source = 1;       // Origin system identifier (e.g., "stripe", "fedex", "scheduler")
+  string description = 2;  // Human-readable description of why this is a fact (optional)
+}
+// docs:end:fact_sequence
+
 // docs:start:event_page
 message EventPage {
-  uint32 sequence = 1;
+  // Sequence type distinguishes commands (sequenced) from facts (external realities).
+  // - sequence: Normal event with explicit position in stream (for command results)
+  // - fact: External fact where coordinator assigns sequence (for saga/external system facts)
+  oneof sequence_type {
+    uint32 sequence = 1;      // Normal: explicit position in event stream
+    FactSequence fact = 5;    // Fact: coordinator assigns next sequence
+  }
   google.protobuf.Timestamp created_at = 2;
   oneof payload {
     google.protobuf.Any event = 3;
@@ -133,9 +156,16 @@ message EventBook {
 }
 // docs:end:event_book
 
-message SyncEventBook {
+// Request wrapper for event operations (fact injection).
+// Adds execution metadata (sync_mode, route_to_handler) to EventBook.
+message EventRequest {
   EventBook events = 1;
   SyncMode sync_mode = 2;
+  // For fact injection: when true (default), invokes command handler's handle_fact for
+  // validation/error checking before persistence. Facts cannot be rejected, but
+  // the handler can validate data integrity and log warnings.
+  // When false, facts are persisted directly without handler involvement.
+  bool route_to_handler = 3;
 }
 
 message Projection {
@@ -165,7 +195,9 @@ message CommandBook {
   // Field 5 removed: 'fact' was unused
 }
 
-message SyncCommandBook {
+// Request wrapper for command operations.
+// Adds execution metadata (sync_mode) to CommandBook.
+message CommandRequest {
   CommandBook command = 1;
   SyncMode sync_mode = 2;
 }
@@ -176,7 +208,9 @@ message ContextualCommand {
   CommandBook command = 2;
 }
 
-message SyncContextualCommand {
+// Request wrapper for contextual command operations (internal use).
+// Adds execution metadata (sync_mode) to ContextualCommand.
+message ContextualCommandRequest {
   ContextualCommand command = 1;
   SyncMode sync_mode = 2;
 }

@@ -17,8 +17,8 @@ use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
 use super::runtime::Runtime;
 use super::traits::{
-    AggregateHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig,
-    ProjectorHandler, SagaConfig, SagaHandler,
+    CommandHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig, ProjectorHandler,
+    SagaConfig, SagaHandler,
 };
 
 /// Builder for creating a standalone runtime.
@@ -30,7 +30,7 @@ use super::traits::{
 ///
 /// let runtime = RuntimeBuilder::new()
 ///     .with_sqlite_memory()
-///     .register_aggregate("orders", MyOrdersHandler)
+///     .register_command_handler("orders", MyOrdersHandler)
 ///     .register_projector("accounting", MyProjector, ProjectorConfig::sync())
 ///     .build()
 ///     .await?;
@@ -44,8 +44,8 @@ pub struct RuntimeBuilder {
     messaging: MessagingConfig,
     /// Transport configuration.
     transport: TransportConfig,
-    /// Registered aggregate handlers by domain.
-    aggregates: HashMap<String, Arc<dyn AggregateHandler>>,
+    /// Registered command handlers by domain.
+    command_handlers: HashMap<String, Arc<dyn CommandHandler>>,
     /// Registered projector handlers by name.
     projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
     /// Registered saga handlers by name.
@@ -88,7 +88,7 @@ impl RuntimeBuilder {
                 uds: UdsConfig::default(),
                 ..Default::default()
             },
-            aggregates: HashMap::new(),
+            command_handlers: HashMap::new(),
             projectors: HashMap::new(),
             sagas: HashMap::new(),
             process_managers: HashMap::new(),
@@ -233,7 +233,7 @@ impl RuntimeBuilder {
     ///
     /// let runtime = RuntimeBuilder::new()
     ///     .with_event_bus(lossy_bus)
-    ///     .register_aggregate("orders", handler)
+    ///     .register_command_handler("orders", handler)
     ///     .build()
     ///     .await?;
     /// ```
@@ -246,15 +246,16 @@ impl RuntimeBuilder {
     // Handler Registration
     // ========================================================================
 
-    /// Register an aggregate handler for a domain.
+    /// Register a command handler for a domain.
     ///
-    /// Each domain can have one aggregate handler that processes commands
+    /// Each domain can have one command handler that processes commands
     /// and returns events.
-    pub fn register_aggregate<H>(mut self, domain: impl Into<String>, handler: H) -> Self
+    pub fn register_command_handler<H>(mut self, domain: impl Into<String>, handler: H) -> Self
     where
-        H: AggregateHandler,
+        H: CommandHandler,
     {
-        self.aggregates.insert(domain.into(), Arc::new(handler));
+        self.command_handlers
+            .insert(domain.into(), Arc::new(handler));
         self
     }
 
@@ -368,7 +369,7 @@ impl RuntimeBuilder {
             self.domain_storage,
             self.messaging,
             self.transport,
-            self.aggregates,
+            self.command_handlers,
             self.projectors,
             self.sagas,
             self.process_managers,
@@ -396,9 +397,9 @@ impl RuntimeBuilder {
         &self.transport
     }
 
-    /// Get the registered aggregate domains.
-    pub fn aggregate_domains(&self) -> Vec<&str> {
-        self.aggregates.keys().map(|s| s.as_str()).collect()
+    /// Get the registered command handler domains.
+    pub fn command_handler_domains(&self) -> Vec<&str> {
+        self.command_handlers.keys().map(|s| s.as_str()).collect()
     }
 
     /// Get the registered projector names.

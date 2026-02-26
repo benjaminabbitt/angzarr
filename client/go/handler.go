@@ -39,25 +39,25 @@ func NewCommandRejectedError(msg string) error {
 // Used by MERGE_COMMUTATIVE strategy for conflict detection.
 type StatePacker[S any] func(state S) (*anypb.Any, error)
 
-// AggregateHandler wraps a CommandRouter for the gRPC Aggregate service.
+// CommandHandlerGrpc wraps a CommandRouter for the gRPC CommandHandler service.
 //
 // Maps domain errors to gRPC status codes:
 //   - CommandRejectedError -> FAILED_PRECONDITION
 //   - Other errors -> INVALID_ARGUMENT
-type AggregateHandler[S any] struct {
-	pb.UnimplementedAggregateServiceServer
+type CommandHandlerGrpc[S any] struct {
+	pb.UnimplementedCommandHandlerServiceServer
 	router      *CommandRouter[S]
 	statePacker StatePacker[S]
 }
 
-// NewAggregateHandler creates a new aggregate handler with the given router.
-func NewAggregateHandler[S any](router *CommandRouter[S]) *AggregateHandler[S] {
-	return &AggregateHandler[S]{router: router}
+// NewCommandHandlerGrpc creates a new command handler with the given router.
+func NewCommandHandlerGrpc[S any](router *CommandRouter[S]) *CommandHandlerGrpc[S] {
+	return &CommandHandlerGrpc[S]{router: router}
 }
 
 // WithReplay enables Replay RPC support by providing a state packer.
 //
-// The state packer converts the aggregate's internal state to a protobuf Any
+// The state packer converts the command handler's internal state to a protobuf Any
 // message. This is required for MERGE_COMMUTATIVE strategy, which uses Replay
 // to compute state diffs for conflict detection.
 //
@@ -68,23 +68,23 @@ func NewAggregateHandler[S any](router *CommandRouter[S]) *AggregateHandler[S] {
 //	    return anypb.New(protoState)
 //	}
 //
-//	handler := NewAggregateHandler(router).WithReplay(packPlayerState)
-func (h *AggregateHandler[S]) WithReplay(packer StatePacker[S]) *AggregateHandler[S] {
+//	handler := NewCommandHandlerGrpc(router).WithReplay(packPlayerState)
+func (h *CommandHandlerGrpc[S]) WithReplay(packer StatePacker[S]) *CommandHandlerGrpc[S] {
 	h.statePacker = packer
 	return h
 }
 
 // Handle processes a contextual command asynchronously.
-func (h *AggregateHandler[S]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *CommandHandlerGrpc[S]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
 }
 
 // HandleSync processes a contextual command synchronously.
-func (h *AggregateHandler[S]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *CommandHandlerGrpc[S]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
 }
 
-func (h *AggregateHandler[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *CommandHandlerGrpc[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	resp, err := h.router.Dispatch(req)
 	if err != nil {
 		var rejected CommandRejectedError
@@ -100,7 +100,7 @@ func (h *AggregateHandler[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessR
 //
 // Only available if WithReplay was called with a state packer.
 // Returns UNIMPLEMENTED if no state packer is configured.
-func (h *AggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayRequest) (*pb.ReplayResponse, error) {
+func (h *CommandHandlerGrpc[S]) Replay(ctx context.Context, req *pb.ReplayRequest) (*pb.ReplayResponse, error) {
 	if h.statePacker == nil {
 		return nil, status.Error(codes.Unimplemented,
 			"Replay not implemented. Call WithReplay() to enable for MERGE_COMMUTATIVE strategy.")
@@ -124,22 +124,22 @@ func (h *AggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayRequest)
 	return &pb.ReplayResponse{State: stateAny}, nil
 }
 
-// RegisterAggregateHandler returns a ServiceRegistrar that registers an aggregate handler.
-func RegisterAggregateHandler[S any](router *CommandRouter[S]) ServiceRegistrar {
+// RegisterCommandHandlerGrpc returns a ServiceRegistrar that registers a command handler.
+func RegisterCommandHandlerGrpc[S any](router *CommandRouter[S]) ServiceRegistrar {
 	return func(server *grpc.Server) {
-		pb.RegisterAggregateServiceServer(server, NewAggregateHandler(router))
+		pb.RegisterCommandHandlerServiceServer(server, NewCommandHandlerGrpc(router))
 	}
 }
 
-// RunAggregateServer starts a gRPC server for an aggregate.
+// RunCommandHandlerServer starts a gRPC server for a command handler.
 //
 // Parameters:
-//   - domain: The aggregate's domain name
+//   - domain: The command handler's domain name
 //   - defaultPort: Default TCP port if PORT env not set
 //   - router: CommandRouter with registered handlers
-func RunAggregateServer[S any](domain, defaultPort string, router *CommandRouter[S]) {
-	RunServer(RegisterAggregateHandler(router), ServerOptions{
-		ServiceName:      "Aggregate",
+func RunCommandHandlerServer[S any](domain, defaultPort string, router *CommandRouter[S]) {
+	RunServer(RegisterCommandHandlerGrpc(router), ServerOptions{
+		ServiceName:      "CommandHandler",
 		Domain:           domain,
 		DefaultPort:      defaultPort,
 		EnableReflection: true,
@@ -206,42 +206,42 @@ func RunSagaServer(name, defaultPort string, router *EventRouter) {
 // Trait-Based Handlers
 // ============================================================================
 //
-// These handlers use the trait-based AggregateRouter and SagaRouter
-// which delegate to AggregateDomainHandler and SagaDomainHandler interfaces.
+// These handlers use the trait-based CommandHandlerRouter and SagaRouter
+// which delegate to CommandHandlerDomainHandler and SagaDomainHandler interfaces.
 
-// TraitAggregateHandler wraps an AggregateRouter for the gRPC Aggregate service.
+// TraitCommandHandlerGrpc wraps a CommandHandlerRouter for the gRPC CommandHandler service.
 //
 // Maps domain errors to gRPC status codes:
 //   - CommandRejectedError -> FAILED_PRECONDITION
 //   - Other errors -> INVALID_ARGUMENT
-type TraitAggregateHandler[S any] struct {
-	pb.UnimplementedAggregateServiceServer
-	router      *AggregateRouter[S]
+type TraitCommandHandlerGrpc[S any] struct {
+	pb.UnimplementedCommandHandlerServiceServer
+	router      *CommandHandlerRouter[S]
 	statePacker StatePacker[S]
 }
 
-// NewTraitAggregateHandler creates a new aggregate handler with the given router.
-func NewTraitAggregateHandler[S any](router *AggregateRouter[S]) *TraitAggregateHandler[S] {
-	return &TraitAggregateHandler[S]{router: router}
+// NewTraitCommandHandlerGrpc creates a new command handler with the given router.
+func NewTraitCommandHandlerGrpc[S any](router *CommandHandlerRouter[S]) *TraitCommandHandlerGrpc[S] {
+	return &TraitCommandHandlerGrpc[S]{router: router}
 }
 
 // WithReplay enables Replay RPC support by providing a state packer.
-func (h *TraitAggregateHandler[S]) WithReplay(packer StatePacker[S]) *TraitAggregateHandler[S] {
+func (h *TraitCommandHandlerGrpc[S]) WithReplay(packer StatePacker[S]) *TraitCommandHandlerGrpc[S] {
 	h.statePacker = packer
 	return h
 }
 
 // Handle processes a contextual command asynchronously.
-func (h *TraitAggregateHandler[S]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *TraitCommandHandlerGrpc[S]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
 }
 
 // HandleSync processes a contextual command synchronously.
-func (h *TraitAggregateHandler[S]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *TraitCommandHandlerGrpc[S]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
 }
 
-func (h *TraitAggregateHandler[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *TraitCommandHandlerGrpc[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	resp, err := h.router.Dispatch(req)
 	if err != nil {
 		var rejected CommandRejectedError
@@ -254,7 +254,7 @@ func (h *TraitAggregateHandler[S]) dispatch(req *pb.ContextualCommand) (*pb.Busi
 }
 
 // Replay computes state from events for MERGE_COMMUTATIVE conflict detection.
-func (h *TraitAggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayRequest) (*pb.ReplayResponse, error) {
+func (h *TraitCommandHandlerGrpc[S]) Replay(ctx context.Context, req *pb.ReplayRequest) (*pb.ReplayResponse, error) {
 	if h.statePacker == nil {
 		return nil, status.Error(codes.Unimplemented,
 			"Replay not implemented. Call WithReplay() to enable for MERGE_COMMUTATIVE strategy.")
@@ -274,17 +274,17 @@ func (h *TraitAggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayReq
 	return &pb.ReplayResponse{State: stateAny}, nil
 }
 
-// RegisterTraitAggregateHandler returns a ServiceRegistrar that registers an aggregate handler.
-func RegisterTraitAggregateHandler[S any](router *AggregateRouter[S]) ServiceRegistrar {
+// RegisterTraitCommandHandlerGrpc returns a ServiceRegistrar that registers a command handler.
+func RegisterTraitCommandHandlerGrpc[S any](router *CommandHandlerRouter[S]) ServiceRegistrar {
 	return func(server *grpc.Server) {
-		pb.RegisterAggregateServiceServer(server, NewTraitAggregateHandler(router))
+		pb.RegisterCommandHandlerServiceServer(server, NewTraitCommandHandlerGrpc(router))
 	}
 }
 
-// RunTraitAggregateServer starts a gRPC server for an aggregate using trait-based router.
-func RunTraitAggregateServer[S any](domain, defaultPort string, router *AggregateRouter[S]) {
-	RunServer(RegisterTraitAggregateHandler(router), ServerOptions{
-		ServiceName:      "Aggregate",
+// RunTraitCommandHandlerServer starts a gRPC server for a command handler using trait-based router.
+func RunTraitCommandHandlerServer[S any](domain, defaultPort string, router *CommandHandlerRouter[S]) {
+	RunServer(RegisterTraitCommandHandlerGrpc(router), ServerOptions{
+		ServiceName:      "CommandHandler",
 		Domain:           domain,
 		DefaultPort:      defaultPort,
 		EnableReflection: true,
@@ -595,20 +595,20 @@ func RunProcessManagerServer(name, defaultPort string, handler *ProcessManagerHa
 // OO-Style Handlers
 // ============================================================================
 
-// OOAggregate interface for OO-style aggregates.
-// Implemented by types that embed AggregateBase.
-type OOAggregate[S any] interface {
+// OOCommandHandler interface for OO-style command handlers.
+// Implemented by types that embed CommandHandlerBase.
+type OOCommandHandler[S any] interface {
 	Domain() string
 	Handle(request *pb.ContextualCommand) (*pb.BusinessResponse, error)
 	HandlerTypes() []string
 }
 
-// OOAggregateFactory creates a new OO aggregate instance with prior events.
-type OOAggregateFactory[S any, A OOAggregate[S]] func(events *pb.EventBook) A
+// OOCommandHandlerFactory creates a new OO command handler instance with prior events.
+type OOCommandHandlerFactory[S any, A OOCommandHandler[S]] func(events *pb.EventBook) A
 
-// OOAggregateHandler wraps an OO-style aggregate for the gRPC Aggregate service.
+// OOCommandHandlerGrpc wraps an OO-style command handler for the gRPC CommandHandler service.
 //
-// Unlike the functional AggregateHandler, this creates a new aggregate instance
+// Unlike the functional CommandHandlerGrpc, this creates a new command handler instance
 // for each request, passing in the prior events for state reconstruction.
 //
 // Example:
@@ -616,41 +616,41 @@ type OOAggregateFactory[S any, A OOAggregate[S]] func(events *pb.EventBook) A
 //	factory := func(events *pb.EventBook) *Table {
 //	    return NewTable(events)
 //	}
-//	handler := NewOOAggregateHandler("table", factory)
-type OOAggregateHandler[S any, A OOAggregate[S]] struct {
-	pb.UnimplementedAggregateServiceServer
+//	handler := NewOOCommandHandlerGrpc("table", factory)
+type OOCommandHandlerGrpc[S any, A OOCommandHandler[S]] struct {
+	pb.UnimplementedCommandHandlerServiceServer
 	domain  string
-	factory OOAggregateFactory[S, A]
+	factory OOCommandHandlerFactory[S, A]
 }
 
-// NewOOAggregateHandler creates a new OO aggregate handler.
+// NewOOCommandHandlerGrpc creates a new OO command handler.
 //
 // Parameters:
-//   - domain: The aggregate's domain name
-//   - factory: Function to create a new aggregate with prior events
-func NewOOAggregateHandler[S any, A OOAggregate[S]](domain string, factory OOAggregateFactory[S, A]) *OOAggregateHandler[S, A] {
-	return &OOAggregateHandler[S, A]{
+//   - domain: The command handler's domain name
+//   - factory: Function to create a new command handler with prior events
+func NewOOCommandHandlerGrpc[S any, A OOCommandHandler[S]](domain string, factory OOCommandHandlerFactory[S, A]) *OOCommandHandlerGrpc[S, A] {
+	return &OOCommandHandlerGrpc[S, A]{
 		domain:  domain,
 		factory: factory,
 	}
 }
 
 // Handle processes a contextual command asynchronously.
-func (h *OOAggregateHandler[S, A]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *OOCommandHandlerGrpc[S, A]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
 }
 
 // HandleSync processes a contextual command synchronously.
-func (h *OOAggregateHandler[S, A]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+func (h *OOCommandHandlerGrpc[S, A]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
 }
 
-func (h *OOAggregateHandler[S, A]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
-	// Create aggregate with prior events
-	agg := h.factory(req.Events)
+func (h *OOCommandHandlerGrpc[S, A]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	// Create command handler with prior events
+	ch := h.factory(req.Events)
 
 	// Dispatch command
-	resp, err := agg.Handle(req)
+	resp, err := ch.Handle(req)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {
@@ -661,22 +661,22 @@ func (h *OOAggregateHandler[S, A]) dispatch(req *pb.ContextualCommand) (*pb.Busi
 	return resp, nil
 }
 
-// RegisterOOAggregateHandler returns a ServiceRegistrar that registers an OO aggregate handler.
-func RegisterOOAggregateHandler[S any, A OOAggregate[S]](domain string, factory OOAggregateFactory[S, A]) ServiceRegistrar {
+// RegisterOOCommandHandlerGrpc returns a ServiceRegistrar that registers an OO command handler.
+func RegisterOOCommandHandlerGrpc[S any, A OOCommandHandler[S]](domain string, factory OOCommandHandlerFactory[S, A]) ServiceRegistrar {
 	return func(server *grpc.Server) {
-		pb.RegisterAggregateServiceServer(server, NewOOAggregateHandler(domain, factory))
+		pb.RegisterCommandHandlerServiceServer(server, NewOOCommandHandlerGrpc(domain, factory))
 	}
 }
 
-// RunOOAggregateServer starts a gRPC server for an OO-style aggregate.
+// RunOOCommandHandlerServer starts a gRPC server for an OO-style command handler.
 //
 // Parameters:
-//   - domain: The aggregate's domain name
+//   - domain: The command handler's domain name
 //   - defaultPort: Default TCP port if PORT env not set
-//   - factory: Function to create a new aggregate with prior events
-func RunOOAggregateServer[S any, A OOAggregate[S]](domain, defaultPort string, factory OOAggregateFactory[S, A]) {
-	RunServer(RegisterOOAggregateHandler(domain, factory), ServerOptions{
-		ServiceName:      "Aggregate",
+//   - factory: Function to create a new command handler with prior events
+func RunOOCommandHandlerServer[S any, A OOCommandHandler[S]](domain, defaultPort string, factory OOCommandHandlerFactory[S, A]) {
+	RunServer(RegisterOOCommandHandlerGrpc(domain, factory), ServerOptions{
+		ServiceName:      "CommandHandler",
 		Domain:           domain,
 		DefaultPort:      defaultPort,
 		EnableReflection: true,

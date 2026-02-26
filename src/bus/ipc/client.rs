@@ -23,7 +23,7 @@ use super::checkpoint::{Checkpoint, CheckpointConfig};
 use super::{DEFAULT_BASE_PATH, SUBSCRIBER_PIPE_PREFIX};
 use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
-use crate::proto_ext::CoverExt;
+use crate::proto_ext::{CoverExt, EventPageExt};
 
 // ============================================================================
 // Consumer Helper Functions
@@ -528,7 +528,7 @@ impl EventBus for IpcEventBus {
 
 /// Extract the highest sequence number from an EventBook's pages.
 fn max_page_sequence(book: &EventBook) -> Option<u32> {
-    book.pages.iter().map(|p| p.sequence).max()
+    book.pages.iter().map(|p| p.sequence_num()).max()
 }
 
 #[cfg(test)]
@@ -594,7 +594,7 @@ mod tests {
         let book = EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence: 5,
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
                 payload: None,
                 created_at: None,
             }],
@@ -611,17 +611,17 @@ mod tests {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence: 2,
+                    sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(2)),
                     payload: None,
                     created_at: None,
                 },
                 EventPage {
-                    sequence: 7,
+                    sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(7)),
                     payload: None,
                     created_at: None,
                 },
                 EventPage {
-                    sequence: 4,
+                    sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(4)),
                     payload: None,
                     created_at: None,
                 },

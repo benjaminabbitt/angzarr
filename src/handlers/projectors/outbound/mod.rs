@@ -46,6 +46,7 @@ use tracing::{debug, error, info, warn};
 use crate::bus::{BusError, EventHandler};
 use crate::proto::event_stream_service_server::EventStreamService;
 use crate::proto::{CloudEventsResponse, EventBook, EventStreamFilter, Projection};
+use crate::proto_ext::EventPageExt;
 
 use super::cloudevents::sink::{CloudEventsSink, SinkError};
 use super::cloudevents::types::{CloudEventEnvelope, ContentType};
@@ -429,7 +430,9 @@ fn wrap_eventbook_as_cloudevent(
         .unwrap_or_else(|| "unknown".to_string());
 
     // Get sequence from page
-    let sequence = page.map(|p| p.sequence).unwrap_or(sequence_offset as u32);
+    let sequence = page
+        .map(|p| p.sequence_num())
+        .unwrap_or(sequence_offset as u32);
 
     // Get timestamp from page
     let time = page

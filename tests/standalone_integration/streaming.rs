@@ -30,7 +30,7 @@ impl ProjectorHandler for StreamingProjector {
 async fn test_events_published_to_bus_for_streaming() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -77,7 +77,7 @@ async fn test_events_published_to_bus_for_streaming() {
 async fn test_streaming_preserves_correlation_id() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_projector("streaming", StreamingProjector, ProjectorConfig::sync())
         .build()
         .await
@@ -132,7 +132,7 @@ async fn test_streaming_preserves_correlation_id() {
 async fn test_multiple_subscribers_receive_streamed_events() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -180,7 +180,7 @@ async fn test_multiple_subscribers_receive_streamed_events() {
 async fn test_streamed_events_include_all_pages() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", MultiEventAggregate::new(5))
+        .register_command_handler("orders", MultiEventAggregate::new(5))
         .build()
         .await
         .expect("Failed to build runtime");

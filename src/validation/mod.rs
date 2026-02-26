@@ -438,6 +438,7 @@ mod tests {
                     root: None,
                     correlation_id: String::new(),
                     edition: None,
+                    external_id: String::new(),
                 }),
                 pages,
                 saga_origin: None,

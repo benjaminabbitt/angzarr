@@ -8,8 +8,9 @@ import grpc
 
 from .errors import GRPCError, TransportError
 from .proto.angzarr import (
-    AggregateCoordinatorServiceStub,
     CommandBook,
+    CommandHandlerCoordinatorServiceStub,
+    CommandRequest,
     CommandResponse,
     EventBook,
     EventQueryServiceStub,
@@ -20,11 +21,11 @@ from .proto.angzarr import (
     Query,
     SagaCoordinatorServiceStub,
     SagaResponse,
-    SpeculateAggregateRequest,
+    SpeculateCommandHandlerRequest,
     SpeculatePmRequest,
     SpeculateProjectorRequest,
     SpeculateSagaRequest,
-    SyncCommandBook,
+    SyncMode,
 )
 
 
@@ -35,7 +36,7 @@ class TransportMode(Enum):
     DISTRIBUTED = "distributed"  # TCP via K8s DNS
 
 
-def resolve_aggregate_endpoint(
+def resolve_ch_endpoint(
     domain: str,
     mode: TransportMode | None = None,
     *,
@@ -43,7 +44,7 @@ def resolve_aggregate_endpoint(
     namespace: str = "angzarr",
     port: int = 1310,
 ) -> str:
-    """Resolve domain to aggregate coordinator endpoint.
+    """Resolve domain to command handler coordinator endpoint.
 
     Args:
         domain: The domain name (e.g., "player", "table", "hand")
@@ -54,14 +55,14 @@ def resolve_aggregate_endpoint(
 
     Returns:
         Endpoint string suitable for _create_channel:
-        - Standalone: /tmp/angzarr/player-aggregate.sock
-        - Distributed: player-aggregate.angzarr.svc:1310
+        - Standalone: /tmp/angzarr/ch-player.sock
+        - Distributed: ch-player.angzarr.svc:1310
 
     Environment Variables:
         ANGZARR_MODE: "standalone" or "distributed" (default: "distributed")
         ANGZARR_UDS_BASE: Override uds_base (default: /tmp/angzarr)
         ANGZARR_NAMESPACE: Override namespace (default: angzarr)
-        ANGZARR_AGGREGATE_PORT: Override port (default: 1310)
+        ANGZARR_CH_PORT: Override port (default: 1310)
     """
     if mode is None:
         mode_str = os.environ.get("ANGZARR_MODE", "distributed")
@@ -69,11 +70,11 @@ def resolve_aggregate_endpoint(
 
     if mode == TransportMode.STANDALONE:
         base = os.environ.get("ANGZARR_UDS_BASE", uds_base)
-        return f"{base}/{domain}-aggregate.sock"
+        return f"{base}/ch-{domain}.sock"
     else:
         ns = os.environ.get("ANGZARR_NAMESPACE", namespace)
-        p = int(os.environ.get("ANGZARR_AGGREGATE_PORT", str(port)))
-        return f"{domain}-aggregate.{ns}.svc:{p}"
+        p = int(os.environ.get("ANGZARR_CH_PORT", str(port)))
+        return f"ch-{domain}.{ns}.svc:{p}"
 
 
 def _create_channel(endpoint: str) -> grpc.Channel:
@@ -145,41 +146,45 @@ class QueryClient:
         self._channel.close()
 
 
-class AggregateClient:
-    """Client for the AggregateCoordinatorService."""
+class CommandHandlerClient:
+    """Client for the CommandHandlerCoordinatorService."""
 
     def __init__(self, channel: grpc.Channel):
-        self._stub = AggregateCoordinatorServiceStub(channel)
+        self._stub = CommandHandlerCoordinatorServiceStub(channel)
         self._channel = channel
 
     @classmethod
-    def connect(cls, endpoint: str) -> "AggregateClient":
-        """Connect to an aggregate coordinator at the given endpoint."""
+    def connect(cls, endpoint: str) -> "CommandHandlerClient":
+        """Connect to a command handler coordinator at the given endpoint."""
         channel = _create_channel(endpoint)
         return cls(channel)
 
     @classmethod
-    def from_env(cls, env_var: str, default: str) -> "AggregateClient":
+    def from_env(cls, env_var: str, default: str) -> "CommandHandlerClient":
         """Connect using an environment variable with fallback."""
         endpoint = os.environ.get(env_var, default)
         return cls.connect(endpoint)
 
     def handle(self, command: CommandBook) -> CommandResponse:
-        """Execute a command asynchronously."""
-        try:
-            return self._stub.Handle(command)
-        except grpc.RpcError as e:
-            raise GRPCError(e) from e
+        """Execute a command asynchronously (fire-and-forget).
 
-    def handle_sync(self, command: SyncCommandBook) -> CommandResponse:
-        """Execute a command synchronously with the specified sync mode."""
+        Convenience method that wraps CommandBook in CommandRequest with default sync mode.
+        """
+        request = CommandRequest(
+            command=command,
+            sync_mode=SyncMode.SYNC_MODE_UNSPECIFIED,
+        )
+        return self.handle_command(request)
+
+    def handle_command(self, request: CommandRequest) -> CommandResponse:
+        """Execute a command with the specified sync mode."""
         try:
-            return self._stub.HandleSync(command)
+            return self._stub.HandleCommand(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
     def handle_sync_speculative(
-        self, request: SpeculateAggregateRequest
+        self, request: SpeculateCommandHandlerRequest
     ) -> CommandResponse:
         """Execute a command speculatively against temporal state (no persistence)."""
         try:
@@ -200,7 +205,7 @@ class SpeculativeClient:
     """
 
     def __init__(self, channel: grpc.Channel):
-        self._aggregate_stub = AggregateCoordinatorServiceStub(channel)
+        self._command_handler_stub = CommandHandlerCoordinatorServiceStub(channel)
         self._saga_stub = SagaCoordinatorServiceStub(channel)
         self._projector_stub = ProjectorCoordinatorServiceStub(channel)
         self._pm_stub = ProcessManagerCoordinatorServiceStub(channel)
@@ -218,10 +223,12 @@ class SpeculativeClient:
         endpoint = os.environ.get(env_var, default)
         return cls.connect(endpoint)
 
-    def aggregate(self, request: SpeculateAggregateRequest) -> CommandResponse:
+    def command_handler(
+        self, request: SpeculateCommandHandlerRequest
+    ) -> CommandResponse:
         """Execute a command speculatively against temporal state."""
         try:
-            return self._aggregate_stub.HandleSyncSpeculative(request)
+            return self._command_handler_stub.HandleSyncSpeculative(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
@@ -254,10 +261,10 @@ class SpeculativeClient:
 
 
 class DomainClient:
-    """Combined client for aggregate and query operations on a single domain."""
+    """Combined client for command handler and query operations on a single domain."""
 
     def __init__(self, channel: grpc.Channel):
-        self.aggregate = AggregateClient(channel)
+        self.command_handler = CommandHandlerClient(channel)
         self.query = QueryClient(channel)
         self._channel = channel
 
@@ -271,7 +278,7 @@ class DomainClient:
     def for_domain(
         cls, domain: str, mode: TransportMode | None = None
     ) -> "DomainClient":
-        """Connect to a domain's aggregate coordinator.
+        """Connect to a domain's command handler coordinator.
 
         Resolves the domain name to the appropriate endpoint based on transport mode.
 
@@ -281,7 +288,7 @@ class DomainClient:
                   If None, detected from ANGZARR_MODE env var.
 
         Returns:
-            DomainClient connected to the domain's aggregate coordinator.
+            DomainClient connected to the domain's command handler coordinator.
 
         Examples:
             # Auto-detect mode from ANGZARR_MODE env var
@@ -293,7 +300,7 @@ class DomainClient:
             # Explicitly use distributed mode (K8s DNS)
             player = DomainClient.for_domain("player", TransportMode.DISTRIBUTED)
         """
-        endpoint = resolve_aggregate_endpoint(domain, mode)
+        endpoint = resolve_ch_endpoint(domain, mode)
         return cls.connect(endpoint)
 
     @classmethod
@@ -303,8 +310,8 @@ class DomainClient:
         return cls.connect(endpoint)
 
     def execute(self, command: CommandBook) -> CommandResponse:
-        """Execute a command (delegates to aggregate client)."""
-        return self.aggregate.handle(command)
+        """Execute a command (delegates to command handler client)."""
+        return self.command_handler.handle(command)
 
     def close(self) -> None:
         """Close the underlying channel."""
@@ -312,10 +319,10 @@ class DomainClient:
 
 
 class Client:
-    """Combined client for aggregate, query, and speculative operations."""
+    """Combined client for command handler, query, and speculative operations."""
 
     def __init__(self, channel: grpc.Channel):
-        self.aggregate = AggregateClient(channel)
+        self.command_handler = CommandHandlerClient(channel)
         self.query = QueryClient(channel)
         self.speculative = SpeculativeClient(channel)
         self._channel = channel

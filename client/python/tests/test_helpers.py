@@ -501,7 +501,7 @@ class TestEventsFromResponse:
 
     def test_returns_pages_when_present(self) -> None:
         """Returns event pages when present."""
-        from angzarr_client.proto.angzarr import CommandResponse, SyncEventBook
+        from angzarr_client.proto.angzarr import CommandResponse
 
         resp = CommandResponse()
         resp.events.pages.add(sequence=1)

@@ -48,7 +48,7 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 
 | Coordinator | Routes | Purpose |
 |-------------|--------|---------|
-| **AggregateCoordinator** | Commands → Aggregates | Command handling, event persistence |
+| **CommandHandlerCoordinator** | Commands → Aggregates | Command handling, event persistence |
 | **ProjectorCoordinator** | Events → Projectors | Read model updates, side effects |
 | **SagaCoordinator** | Events → Sagas | Cross-domain command orchestration |
 | **ProcessManagerCoordinator** | Events → PMs | Stateful multi-domain workflows |
@@ -56,7 +56,7 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 ```mermaid
 flowchart TB
     Client[External Client]
-    AC[AggregateCoordinator]
+    CHC[CommandHandlerCoordinator]
     Agg[Your Aggregate]
     ES[(Event Store)]
     BUS[Message Bus]
@@ -66,14 +66,14 @@ flowchart TB
     Proj[Your Projector]
     RM[(Read Model<br/>Postgres, Redis)]
 
-    Client -->|gRPC| AC
-    AC <-->|gRPC| Agg
-    AC -->|SQL| ES
-    AC -->|AMQP/Kafka| BUS
+    Client -->|gRPC| CHC
+    CHC <-->|gRPC| Agg
+    CHC -->|SQL| ES
+    CHC -->|AMQP/Kafka| BUS
     BUS -->|AMQP/Kafka| SC
     BUS -->|AMQP/Kafka| PC
     SC <-->|gRPC| Saga
-    SC -->|gRPC| AC
+    SC -->|gRPC| CHC
     PC <-->|gRPC| Proj
     Proj -->|SQL| RM
 ```
@@ -91,7 +91,7 @@ flowchart TB
             Agg[Aggregate Logic]
             Upc[Upcaster Logic]
         end
-        AggSidecar[⍼ Aggregate Coordinator]
+        AggSidecar[⍼ Command Handler Coordinator]
         AggCode <-->|gRPC| AggSidecar
     end
 
@@ -146,18 +146,18 @@ When `sync_mode = CASCADE`, the framework orchestrates the complete cascade:
 
 ```mermaid
 flowchart TB
-    Client --> AC[AggregateCoordinator.Handle<br/>Domain A]
-    AC --> BL[BusinessLogic.Handle → events]
+    Client --> CHC[CommandHandlerCoordinator.Handle<br/>Domain A]
+    CHC --> BL[BusinessLogic.Handle → events]
     BL --> Persist[Persist events]
     Persist --> SC[SagaCoordinator.HandleSync]
     SC --> Saga[Saga.HandleSync → commands]
     Saga --> SC
-    SC -.->|gRPC| AC2[AggregateCoordinator.Handle<br/>Domain B]
-    AC2 -.-> BL2[BusinessLogic.Handle → events]
+    SC -.->|gRPC| CHC2[CommandHandlerCoordinator.Handle<br/>Domain B]
+    CHC2 -.-> BL2[BusinessLogic.Handle → events]
     BL2 -.-> Persist2[Persist events]
     Persist --> PC[ProjectorCoordinator.HandleSync]
     PC --> Resp[CommandResponse<br/>events, projections]
-    style AC2 stroke-dasharray: 5 5
+    style CHC2 stroke-dasharray: 5 5
     style BL2 stroke-dasharray: 5 5
     style Persist2 stroke-dasharray: 5 5
 ```

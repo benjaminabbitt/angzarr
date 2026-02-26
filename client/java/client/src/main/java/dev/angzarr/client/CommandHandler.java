@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Base class for event-sourced aggregates using the OO pattern.
+ * Base class for event-sourced command handlers using the OO pattern.
  *
  * Subclasses must:
  * - Override getDomain()
@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Annotate event appliers with @Applies(EventType.class)
  * - Optionally annotate rejection handlers with @Rejected(domain="...", command="...")
  */
-public abstract class Aggregate<S> {
+public abstract class CommandHandler<S> {
     private EventBook eventBook;
     private S state;
 
@@ -37,7 +37,7 @@ public abstract class Aggregate<S> {
     private record MethodInfo(Method method, Class<? extends Message> messageType) {}
 
     /**
-     * The domain this aggregate belongs to.
+     * The domain this command handler belongs to.
      */
     public abstract String getDomain();
 
@@ -46,11 +46,11 @@ public abstract class Aggregate<S> {
      */
     protected abstract S createEmptyState();
 
-    protected Aggregate() {
+    protected CommandHandler() {
         this(null);
     }
 
-    protected Aggregate(EventBook eventBook) {
+    protected CommandHandler(EventBook eventBook) {
         this.eventBook = eventBook != null ? eventBook : EventBook.getDefaultInstance();
         ensureDispatchTablesBuilt();
     }
@@ -92,10 +92,10 @@ public abstract class Aggregate<S> {
     /**
      * Handle a gRPC request.
      */
-    public static <T extends Aggregate<?>> BusinessResponse handle(Class<T> aggClass, ContextualCommand request) {
+    public static <T extends CommandHandler<?>> BusinessResponse handle(Class<T> handlerClass, ContextualCommand request) {
         try {
             var priorEvents = request.hasEvents() ? request.getEvents() : null;
-            var agg = aggClass.getConstructor(EventBook.class).newInstance(priorEvents);
+            var handler = handlerClass.getConstructor(EventBook.class).newInstance(priorEvents);
 
             if (request.getCommand().getPagesList().isEmpty()) {
                 throw new Errors.InvalidArgumentError("No command pages");
@@ -106,11 +106,11 @@ public abstract class Aggregate<S> {
             // Check for Notification
             if (commandAny.getTypeUrl().endsWith("Notification")) {
                 var notification = commandAny.unpack(Notification.class);
-                return agg.handleRevocation(notification);
+                return handler.handleRevocation(notification);
             }
 
-            agg.dispatch(commandAny);
-            return BusinessResponse.newBuilder().setEvents(agg.getEventBook()).build();
+            handler.dispatch(commandAny);
+            return BusinessResponse.newBuilder().setEvents(handler.getEventBook()).build();
         } catch (Exception e) {
             throw new Errors.ClientError("Failed to handle command", e);
         }
@@ -179,7 +179,7 @@ public abstract class Aggregate<S> {
         return BusinessResponse.newBuilder()
             .setRevocation(RevocationResponse.newBuilder()
                 .setEmitSystemRevocation(true)
-                .setReason("Aggregate " + getDomain() + " has no custom compensation for " + domain + "/" + commandSuffix)
+                .setReason("CommandHandler " + getDomain() + " has no custom compensation for " + domain + "/" + commandSuffix)
                 .build())
             .build();
     }
@@ -209,7 +209,7 @@ public abstract class Aggregate<S> {
     }
 
     /**
-     * Check if this aggregate has prior events.
+     * Check if this command handler has prior events.
      */
     public boolean exists() {
         return state != null || !eventBook.getPagesList().isEmpty();

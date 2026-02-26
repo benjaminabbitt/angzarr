@@ -365,6 +365,7 @@ async fn execute_pm_commands(
         }),
         correlation_id: correlation_id.to_string(),
         edition: None,
+        external_id: String::new(),
     };
 
     // Stamp saga_origin on all PM commands so compensation routes back to PM

@@ -17,7 +17,7 @@ async fn test_runtime_executes_command_and_persists_events() {
 
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregateWrapper(agg_clone))
+        .register_command_handler("orders", EchoAggregateWrapper(agg_clone))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -48,7 +48,7 @@ async fn test_runtime_executes_command_and_persists_events() {
 async fn test_runtime_sequence_increments() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -74,7 +74,7 @@ async fn test_runtime_sequence_increments() {
 async fn test_events_published_to_channel_bus() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -110,9 +110,9 @@ async fn test_events_published_to_channel_bus() {
 async fn test_multiple_aggregates() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("products", EchoAggregate::new())
-        .register_aggregate("customers", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("products", EchoAggregate::new())
+        .register_command_handler("customers", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -145,7 +145,7 @@ async fn test_multiple_aggregates() {
 async fn test_sequential_commands_same_aggregate() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -172,9 +172,11 @@ async fn test_sequential_commands_same_aggregate() {
     // Verify sequences are 0-4
     for (i, event) in events.iter().enumerate() {
         assert_eq!(
-            event.sequence as usize, i,
+            event.sequence_num() as usize,
+            i,
             "Event {} should have sequence {}",
-            i, i
+            i,
+            i
         );
     }
 }
@@ -183,7 +185,7 @@ async fn test_sequential_commands_same_aggregate() {
 async fn test_multiple_events_in_single_command() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", MultiEventAggregate::new(3))
+        .register_command_handler("orders", MultiEventAggregate::new(3))
         .build()
         .await
         .expect("Failed to build runtime");
@@ -211,7 +213,7 @@ async fn test_multiple_events_in_single_command() {
 async fn test_correlation_id_propagates() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -248,7 +250,7 @@ async fn test_sequential_commands_different_aggregates() {
     // Test commands to different aggregates execute independently
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -277,7 +279,11 @@ async fn test_sequential_commands_different_aggregates() {
             .await
             .unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].sequence, 0, "First event should be sequence 0");
+        assert_eq!(
+            events[0].sequence_num(),
+            0,
+            "First event should be sequence 0"
+        );
     }
 }
 
@@ -285,7 +291,7 @@ async fn test_sequential_commands_different_aggregates() {
 async fn test_rapid_sequential_commands() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -321,6 +327,6 @@ fn extract_seq(response: &angzarr::proto::CommandResponse) -> u32 {
         .events
         .as_ref()
         .and_then(|e| e.pages.first())
-        .map(|p| p.sequence)
+        .map(|p| p.sequence_num())
         .unwrap_or(0)
 }

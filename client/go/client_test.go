@@ -41,35 +41,35 @@ func (m *mockEventQueryServiceClient) GetAggregateRoots(ctx context.Context, in 
 	return nil, nil
 }
 
-type mockAggregateCoordinatorServiceClient struct {
-	handleFn                func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	handleSyncFn            func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	handleSyncSpeculativeFn func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	handleCompensationFn    func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.BusinessResponse, error)
+type mockCHCoordinatorServiceClient struct {
+	handleCommandFn         func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleEventFn           func(ctx context.Context, in *pb.EventRequest, opts ...grpc.CallOption) (*pb.FactInjectionResponse, error)
+	handleSyncSpeculativeFn func(ctx context.Context, in *pb.SpeculateCommandHandlerRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleCompensationFn    func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.BusinessResponse, error)
 }
 
-func (m *mockAggregateCoordinatorServiceClient) Handle(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
-	if m.handleFn != nil {
-		return m.handleFn(ctx, in, opts...)
+func (m *mockCHCoordinatorServiceClient) HandleCommand(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+	if m.handleCommandFn != nil {
+		return m.handleCommandFn(ctx, in, opts...)
 	}
 	return &pb.CommandResponse{}, nil
 }
 
-func (m *mockAggregateCoordinatorServiceClient) HandleSync(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
-	if m.handleSyncFn != nil {
-		return m.handleSyncFn(ctx, in, opts...)
+func (m *mockCHCoordinatorServiceClient) HandleEvent(ctx context.Context, in *pb.EventRequest, opts ...grpc.CallOption) (*pb.FactInjectionResponse, error) {
+	if m.handleEventFn != nil {
+		return m.handleEventFn(ctx, in, opts...)
 	}
-	return &pb.CommandResponse{}, nil
+	return &pb.FactInjectionResponse{}, nil
 }
 
-func (m *mockAggregateCoordinatorServiceClient) HandleSyncSpeculative(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+func (m *mockCHCoordinatorServiceClient) HandleSyncSpeculative(ctx context.Context, in *pb.SpeculateCommandHandlerRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 	if m.handleSyncSpeculativeFn != nil {
 		return m.handleSyncSpeculativeFn(ctx, in, opts...)
 	}
 	return &pb.CommandResponse{}, nil
 }
 
-func (m *mockAggregateCoordinatorServiceClient) HandleCompensation(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.BusinessResponse, error) {
+func (m *mockCHCoordinatorServiceClient) HandleCompensation(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.BusinessResponse, error) {
 	if m.handleCompensationFn != nil {
 		return m.handleCompensationFn(ctx, in, opts...)
 	}
@@ -95,7 +95,7 @@ type mockProjectorCoordinatorServiceClient struct {
 	handleSpeculativeFn func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error)
 }
 
-func (m *mockProjectorCoordinatorServiceClient) HandleSync(ctx context.Context, in *pb.SyncEventBook, opts ...grpc.CallOption) (*pb.Projection, error) {
+func (m *mockProjectorCoordinatorServiceClient) HandleSync(ctx context.Context, in *pb.EventRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
 	return &pb.Projection{}, nil
 }
 
@@ -206,17 +206,17 @@ func TestQueryClientFromConn(t *testing.T) {
 	}
 }
 
-// AggregateClient tests
+// CommandHandlerClient tests
 
-func TestAggregateClient_Handle(t *testing.T) {
+func TestCommandHandlerClient_Handle(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
 		expected := &pb.CommandResponse{Events: &pb.EventBook{NextSequence: 10}}
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleFn: func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleCommandFn: func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return expected, nil
 			},
 		}
-		client := &AggregateClient{inner: mock}
+		client := &CommandHandlerClient{inner: mock}
 
 		result, err := client.Handle(context.Background(), &pb.CommandBook{})
 		if err != nil {
@@ -228,12 +228,12 @@ func TestAggregateClient_Handle(t *testing.T) {
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleFn: func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleCommandFn: func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return nil, status.Error(codes.FailedPrecondition, "sequence mismatch")
 			},
 		}
-		client := &AggregateClient{inner: mock}
+		client := &CommandHandlerClient{inner: mock}
 
 		_, err := client.Handle(context.Background(), &pb.CommandBook{})
 		if err == nil {
@@ -246,69 +246,69 @@ func TestAggregateClient_Handle(t *testing.T) {
 	})
 }
 
-func TestAggregateClient_HandleSync(t *testing.T) {
+func TestCommandHandlerClient_HandleCommand(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleSyncFn: func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleCommandFn: func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return &pb.CommandResponse{}, nil
 			},
 		}
-		client := &AggregateClient{inner: mock}
+		client := &CommandHandlerClient{inner: mock}
 
-		_, err := client.HandleSync(context.Background(), &pb.SyncCommandBook{})
+		_, err := client.HandleCommand(context.Background(), &pb.CommandRequest{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleSyncFn: func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleCommandFn: func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return nil, status.Error(codes.Internal, "internal error")
 			},
 		}
-		client := &AggregateClient{inner: mock}
+		client := &CommandHandlerClient{inner: mock}
 
-		_, err := client.HandleSync(context.Background(), &pb.SyncCommandBook{})
+		_, err := client.HandleCommand(context.Background(), &pb.CommandRequest{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
 	})
 }
 
-func TestAggregateClient_HandleSyncSpeculative(t *testing.T) {
+func TestCommandHandlerClient_HandleSyncSpeculative(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateCommandHandlerRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return &pb.CommandResponse{}, nil
 			},
 		}
-		client := &AggregateClient{inner: mock}
+		client := &CommandHandlerClient{inner: mock}
 
-		_, err := client.HandleSyncSpeculative(context.Background(), &pb.SpeculateAggregateRequest{})
+		_, err := client.HandleSyncSpeculative(context.Background(), &pb.SpeculateCommandHandlerRequest{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateCommandHandlerRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return nil, status.Error(codes.InvalidArgument, "invalid")
 			},
 		}
-		client := &AggregateClient{inner: mock}
+		client := &CommandHandlerClient{inner: mock}
 
-		_, err := client.HandleSyncSpeculative(context.Background(), &pb.SpeculateAggregateRequest{})
+		_, err := client.HandleSyncSpeculative(context.Background(), &pb.SpeculateCommandHandlerRequest{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
 	})
 }
 
-func TestAggregateClient_Close(t *testing.T) {
+func TestCommandHandlerClient_Close(t *testing.T) {
 	t.Run("nil connection", func(t *testing.T) {
-		client := &AggregateClient{conn: nil}
+		client := &CommandHandlerClient{conn: nil}
 		err := client.Close()
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -316,8 +316,8 @@ func TestAggregateClient_Close(t *testing.T) {
 	})
 }
 
-func TestAggregateClientFromConn(t *testing.T) {
-	client := AggregateClientFromConn(nil)
+func TestCommandHandlerClientFromConn(t *testing.T) {
+	client := CommandHandlerClientFromConn(nil)
 	if client == nil {
 		t.Error("expected non-nil client")
 	}
@@ -325,30 +325,30 @@ func TestAggregateClientFromConn(t *testing.T) {
 
 // SpeculativeClient tests
 
-func TestSpeculativeClient_Aggregate(t *testing.T) {
+func TestSpeculativeClient_CommandHandler(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateCommandHandlerRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return &pb.CommandResponse{}, nil
 			},
 		}
-		client := &SpeculativeClient{aggregateStub: mock}
+		client := &SpeculativeClient{chStub: mock}
 
-		_, err := client.Aggregate(context.Background(), &pb.SpeculateAggregateRequest{})
+		_, err := client.CommandHandler(context.Background(), &pb.SpeculateCommandHandlerRequest{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockAggregateCoordinatorServiceClient{
-			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockCHCoordinatorServiceClient{
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateCommandHandlerRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return nil, status.Error(codes.Internal, "error")
 			},
 		}
-		client := &SpeculativeClient{aggregateStub: mock}
+		client := &SpeculativeClient{chStub: mock}
 
-		_, err := client.Aggregate(context.Background(), &pb.SpeculateAggregateRequest{})
+		_, err := client.CommandHandler(context.Background(), &pb.SpeculateCommandHandlerRequest{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -466,13 +466,13 @@ func TestSpeculativeClientFromConn(t *testing.T) {
 
 func TestDomainClient_Execute(t *testing.T) {
 	expected := &pb.CommandResponse{}
-	mock := &mockAggregateCoordinatorServiceClient{
-		handleFn: func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+	mock := &mockCHCoordinatorServiceClient{
+		handleCommandFn: func(ctx context.Context, in *pb.CommandRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 			return expected, nil
 		},
 	}
 	client := &DomainClient{
-		Aggregate: &AggregateClient{inner: mock},
+		CommandHandler: &CommandHandlerClient{inner: mock},
 	}
 
 	result, err := client.Execute(context.Background(), &pb.CommandBook{})
@@ -499,8 +499,8 @@ func TestDomainClientFromConn(t *testing.T) {
 	if client == nil {
 		t.Error("expected non-nil client")
 	}
-	if client.Aggregate == nil {
-		t.Error("expected non-nil Aggregate")
+	if client.CommandHandler == nil {
+		t.Error("expected non-nil CommandHandler")
 	}
 	if client.Query == nil {
 		t.Error("expected non-nil Query")
@@ -524,8 +524,8 @@ func TestClientFromConn(t *testing.T) {
 	if client == nil {
 		t.Error("expected non-nil client")
 	}
-	if client.Aggregate == nil {
-		t.Error("expected non-nil Aggregate")
+	if client.CommandHandler == nil {
+		t.Error("expected non-nil CommandHandler")
 	}
 	if client.Query == nil {
 		t.Error("expected non-nil Query")
@@ -559,19 +559,19 @@ func TestQueryClientFromEnv(t *testing.T) {
 	})
 }
 
-func TestAggregateClientFromEnv(t *testing.T) {
+func TestCommandHandlerClientFromEnv(t *testing.T) {
 	t.Run("uses env var when set", func(t *testing.T) {
-		os.Setenv("TEST_AGG_ENDPOINT_12345", "localhost:99999")
-		defer os.Unsetenv("TEST_AGG_ENDPOINT_12345")
+		os.Setenv("TEST_CH_ENDPOINT_12345", "localhost:99999")
+		defer os.Unsetenv("TEST_CH_ENDPOINT_12345")
 
-		_, err := AggregateClientFromEnv("TEST_AGG_ENDPOINT_12345", "default:8000")
+		_, err := CommandHandlerClientFromEnv("TEST_CH_ENDPOINT_12345", "default:8000")
 		_ = err
 	})
 
 	t.Run("uses default when env not set", func(t *testing.T) {
 		os.Unsetenv("NONEXISTENT_VAR_12345")
 
-		_, err := AggregateClientFromEnv("NONEXISTENT_VAR_12345", "localhost:99999")
+		_, err := CommandHandlerClientFromEnv("NONEXISTENT_VAR_12345", "localhost:99999")
 		_ = err
 	})
 }

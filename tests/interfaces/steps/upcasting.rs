@@ -7,6 +7,7 @@ use std::sync::Arc;
 use angzarr::proto::event_page;
 use angzarr::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
 use angzarr::proto::{EventPage, UpcastRequest, UpcastResponse};
+use angzarr::proto_ext::EventPageExt;
 use angzarr::services::upcaster::Upcaster;
 use cucumber::{given, then, when, World};
 use tokio::sync::Mutex;
@@ -55,7 +56,7 @@ impl UpcasterWorld {
 
     fn make_event_page(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             created_at: None,
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: type_url.to_string(),
@@ -302,9 +303,9 @@ async fn given_events_with_sequences(world: &mut UpcasterWorld, s1: u32, s2: u32
 #[then(expr = "the events should have sequences {int}, {int}, {int}")]
 async fn then_events_have_sequences(world: &mut UpcasterWorld, s1: u32, s2: u32, s3: u32) {
     assert_eq!(world.loaded_events.len(), 3, "Expected 3 events");
-    assert_eq!(world.loaded_events[0].sequence, s1);
-    assert_eq!(world.loaded_events[1].sequence, s2);
-    assert_eq!(world.loaded_events[2].sequence, s3);
+    assert_eq!(world.loaded_events[0].sequence_num(), s1);
+    assert_eq!(world.loaded_events[1].sequence_num(), s2);
+    assert_eq!(world.loaded_events[2].sequence_num(), s3);
 }
 
 #[given(expr = "{int} sequential events are stored")]
@@ -318,9 +319,11 @@ async fn given_sequential_events(world: &mut UpcasterWorld, count: u32) {
 async fn then_events_in_sequence_order(world: &mut UpcasterWorld) {
     for (i, event) in world.loaded_events.iter().enumerate() {
         assert_eq!(
-            event.sequence, i as u32,
+            event.sequence_num(),
+            i as u32,
             "Event {} has wrong sequence {}",
-            i, event.sequence
+            i,
+            event.sequence_num()
         );
     }
 }

@@ -71,6 +71,7 @@ impl DlqWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence,
@@ -94,6 +95,7 @@ impl DlqWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -117,10 +119,11 @@ impl DlqWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: "type.test/TestEvent".to_string(),

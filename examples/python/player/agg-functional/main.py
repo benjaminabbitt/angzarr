@@ -6,7 +6,7 @@ This module demonstrates the functional/imperative pattern using:
 - @command_handler decorated functions
 
 Contrasts with the OO pattern in player/agg/ which uses:
-- Aggregate[StateT] base class
+- CommandHandler[StateT] base class
 - @handles and @applies decorators on class methods
 """
 
@@ -21,7 +21,7 @@ from state import (
     apply_withdrawn,
 )
 
-from angzarr_client import CommandRouter, StateRouter, run_aggregate_server
+from angzarr_client import CommandRouter, StateRouter, run_command_handler_server
 from angzarr_client.proto.examples import player_pb2 as player
 from handlers import (
     handle_deposit,
@@ -68,4 +68,4 @@ router = (
 
 
 if __name__ == "__main__":
-    run_aggregate_server("player", "50402", router, logger=logger)
+    run_command_handler_server("player", "50402", router, logger=logger)

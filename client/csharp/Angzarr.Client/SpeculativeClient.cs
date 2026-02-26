@@ -18,16 +18,16 @@ namespace Angzarr.Client;
 /// <example>
 /// <code>
 /// using var client = SpeculativeClient.Connect("http://localhost:1310");
-/// var response = client.Aggregate(new SpeculateAggregateRequest
+/// var response = client.CommandHandler(new SpeculateCommandHandlerRequest
 /// {
 ///     Command = command,
-///     Events = priorEvents
+///     PointInTime = pointInTime
 /// });
 /// </code>
 /// </example>
 public class SpeculativeClient : IDisposable
 {
-    private readonly AggregateCoordinatorService.AggregateCoordinatorServiceClient _aggregateStub;
+    private readonly CommandHandlerCoordinatorService.CommandHandlerCoordinatorServiceClient _commandHandlerStub;
     private readonly SagaCoordinatorService.SagaCoordinatorServiceClient _sagaStub;
     private readonly ProjectorCoordinatorService.ProjectorCoordinatorServiceClient _projectorStub;
     private readonly ProcessManagerCoordinatorService.ProcessManagerCoordinatorServiceClient _pmStub;
@@ -36,7 +36,8 @@ public class SpeculativeClient : IDisposable
     private SpeculativeClient(GrpcChannel channel)
     {
         _channel = channel;
-        _aggregateStub = new AggregateCoordinatorService.AggregateCoordinatorServiceClient(channel);
+        _commandHandlerStub =
+            new CommandHandlerCoordinatorService.CommandHandlerCoordinatorServiceClient(channel);
         _sagaStub = new SagaCoordinatorService.SagaCoordinatorServiceClient(channel);
         _projectorStub = new ProjectorCoordinatorService.ProjectorCoordinatorServiceClient(channel);
         _pmStub = new ProcessManagerCoordinatorService.ProcessManagerCoordinatorServiceClient(
@@ -106,16 +107,16 @@ public class SpeculativeClient : IDisposable
     }
 
     /// <summary>
-    /// Execute a command speculatively against temporal aggregate state.
+    /// Execute a command speculatively against temporal state.
     /// </summary>
-    /// <param name="request">The speculative aggregate request</param>
+    /// <param name="request">The speculative command handler request</param>
     /// <returns>The command response (without persistence)</returns>
     /// <exception cref="GrpcError">If the RPC fails</exception>
-    public CommandResponse Aggregate(SpeculateAggregateRequest request)
+    public CommandResponse CommandHandler(SpeculateCommandHandlerRequest request)
     {
         try
         {
-            return _aggregateStub.HandleSyncSpeculative(request);
+            return _commandHandlerStub.HandleSyncSpeculative(request);
         }
         catch (RpcException ex)
         {

@@ -10,10 +10,10 @@ import "angzarr/types.proto";
 import "google/protobuf/any.proto";
 import "google/api/annotations.proto";
 
-// AggregateService: client logic that processes commands and emits events
-// Also known as Command Handler in CQRS terminology
+// CommandHandlerService: client logic that processes commands and emits events
+// Business logic layer that implements command handling for a domain aggregate
 // client logic doesn't care about sync - coordinator decides
-service AggregateService {
+service CommandHandlerService {
   // Process command and return business response (events or revocation request)
   rpc Handle (ContextualCommand) returns (BusinessResponse);
   // Replay events to compute state (for conflict detection)
@@ -32,34 +32,36 @@ message ReplayResponse {
   google.protobuf.Any state = 1;  // Resulting state
 }
 
-// AggregateCoordinatorService: orchestrates command processing for aggregates
-service AggregateCoordinatorService {
-  // Async processing - fire and forget
-  rpc Handle (CommandBook) returns (CommandResponse) {
+// CommandHandlerCoordinatorService: orchestrates command processing for domain aggregates
+service CommandHandlerCoordinatorService {
+  // Process command with optional sync mode (default: async fire-and-forget)
+  rpc HandleCommand (CommandRequest) returns (CommandResponse) {
     option (google.api.http) = {
-      post: "/v1/aggregate/{cover.domain}/commands"
+      post: "/v1/ch/{command.cover.domain}/commands"
       body: "*"
     };
   }
-  // Sync processing - waits for completion based on sync_mode
-  rpc HandleSync (SyncCommandBook) returns (CommandResponse) {
+  // Inject fact events - external realities that cannot be rejected.
+  // Idempotent: subsequent requests with same external_id return original events.
+  // Use EventRequest.route_to_handler to control command handler invocation.
+  rpc HandleEvent (EventRequest) returns (FactInjectionResponse) {
     option (google.api.http) = {
-      post: "/v1/aggregate/{command.cover.domain}/commands/sync"
+      post: "/v1/ch/{events.cover.domain}/events"
       body: "*"
     };
   }
   // Speculative execution - execute against temporal state without persisting
-  rpc HandleSyncSpeculative (SpeculateAggregateRequest) returns (CommandResponse) {
+  rpc HandleSyncSpeculative (SpeculateCommandHandlerRequest) returns (CommandResponse) {
     option (google.api.http) = {
-      post: "/v1/aggregate/{command.cover.domain}/commands/speculative"
+      post: "/v1/ch/{command.cover.domain}/commands/speculative"
       body: "*"
     };
   }
   // Compensation flow - returns BusinessResponse for saga compensation handling.
   // If business returns events, persists them. Caller handles revocation flags.
-  rpc HandleCompensation (CommandBook) returns (BusinessResponse) {
+  rpc HandleCompensation (CommandRequest) returns (BusinessResponse) {
     option (google.api.http) = {
-      post: "/v1/aggregate/{cover.domain}/compensation"
+      post: "/v1/ch/{command.cover.domain}/compensation"
       body: "*"
     };
   }
@@ -90,7 +92,30 @@ message BusinessResponse {
 }
 
 // Request for speculative command execution against temporal state.
-message SpeculateAggregateRequest {
+message SpeculateCommandHandlerRequest {
   CommandBook command = 1;
   TemporalQuery point_in_time = 2;
 }
+
+// ============================================================================
+// Fact Injection - External realities that cannot be rejected
+// ============================================================================
+
+// docs:start:fact_injection
+// Response from fact injection.
+// Indicates whether facts were newly persisted or already existed (idempotent).
+//
+// Request uses EventRequest with:
+// - events: EventBook containing fact events (with FactSequence markers)
+// - sync_mode: Controls sync processing (default: async)
+// - route_to_handler: Whether to invoke command handler's handle_fact (default: true)
+//
+// IMPORTANT: Set Cover.external_id for idempotency. The coordinator uses this
+// to deduplicate fact injections - subsequent requests with the same external_id
+// return the original events without re-persisting.
+message FactInjectionResponse {
+  EventBook events = 1;                   // Persisted events with real sequence numbers
+  bool already_processed = 2;             // True if external_id was already seen (idempotent response)
+  repeated Projection projections = 3;    // Synchronous projector results (if any)
+}
+// docs:end:fact_injection

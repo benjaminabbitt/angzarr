@@ -42,7 +42,7 @@ transport:
 # Server Configuration (legacy - prefer transport section)
 # =============================================================================
 server:
-  aggregate_port: 1313
+  ch_port: 1313
   event_query_port: 1314
   host: 0.0.0.0
 

@@ -1,8 +1,8 @@
-// Package angzarr provides OO-style aggregate base for rich domain models.
+// Package angzarr provides OO-style command handler base for rich domain models.
 //
-// This module provides the framework for implementing event-sourced aggregates
+// This module provides the framework for implementing event-sourced command handlers
 // using the rich domain model pattern. Business logic lives as methods on the
-// aggregate struct, with registration methods for handlers:
+// command handler struct, with registration methods for handlers:
 //
 //   - Handles: Register command handlers that emit events
 //   - Applies: Register event appliers that mutate state
@@ -16,7 +16,7 @@
 //	}
 //
 //	type Player struct {
-//	    angzarr.AggregateBase[PlayerState]
+//	    angzarr.CommandHandlerBase[PlayerState]
 //	}
 //
 //	func NewPlayer(eventBook *pb.EventBook) *Player {
@@ -63,11 +63,11 @@ type handlerFunc func(cmd *anypb.Any) (proto.Message, error)
 // multiHandlerFunc is an internal type for multi-event command handlers.
 type multiHandlerFunc func(cmd *anypb.Any) ([]proto.Message, error)
 
-// AggregateBase provides OO-style aggregate infrastructure.
+// CommandHandlerBase provides OO-style command handler infrastructure.
 //
-// Embed this in your aggregate struct and call Init() to set up the base.
+// Embed this in your command handler struct and call Init() to set up the base.
 // Then register handlers with Handles() and appliers with Applies().
-type AggregateBase[S any] struct {
+type CommandHandlerBase[S any] struct {
 	eventBook     *pb.EventBook
 	state         *S
 	stateSet      bool
@@ -78,9 +78,9 @@ type AggregateBase[S any] struct {
 	domain        string
 }
 
-// Init initializes the aggregate base with an event book and state factory.
+// Init initializes the command handler base with an event book and state factory.
 //
-// Call this in your aggregate's constructor:
+// Call this in your command handler's constructor:
 //
 //	func NewPlayer(eventBook *pb.EventBook) *Player {
 //	    p := &Player{}
@@ -88,7 +88,7 @@ type AggregateBase[S any] struct {
 //	    // ... register handlers and appliers
 //	    return p
 //	}
-func (a *AggregateBase[S]) Init(eventBook *pb.EventBook, factory func() S) {
+func (a *CommandHandlerBase[S]) Init(eventBook *pb.EventBook, factory func() S) {
 	if eventBook == nil {
 		eventBook = &pb.EventBook{}
 	}
@@ -99,13 +99,13 @@ func (a *AggregateBase[S]) Init(eventBook *pb.EventBook, factory func() S) {
 	a.appliers = make(map[string]applierFunc[S])
 }
 
-// SetDomain sets the aggregate's domain name for descriptor generation.
-func (a *AggregateBase[S]) SetDomain(domain string) {
+// SetDomain sets the command handler's domain name for descriptor generation.
+func (a *CommandHandlerBase[S]) SetDomain(domain string) {
 	a.domain = domain
 }
 
-// Domain returns the aggregate's domain name.
-func (a *AggregateBase[S]) Domain() string {
+// Domain returns the command handler's domain name.
+func (a *CommandHandlerBase[S]) Domain() string {
 	return a.domain
 }
 
@@ -125,7 +125,7 @@ func (a *AggregateBase[S]) Domain() string {
 //	    }
 //	    return &examples.PlayerRegistered{...}, nil
 //	}
-func (a *AggregateBase[S]) Handles(handler any) {
+func (a *CommandHandlerBase[S]) Handles(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -198,7 +198,7 @@ func (a *AggregateBase[S]) Handles(handler any) {
 //	    // ... validation ...
 //	    return []proto.Message{potAwardedEvent, handCompleteEvent}, nil
 //	}
-func (a *AggregateBase[S]) HandlesMulti(handler any) {
+func (a *CommandHandlerBase[S]) HandlesMulti(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -274,7 +274,7 @@ func (a *AggregateBase[S]) HandlesMulti(handler any) {
 //	    state.PlayerID = "player_" + event.Email
 //	    state.DisplayName = event.DisplayName
 //	}
-func (a *AggregateBase[S]) Applies(applier any) {
+func (a *CommandHandlerBase[S]) Applies(applier any) {
 	applierValue := reflect.ValueOf(applier)
 	applierType := applierValue.Type()
 
@@ -317,22 +317,22 @@ func (a *AggregateBase[S]) Applies(applier any) {
 }
 
 // State returns the current state, rebuilding from events if needed.
-func (a *AggregateBase[S]) State() *S {
+func (a *CommandHandlerBase[S]) State() *S {
 	if !a.stateSet {
 		a.rebuild()
 	}
 	return a.state
 }
 
-// Exists returns true if this aggregate has prior events.
-func (a *AggregateBase[S]) Exists() bool {
+// Exists returns true if this command handler has prior events.
+func (a *CommandHandlerBase[S]) Exists() bool {
 	// Force state rebuild to check
 	_ = a.State()
 	return a.stateSet && (a.eventBook != nil && len(a.eventBook.Pages) > 0)
 }
 
 // EventBook returns the event book for persistence.
-func (a *AggregateBase[S]) EventBook() *pb.EventBook {
+func (a *CommandHandlerBase[S]) EventBook() *pb.EventBook {
 	return a.eventBook
 }
 
@@ -340,7 +340,7 @@ func (a *AggregateBase[S]) EventBook() *pb.EventBook {
 //
 // The command is unpacked from the Any, the matching handler is called,
 // and the resulting event(s) are applied to state and recorded in the event book.
-func (a *AggregateBase[S]) Dispatch(cmdAny *anypb.Any) error {
+func (a *CommandHandlerBase[S]) Dispatch(cmdAny *anypb.Any) error {
 	if cmdAny == nil || cmdAny.TypeUrl == "" {
 		return fmt.Errorf("no command provided")
 	}
@@ -389,7 +389,7 @@ func (a *AggregateBase[S]) Dispatch(cmdAny *anypb.Any) error {
 }
 
 // applyAndRecord packs the event, applies it to state, and adds it to the event book.
-func (a *AggregateBase[S]) applyAndRecord(event proto.Message) {
+func (a *CommandHandlerBase[S]) applyAndRecord(event proto.Message) {
 	eventAny, err := anypb.New(event)
 	if err != nil {
 		return
@@ -406,7 +406,7 @@ func (a *AggregateBase[S]) applyAndRecord(event proto.Message) {
 }
 
 // applyEvent applies a single event to state using registered appliers.
-func (a *AggregateBase[S]) applyEvent(state *S, eventAny *anypb.Any) {
+func (a *CommandHandlerBase[S]) applyEvent(state *S, eventAny *anypb.Any) {
 	typeURL := eventAny.TypeUrl
 	for fullName, applier := range a.appliers {
 		if typeURL == TypeURLPrefix+fullName {
@@ -431,9 +431,9 @@ func (a *AggregateBase[S]) applyEvent(state *S, eventAny *anypb.Any) {
 // - The framework would try to re-persist events that already exist
 // - Event sequences would be wrong (duplicates)
 //
-// This "consume then clear" pattern is essential for the OO aggregate model
-// where the same EventBook struct flows through input → processing → output.
-func (a *AggregateBase[S]) rebuild() {
+// This "consume then clear" pattern is essential for the OO command handler model
+// where the same EventBook struct flows through input -> processing -> output.
+func (a *CommandHandlerBase[S]) rebuild() {
 	state := a.factory()
 	a.state = &state
 	a.stateSet = true
@@ -454,7 +454,7 @@ func (a *AggregateBase[S]) rebuild() {
 }
 
 // HandlerTypes returns the registered fully-qualified command type names.
-func (a *AggregateBase[S]) HandlerTypes() []string {
+func (a *CommandHandlerBase[S]) HandlerTypes() []string {
 	types := make([]string, 0, len(a.handlers)+len(a.multiHandlers))
 	for fullName := range a.handlers {
 		types = append(types, fullName)
@@ -470,10 +470,10 @@ func (a *AggregateBase[S]) HandlerTypes() []string {
 // This is the entry point for gRPC integration. It extracts the command,
 // dispatches it, and returns the event book.
 //
-// Note: Unlike the functional router, OO aggregates need to be instantiated
-// fresh for each request with the prior events. Use NewOOAggregateHandler
-// to wrap OO aggregates for gRPC.
-func (a *AggregateBase[S]) Handle(request *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+// Note: Unlike the functional router, OO command handlers need to be instantiated
+// fresh for each request with the prior events. Use NewOOCommandHandlerGrpc
+// to wrap OO command handlers for gRPC.
+func (a *CommandHandlerBase[S]) Handle(request *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	if len(request.Command.Pages) == 0 {
 		return nil, fmt.Errorf("%s", ErrMsgNoCommandPages)
 	}
@@ -486,7 +486,7 @@ func (a *AggregateBase[S]) Handle(request *pb.ContextualCommand) (*pb.BusinessRe
 	// Check for Notification (rejection/compensation)
 	if cmdAny.TypeUrl == TypeURLPrefix+"angzarr.Notification" {
 		// TODO: Implement revocation handling
-		return DelegateToFramework("OO aggregate revocation not yet implemented"), nil
+		return DelegateToFramework("OO command handler revocation not yet implemented"), nil
 	}
 
 	if err := a.Dispatch(cmdAny); err != nil {

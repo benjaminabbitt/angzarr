@@ -4,9 +4,9 @@ These Protocols define the interface that handler objects must implement.
 Similar to Rust traits, they provide type-safe contracts for component handlers.
 
 Usage:
-    from angzarr_client import AggregateDomainHandler, AggregateRouter
+    from angzarr_client import CommandHandlerDomainHandler, CommandHandlerRouter
 
-    class PlayerHandler(AggregateDomainHandler[PlayerState]):
+    class PlayerHandler(CommandHandlerDomainHandler[PlayerState]):
         def command_types(self) -> list[str]:
             return ["RegisterPlayer", "DepositFunds"]
 
@@ -22,7 +22,7 @@ Usage:
         def on_rejected(self, notification, state, target_domain, target_command):
             return RejectionHandlerResponse()
 
-    router = AggregateRouter("player", "player", PlayerHandler())
+    router = CommandHandlerRouter("player", "player", PlayerHandler())
 """
 
 from __future__ import annotations
@@ -47,8 +47,8 @@ S_co = TypeVar("S_co", covariant=True)
 
 
 @runtime_checkable
-class AggregateDomainHandler(Protocol[S_co]):
-    """Protocol for aggregate domain handlers.
+class CommandHandlerDomainHandler(Protocol[S_co]):
+    """Protocol for command handler domain handlers.
 
     Implementations provide command handling logic for a single domain.
     The handler is responsible for:
@@ -58,7 +58,7 @@ class AggregateDomainHandler(Protocol[S_co]):
     - Handling rejection notifications
 
     Example:
-        class PlayerHandler(AggregateDomainHandler[PlayerState]):
+        class PlayerHandler(CommandHandlerDomainHandler[PlayerState]):
             def command_types(self) -> list[str]:
                 return ["RegisterPlayer", "DepositFunds"]
 

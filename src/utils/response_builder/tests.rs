@@ -20,6 +20,7 @@ fn make_command_book(with_correlation: bool) -> CommandBook {
                 String::new()
             },
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence: 0,
@@ -55,6 +56,7 @@ fn test_extract_events_from_response_with_events() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -113,6 +115,7 @@ async fn test_publish_and_build_response_success() {
             root: None,
             correlation_id: "test-correlation".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

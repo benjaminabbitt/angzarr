@@ -10,14 +10,14 @@ import dev.angzarr.client.compensation.RejectionHandlerResponse;
 import java.util.List;
 
 /**
- * Handler interface for a single domain's aggregate commands.
+ * Handler interface for a single domain's command handler.
  *
- * <p>Aggregates receive commands and emit events. They maintain state
+ * <p>Command handlers receive commands and emit events. They maintain state
  * that is rebuilt from events using a {@link StateRouter}.
  *
  * <p>Example:
  * <pre>{@code
- * public class PlayerHandler implements AggregateDomainHandler<PlayerState> {
+ * public class PlayerHandler implements CommandHandlerDomainHandler<PlayerState> {
  *     private final StateRouter<PlayerState> stateRouter;
  *
  *     public PlayerHandler() {
@@ -55,9 +55,9 @@ import java.util.List;
  * }
  * }</pre>
  *
- * @param <S> The state type for this aggregate
+ * @param <S> The state type for this command handler
  */
-public interface AggregateDomainHandler<S> {
+public interface CommandHandlerDomainHandler<S> {
 
     /**
      * Command type suffixes this handler processes.
@@ -92,7 +92,7 @@ public interface AggregateDomainHandler<S> {
      *
      * @param cmd The command book containing metadata
      * @param payload The command payload as an Any
-     * @param state The current aggregate state
+     * @param state The current state
      * @param seq The next sequence number for events
      * @return The event book containing resulting events
      * @throws CommandRejectedError if the command is rejected
@@ -102,13 +102,13 @@ public interface AggregateDomainHandler<S> {
     /**
      * Handle a rejection notification.
      *
-     * <p>Called when a command issued by a saga/PM targeting this aggregate's
-     * domain was rejected. Override to provide custom compensation logic.
+     * <p>Called when a command issued by a saga/PM targeting this domain
+     * was rejected. Override to provide custom compensation logic.
      *
      * <p>Default implementation returns an empty response (framework handles).
      *
      * @param notification The rejection notification
-     * @param state The current aggregate state
+     * @param state The current state
      * @param targetDomain The domain the rejected command targeted
      * @param targetCommand The rejected command type suffix
      * @return The rejection handler response

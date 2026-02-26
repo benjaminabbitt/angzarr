@@ -28,12 +28,12 @@ type ProcessManagerResponse struct {
 }
 
 // ============================================================================
-// Aggregate Handler Interface
+// CommandHandler Handler Interface
 // ============================================================================
 
-// AggregateDomainHandler is the handler for a single domain's aggregate commands.
+// CommandHandlerDomainHandler is the handler for a single domain's commands.
 //
-// Aggregates receive commands and emit events. They maintain state
+// Command handlers receive commands and emit events. They maintain state
 // that is rebuilt from events using a StateRouter.
 //
 // Example:
@@ -58,7 +58,7 @@ type ProcessManagerResponse struct {
 //	) (*pb.EventBook, error) {
 //	    // Dispatch to specific command handlers
 //	}
-type AggregateDomainHandler[S any] interface {
+type CommandHandlerDomainHandler[S any] interface {
 	// CommandTypes returns the fully-qualified command type names this handler processes.
 	// Used for subscription derivation and routing.
 	CommandTypes() []string
@@ -76,7 +76,7 @@ type AggregateDomainHandler[S any] interface {
 	) (*pb.EventBook, error)
 
 	// OnRejected handles a rejection notification.
-	// Called when a command issued by a saga/PM targeting this aggregate's
+	// Called when a command issued by a saga/PM targeting this command handler's
 	// domain was rejected. Override to provide custom compensation logic.
 	// Default implementation should return an empty response.
 	OnRejected(

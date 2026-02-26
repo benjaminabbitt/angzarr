@@ -38,7 +38,11 @@ pub trait EventPageExt {
 
 impl EventPageExt for EventPage {
     fn sequence_num(&self) -> u32 {
-        self.sequence
+        match &self.sequence_type {
+            Some(crate::proto::event_page::SequenceType::Sequence(seq)) => *seq,
+            Some(crate::proto::event_page::SequenceType::Fact(_)) => 0, // Facts get sequence assigned by coordinator
+            None => 0,
+        }
     }
 
     fn type_url(&self) -> Option<&str> {

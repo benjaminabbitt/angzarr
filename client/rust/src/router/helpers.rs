@@ -8,7 +8,7 @@ use crate::proto::{event_page, CommandBook, EventBook, EventPage};
 /// Helper to create an event page with proper sequence.
 pub fn event_page(seq: u32, event: Any) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         created_at: Some(crate::now()),
         payload: Some(event_page::Payload::Event(event)),
     }

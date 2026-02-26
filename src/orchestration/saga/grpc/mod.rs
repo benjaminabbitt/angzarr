@@ -12,9 +12,11 @@ use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
-use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::saga_service_client::SagaServiceClient;
-use crate::proto::{CommandBook, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest};
+use crate::proto::{
+    CommandBook, CommandRequest, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest,
+};
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::box_err;
 use crate::utils::saga_compensation::{
@@ -26,14 +28,14 @@ use super::{SagaContextFactory, SagaRetryContext};
 /// gRPC saga context.
 ///
 /// Saga prepare/execute calls go to a remote `SagaServiceClient` via gRPC.
-/// Compensation for rejected commands uses a separate `AggregateCoordinatorServiceClient`.
+/// Compensation for rejected commands uses a separate `CommandHandlerCoordinatorServiceClient`.
 /// Command execution and destination fetching are handled externally by the caller.
 pub struct GrpcSagaContext {
     saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
     compensation_handler:
-        Option<Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>>,
+        Option<Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>>,
     source: EventBook,
 }
 
@@ -44,7 +46,7 @@ impl GrpcSagaContext {
         publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
         compensation_handler: Option<
-            Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
+            Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
         >,
         source: EventBook,
     ) -> Self {
@@ -137,7 +139,7 @@ impl SagaRetryContext for GrpcSagaContext {
 async fn handle_command_rejection(
     rejected_command: &CommandBook,
     rejection_error: &tonic::Status,
-    handler: &mut AggregateCoordinatorServiceClient<tonic::transport::Channel>,
+    handler: &mut CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>,
     publisher: &Arc<dyn EventBus>,
     config: &SagaCompensationConfig,
 ) {
@@ -190,8 +192,12 @@ async fn handle_command_rejection(
     );
 
     // Use HandleCompensation RPC to get BusinessResponse
+    let sync_command = CommandRequest {
+        command: Some(notification_command),
+        sync_mode: 0, // Unspecified = async
+    };
     let response = handler
-        .handle_compensation(correlated_request(notification_command, &correlation_id))
+        .handle_compensation(correlated_request(sync_command, &correlation_id))
         .await;
 
     // Process the BusinessResponse through shared handler
@@ -216,7 +222,7 @@ pub struct GrpcSagaContextFactory {
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
     compensation_handler:
-        Option<Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>>,
+        Option<Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>>,
     name: String,
 }
 
@@ -227,7 +233,7 @@ impl GrpcSagaContextFactory {
         publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
         compensation_handler: Option<
-            Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
+            Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
         >,
         name: String,
     ) -> Self {

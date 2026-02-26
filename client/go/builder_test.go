@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewCommandBuilder(t *testing.T) {
-	client := &AggregateClient{}
+	client := &CommandHandlerClient{}
 	root := uuid.New()
 	b := NewCommandBuilder(client, "orders", root)
 
@@ -27,7 +27,7 @@ func TestNewCommandBuilder(t *testing.T) {
 }
 
 func TestNewCommandBuilderNew(t *testing.T) {
-	client := &AggregateClient{}
+	client := &CommandHandlerClient{}
 	b := NewCommandBuilderNew(client, "orders")
 
 	if b.client != client {
@@ -421,8 +421,8 @@ func TestQueryBuilder_Build(t *testing.T) {
 
 // Test convenience methods on clients
 
-func TestAggregateClient_Command(t *testing.T) {
-	client := &AggregateClient{}
+func TestCommandHandlerClient_Command(t *testing.T) {
+	client := &CommandHandlerClient{}
 	root := uuid.New()
 	b := client.Command("orders", root)
 
@@ -434,8 +434,8 @@ func TestAggregateClient_Command(t *testing.T) {
 	}
 }
 
-func TestAggregateClient_CommandNew(t *testing.T) {
-	client := &AggregateClient{}
+func TestCommandHandlerClient_CommandNew(t *testing.T) {
+	client := &CommandHandlerClient{}
 	b := client.CommandNew("orders")
 
 	if b.client != client {
@@ -472,22 +472,22 @@ func TestQueryClient_QueryDomain(t *testing.T) {
 }
 
 func TestDomainClient_Command(t *testing.T) {
-	aggClient := &AggregateClient{}
-	client := &DomainClient{Aggregate: aggClient}
+	chClient := &CommandHandlerClient{}
+	client := &DomainClient{CommandHandler: chClient}
 	root := uuid.New()
 	b := client.Command("orders", root)
 
-	if b.client != aggClient {
+	if b.client != chClient {
 		t.Error("client mismatch")
 	}
 }
 
 func TestDomainClient_CommandNew(t *testing.T) {
-	aggClient := &AggregateClient{}
-	client := &DomainClient{Aggregate: aggClient}
+	chClient := &CommandHandlerClient{}
+	client := &DomainClient{CommandHandler: chClient}
 	b := client.CommandNew("orders")
 
-	if b.client != aggClient {
+	if b.client != chClient {
 		t.Error("client mismatch")
 	}
 }

@@ -4,14 +4,14 @@ using Google.Protobuf.WellKnownTypes;
 namespace Angzarr.Client.Router;
 
 /// <summary>
-/// Router for aggregate components (commands -> events, single domain).
+/// Router for command handler components (commands -> events, single domain).
 ///
 /// Domain is set at construction time. No Domain() method exists,
 /// enforcing single-domain constraint at compile time.
 ///
 /// Example:
 /// <code>
-/// var router = new AggregateRouter&lt;PlayerState, PlayerHandler&gt;(
+/// var router = new CommandHandlerRouter&lt;PlayerState, PlayerHandler&gt;(
 ///     "player",
 ///     "player",
 ///     new PlayerHandler()
@@ -24,24 +24,24 @@ namespace Angzarr.Client.Router;
 /// var response = router.Dispatch(contextualCommand);
 /// </code>
 /// </summary>
-/// <typeparam name="TState">The state type for this aggregate.</typeparam>
+/// <typeparam name="TState">The state type for this command handler.</typeparam>
 /// <typeparam name="THandler">The handler implementation type.</typeparam>
-public class AggregateRouter<TState, THandler>
+public class CommandHandlerRouter<TState, THandler>
     where TState : new()
-    where THandler : IAggregateDomainHandler<TState>
+    where THandler : ICommandHandlerDomainHandler<TState>
 {
     private readonly string _name;
     private readonly string _domain;
     private readonly THandler _handler;
 
     /// <summary>
-    /// Create a new aggregate router.
-    /// Aggregates handle commands and emit events. Single domain enforced at construction.
+    /// Create a new command handler router.
+    /// Command handlers receive commands and emit events. Single domain enforced at construction.
     /// </summary>
     /// <param name="name">Component name.</param>
-    /// <param name="domain">Domain this aggregate belongs to.</param>
+    /// <param name="domain">Domain this command handler belongs to.</param>
     /// <param name="handler">Handler implementation.</param>
-    public AggregateRouter(string name, string domain, THandler handler)
+    public CommandHandlerRouter(string name, string domain, THandler handler)
     {
         _name = name;
         _domain = domain;
@@ -64,7 +64,7 @@ public class AggregateRouter<TState, THandler>
     public IReadOnlyList<string> CommandTypes() => _handler.CommandTypes();
 
     /// <summary>
-    /// Get subscriptions for this aggregate.
+    /// Get subscriptions for this command handler.
     /// Returns list of (domain, command types) tuples.
     /// </summary>
     public IReadOnlyList<(string Domain, IReadOnlyList<string> Types)> Subscriptions()

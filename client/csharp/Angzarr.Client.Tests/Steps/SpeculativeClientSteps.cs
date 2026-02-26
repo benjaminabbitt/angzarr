@@ -327,15 +327,19 @@ public class SpeculativeClientSteps
     [Then(@"the speculative operation should fail with connection error")]
     public void ThenTheSpeculativeOperationShouldFailWithConnectionError()
     {
-        _error.Should().NotBeNull();
-        (_error as ClientError)?.IsConnectionError().Should().BeTrue();
+        // Check local error or context-shared error
+        var error = _error ?? (_ctx.ContainsKey("error") ? _ctx["error"] as Exception : null);
+        error.Should().NotBeNull();
+        (error as ClientError)?.IsConnectionError().Should().BeTrue();
     }
 
     [Then(@"the speculative operation should fail with invalid argument error")]
     public void ThenTheSpeculativeOperationShouldFailWithInvalidArgumentError()
     {
-        _error.Should().NotBeNull();
-        _error.Should().BeAssignableTo<InvalidArgumentError>();
+        // Check local error or context-shared error
+        var error = _error ?? (_ctx.ContainsKey("error") ? _ctx["error"] as Exception : null);
+        error.Should().NotBeNull();
+        error.Should().BeAssignableTo<InvalidArgumentError>();
     }
 
     [Given(@"a speculative aggregate ""(.*)"" with root ""(.*)"" has (\d+) events")]
@@ -370,5 +374,19 @@ public class SpeculativeClientSteps
     {
         // Verify the real (non-speculative) events - should match base event count
         _response = new Angzarr.BusinessResponse { Events = _eventBook };
+        // Share via context for other step classes
+        _ctx["shared_eventbook"] = _eventBook;
+    }
+
+    [Then(@"the final projection state should be returned")]
+    public void ThenTheFinalProjectionStateShouldBeReturned()
+    {
+        // Check local state or context-shared state
+        object? state = null;
+        if (_ctx.ContainsKey("built_state"))
+        {
+            state = _ctx["built_state"];
+        }
+        state.Should().NotBeNull();
     }
 }

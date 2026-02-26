@@ -104,6 +104,13 @@ impl CommandRouter {
         self.business.contains_key(domain)
     }
 
+    /// Get client logic for a specific domain.
+    ///
+    /// Returns the registered handler if one exists for the domain.
+    pub fn get_client_logic(&self, domain: &str) -> Option<Arc<dyn ClientLogic>> {
+        self.business.get(domain).cloned()
+    }
+
     /// Execute a command and return the response.
     ///
     /// Validates the command's sequence against the aggregate's current sequence
@@ -330,6 +337,49 @@ impl CommandRouter {
         Ok(response)
     }
 
+    /// Inject fact events into an aggregate.
+    ///
+    /// Facts are external realities that cannot be rejected by business logic.
+    /// The coordinator assigns sequence numbers and persists/publishes the events.
+    ///
+    /// Idempotent: TODO - subsequent requests with same external_id return original events.
+    pub async fn inject_fact(
+        &self,
+        fact_events: crate::proto::EventBook,
+        route_to_handler: bool,
+    ) -> Result<crate::orchestration::aggregate::FactResponse, Status> {
+        use crate::orchestration::aggregate::{execute_fact_pipeline, parse_event_cover};
+
+        let (domain, _root_uuid) = parse_event_cover(&fact_events)?;
+
+        let storage = self.stores.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No storage registered for domain '{}'", domain))
+        })?;
+
+        // Get client logic from router if available and routing is enabled
+        let client_logic = if route_to_handler {
+            self.get_client_logic(&domain)
+        } else {
+            None
+        };
+
+        // Create context using LocalAggregateContext
+        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
+            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
+                storage.clone(),
+                self.event_bus.clone(),
+            )),
+            None => Arc::new(LocalAggregateContext::new(
+                storage.clone(),
+                self.discovery.clone(),
+                self.event_bus.clone(),
+            )),
+        };
+
+        // Execute fact pipeline
+        execute_fact_pipeline(ctx.as_ref(), client_logic.as_deref(), fact_events).await
+    }
+
     /// Get storage for a domain.
     #[allow(clippy::result_large_err)]
     pub fn get_storage(&self, domain: &str) -> Result<&DomainStorage, Status> {
@@ -355,6 +405,7 @@ pub fn create_command_book(
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![crate::proto::CommandPage {
             sequence: 0,
@@ -373,6 +424,7 @@ pub fn create_command_book(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto_ext::CommandPageExt;
 
     // ============================================================================
     // Helper Construction Tests
@@ -396,7 +448,7 @@ mod tests {
 
         assert_eq!(command.pages.len(), 1);
         let page = &command.pages[0];
-        assert_eq!(page.sequence, 0);
+        assert_eq!(page.sequence_num(), 0);
         assert_eq!(page.merge_strategy, MergeStrategy::MergeCommutative as i32);
 
         if let Some(crate::proto::command_page::Payload::Command(ref cmd)) = page.payload {

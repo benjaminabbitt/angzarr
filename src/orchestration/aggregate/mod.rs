@@ -50,10 +50,12 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::proto::{
-    aggregate_service_client::AggregateServiceClient, BusinessResponse, CommandBook,
+    command_handler_service_client::CommandHandlerServiceClient, BusinessResponse, CommandBook,
     CommandResponse, ContextualCommand, EventBook, MergeStrategy, Projection, ReplayRequest,
 };
-use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, CoverExt, EventBookExt};
+use crate::proto_ext::{
+    calculate_set_next_seq, CommandBookExt, CoverExt, EventBookExt, EventPageExt,
+};
 use crate::utils::response_builder::extract_events_from_response;
 use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -158,6 +160,47 @@ pub trait AggregateContext: Send + Sync {
             "DLQ not configured, dropping command"
         );
     }
+
+    /// Check if an external_id has already been used for fact injection.
+    ///
+    /// Returns `Some((first_seq, last_seq))` if already claimed, None if available.
+    /// Default implementation returns None (no idempotency checking).
+    async fn check_fact_idempotency(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
+    ) -> Result<Option<(u32, u32)>, Status> {
+        Ok(None)
+    }
+
+    /// Record a fact injection for idempotency tracking.
+    ///
+    /// Called after facts are persisted to record the external_id claim.
+    /// Default implementation does nothing.
+    async fn record_fact_idempotency(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
+        _first_sequence: u32,
+        _last_sequence: u32,
+    ) -> Result<(), Status> {
+        Ok(())
+    }
+}
+
+/// Context for fact event handling.
+///
+/// Contains the fact events to record and the aggregate's prior events.
+#[derive(Debug, Clone)]
+pub struct FactContext {
+    /// The fact events to record (with FactSequence markers).
+    pub facts: EventBook,
+    /// Prior events for this aggregate root (for state reconstruction).
+    pub prior_events: Option<EventBook>,
 }
 
 /// Abstraction for aggregate client logic invocation.
@@ -168,6 +211,18 @@ pub trait AggregateContext: Send + Sync {
 pub trait ClientLogic: Send + Sync {
     /// Invoke client logic with prior events and a command.
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
+
+    /// Invoke client logic to handle fact events.
+    ///
+    /// Called when fact events (with FactSequence markers) are injected.
+    /// The aggregate updates its state based on the facts and returns
+    /// events to persist. The coordinator will assign real sequence numbers.
+    ///
+    /// Default: Returns the facts unchanged (pass-through).
+    async fn invoke_fact(&self, ctx: FactContext) -> Result<EventBook, Status> {
+        // Default: pass through facts unchanged
+        Ok(ctx.facts)
+    }
 
     /// Replay events to compute state for COMMUTATIVE merge detection.
     ///
@@ -208,12 +263,12 @@ pub trait AggregateContextFactory: Send + Sync {
 ///
 /// Wraps a tonic `AggregateClient` channel (TCP, UDS, or duplex).
 pub struct GrpcBusinessLogic {
-    client: Mutex<AggregateServiceClient<tonic::transport::Channel>>,
+    client: Mutex<CommandHandlerServiceClient<tonic::transport::Channel>>,
 }
 
 impl GrpcBusinessLogic {
     /// Wrap a gRPC aggregate client as a `ClientLogic` implementation.
-    pub fn new(client: AggregateServiceClient<tonic::transport::Channel>) -> Self {
+    pub fn new(client: CommandHandlerServiceClient<tonic::transport::Channel>) -> Self {
         Self {
             client: Mutex::new(client),
         }
@@ -431,7 +486,7 @@ fn build_events_up_to_sequence(events: &EventBook, up_to_sequence: u32) -> Event
     let filtered_pages: Vec<_> = events
         .pages
         .iter()
-        .filter(|page| page.sequence < up_to_sequence)
+        .filter(|page| page.sequence_num() < up_to_sequence)
         .cloned()
         .collect();
 
@@ -813,6 +868,249 @@ async fn speculative_mode(
     Ok(CommandResponse {
         events: Some(speculative_events),
         projections: vec![],
+    })
+}
+
+/// Response from fact injection.
+#[derive(Debug, Clone)]
+pub struct FactResponse {
+    /// The persisted events (with real sequence numbers).
+    pub events: EventBook,
+    /// Projections from sync projectors.
+    pub projections: Vec<Projection>,
+    /// True if this was a duplicate request (external_id already processed).
+    pub already_processed: bool,
+}
+
+/// Parse domain and root UUID from an EventBook cover.
+pub fn parse_event_cover(event_book: &EventBook) -> Result<(String, Uuid), Status> {
+    let cover = event_book
+        .cover
+        .as_ref()
+        .ok_or_else(|| Status::invalid_argument("EventBook must have a cover"))?;
+
+    let domain = cover.domain.clone();
+    crate::validation::validate_domain(&domain)?;
+
+    let root = cover
+        .root
+        .as_ref()
+        .ok_or_else(|| Status::invalid_argument("Cover must have a root UUID"))?;
+
+    let root_uuid = Uuid::from_slice(&root.value)
+        .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
+
+    Ok((domain, root_uuid))
+}
+
+/// Extract edition from an EventBook's Cover.
+fn extract_event_edition(event_book: &EventBook) -> Result<String, Status> {
+    let edition = event_book.edition().to_string();
+    crate::validation::validate_edition(&edition)?;
+    Ok(edition)
+}
+
+/// Execute the fact injection pipeline.
+///
+/// Fact events are external realities that cannot be rejected. The pipeline:
+/// 1. Validates Cover and extracts identifiers
+/// 2. Checks idempotency via `Cover.external_id`
+/// 3. Loads prior events for aggregate state
+/// 4. Optionally routes to aggregate for state update
+/// 5. Assigns real sequence numbers (replacing FactSequence markers)
+/// 6. Persists and publishes events
+///
+/// # Arguments
+///
+/// * `ctx` - Aggregate context for storage access
+/// * `business` - Optional client logic for state update (None = direct persist)
+/// * `fact_events` - EventBook containing fact events with FactSequence markers
+/// * `idempotency_store` - Store for checking/recording external_ids
+///
+/// # Returns
+///
+/// The persisted events with real sequence numbers.
+#[tracing::instrument(
+    name = "aggregate.fact_inject",
+    skip_all,
+    fields(domain, edition, root_uuid, external_id)
+)]
+pub async fn execute_fact_pipeline(
+    ctx: &dyn AggregateContext,
+    business: Option<&dyn ClientLogic>,
+    fact_events: EventBook,
+) -> Result<FactResponse, Status> {
+    use crate::proto::event_page;
+
+    let (domain, root_uuid) = parse_event_cover(&fact_events)?;
+    let edition = extract_event_edition(&fact_events)?;
+    let correlation_id = fact_events.correlation_id().to_string();
+    let external_id = fact_events
+        .cover
+        .as_ref()
+        .map(|c| c.external_id.clone())
+        .unwrap_or_default();
+
+    let span = tracing::Span::current();
+    span.record("domain", domain.as_str());
+    span.record("edition", edition.as_str());
+    span.record("root_uuid", tracing::field::display(&root_uuid));
+    span.record("external_id", external_id.as_str());
+
+    // Check idempotency if external_id is provided
+    if !external_id.is_empty() {
+        if let Some((first_seq, last_seq)) = ctx
+            .check_fact_idempotency(&domain, &edition, root_uuid, &external_id)
+            .await?
+        {
+            // Already processed - load and return existing events
+            tracing::debug!(
+                external_id = %external_id,
+                first_seq = first_seq,
+                last_seq = last_seq,
+                "Fact already processed (idempotent response)"
+            );
+
+            let prior_events = ctx
+                .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+                .await?;
+
+            // Filter to only the events that were part of this fact injection
+            let mut existing_events = prior_events.clone();
+            existing_events.pages = prior_events
+                .pages
+                .into_iter()
+                .filter(|p| {
+                    if let Some(event_page::SequenceType::Sequence(seq)) = &p.sequence_type {
+                        *seq >= first_seq && *seq <= last_seq
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+
+            return Ok(FactResponse {
+                events: existing_events,
+                projections: vec![],
+                already_processed: true,
+            });
+        }
+    }
+
+    // Validate that at least one page has FactSequence
+    let has_fact_marker = fact_events
+        .pages
+        .iter()
+        .any(|p| matches!(&p.sequence_type, Some(event_page::SequenceType::Fact(_))));
+    if !has_fact_marker {
+        return Err(Status::invalid_argument(
+            "Fact events must have FactSequence markers",
+        ));
+    }
+
+    // Load prior events to determine next sequence
+    let prior_events = ctx
+        .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+        .await?;
+
+    // Transform events (upcasting)
+    let prior_events = ctx.transform_events(&domain, prior_events).await?;
+
+    // Get next available sequence
+    let next_seq = prior_events.next_sequence();
+
+    // Optionally invoke client logic to update aggregate state
+    let processed_events = if let Some(logic) = business {
+        let fact_ctx = FactContext {
+            facts: fact_events.clone(),
+            prior_events: Some(prior_events.clone()),
+        };
+        logic.invoke_fact(fact_ctx).await?
+    } else {
+        fact_events.clone()
+    };
+
+    // Assign real sequence numbers, replacing FactSequence markers
+    let mut final_pages = Vec::with_capacity(processed_events.pages.len());
+    let mut current_seq = next_seq;
+
+    for page in processed_events.pages {
+        let new_page = crate::proto::EventPage {
+            sequence_type: Some(event_page::SequenceType::Sequence(current_seq)),
+            created_at: page
+                .created_at
+                .or_else(|| Some(prost_types::Timestamp::from(std::time::SystemTime::now()))),
+            payload: page.payload,
+        };
+        final_pages.push(new_page);
+        current_seq += 1;
+    }
+
+    let events_to_persist = EventBook {
+        cover: fact_events.cover.clone(),
+        pages: final_pages,
+        snapshot: processed_events.snapshot,
+        next_sequence: current_seq,
+    };
+
+    // Persist events
+    let mut persisted = ctx
+        .persist_events(
+            &prior_events,
+            &events_to_persist,
+            &domain,
+            &edition,
+            root_uuid,
+            &correlation_id,
+        )
+        .await?;
+
+    // Set next_sequence
+    calculate_set_next_seq(&mut persisted);
+
+    // Record idempotency if external_id is provided
+    if !external_id.is_empty() && !persisted.pages.is_empty() {
+        let first_seq = persisted
+            .pages
+            .first()
+            .and_then(|p| {
+                if let Some(event_page::SequenceType::Sequence(s)) = &p.sequence_type {
+                    Some(*s)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(next_seq);
+        let last_seq = persisted
+            .pages
+            .last()
+            .and_then(|p| {
+                if let Some(event_page::SequenceType::Sequence(s)) = &p.sequence_type {
+                    Some(*s)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(current_seq.saturating_sub(1));
+
+        ctx.record_fact_idempotency(
+            &domain,
+            &edition,
+            root_uuid,
+            &external_id,
+            first_seq,
+            last_seq,
+        )
+        .await?;
+    }
+
+    // Post-persist: publish + sync projectors
+    let projections = ctx.post_persist(&persisted).await?;
+
+    Ok(FactResponse {
+        events: persisted,
+        projections,
+        already_processed: false,
     })
 }
 

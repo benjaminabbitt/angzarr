@@ -1,8 +1,8 @@
-// Hand aggregate - rich domain model using OO pattern.
+// Hand command handler - rich domain model using OO pattern.
 //
-// This aggregate uses the OO-style pattern with embedded AggregateBase,
+// This command handler uses the OO-style pattern with embedded CommandHandlerBase,
 // method-based handlers, and fluent registration. This contrasts with
-// the player aggregate which uses the functional CommandRouter pattern.
+// the player command handler which uses the functional CommandRouter pattern.
 package main
 
 import (
@@ -73,13 +73,13 @@ type PotState struct {
 	PotType         string
 }
 
-// Hand aggregate with event sourcing using OO pattern.
+// Hand command handler with event sourcing using OO pattern.
 type Hand struct {
-	angzarr.AggregateBase[HandState]
+	angzarr.CommandHandlerBase[HandState]
 }
 
 // docs:start:oo_handlers
-// NewHand creates a new Hand aggregate with prior events for state reconstruction.
+// NewHand creates a new Hand command handler with prior events for state reconstruction.
 func NewHand(eventBook *pb.EventBook) *Hand {
 	h := &Hand{}
 	h.Init(eventBook, func() HandState {

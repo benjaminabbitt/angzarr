@@ -23,7 +23,6 @@ from angzarr_client.proto.angzarr import (
     EventBook,
     EventPage,
     Query,
-    SyncEventBook,
 )
 from angzarr_client.wrappers import (
     CommandBookW,

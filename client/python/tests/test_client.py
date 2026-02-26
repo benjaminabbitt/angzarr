@@ -7,8 +7,8 @@ import grpc
 import pytest
 
 from angzarr_client.client import (
-    AggregateClient,
     Client,
+    CommandHandlerClient,
     DomainClient,
     QueryClient,
     SpeculativeClient,
@@ -16,17 +16,17 @@ from angzarr_client.client import (
 from angzarr_client.errors import GRPCError
 from angzarr_client.proto.angzarr import (
     CommandBook,
+    CommandRequest,
     CommandResponse,
     EventBook,
     ProcessManagerHandleResponse,
     Projection,
     Query,
     SagaResponse,
-    SpeculateAggregateRequest,
+    SpeculateCommandHandlerRequest,
     SpeculatePmRequest,
     SpeculateProjectorRequest,
     SpeculateSagaRequest,
-    SyncCommandBook,
 )
 
 
@@ -152,8 +152,8 @@ class TestQueryClient:
         channel.close.assert_called_once()
 
 
-class TestAggregateClient:
-    """Tests for AggregateClient."""
+class TestCommandHandlerClient:
+    """Tests for CommandHandlerClient."""
 
     def _mock_channel(self) -> Mock:
         """Create a mock gRPC channel."""
@@ -162,7 +162,7 @@ class TestAggregateClient:
     def test_init_creates_stub(self) -> None:
         """Constructor creates stub from channel."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         assert client._channel is channel
         assert client._stub is not None
 
@@ -170,7 +170,7 @@ class TestAggregateClient:
     def test_connect(self, mock_channel: Mock) -> None:
         """connect creates client from endpoint."""
         mock_channel.return_value = Mock(spec=grpc.Channel)
-        client = AggregateClient.connect("localhost:9000")
+        client = CommandHandlerClient.connect("localhost:9000")
         mock_channel.assert_called_once_with("localhost:9000")
 
     @patch.dict(os.environ, {"AGG_ENDPOINT": "agg-host:9000"})
@@ -178,67 +178,68 @@ class TestAggregateClient:
     def test_from_env_uses_env_var(self, mock_channel: Mock) -> None:
         """from_env uses environment variable."""
         mock_channel.return_value = Mock(spec=grpc.Channel)
-        client = AggregateClient.from_env("AGG_ENDPOINT", "default:8000")
+        client = CommandHandlerClient.from_env("AGG_ENDPOINT", "default:8000")
         mock_channel.assert_called_once_with("agg-host:9000")
 
     def test_handle_success(self) -> None:
-        """handle returns CommandResponse on success."""
+        """handle returns CommandResponse on success (wraps CommandBook in CommandRequest)."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         expected_resp = CommandResponse()
         expected_resp.events.next_sequence = 5
-        client._stub.Handle = Mock(return_value=expected_resp)
+        client._stub.HandleCommand = Mock(return_value=expected_resp)
 
         cmd = CommandBook()
         result = client.handle(cmd)
 
-        client._stub.Handle.assert_called_once_with(cmd)
+        # handle wraps CommandBook in CommandRequest
+        client._stub.HandleCommand.assert_called_once()
         assert result.events.next_sequence == 5
 
     def test_handle_raises_grpc_error(self) -> None:
         """handle raises GRPCError on RpcError."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.FAILED_PRECONDITION)
-        client._stub.Handle = Mock(side_effect=rpc_error)
+        client._stub.HandleCommand = Mock(side_effect=rpc_error)
 
         cmd = CommandBook()
         with pytest.raises(GRPCError) as exc_info:
             client.handle(cmd)
         assert exc_info.value.is_precondition_failed()
 
-    def test_handle_sync_success(self) -> None:
-        """handle_sync returns CommandResponse on success."""
+    def test_handle_command_success(self) -> None:
+        """handle_command returns CommandResponse on success."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         expected_resp = CommandResponse()
-        client._stub.HandleSync = Mock(return_value=expected_resp)
+        client._stub.HandleCommand = Mock(return_value=expected_resp)
 
-        cmd = SyncCommandBook()
-        result = client.handle_sync(cmd)
+        cmd = CommandRequest()
+        result = client.handle_command(cmd)
 
-        client._stub.HandleSync.assert_called_once_with(cmd)
+        client._stub.HandleCommand.assert_called_once_with(cmd)
         assert result is not None
 
-    def test_handle_sync_raises_grpc_error(self) -> None:
-        """handle_sync raises GRPCError on RpcError."""
+    def test_handle_command_raises_grpc_error(self) -> None:
+        """handle_command raises GRPCError on RpcError."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INTERNAL)
-        client._stub.HandleSync = Mock(side_effect=rpc_error)
+        client._stub.HandleCommand = Mock(side_effect=rpc_error)
 
-        cmd = SyncCommandBook()
+        cmd = CommandRequest()
         with pytest.raises(GRPCError):
-            client.handle_sync(cmd)
+            client.handle_command(cmd)
 
     def test_handle_sync_speculative_success(self) -> None:
         """handle_sync_speculative returns CommandResponse on success."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         expected_resp = CommandResponse()
         client._stub.HandleSyncSpeculative = Mock(return_value=expected_resp)
 
-        request = SpeculateAggregateRequest()
+        request = SpeculateCommandHandlerRequest()
         result = client.handle_sync_speculative(request)
 
         client._stub.HandleSyncSpeculative.assert_called_once_with(request)
@@ -247,11 +248,11 @@ class TestAggregateClient:
     def test_handle_sync_speculative_raises_grpc_error(self) -> None:
         """handle_sync_speculative raises GRPCError on RpcError."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INVALID_ARGUMENT)
         client._stub.HandleSyncSpeculative = Mock(side_effect=rpc_error)
 
-        request = SpeculateAggregateRequest()
+        request = SpeculateCommandHandlerRequest()
         with pytest.raises(GRPCError) as exc_info:
             client.handle_sync_speculative(request)
         assert exc_info.value.is_invalid_argument()
@@ -259,7 +260,7 @@ class TestAggregateClient:
     def test_close_closes_channel(self) -> None:
         """close closes the underlying channel."""
         channel = self._mock_channel()
-        client = AggregateClient(channel)
+        client = CommandHandlerClient(channel)
         client.close()
         channel.close.assert_called_once()
 
@@ -276,7 +277,7 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         assert client._channel is channel
-        assert client._aggregate_stub is not None
+        assert client._command_handler_stub is not None
         assert client._saga_stub is not None
         assert client._projector_stub is not None
         assert client._pm_stub is not None
@@ -301,12 +302,16 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         expected_resp = CommandResponse()
-        client._aggregate_stub.HandleSyncSpeculative = Mock(return_value=expected_resp)
+        client._command_handler_stub.HandleSyncSpeculative = Mock(
+            return_value=expected_resp
+        )
 
-        request = SpeculateAggregateRequest()
-        result = client.aggregate(request)
+        request = SpeculateCommandHandlerRequest()
+        result = client.command_handler(request)
 
-        client._aggregate_stub.HandleSyncSpeculative.assert_called_once_with(request)
+        client._command_handler_stub.HandleSyncSpeculative.assert_called_once_with(
+            request
+        )
         assert result is not None
 
     def test_aggregate_raises_grpc_error(self) -> None:
@@ -314,11 +319,11 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INTERNAL)
-        client._aggregate_stub.HandleSyncSpeculative = Mock(side_effect=rpc_error)
+        client._command_handler_stub.HandleSyncSpeculative = Mock(side_effect=rpc_error)
 
-        request = SpeculateAggregateRequest()
+        request = SpeculateCommandHandlerRequest()
         with pytest.raises(GRPCError):
-            client.aggregate(request)
+            client.command_handler(request)
 
     def test_projector_success(self) -> None:
         """projector returns Projection on success."""
@@ -412,9 +417,9 @@ class TestDomainClient:
         channel = self._mock_channel()
         client = DomainClient(channel)
         assert client._channel is channel
-        assert client.aggregate is not None
+        assert client.command_handler is not None
         assert client.query is not None
-        assert isinstance(client.aggregate, AggregateClient)
+        assert isinstance(client.command_handler, CommandHandlerClient)
         assert isinstance(client.query, QueryClient)
 
     @patch("angzarr_client.client.grpc.insecure_channel")
@@ -438,7 +443,7 @@ class TestDomainClient:
         client = DomainClient(channel)
         expected_resp = CommandResponse()
         expected_resp.events.next_sequence = 10
-        client.aggregate._stub.Handle = Mock(return_value=expected_resp)
+        client.command_handler._stub.HandleCommand = Mock(return_value=expected_resp)
 
         cmd = CommandBook()
         result = client.execute(cmd)
@@ -465,10 +470,10 @@ class TestClient:
         channel = self._mock_channel()
         client = Client(channel)
         assert client._channel is channel
-        assert client.aggregate is not None
+        assert client.command_handler is not None
         assert client.query is not None
         assert client.speculative is not None
-        assert isinstance(client.aggregate, AggregateClient)
+        assert isinstance(client.command_handler, CommandHandlerClient)
         assert isinstance(client.query, QueryClient)
         assert isinstance(client.speculative, SpeculativeClient)
 

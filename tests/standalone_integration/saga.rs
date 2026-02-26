@@ -66,6 +66,7 @@ impl SagaHandler for FulfillmentSaga {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id.clone(),
                             edition: None,
+                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
@@ -152,6 +153,7 @@ impl SagaHandler for OrdersToInventorySaga {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id.clone(),
                             edition: None,
+                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
@@ -215,6 +217,7 @@ impl SagaHandler for InventoryToShippingSaga {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id.clone(),
                             edition: None,
+                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
@@ -282,8 +285,8 @@ async fn test_saga_receives_events_and_produces_commands() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
         .register_saga(
             "fulfillment",
             SagaWrapper(saga_clone),
@@ -352,10 +355,10 @@ async fn test_saga_domain_filtering() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("products", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
-        .register_aggregate("warehouse", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("products", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
+        .register_command_handler("warehouse", EchoAggregate::new())
         .register_saga(
             "orders-saga",
             SagaWrapper(orders_saga_clone),
@@ -424,8 +427,8 @@ async fn test_saga_correlation_id_propagates() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
         .register_saga(
             "fulfillment",
             SagaWrapper(saga_clone),
@@ -486,8 +489,8 @@ async fn test_saga_rejects_command_to_wrong_output_domain() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("shipping", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("shipping", EchoAggregate::new())
         .register_saga(
             "fulfillment",
             SagaWrapper(saga_clone),
@@ -547,9 +550,9 @@ async fn test_saga_only_receives_events_from_input_domain() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("products", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("products", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
         .register_saga(
             "orders-saga",
             SagaWrapper(orders_saga_clone),
@@ -648,6 +651,7 @@ async fn test_two_phase_saga_fetches_destinations() {
                     }),
                     correlation_id: String::new(),
                     edition: None,
+                    external_id: String::new(),
                 }])
             } else {
                 Ok(vec![])
@@ -711,6 +715,7 @@ async fn test_two_phase_saga_fetches_destinations() {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id,
                             edition: None,
+                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
@@ -740,8 +745,8 @@ async fn test_two_phase_saga_fetches_destinations() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
         .register_saga(
             "inventory-checker",
             saga,
@@ -763,6 +768,7 @@ async fn test_two_phase_saga_fetches_destinations() {
             }),
             correlation_id: "setup".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence: 0,
@@ -862,6 +868,7 @@ async fn test_two_phase_saga_no_destinations_needed() {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id,
                             edition: None,
+                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
@@ -888,8 +895,8 @@ async fn test_two_phase_saga_no_destinations_needed() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("shipping", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("shipping", EchoAggregate::new())
         .register_saga(
             "simple-fulfillment",
             saga,
@@ -966,6 +973,7 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id,
                             edition: None,
+                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
@@ -992,8 +1000,8 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("target", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("target", EchoAggregate::new())
         .register_saga("selective-saga", saga, SagaConfig::new("orders", "target"))
         .build()
         .await
@@ -1067,9 +1075,9 @@ async fn test_saga_cascade_with_external_event_bus() {
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
         .with_event_bus(external_bus)
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
-        .register_aggregate("shipping", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
+        .register_command_handler("shipping", EchoAggregate::new())
         .register_saga(
             "orders-to-inventory",
             OrdersToInventoryWrapper(orders_saga),
@@ -1145,9 +1153,9 @@ async fn test_saga_chains_across_three_domains() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
-        .register_aggregate("shipping", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
+        .register_command_handler("shipping", EchoAggregate::new())
         .register_saga(
             "orders-to-inventory",
             OrdersToInventoryWrapper(orders_saga),
@@ -1273,9 +1281,9 @@ async fn test_multiple_saga_chains_sequential() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
-        .register_aggregate("inventory", EchoAggregate::new())
-        .register_aggregate("shipping", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
+        .register_command_handler("inventory", EchoAggregate::new())
+        .register_command_handler("shipping", EchoAggregate::new())
         .register_saga(
             "orders-to-inventory",
             OrdersToInventoryWrapper(orders_saga),

@@ -23,6 +23,7 @@ fn make_command_book_with_strategy(
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence,
@@ -41,7 +42,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
 
     let pages = if let Some(seq) = last_sequence {
         vec![EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event".to_string(),
                 value: vec![],
@@ -60,6 +61,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages,
         snapshot: None,
@@ -101,6 +103,7 @@ fn test_parse_command_cover_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         saga_origin: None,

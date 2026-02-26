@@ -334,9 +334,10 @@ pub fn build_compensation_failed_event_book(
             }),
             correlation_id: context.correlation_id.clone(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             created_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: type_url::SAGA_COMPENSATION_FAILED.to_string(),

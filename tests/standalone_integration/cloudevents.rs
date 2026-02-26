@@ -66,6 +66,7 @@ fn create_cloudevents_projection(domain: &str, root: Uuid, events: Vec<CloudEven
             }),
             correlation_id: "corr-123".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         projection: Some(Any {
             type_url: "type.googleapis.com/angzarr.CloudEventsResponse".to_string(),
@@ -85,6 +86,7 @@ fn create_regular_projection(domain: &str, root: Uuid) -> Projection {
             }),
             correlation_id: "corr-456".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         projection: Some(Any {
             type_url: "type.googleapis.com/some.OtherType".to_string(),

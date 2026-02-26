@@ -409,6 +409,7 @@ impl SpeculativeExecutor {
                     name: DEFAULT_EDITION.to_string(),
                     divergences: vec![],
                 }),
+                external_id: String::new(),
             }),
             snapshot: None,
             pages,
@@ -429,6 +430,7 @@ impl SpeculativeExecutor {
 mod tests {
     use super::*;
     use crate::proto::event_page;
+    use crate::proto_ext::EventPageExt;
 
     // ============================================================================
     // DomainStateSpec Tests
@@ -538,7 +540,7 @@ mod tests {
     fn test_build_event_book_with_pages() {
         let root = Uuid::new_v4();
         let page = EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
                 value: vec![1, 2, 3],
@@ -548,7 +550,7 @@ mod tests {
         let book = SpeculativeExecutor::build_event_book("order", root, vec![page]);
 
         assert_eq!(book.pages.len(), 1);
-        assert_eq!(book.pages[0].sequence, 0);
+        assert_eq!(book.pages[0].sequence_num(), 0);
     }
 
     #[test]
@@ -556,7 +558,7 @@ mod tests {
         let root = Uuid::new_v4();
         let pages: Vec<EventPage> = (0..5)
             .map(|seq| EventPage {
-                sequence: seq,
+                sequence_type: Some(event_page::SequenceType::Sequence(seq)),
                 payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: format!("test.Event{}", seq),
                     value: vec![],
@@ -569,7 +571,7 @@ mod tests {
 
         assert_eq!(book.pages.len(), 5);
         for (i, page) in book.pages.iter().enumerate() {
-            assert_eq!(page.sequence, i as u32);
+            assert_eq!(page.sequence_num(), i as u32);
         }
     }
 
@@ -618,6 +620,7 @@ mod tests {
                 root: None,
                 correlation_id: String::new(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
@@ -636,6 +639,7 @@ mod tests {
                 }),
                 correlation_id: String::new(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
@@ -713,17 +717,17 @@ mod tests {
         let root = Uuid::new_v4();
         let pages: Vec<EventPage> = vec![
             EventPage {
-                sequence: 5,
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
                 payload: None,
                 created_at: None,
             },
             EventPage {
-                sequence: 3,
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(3)),
                 payload: None,
                 created_at: None,
             },
             EventPage {
-                sequence: 7,
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(7)),
                 payload: None,
                 created_at: None,
             },
@@ -732,8 +736,8 @@ mod tests {
         let book = SpeculativeExecutor::build_event_book("order", root, pages);
 
         // Pages should be preserved in insertion order, not sorted
-        assert_eq!(book.pages[0].sequence, 5);
-        assert_eq!(book.pages[1].sequence, 3);
-        assert_eq!(book.pages[2].sequence, 7);
+        assert_eq!(book.pages[0].sequence_num(), 5);
+        assert_eq!(book.pages[1].sequence_num(), 3);
+        assert_eq!(book.pages[2].sequence_num(), 7);
     }
 }

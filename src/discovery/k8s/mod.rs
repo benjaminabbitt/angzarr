@@ -33,7 +33,7 @@ use tonic::transport::Channel;
 use tracing::{debug, error, info};
 
 use crate::config::{NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR};
-use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
 
@@ -340,7 +340,7 @@ impl ServiceDiscovery for K8sServiceDiscovery {
     async fn get_aggregate(
         &self,
         domain: &str,
-    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
+    ) -> Result<CommandHandlerCoordinatorServiceClient<Channel>, DiscoveryError> {
         // Sync any unsynced services from local cache to inner
         let aggregates = self.aggregates.read().await;
         for service in aggregates.values() {

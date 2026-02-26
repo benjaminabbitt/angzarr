@@ -11,7 +11,7 @@ async fn test_mock_event_store_add_and_get() {
     let root = Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -35,7 +35,7 @@ async fn test_mock_event_store_get_by_correlation() {
     let root2 = Uuid::new_v4();
 
     let event1 = EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "orders.Created".to_string(),
             value: vec![],
@@ -44,7 +44,7 @@ async fn test_mock_event_store_get_by_correlation() {
     };
 
     let event2 = EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "payment.Confirmed".to_string(),
             value: vec![],
@@ -78,7 +78,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
 
     let events = vec![
         EventPage {
-            sequence: 0,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event0".to_string(),
                 value: vec![],
@@ -89,7 +89,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
         EventPage {
-            sequence: 1,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(1)),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event1".to_string(),
                 value: vec![],
@@ -100,7 +100,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
         EventPage {
-            sequence: 2,
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(2)),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event2".to_string(),
                 value: vec![],
@@ -148,7 +148,7 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
     let root = Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence: 0,
+        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![],

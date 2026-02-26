@@ -63,8 +63,8 @@ use angzarr::bus::{EventBus, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
-    aggregate_coordinator_service_server::AggregateCoordinatorServiceServer,
-    aggregate_service_client::AggregateServiceClient,
+    command_handler_coordinator_service_server::CommandHandlerCoordinatorServiceServer,
+    command_handler_service_client::CommandHandlerServiceClient,
     event_query_service_server::EventQueryServiceServer,
 };
 use angzarr::services::{AggregateService, EventQueryService, Upcaster};
@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use angzarr::transport::connect_to_address;
     let channel = connect_to_address(&address).await?;
 
-    let client_logic_client = AggregateServiceClient::new(channel.clone());
+    let client_logic_client = CommandHandlerServiceClient::new(channel.clone());
 
     // Create upcaster if enabled
     // By default, upcaster uses the same channel as client logic (same server)
@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(
-            AggregateCoordinatorServiceServer::new(aggregate_service)
+            CommandHandlerCoordinatorServiceServer::new(aggregate_service)
                 .max_decoding_message_size(msg_size)
                 .max_encoding_message_size(msg_size),
         )

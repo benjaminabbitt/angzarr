@@ -16,7 +16,7 @@ use crate::handlers::core::{
     SyncProjectorEntry as HandlerSyncProjectorEntry,
 };
 use crate::orchestration::aggregate::local::LocalAggregateContextFactory;
-use crate::orchestration::aggregate::ClientLogic;
+use crate::orchestration::aggregate::{AggregateContextFactory, ClientLogic};
 use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
@@ -28,13 +28,13 @@ use crate::transport::TransportConfig;
 
 use super::client::CommandClient;
 use super::dispatcher::CommandDispatcher;
-use super::grpc_handlers::{AggregateHandlerAdapter, ProcessManagerHandlerAdapter};
+use super::grpc_handlers::{CommandHandlerAdapter, ProcessManagerHandlerAdapter};
 use super::router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 use super::server::ServerInfo;
 use super::speculative::SpeculativeExecutor;
 use super::traits::{
-    AggregateHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig,
-    ProjectorHandler, SagaConfig, SagaHandler,
+    CommandHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig, ProjectorHandler,
+    SagaConfig, SagaHandler,
 };
 
 /// Standalone runtime for angzarr.
@@ -77,7 +77,7 @@ impl Runtime {
         domain_storage_configs: HashMap<String, StorageConfig>,
         _messaging_config: MessagingConfig,
         _transport_config: TransportConfig,
-        aggregates: HashMap<String, Arc<dyn AggregateHandler>>,
+        command_handlers: HashMap<String, Arc<dyn CommandHandler>>,
         projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
@@ -86,7 +86,7 @@ impl Runtime {
         // Initialize per-domain storage
         let mut domain_stores = HashMap::new();
 
-        for domain in aggregates.keys() {
+        for domain in command_handlers.keys() {
             // Use domain-specific config if available, otherwise fall back to default
             let storage_config = domain_storage_configs
                 .get(domain)
@@ -138,17 +138,17 @@ impl Runtime {
         }
 
         info!(
-            domains = aggregates.len(),
+            domains = command_handlers.len(),
             projectors = projectors.len(),
             sagas = sagas.len(),
             process_managers = process_managers.len(),
             "Runtime initialized"
         );
 
-        // Wrap aggregate handlers as ClientLogic (in-process, no TCP bridge)
+        // Wrap command handlers as ClientLogic (in-process, no TCP bridge)
         let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
-        for (domain, handler) in aggregates {
-            business.insert(domain, Arc::new(AggregateHandlerAdapter::new(handler)));
+        for (domain, handler) in command_handlers {
+            business.insert(domain, Arc::new(CommandHandlerAdapter::new(handler)));
         }
 
         // Register PM domains as command handlers (PMs are aggregates)
@@ -414,6 +414,81 @@ impl Runtime {
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Runtime started");
         Ok(())
+    }
+
+    /// Inject fact events into an aggregate.
+    ///
+    /// Fact events represent external realities that cannot be rejected. The runtime:
+    /// 1. Validates the Cover and extracts domain/root
+    /// 2. Routes to the aggregate's fact handler (if registered)
+    /// 3. Assigns real sequence numbers (replacing FactSequence markers)
+    /// 4. Persists and publishes the events
+    ///
+    /// # Arguments
+    ///
+    /// * `fact_events` - EventBook containing fact events with FactSequence markers.
+    ///   Must have `Cover.external_id` set for idempotency.
+    ///
+    /// # Returns
+    ///
+    /// The persisted events with real sequence numbers.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let fact = EventBook {
+    ///     cover: Some(Cover {
+    ///         domain: "payments".into(),
+    ///         root: Some(order_id.into()),
+    ///         external_id: "stripe_pi_abc123".into(),
+    ///         ..Default::default()
+    ///     }),
+    ///     pages: vec![EventPage {
+    ///         sequence_type: Some(SequenceType::Fact(FactSequence {
+    ///             source: "stripe".into(),
+    ///             description: "Payment confirmed".into(),
+    ///         })),
+    ///         payload: Some(Payload::Event(payment_received)),
+    ///         ..Default::default()
+    ///     }],
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let result = runtime.inject_fact(fact).await?;
+    /// ```
+    pub async fn inject_fact(
+        &self,
+        fact_events: crate::proto::EventBook,
+    ) -> Result<crate::orchestration::aggregate::FactResponse, tonic::Status> {
+        use crate::orchestration::aggregate::{execute_fact_pipeline, parse_event_cover};
+
+        let (domain, _root_uuid) = parse_event_cover(&fact_events)?;
+
+        // Get storage for this domain
+        let storage = self.domain_stores.get(&domain).ok_or_else(|| {
+            tonic::Status::not_found(format!("No storage registered for domain '{}'", domain))
+        })?;
+
+        // Create a local aggregate context factory for this domain
+        let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
+
+        // Get client logic from router if available (for routing facts to aggregate)
+        let client_logic = self.router.get_client_logic(&domain);
+
+        // Create context using LocalAggregateContextFactory
+        let factory = crate::orchestration::aggregate::local::LocalAggregateContextFactory::new(
+            domain.clone(),
+            storage.clone(),
+            discovery,
+            self.event_bus.clone(),
+            client_logic.clone().unwrap_or_else(|| {
+                Arc::new(super::grpc_handlers::NoOpClientLogic) as Arc<dyn ClientLogic>
+            }),
+        );
+        let ctx = factory.create();
+
+        // Execute fact pipeline
+        execute_fact_pipeline(ctx.as_ref(), client_logic.as_deref(), fact_events).await
     }
 
     /// Run the runtime until Ctrl+C.

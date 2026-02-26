@@ -556,6 +556,7 @@ mod tests {
                 }),
                 correlation_id: String::new(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,

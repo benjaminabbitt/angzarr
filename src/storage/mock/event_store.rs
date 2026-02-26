@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{EventBook, EventPage};
+use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::{EventStore, Result, StorageError};
 
@@ -100,7 +101,10 @@ impl EventStore for MockEventStore {
         from: u32,
     ) -> Result<Vec<EventPage>> {
         let events = self.get(domain, edition, root).await?;
-        Ok(events.into_iter().filter(|e| e.sequence >= from).collect())
+        Ok(events
+            .into_iter()
+            .filter(|e| e.sequence_num() >= from)
+            .collect())
     }
 
     async fn get_from_to(
@@ -114,7 +118,7 @@ impl EventStore for MockEventStore {
         let events = self.get(domain, edition, root).await?;
         Ok(events
             .into_iter()
-            .filter(|e| e.sequence >= from && e.sequence < to)
+            .filter(|e| e.sequence_num() >= from && e.sequence_num() < to)
             .collect())
     }
 
@@ -166,7 +170,7 @@ impl EventStore for MockEventStore {
 
         // Helper to get max sequence from events
         fn max_sequence(events: &[EventPage]) -> Option<u32> {
-            events.iter().map(|e| e.sequence).max()
+            events.iter().map(|e| e.sequence_num()).max()
         }
 
         // For non-default editions with implicit divergence, we need composite logic:

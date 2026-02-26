@@ -95,7 +95,7 @@ Each example directory should be largely self sufficient and know how to build a
 Angzarr uses consistent port numbering across all deployment modes.
 
 ### Infrastructure Ports
-- **Aggregate Coordinator**: 1310 (NodePort: 31310) - per-domain command handling
+- **Command Handler Coordinator**: 1310 (NodePort: 31310) - per-domain command handling
 - **Stream gRPC**: 1340 (NodePort: 31340) - event streaming
 - **Topology REST API**: 9099 - topology visualization
 
@@ -108,7 +108,7 @@ Each language gets a 100-port block for business logic:
 ### K8s Testing
 For acceptance tests against a deployed cluster:
 ```bash
-# Set up port forwards for each domain's aggregate coordinator
+# Set up port forwards for each domain's command handler coordinator
 kubectl port-forward svc/angzarr-order 1310:1310 -n angzarr &
 kubectl port-forward svc/angzarr-inventory 1310:1310 -n angzarr &
 
@@ -119,7 +119,7 @@ ANGZARR_TEST_MODE=direct \
   cargo test --package e2e --test acceptance
 ```
 
-Clients connect directly to per-domain aggregate coordinators via K8s DNS (e.g., `angzarr-order.angzarr.svc.cluster.local:1310`).
+Clients connect directly to per-domain command handler coordinators via K8s DNS (e.g., `angzarr-order.angzarr.svc.cluster.local:1310`).
 
 ## Testing
 

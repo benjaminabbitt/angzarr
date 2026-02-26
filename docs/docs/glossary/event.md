@@ -41,4 +41,7 @@ Events can originate from:
 - **Internal decisions**: Aggregate processed a command and decided to emit events
 - **External facts**: Saga or external system reporting something that already happened
 
-External facts use a [fact sequence](/concepts/commands-vs-facts) (idempotency key) instead of an expected sequence number. This allows aggregates to record external reality without the validation/rejection semantics of commands.
+External facts use a [FactSequence](/concepts/commands-vs-facts) marker instead of a sequence number. The idempotency key (`Cover.external_id`) propagates through the entire system, enabling:
+- Deduplication at every coordinator
+- Full traceability from external system to all downstream effects
+- Consistent handling across sagas, process managers, and projectors

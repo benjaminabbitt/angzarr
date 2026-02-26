@@ -9,6 +9,7 @@ use angzarr::proto::{
     event_page, event_query_service_server::EventQueryService as EventQueryTrait, AggregateRoot,
     Cover, EventBook, EventPage, Query, SequenceRange, TemporalQuery, Uuid as ProtoUuid,
 };
+use angzarr::proto_ext::EventPageExt;
 use angzarr::services::event_query::EventQueryService;
 use angzarr::storage::{EventStore, SnapshotStore};
 use cucumber::{gherkin::Step, given, then, when, World};
@@ -102,7 +103,7 @@ impl EventQueryServiceWorld {
 
     fn make_event_page(&self, seq: u32, type_url: &str, payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
@@ -118,7 +119,7 @@ impl EventQueryServiceWorld {
         timestamp: Timestamp,
     ) -> EventPage {
         EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             created_at: Some(timestamp),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
@@ -140,6 +141,7 @@ impl EventQueryServiceWorld {
                 }),
                 correlation_id: String::new(),
                 edition: None,
+                external_id: String::new(),
             }),
             selection: None,
         }
@@ -540,6 +542,7 @@ async fn when_query_invalid_uuid(world: &mut EventQueryServiceWorld, domain: Str
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -566,6 +569,7 @@ async fn when_query_from_sequence(world: &mut EventQueryServiceWorld, from_seq: 
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Range(SequenceRange {
             lower: from_seq,
@@ -595,6 +599,7 @@ async fn when_query_range(world: &mut EventQueryServiceWorld, from_seq: u32, to_
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Range(SequenceRange {
             lower: from_seq,
@@ -624,6 +629,7 @@ async fn when_query_as_of_sequence(world: &mut EventQueryServiceWorld, seq: u32)
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: Some(PointInTime::AsOfSequence(seq)),
@@ -654,6 +660,7 @@ async fn when_query_as_of_timestamp(world: &mut EventQueryServiceWorld, timestam
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: Some(PointInTime::AsOfTime(timestamp)),
@@ -682,6 +689,7 @@ async fn when_query_temporal_no_point(world: &mut EventQueryServiceWorld) {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: None,
@@ -708,6 +716,7 @@ async fn when_query_by_correlation(world: &mut EventQueryServiceWorld, correlati
             root: None,
             correlation_id,
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -843,6 +852,7 @@ async fn when_stream_by_correlation(world: &mut EventQueryServiceWorld, correlat
             root: None,
             correlation_id,
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -904,6 +914,7 @@ async fn when_send_malformed_query(world: &mut EventQueryServiceWorld) {
             root: None,
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         selection: None,
     };
@@ -949,13 +960,13 @@ fn then_events_ordered(world: &mut EventQueryServiceWorld) {
     for page in &book.pages {
         if let Some(prev) = prev_seq {
             assert!(
-                page.sequence > prev,
+                page.sequence_num() > prev,
                 "Events not ordered: {} after {}",
-                page.sequence,
+                page.sequence_num(),
                 prev
             );
         }
-        prev_seq = Some(page.sequence);
+        prev_seq = Some(page.sequence_num());
     }
 }
 
@@ -967,9 +978,11 @@ fn then_first_event_sequence(world: &mut EventQueryServiceWorld, seq: u32) {
         .expect("No EventBook received");
     let event = book.pages.first().expect("No events found");
     assert_eq!(
-        event.sequence, seq,
+        event.sequence_num(),
+        seq,
         "Expected sequence {}, got {}",
-        seq, event.sequence
+        seq,
+        event.sequence_num()
     );
 }
 
@@ -981,9 +994,11 @@ fn then_last_event_sequence(world: &mut EventQueryServiceWorld, seq: u32) {
         .expect("No EventBook received");
     let event = book.pages.last().expect("No events found");
     assert_eq!(
-        event.sequence, seq,
+        event.sequence_num(),
+        seq,
         "Expected sequence {}, got {}",
-        seq, event.sequence
+        seq,
+        event.sequence_num()
     );
 }
 

@@ -7,7 +7,7 @@ use angzarr::proto::{Snapshot, SnapshotRetention};
 async fn test_snapshot_store_and_retrieve() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("counters", EchoAggregate::new())
+        .register_command_handler("counters", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -49,7 +49,7 @@ async fn test_snapshot_store_and_retrieve() {
 async fn test_snapshot_isolation_between_aggregates() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("counters", EchoAggregate::new())
+        .register_command_handler("counters", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -113,8 +113,8 @@ async fn test_snapshot_isolation_between_aggregates() {
 async fn test_snapshot_isolation_between_domains() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("domain_a", EchoAggregate::new())
-        .register_aggregate("domain_b", EchoAggregate::new())
+        .register_command_handler("domain_a", EchoAggregate::new())
+        .register_command_handler("domain_b", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -177,7 +177,7 @@ async fn test_snapshot_isolation_between_domains() {
 async fn test_snapshot_update_overwrites() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("counters", EchoAggregate::new())
+        .register_command_handler("counters", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");
@@ -239,7 +239,7 @@ async fn test_snapshot_update_overwrites() {
 async fn test_snapshot_delete() {
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("counters", EchoAggregate::new())
+        .register_command_handler("counters", EchoAggregate::new())
         .build()
         .await
         .expect("Failed to build runtime");

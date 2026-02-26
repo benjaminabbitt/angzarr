@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 use angzarr::proto::{event_page, EventPage};
+use angzarr::proto_ext::EventPageExt;
 use angzarr::storage::EventStore;
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -61,7 +62,7 @@ impl EditionWorld {
 
     fn make_event_page(&self, seq: u32, type_url: &str, payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: seq,
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
@@ -494,9 +495,11 @@ async fn then_first_event_sequence_in_edition(world: &mut EditionWorld, edition:
 
     let first = events.first().expect("No events found");
     assert_eq!(
-        first.sequence, seq,
+        first.sequence_num(),
+        seq,
         "Expected first event sequence {}, got {}",
-        seq, first.sequence
+        seq,
+        first.sequence_num()
     );
 }
 
@@ -550,9 +553,12 @@ async fn then_events_have_sequences(world: &mut EditionWorld, s0: u32, s1: u32, 
 
     for (i, event) in world.last_events.iter().enumerate() {
         assert_eq!(
-            event.sequence, expected[i],
+            event.sequence_num(),
+            expected[i],
             "Event {} expected sequence {}, got {}",
-            i, expected[i], event.sequence
+            i,
+            expected[i],
+            event.sequence_num()
         );
     }
 }

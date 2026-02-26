@@ -40,6 +40,7 @@ pub fn make_cover_with_root(domain: &str, root: Uuid) -> Cover {
         root: Some(proto_uuid(root)),
         correlation_id: String::new(),
         edition: None,
+        external_id: String::new(),
     }
 }
 
@@ -50,13 +51,14 @@ pub fn make_cover_full(domain: &str, root: Uuid, correlation_id: &str) -> Cover 
         root: Some(proto_uuid(root)),
         correlation_id: correlation_id.to_string(),
         edition: None,
+        external_id: String::new(),
     }
 }
 
 /// Create an `EventPage` with a sequence number and a test type_url.
 pub fn make_event_page(seq: u32) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         payload: Some(event_page::Payload::Event(Any {
             type_url: format!("test.Event{}", seq),
             value: vec![],
@@ -68,7 +70,7 @@ pub fn make_event_page(seq: u32) -> EventPage {
 /// Create an `EventPage` with a specific type_url.
 pub fn make_event_page_typed(seq: u32, type_url: &str) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         payload: Some(event_page::Payload::Event(Any {
             type_url: type_url.to_string(),
             value: vec![],
@@ -135,6 +137,7 @@ pub fn make_command_book_correlated(with_correlation: bool) -> CommandBook {
                 String::new()
             },
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence: 0,

@@ -8,6 +8,7 @@ mod cloudevents;
 mod common;
 mod error;
 mod event_book_repair;
+mod fact_injection;
 mod gateway;
 mod grpc_uds;
 mod ipc;

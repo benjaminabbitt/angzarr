@@ -11,7 +11,8 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
 use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
-use crate::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
+use crate::proto::{EventBook, EventRequest, Projection, SpeculateProjectorRequest};
+use crate::proto_ext::EventPageExt;
 
 // Database backend selection via features
 #[cfg(feature = "postgres")]
@@ -288,7 +289,7 @@ impl EventService {
         let correlation_id = &cover.correlation_id;
 
         for page in &book.pages {
-            let sequence = page.sequence;
+            let sequence = page.sequence_num();
 
             let Some(crate::proto::event_page::Payload::Event(event)) = &page.payload else {
                 continue;
@@ -373,7 +374,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 impl ProjectorCoordinatorService for EventService {
     async fn handle_sync(
         &self,
-        request: Request<SyncEventBook>,
+        request: Request<EventRequest>,
     ) -> Result<Response<Projection>, Status> {
         if let Some(book) = request.into_inner().events {
             self.handle_book(&book).await?;
@@ -414,7 +415,7 @@ impl std::ops::Deref for EventServiceHandle {
 impl ProjectorCoordinatorService for EventServiceHandle {
     async fn handle_sync(
         &self,
-        request: Request<SyncEventBook>,
+        request: Request<EventRequest>,
     ) -> Result<Response<Projection>, Status> {
         ProjectorCoordinatorService::handle_sync(&*self.0, request).await
     }

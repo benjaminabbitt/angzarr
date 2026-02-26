@@ -59,6 +59,7 @@ impl NotificationWorld {
             }),
             correlation_id: correlation_id.to_string(),
             edition: None, // Main timeline (no edition specified)
+            external_id: String::new(),
         }
     }
 

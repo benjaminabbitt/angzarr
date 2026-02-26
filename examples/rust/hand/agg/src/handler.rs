@@ -1,4 +1,4 @@
-//! Hand aggregate handler implementing AggregateDomainHandler.
+//! Hand command handler implementing AggregateDomainHandler.
 
 use angzarr_client::proto::{CommandBook, EventBook, Notification};
 use angzarr_client::{
@@ -9,7 +9,7 @@ use prost_types::Any;
 use crate::handlers;
 use crate::state::{HandState, STATE_ROUTER};
 
-/// Hand aggregate handler.
+/// Hand command handler.
 pub struct HandHandler;
 
 impl HandHandler {

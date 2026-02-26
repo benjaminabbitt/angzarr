@@ -338,6 +338,7 @@ public class QueryClientSteps
     public void GivenTheQueryServiceIsUnavailable()
     {
         _error = new ConnectionError("Query service unavailable");
+        _ctx["error"] = _error;
     }
 
     [Given(@"the aggregate does not exist")]
@@ -606,8 +607,16 @@ public class QueryClientSteps
     [Then(@"I should receive only (\d+) events")]
     public void ThenIShouldReceiveOnlyEvents(int count)
     {
-        // Range query result count
-        _eventBook.Should().NotBeNull();
+        // Check local event book or context-shared event book
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
+        eventBook.Should().NotBeNull();
+        eventBook!.Pages.Should().HaveCount(count);
     }
 
     [Then(@"I should receive events up to that timestamp")]
@@ -669,5 +678,28 @@ public class QueryClientSteps
     public void ThenEachCommandShouldHaveItsOwnRoot()
     {
         // Unique roots
+    }
+
+    [Then(@"the returned snapshot should be at sequence (\d+)")]
+    public void ThenTheReturnedSnapshotShouldBeAtSequence(int expected)
+    {
+        // Check local event book or context-shared event book
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
+        eventBook!.Snapshot.Sequence.Should().Be((uint)expected);
+    }
+
+    [Then(@"the operation should fail with connection error")]
+    public void ThenTheOperationShouldFailWithConnectionError()
+    {
+        // Check local or context-shared error
+        var error = _error ?? (_ctx.ContainsKey("error") ? _ctx["error"] as Exception : null);
+        error.Should().NotBeNull();
+        (error as ClientError)?.IsConnectionError().Should().BeTrue();
     }
 }

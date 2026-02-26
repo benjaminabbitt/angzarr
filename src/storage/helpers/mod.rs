@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto_ext::EventPageExt;
 
 use super::{Result, StorageError};
 
@@ -54,6 +55,7 @@ pub fn assemble_event_books(
                     name: edition,
                     divergences: vec![],
                 }),
+                external_id: String::new(),
             }),
             pages,
             snapshot: None,
@@ -70,7 +72,7 @@ pub fn resolve_sequence(
     base_sequence: u32,
     _auto_sequence: &mut u32,
 ) -> Result<u32> {
-    let seq = event.sequence;
+    let seq = event.sequence_num();
     if seq < base_sequence {
         return Err(StorageError::SequenceConflict {
             expected: base_sequence,
@@ -98,7 +100,7 @@ pub fn parse_timestamp(event: &EventPage) -> Result<String> {
 
 /// Extract the sequence number from an EventPage.
 pub fn event_sequence(event: &EventPage) -> u32 {
-    event.sequence
+    event.sequence_num()
 }
 
 /// Convert a protobuf Timestamp to RFC3339 string.

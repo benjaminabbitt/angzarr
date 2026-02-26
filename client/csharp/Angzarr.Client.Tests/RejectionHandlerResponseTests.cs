@@ -120,16 +120,23 @@ public class RejectionHandlerResponseTests
 
         public EventBook Handle(CommandBook cmd, Any payload, TestState state, int seq)
         {
-            // Handle notification commands (rejections)
-            if (payload.TypeUrl.Contains("Notification") && _rejectionHandler != null)
-            {
-                var notification = payload.Unpack<Notification>();
-                var response = _rejectionHandler(notification, state);
-                return response.Events ?? new EventBook();
-            }
-
-            // No handler - delegate to framework by returning empty events with revocation
+            // Regular command handling - not rejections
             return new EventBook();
+        }
+
+        public RejectionHandlerResponse OnRejected(
+            Notification notification,
+            TestState state,
+            string targetDomain,
+            string targetCommand
+        )
+        {
+            if (_rejectionHandler != null)
+            {
+                return _rejectionHandler(notification, state);
+            }
+            // No handler - return empty response (framework handles)
+            return new RejectionHandlerResponse();
         }
     }
 
@@ -210,7 +217,7 @@ public class RejectionHandlerResponseTests
     }
 
     [Fact]
-    public void AggregateRouter_NoHandler_ReturnsEmptyEvents()
+    public void AggregateRouter_NoHandler_ReturnsRevocationResponse()
     {
         // Handler without rejection handling
         var handler = new RejectionTestHandler(null);
@@ -227,9 +234,10 @@ public class RejectionHandlerResponseTests
 
         var response = router.Dispatch(cmd);
 
-        // Should return empty events when no rejection handler is registered
-        response.Events.Should().NotBeNull();
-        response.Events!.Pages.Count.Should().Be(0);
+        // When no rejection handler is registered, the router returns a RevocationResponse
+        // to delegate handling to the framework
+        response.Revocation.Should().NotBeNull();
+        response.Revocation!.EmitSystemRevocation.Should().BeTrue();
     }
 
     // =========================================================================

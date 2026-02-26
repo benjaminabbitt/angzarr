@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Union
 
-from angzarr_client import Aggregate, handles, now
+from angzarr_client import CommandHandler, handles, now
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.examples import hand_pb2 as hand_proto
@@ -61,7 +61,7 @@ class _HandState:
     status: str = ""
 
 
-class Hand(Aggregate[_HandState]):
+class Hand(CommandHandler[_HandState]):
     """Hand aggregate with event sourcing."""
 
     domain = "hand"

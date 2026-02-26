@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "angzarr"))
 
 from handlers.state import PlayerState, build_state
 
-from angzarr_client import CommandRouter, run_aggregate_server
+from angzarr_client import CommandRouter, run_command_handler_server
 from angzarr_client.proto.examples import player_pb2 as player
 from handlers import (
     handle_deposit_funds,
@@ -61,4 +61,4 @@ router = (
 
 
 if __name__ == "__main__":
-    run_aggregate_server(router, "50401", logger=logger)
+    run_command_handler_server(router, "50401", logger=logger)

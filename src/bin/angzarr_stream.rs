@@ -40,7 +40,7 @@ use angzarr::config::Config;
 use angzarr::handlers::projectors::outbound::{self, OutboundService};
 use angzarr::proto::event_stream_service_server::EventStreamServiceServer;
 use angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorServiceServer;
-use angzarr::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
+use angzarr::proto::{EventBook, EventRequest, Projection, SpeculateProjectorRequest};
 use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::init_tracing;
 
@@ -63,7 +63,7 @@ impl angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorS
     /// Handle sync event book from projector sidecar.
     async fn handle_sync(
         &self,
-        request: Request<SyncEventBook>,
+        request: Request<EventRequest>,
     ) -> Result<Response<Projection>, Status> {
         let sync_book = request.into_inner();
         if let Some(book) = sync_book.events {

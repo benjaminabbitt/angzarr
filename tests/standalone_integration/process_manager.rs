@@ -76,7 +76,7 @@ impl ProcessManagerHandler for StateTrackingPM {
         // Determine next sequence from existing state
         let next_seq = process_state
             .and_then(|s| s.pages.last())
-            .map(|p| p.sequence + 1)
+            .map(|p| p.sequence_num() + 1)
             .unwrap_or(0);
 
         // Derive PM root from correlation_id
@@ -93,9 +93,10 @@ impl ProcessManagerHandler for StateTrackingPM {
                 root: pm_root,
                 correlation_id: correlation_id.to_string(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![EventPage {
-                sequence: next_seq,
+                sequence_type: Some(event_page::SequenceType::Sequence(next_seq)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: "pm.Invoked".to_string(),
@@ -140,7 +141,7 @@ async fn test_pm_state_loads_across_invocations() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_process_manager(
             "state-tracking-pm",
             PMWrapper(pm_clone),
@@ -231,7 +232,7 @@ async fn test_pm_state_isolated_by_correlation_id() {
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        .register_aggregate("orders", EchoAggregate::new())
+        .register_command_handler("orders", EchoAggregate::new())
         .register_process_manager(
             "state-tracking-pm",
             PMWrapper(pm_clone),

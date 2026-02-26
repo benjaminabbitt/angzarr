@@ -9,13 +9,16 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::grpc::GrpcAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, execute_command_with_retry, parse_command_cover, AggregateContext,
-    ClientLogic, GrpcBusinessLogic, PipelineMode, TemporalQuery,
+    execute_command_pipeline, execute_command_with_retry, execute_fact_pipeline,
+    parse_command_cover, AggregateContext, ClientLogic, GrpcBusinessLogic, PipelineMode,
+    TemporalQuery,
 };
 use crate::proto::{
-    aggregate_coordinator_service_server::AggregateCoordinatorService,
-    aggregate_service_client::AggregateServiceClient, business_response, BusinessResponse,
-    CommandBook, CommandResponse, ContextualCommand, SpeculateAggregateRequest, SyncCommandBook,
+    business_response,
+    command_handler_coordinator_service_server::CommandHandlerCoordinatorService,
+    command_handler_service_client::CommandHandlerServiceClient, BusinessResponse, CommandRequest,
+    CommandResponse, ContextualCommand, EventRequest, FactInjectionResponse,
+    SpeculateCommandHandlerRequest,
 };
 use crate::proto_ext::CoverExt;
 use crate::services::upcaster::Upcaster;
@@ -48,7 +51,7 @@ impl AggregateService {
     pub fn new(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
-        business_client: AggregateServiceClient<Channel>,
+        business_client: CommandHandlerServiceClient<Channel>,
         event_bus: Arc<dyn EventBus>,
         discovery: Arc<dyn ServiceDiscovery>,
     ) -> Self {
@@ -68,7 +71,7 @@ impl AggregateService {
     pub fn with_config(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
-        business_client: AggregateServiceClient<Channel>,
+        business_client: CommandHandlerServiceClient<Channel>,
         event_bus: Arc<dyn EventBus>,
         discovery: Arc<dyn ServiceDiscovery>,
         snapshot_read_enabled: bool,
@@ -127,36 +130,26 @@ impl AggregateService {
 }
 
 #[tonic::async_trait]
-impl AggregateCoordinatorService for AggregateService {
-    /// Handle command asynchronously - publishes to bus, doesn't wait for projectors.
-    #[tracing::instrument(name = "aggregate.handle", skip_all)]
-    async fn handle(
+impl CommandHandlerCoordinatorService for AggregateService {
+    /// Handle command with optional sync mode (default: async fire-and-forget).
+    #[tracing::instrument(name = "aggregate.handle_command", skip_all)]
+    async fn handle_command(
         &self,
-        request: Request<CommandBook>,
-    ) -> Result<Response<CommandResponse>, Status> {
-        let command_book = request.into_inner();
-        let ctx = self.create_async_context();
-
-        let result =
-            execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
-
-        Ok(Response::new(result?))
-    }
-
-    /// Handle command synchronously - waits for projectors to complete.
-    #[tracing::instrument(name = "aggregate.handle_sync", skip_all)]
-    async fn handle_sync(
-        &self,
-        request: Request<SyncCommandBook>,
+        request: Request<CommandRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_request = request.into_inner();
         let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Simple);
+            .unwrap_or(crate::proto::SyncMode::Unspecified);
         let command_book = sync_request
             .command
-            .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
+            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
 
-        let ctx = self.create_sync_context(sync_mode);
+        // Unspecified = async (fire and forget), otherwise use sync context
+        let ctx = if sync_mode == crate::proto::SyncMode::Unspecified {
+            self.create_async_context()
+        } else {
+            self.create_sync_context(sync_mode)
+        };
 
         let result =
             execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
@@ -168,7 +161,7 @@ impl AggregateCoordinatorService for AggregateService {
     #[tracing::instrument(name = "aggregate.handle_sync_speculative", skip_all)]
     async fn handle_sync_speculative(
         &self,
-        request: Request<SpeculateAggregateRequest>,
+        request: Request<SpeculateCommandHandlerRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let speculate_req = request.into_inner();
         let command_book = speculate_req.command.ok_or_else(|| {
@@ -207,21 +200,30 @@ impl AggregateCoordinatorService for AggregateService {
 
     /// Handle compensation flow - returns BusinessResponse for saga compensation handling.
     ///
-    /// Unlike normal Handle, this returns the raw BusinessResponse so the caller
+    /// Unlike normal HandleCommand, this returns the raw BusinessResponse so the caller
     /// can inspect revocation flags and decide how to handle (quarantine, notify, etc.).
     /// If business logic returns events, they are persisted before returning.
     #[tracing::instrument(name = "aggregate.handle_compensation", skip_all)]
     async fn handle_compensation(
         &self,
-        request: Request<CommandBook>,
+        request: Request<CommandRequest>,
     ) -> Result<Response<BusinessResponse>, Status> {
-        let command_book = request.into_inner();
+        let sync_request = request.into_inner();
+        let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
+            .unwrap_or(crate::proto::SyncMode::Unspecified);
+        let command_book = sync_request
+            .command
+            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
         let (domain, root_uuid) = parse_command_cover(&command_book)?;
         let edition = command_book.edition().to_string();
         let correlation_id =
             crate::orchestration::correlation::extract_correlation_id(&command_book)?;
 
-        let ctx = self.create_async_context();
+        let ctx = if sync_mode == crate::proto::SyncMode::Unspecified {
+            self.create_async_context()
+        } else {
+            self.create_sync_context(sync_mode)
+        };
 
         // Load prior events
         let prior_events = ctx
@@ -258,5 +260,50 @@ impl AggregateCoordinatorService for AggregateService {
         }
 
         Ok(Response::new(response))
+    }
+
+    /// Handle event (fact) injection - external realities that cannot be rejected.
+    ///
+    /// Facts are events that already happened externally and cannot be rejected by business logic.
+    /// They are persisted unconditionally with coordinator-assigned sequence numbers.
+    ///
+    /// `route_to_handler`: When true (default), invokes the aggregate's handle_fact method
+    /// for validation/error checking before persistence. The aggregate cannot reject facts,
+    /// but can validate data integrity and log warnings. When false, facts are persisted
+    /// directly without aggregate involvement.
+    ///
+    /// Idempotent: subsequent requests with same external_id return original events.
+    #[tracing::instrument(name = "aggregate.handle_event", skip_all)]
+    async fn handle_event(
+        &self,
+        request: Request<EventRequest>,
+    ) -> Result<Response<FactInjectionResponse>, Status> {
+        let sync_event_book = request.into_inner();
+        let sync_mode = crate::proto::SyncMode::try_from(sync_event_book.sync_mode)
+            .unwrap_or(crate::proto::SyncMode::Unspecified);
+        let fact_events = sync_event_book
+            .events
+            .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
+
+        let ctx = if sync_mode == crate::proto::SyncMode::Unspecified {
+            self.create_async_context()
+        } else {
+            self.create_sync_context(sync_mode)
+        };
+
+        // Use aggregate handler if route_to_handler is true (default behavior)
+        let business: Option<&dyn ClientLogic> = if sync_event_book.route_to_handler {
+            Some(&*self.business)
+        } else {
+            None
+        };
+
+        let fact_response = execute_fact_pipeline(&ctx, business, fact_events).await?;
+
+        Ok(Response::new(FactInjectionResponse {
+            events: Some(fact_response.events),
+            already_processed: fact_response.already_processed,
+            projections: fact_response.projections,
+        }))
     }
 }

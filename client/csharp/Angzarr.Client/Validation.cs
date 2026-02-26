@@ -6,18 +6,18 @@ namespace Angzarr.Client;
 public static class Validation
 {
     /// <summary>
-    /// Require that an aggregate exists (has prior events).
+    /// Require that a command handler has prior events (exists).
     /// </summary>
-    public static void RequireExists(bool exists, string message = "Aggregate does not exist")
+    public static void RequireExists(bool exists, string message = "Entity does not exist")
     {
         if (!exists)
             throw new CommandRejectedError(message);
     }
 
     /// <summary>
-    /// Require that an aggregate does not exist.
+    /// Require that a command handler does not have prior events (does not exist).
     /// </summary>
-    public static void RequireNotExists(bool exists, string message = "Aggregate already exists")
+    public static void RequireNotExists(bool exists, string message = "Entity already exists")
     {
         if (exists)
             throw new CommandRejectedError(message);

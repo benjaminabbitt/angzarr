@@ -93,8 +93,8 @@ func (r *RouterContext) makeEventBook(domain string, events []*pb.EventPage) *pb
 
 func (r *RouterContext) makeEventPage(seq uint32, typeURL string) *pb.EventPage {
 	return &pb.EventPage{
-		Sequence:  seq,
-		CreatedAt: timestamppb.Now(),
+		SequenceType: &pb.EventPage_Sequence{Sequence: seq},
+		CreatedAt:    timestamppb.Now(),
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: typeURL,

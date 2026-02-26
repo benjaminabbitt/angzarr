@@ -22,7 +22,8 @@ use tracing::info;
 
 use super::output::{ColorizingOutput, DecodedEvent, EventColorConfig, LogOutput};
 use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
-use crate::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
+use crate::proto::{EventBook, EventRequest, Projection, SpeculateProjectorRequest};
+use crate::proto_ext::EventPageExt;
 
 /// Logging projector service.
 ///
@@ -119,7 +120,7 @@ impl LogService {
             .unwrap_or_else(|| "unknown".to_string());
 
         for page in &book.pages {
-            let sequence = page.sequence;
+            let sequence = page.sequence_num();
 
             let Some(crate::proto::event_page::Payload::Event(event)) = &page.payload else {
                 continue;
@@ -152,7 +153,7 @@ impl Default for LogService {
 impl ProjectorCoordinatorService for LogService {
     async fn handle_sync(
         &self,
-        request: Request<SyncEventBook>,
+        request: Request<EventRequest>,
     ) -> Result<Response<Projection>, Status> {
         if let Some(book) = request.into_inner().events {
             self.handle(&book);
@@ -192,7 +193,7 @@ impl std::ops::Deref for LogServiceHandle {
 impl ProjectorCoordinatorService for LogServiceHandle {
     async fn handle_sync(
         &self,
-        request: Request<SyncEventBook>,
+        request: Request<EventRequest>,
     ) -> Result<Response<Projection>, Status> {
         ProjectorCoordinatorService::handle_sync(&*self.0, request).await
     }

@@ -251,6 +251,7 @@ impl CommandExecutor for RetryableWithStateExecutor {
                     }),
                     correlation_id: "corr-1".to_string(),
                     edition: None,
+                    external_id: String::new(),
                 }),
                 pages: vec![],
                 snapshot: None,
@@ -281,6 +282,7 @@ impl SagaRetryContext for CachedStateContext {
             }),
             correlation_id: "".to_string(),
             edition: None,
+            external_id: String::new(),
         }])
     }
     async fn re_execute_saga(

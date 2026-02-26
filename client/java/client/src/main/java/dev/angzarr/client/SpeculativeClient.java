@@ -19,7 +19,7 @@ import io.grpc.StatusRuntimeException;
  * <p>Example:
  * <pre>{@code
  * var client = SpeculativeClient.connect("localhost:1310");
- * var response = client.aggregate(SpeculateAggregateRequest.newBuilder()
+ * var response = client.commandHandler(SpeculateCommandHandlerRequest.newBuilder()
  *     .setCommand(command)
  *     .setEvents(priorEvents)
  *     .build());
@@ -27,7 +27,7 @@ import io.grpc.StatusRuntimeException;
  */
 public class SpeculativeClient implements AutoCloseable {
 
-    private final AggregateCoordinatorServiceGrpc.AggregateCoordinatorServiceBlockingStub aggregateStub;
+    private final CommandHandlerCoordinatorServiceGrpc.CommandHandlerCoordinatorServiceBlockingStub commandHandlerStub;
     private final SagaCoordinatorServiceGrpc.SagaCoordinatorServiceBlockingStub sagaStub;
     private final ProjectorCoordinatorServiceGrpc.ProjectorCoordinatorServiceBlockingStub projectorStub;
     private final ProcessManagerCoordinatorServiceGrpc.ProcessManagerCoordinatorServiceBlockingStub pmStub;
@@ -35,7 +35,7 @@ public class SpeculativeClient implements AutoCloseable {
 
     private SpeculativeClient(ManagedChannel channel) {
         this.channel = channel;
-        this.aggregateStub = AggregateCoordinatorServiceGrpc.newBlockingStub(channel);
+        this.commandHandlerStub = CommandHandlerCoordinatorServiceGrpc.newBlockingStub(channel);
         this.sagaStub = SagaCoordinatorServiceGrpc.newBlockingStub(channel);
         this.projectorStub = ProjectorCoordinatorServiceGrpc.newBlockingStub(channel);
         this.pmStub = ProcessManagerCoordinatorServiceGrpc.newBlockingStub(channel);
@@ -90,15 +90,15 @@ public class SpeculativeClient implements AutoCloseable {
     }
 
     /**
-     * Execute a command speculatively against temporal aggregate state.
+     * Execute a command speculatively against temporal command handler state.
      *
-     * @param request the speculative aggregate request
+     * @param request the speculative command handler request
      * @return the command response (without persistence)
      * @throws Errors.GrpcError if the RPC fails
      */
-    public CommandResponse aggregate(SpeculateAggregateRequest request) {
+    public CommandResponse commandHandler(SpeculateCommandHandlerRequest request) {
         try {
-            return aggregateStub.handleSyncSpeculative(request);
+            return commandHandlerStub.handleSyncSpeculative(request);
         } catch (StatusRuntimeException e) {
             throw new Errors.GrpcError(e.getMessage(), e.getStatus().getCode());
         }

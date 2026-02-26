@@ -133,6 +133,7 @@ fn trigger_event() -> EventBook {
             root: None,
             correlation_id: "corr-1".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
