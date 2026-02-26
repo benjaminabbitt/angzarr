@@ -7,7 +7,7 @@ Reacts to HandStarted events from Table domain.
 Sends DealCards commands to Hand domain.
 
 This is the OO-style implementation using the Saga base class
-with @prepares and @reacts_to decorators.
+with @domain, @output_domain, @prepares, and @handles decorators.
 """
 
 import sys
@@ -17,10 +17,11 @@ import structlog
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from angzarr_client import Saga, next_sequence, prepares, reacts_to
+from angzarr_client import next_sequence
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import table_pb2 as table
+from angzarr_client.saga import Saga, domain, handles, output_domain, prepares
 from angzarr_client.saga_handler import SagaHandler, run_saga_server
 
 structlog.configure(
@@ -38,14 +39,15 @@ logger = structlog.get_logger()
 
 
 # docs:start:saga_oo
-class TableHandSaga(Saga, domain="table"):
+@domain("table")
+@output_domain("hand")
+class TableHandSaga(Saga):
     """Saga that translates HandStarted events to DealCards commands.
 
-    Uses the OO pattern with @prepares and @reacts_to decorators.
+    Uses the OO pattern with @domain, @output_domain, @prepares, and @handles decorators.
     """
 
     name = "saga-table-hand"
-    output_domain = "hand"
 
     @prepares(table.HandStarted)
     def prepare_hand_started(self, event: table.HandStarted) -> list[types.Cover]:
@@ -57,7 +59,7 @@ class TableHandSaga(Saga, domain="table"):
             )
         ]
 
-    @reacts_to(table.HandStarted)
+    @handles(table.HandStarted)
     def handle_hand_started(
         self,
         event: table.HandStarted,

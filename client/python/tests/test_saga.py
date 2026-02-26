@@ -9,7 +9,7 @@ from google.protobuf import any_pb2
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import SingleFluentRouter
-from angzarr_client.saga import Saga, handles
+from angzarr_client.saga import Saga, domain, handles, output_domain
 
 from .fixtures import (
     CreateShipment,
@@ -43,25 +43,27 @@ class AnotherEvent:
 # =============================================================================
 
 
-class OrderFulfillmentSaga(Saga, domain="order"):
+@domain("order")
+@output_domain("fulfillment")
+class OrderFulfillmentSaga(Saga):
     """Saga bridging order → fulfillment domain.
 
     Uses OO pattern with @handles decorator.
     """
 
     name = "saga-order-fulfillment"
-    output_domain = "fulfillment"
 
     @handles(OrderCompleted)
     def handle_completed(self, event: OrderCompleted) -> CreateShipment:
         return CreateShipment(order_id=event.order_id, address="default")
 
 
-class FulfillmentInventorySaga(Saga, domain="inventory"):
+@domain("inventory")
+@output_domain("order")
+class FulfillmentInventorySaga(Saga):
     """Saga bridging fulfillment → inventory domain."""
 
     name = "saga-fulfillment-inventory"
-    output_domain = "order"
 
     @handles(StockReserved)
     def handle_reserved(self, event: StockReserved) -> tuple:
@@ -72,11 +74,12 @@ class FulfillmentInventorySaga(Saga, domain="inventory"):
         )
 
 
-class NoopSaga(Saga, domain="order"):
+@domain("order")
+@output_domain("fulfillment")
+class NoopSaga(Saga):
     """Saga that returns None (no command)."""
 
     name = "saga-noop"
-    output_domain = "fulfillment"
 
     @handles(OrderCompleted)
     def handle_completed(self, event: OrderCompleted) -> None:
@@ -197,40 +200,50 @@ class TestSagaSubclassValidation:
     def test_missing_name_raises(self):
         with pytest.raises(TypeError, match="must define 'name'"):
 
-            class BadSaga(Saga, domain="order"):
-                output_domain = "fulfillment"
-
+            @domain("order")
+            @output_domain("fulfillment")
+            class BadSaga(Saga):
                 @handles(OrderCompleted)
                 def handle(self, event: OrderCompleted):
                     pass
 
     def test_missing_input_domain_raises(self):
-        with pytest.raises(TypeError, match="must specify domain"):
+        """Lazy validation: error raised at first use, not definition."""
 
-            class BadSaga(Saga):
-                name = "bad-saga"
-                output_domain = "fulfillment"
+        @output_domain("fulfillment")
+        class BadSaga(Saga):
+            name = "bad-saga"
 
-                @handles(OrderCompleted)
-                def handle(self, event: OrderCompleted):
-                    pass
+            @handles(OrderCompleted)
+            def handle(self, event: OrderCompleted):
+                pass
+
+        # Error raised at first use (execute)
+        with pytest.raises(TypeError, match="must use @domain decorator"):
+            BadSaga.execute(types.EventBook())
 
     def test_missing_output_domain_raises(self):
-        with pytest.raises(TypeError, match="must define 'output_domain'"):
+        """Lazy validation: error raised at first use, not definition."""
 
-            class BadSaga(Saga, domain="order"):
-                name = "bad-saga"
+        @domain("order")
+        class BadSaga(Saga):
+            name = "bad-saga"
 
-                @handles(OrderCompleted)
-                def handle(self, event: OrderCompleted):
-                    pass
+            @handles(OrderCompleted)
+            def handle(self, event: OrderCompleted):
+                pass
+
+        # Error raised at first use (execute)
+        with pytest.raises(TypeError, match="must use @output_domain decorator"):
+            BadSaga.execute(types.EventBook())
 
     def test_duplicate_handler_raises(self):
         with pytest.raises(TypeError, match="duplicate handler"):
 
-            class BadSaga(Saga, domain="order"):
+            @domain("order")
+            @output_domain("fulfillment")
+            class BadSaga(Saga):
                 name = "bad-saga"
-                output_domain = "fulfillment"
 
                 @handles(OrderCompleted)
                 def handle_one(self, event: OrderCompleted):

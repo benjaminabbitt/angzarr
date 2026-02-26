@@ -91,11 +91,12 @@ from .router import (
     Router,
     SingleFluentRouter,
     UpcasterRouter,
+    output_domain,  # Output domain decorator for sagas/PM methods
     prepares,  # Prepare handler decorator for two-phase protocol
     rejected,
 )
 from .router import (
-    domain as domain_class,  # Class decorator for handler domain (@domain("name"))
+    domain as domain_class,  # Class decorator for input domain (@domain("name"))
 )
 from .router import (
     handles as event_handles,  # Unified decorator for event handlers (sagas/PMs/projectors)
@@ -186,7 +187,8 @@ __all__ = [
     "ERRMSG_UNKNOWN_COMMAND",
     "ERRMSG_NO_COMMAND_PAGES",
     "router_next_sequence",
-    "domain_class",  # Class decorator for handler domain (@domain("name"))
+    "domain_class",  # Class decorator for input domain (@domain("name"))
+    "output_domain",  # Output domain decorator for sagas/PM methods (@output_domain("name"))
     "event_handles",  # Unified decorator for event handlers (import from module for component-specific)
     "prepares",  # Prepare handler decorator for two-phase protocol
     "rejected",

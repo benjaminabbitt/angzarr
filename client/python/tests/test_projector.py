@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 
 from angzarr_client.handler_protocols import ProjectorDomainHandler
-from angzarr_client.projector import Projector, handles
+from angzarr_client.projector import Projector, domain, handles
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import ProjectorRouter
 
@@ -72,7 +72,8 @@ def create_test_db() -> Engine:
 # =============================================================================
 
 
-class AuditTrailProjector(Projector, domain="inventory"):
+@domain("inventory")
+class AuditTrailProjector(Projector):
     """Projects events to audit trail table using SQLAlchemy Core.
 
     Demonstrates SQLite projector with type-safe queries.
@@ -112,7 +113,8 @@ class AuditTrailProjector(Projector, domain="inventory"):
         return types.Projection(projector=self.name)
 
 
-class PlayerStatsProjector(Projector, domain="player"):
+@domain("player")
+class PlayerStatsProjector(Projector):
     """Projects player events to stats table using SQLAlchemy Core.
 
     Demonstrates upsert pattern with SQLite.
@@ -153,7 +155,8 @@ class PlayerStatsProjector(Projector, domain="player"):
         return types.Projection(projector=self.name)
 
 
-class NoopProjector(Projector, domain="inventory"):
+@domain("inventory")
+class NoopProjector(Projector):
     """Projector that returns empty projection."""
 
     name = "projector-noop"
@@ -266,25 +269,31 @@ class TestProjectorValidation:
     def test_missing_name_raises(self):
         with pytest.raises(TypeError, match="must define 'name'"):
 
-            class BadProjector(Projector, domain="inventory"):
+            @domain("inventory")
+            class BadProjector(Projector):
                 @handles(StockUpdated)
                 def handle(self, event: StockUpdated):
                     pass
 
     def test_missing_input_domain_raises(self):
-        with pytest.raises(TypeError, match="must specify domain"):
+        """Lazy validation: error raised at first use, not definition."""
 
-            class BadProjector(Projector):
-                name = "bad-projector"
+        class BadProjector(Projector):
+            name = "bad-projector"
 
-                @handles(StockUpdated)
-                def handle(self, event: StockUpdated):
-                    pass
+            @handles(StockUpdated)
+            def project_stock(self, event: StockUpdated):
+                pass
+
+        # Error raised at first use (handle classmethod)
+        with pytest.raises(TypeError, match="must use @domain decorator"):
+            BadProjector.handle(types.EventBook())
 
     def test_duplicate_handler_raises(self):
         with pytest.raises(TypeError, match="duplicate handler"):
 
-            class BadProjector(Projector, domain="inventory"):
+            @domain("inventory")
+            class BadProjector(Projector):
                 name = "bad-projector"
 
                 @handles(StockUpdated)

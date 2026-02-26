@@ -246,6 +246,43 @@ def domain(name: str):
 
 
 # ============================================================================
+# @output_domain decorator (class or method)
+# ============================================================================
+
+
+def output_domain(name: str):
+    """Decorator to mark output domain for sagas or PM methods.
+
+    On class (Saga): sets the domain commands are sent to.
+    On method (ProcessManager): sets output domain for that handler.
+
+    Args:
+        name: The output domain name (e.g., "hand", "inventory").
+
+    Example (Saga class):
+        @domain("table")
+        @output_domain("hand")
+        class TableHandSaga(Saga):
+            name = "saga-table-hand"
+
+            @handles(HandStarted)
+            def handle_started(self, event): ...
+
+    Example (ProcessManager method):
+        class OrderWorkflowPM(ProcessManager[State]):
+            @output_domain("inventory")
+            @handles(OrderCreated, input_domain="order")
+            def on_order(self, event, state): ...
+    """
+
+    def decorator(target):
+        target._output_domain = name
+        return target
+
+    return decorator
+
+
+# ============================================================================
 # @handles decorator (unified handler decorator)
 # ============================================================================
 

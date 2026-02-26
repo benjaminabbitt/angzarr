@@ -15,7 +15,7 @@ from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.saga import Saga, prepares, reacts_to
+from angzarr_client.saga import Saga, domain, handles, output_domain, prepares
 
 # Use regex matchers for flexibility
 use_step_matcher("re")
@@ -42,7 +42,9 @@ def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
 # =============================================================================
 
 
-class TableSyncSaga(Saga, domain="table"):
+@domain("table")
+@output_domain("hand")
+class TableSyncSaga(Saga):
     """Table <-> Hand saga: bidirectional bridge for testing.
 
     Production sagas are single-domain, but for testing we combine both directions:
@@ -51,7 +53,6 @@ class TableSyncSaga(Saga, domain="table"):
     """
 
     name = "saga-table-hand"
-    output_domain = "hand"
 
     @prepares(table.HandStarted)
     def prepare_hand(self, event: table.HandStarted) -> list[types.Cover]:
@@ -62,7 +63,7 @@ class TableSyncSaga(Saga, domain="table"):
             )
         ]
 
-    @reacts_to(table.HandStarted)
+    @handles(table.HandStarted)
     def handle_hand_started(
         self, event: table.HandStarted, destinations: list[types.EventBook] = None
     ) -> hand.DealCards:
@@ -95,7 +96,7 @@ class TableSyncSaga(Saga, domain="table"):
             )
         ]
 
-    @reacts_to(hand.HandComplete)
+    @handles(hand.HandComplete)
     def handle_hand_complete(
         self, event: hand.HandComplete, destinations: list[types.EventBook] = None
     ) -> types.CommandBook:
@@ -121,7 +122,9 @@ class TableSyncSaga(Saga, domain="table"):
         )
 
 
-class HandResultsSaga(Saga, domain="hand"):
+@domain("hand")
+@output_domain("player")
+class HandResultsSaga(Saga):
     """Hand/Table -> Player saga: bidirectional bridge for testing.
 
     Production sagas are single-domain, but for testing we handle multiple events:
@@ -130,7 +133,6 @@ class HandResultsSaga(Saga, domain="hand"):
     """
 
     name = "saga-hand-player"
-    output_domain = "player"
 
     @prepares(hand.PotAwarded)
     def prepare_pot_awarded(self, event: hand.PotAwarded) -> list[types.Cover]:
@@ -142,7 +144,7 @@ class HandResultsSaga(Saga, domain="hand"):
             for winner in event.winners
         ]
 
-    @reacts_to(hand.PotAwarded)
+    @handles(hand.PotAwarded)
     def handle_pot_awarded(
         self, event: hand.PotAwarded, destinations: list[types.EventBook] = None
     ) -> tuple:
@@ -169,7 +171,7 @@ class HandResultsSaga(Saga, domain="hand"):
             for player_hex in event.stack_changes.keys()
         ]
 
-    @reacts_to(table.HandEnded)
+    @handles(table.HandEnded)
     def handle_hand_ended(
         self, event: table.HandEnded, destinations: list[types.EventBook] = None
     ) -> tuple:
@@ -184,13 +186,14 @@ class HandResultsSaga(Saga, domain="hand"):
         return tuple(commands) if commands else None
 
 
-class FailingSaga(Saga, domain="table"):
+@domain("table")
+@output_domain("hand")
+class FailingSaga(Saga):
     """A saga that always fails for testing."""
 
     name = "saga-failing"
-    output_domain = "hand"
 
-    @reacts_to(table.HandStarted)
+    @handles(table.HandStarted)
     def handle_hand_started(self, event: table.HandStarted) -> None:
         raise RuntimeError("FailingSaga always fails")
 

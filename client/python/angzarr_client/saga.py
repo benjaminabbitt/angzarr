@@ -4,35 +4,36 @@ Sagas translate events from one domain into commands for another domain.
 They are stateless - each event is processed independently.
 
 Router Pattern: Saga follows the SINGLE-DOMAIN OO pattern.
-- One input domain: use @domain("name") class decorator
-- One output_domain: commands go to a single target domain
-- Uses @handles decorator for handler registration (with prepare=True for prepare phase)
+- One input domain: use @domain class decorator
+- One output_domain: use @output_domain class decorator
+- Uses @handles decorator for handler registration
+- Uses @prepares decorator for prepare phase handlers
 
 Two-phase protocol support:
-    1. Prepare: Declare destination aggregates needed (via @handles(EventType, prepare=True))
+    1. Prepare: Declare destination aggregates needed (via @prepares(EventType))
     2. Execute: Produce commands given source + destination state (via @handles(EventType))
 
 Example usage (simple saga without destinations):
-    from angzarr_client.saga import Saga, handles, domain
+    from angzarr_client.saga import Saga, domain, output_domain, handles
 
     @domain("order")
+    @output_domain("fulfillment")
     class OrderFulfillmentSaga(Saga):
         name = "saga-order-fulfillment"
-        output_domain = "fulfillment"
 
         @handles(OrderCompleted)
         def handle_completed(self, event: OrderCompleted) -> CreateShipment:
             return CreateShipment(order_id=event.order_id)
 
 Example usage (saga with destinations):
-    from angzarr_client.saga import Saga, handles, domain
+    from angzarr_client.saga import Saga, domain, output_domain, handles, prepares
 
     @domain("table")
+    @output_domain("hand")
     class TableHandSaga(Saga):
         name = "saga-table-hand"
-        output_domain = "hand"
 
-        @handles(HandStarted, prepare=True)
+        @prepares(HandStarted)
         def prepare_hand(self, event: HandStarted) -> list[Cover]:
             return [Cover(domain="hand", root=UUID(value=event.hand_root))]
 
@@ -58,11 +59,12 @@ from .router import (
     _pack_any,
     domain,
     handles,
+    output_domain,
     prepares,
 )
 
 # Re-export decorators
-__all__ = ["Saga", "domain", "handles", "prepares"]
+__all__ = ["Saga", "domain", "output_domain", "handles", "prepares"]
 
 
 class Saga(ABC):
@@ -71,27 +73,27 @@ class Saga(ABC):
     Router Pattern: Follows the SINGLE-DOMAIN OO pattern.
 
     Saga-specific additions:
-    - output_domain: target domain for emitted commands
+    - @output_domain: target domain for emitted commands
     - Auto-packing: returned commands are automatically packed into CommandBooks
 
     Provides:
-    - Two-phase protocol: @handles(E, prepare=True) for destinations, @handles(E) for execution
+    - Two-phase protocol: @prepares(E) for destinations, @handles(E) for execution
     - Event dispatch via @handles decorated methods
     - Command packing into CommandBook
     - Descriptor generation for topology discovery
 
     Subclasses must:
-    - Use `@domain("name")` class decorator (input domain to listen to)
+    - Use @domain class decorator for input domain
+    - Use @output_domain class decorator for output domain
     - Set `name` class attribute (e.g., "saga-order-fulfillment")
-    - Set `output_domain` class attribute (domain to send commands to)
     - Decorate event handlers with `@handles(EventType)`
-    - Optionally decorate prepare handlers with `@handles(EventType, prepare=True)`
+    - Optionally decorate prepare handlers with `@prepares(EventType)`
 
     Usage (simple):
         @domain("order")
+        @output_domain("fulfillment")
         class OrderFulfillmentSaga(Saga):
             name = "saga-order-fulfillment"
-            output_domain = "fulfillment"
 
             @handles(OrderCompleted)
             def handle_completed(self, event: OrderCompleted) -> CreateShipment:
@@ -99,11 +101,11 @@ class Saga(ABC):
 
     Usage (with destinations):
         @domain("table")
+        @output_domain("hand")
         class TableHandSaga(Saga):
             name = "saga-table-hand"
-            output_domain = "hand"
 
-            @handles(HandStarted, prepare=True)
+            @prepares(HandStarted)
             def prepare_hand(self, event: HandStarted) -> list[Cover]:
                 return [Cover(domain="hand", root=UUID(value=event.hand_root))]
 
@@ -117,43 +119,51 @@ class Saga(ABC):
     """
 
     name: str
-    output_domain: str
     _domain: str = None  # Set by @domain decorator
+    _output_domain: str = None  # Set by @output_domain decorator
     _dispatch_table: dict[str, tuple[str, type]] = {}
     _prepare_table: dict[str, tuple[str, type]] = {}
+    _validated: bool = False
 
     @property
     def input_domain(self) -> str:
         """Get input domain (from @domain decorator)."""
         return self._domain
 
-    def __init_subclass__(cls, domain: str = None, **kwargs):
+    @classmethod
+    def _get_output_domain(cls) -> str:
+        """Get output domain (from @output_domain decorator)."""
+        return cls._output_domain
+
+    @classmethod
+    def _ensure_configured(cls) -> None:
+        """Validate configuration at first use (lazy validation)."""
+        if cls._validated:
+            return
+
+        if getattr(cls, "_domain", None) is None:
+            raise TypeError(f"{cls.__name__} must use @domain decorator")
+
+        if getattr(cls, "_output_domain", None) is None:
+            raise TypeError(f"{cls.__name__} must use @output_domain decorator")
+
+        cls._validated = True
+
+    def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
         # Skip validation for abstract intermediate classes
         if inspect.isabstract(cls):
             return
 
-        # Set domain from __init_subclass__ kwarg
-        if domain is not None:
-            cls._domain = domain
-
-        # Validate required class attributes
+        # Validate name attribute (required at definition time)
         if not getattr(cls, "name", None):
             raise TypeError(f"{cls.__name__} must define 'name' class attribute")
 
-        if getattr(cls, "_domain", None) is None:
-            raise TypeError(
-                f"{cls.__name__} must specify domain: class {cls.__name__}(Saga, domain='x')"
-            )
-
-        if not getattr(cls, "output_domain", None):
-            raise TypeError(
-                f"{cls.__name__} must define 'output_domain' class attribute"
-            )
-
+        # Build dispatch tables (decorators have run by now)
         cls._dispatch_table = cls._build_dispatch_table()
         cls._prepare_table = cls._build_prepare_table()
+        cls._validated = False
 
     @classmethod
     def _build_dispatch_table(cls) -> dict[str, tuple[str, type]]:
@@ -282,7 +292,7 @@ class Saga(ABC):
         for cmd in commands:
             cmd_any = _pack_any(cmd)
             cover = types.Cover(
-                domain=self.output_domain,
+                domain=self._get_output_domain(),
                 correlation_id=correlation_id,
             )
             if root:
@@ -306,6 +316,7 @@ class Saga(ABC):
         Returns:
             List of Covers identifying destination aggregates to fetch.
         """
+        cls._ensure_configured()
         saga = cls()
         destinations: list[types.Cover] = []
 
@@ -333,6 +344,7 @@ class Saga(ABC):
         Returns:
             List of CommandBooks to send.
         """
+        cls._ensure_configured()
         saga = cls()
         root = source.cover.root.value if source.HasField("cover") else None
         correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
