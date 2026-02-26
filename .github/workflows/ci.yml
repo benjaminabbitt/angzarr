@@ -20,6 +20,9 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+
       - name: Buf lint
         run: just buf-lint
 
@@ -36,7 +39,7 @@ jobs:
         uses: extractions/setup-just@v2
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4

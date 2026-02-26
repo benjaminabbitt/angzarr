@@ -133,17 +133,31 @@ fmt-cpp:
 
 # === Buf Schema Registry ===
 
+# Run buf command in container (buf is installed in base image)
+[private]
+_buf +ARGS:
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ] || command -v buf &>/dev/null; then
+        cd "{{TOP}}/proto" && buf {{ARGS}}
+    else
+        podman run --rm --network=host \
+            -v "{{TOP}}:/workspace:Z" \
+            -w /workspace/proto \
+            {{REGISTRY}}/angzarr-base:latest \
+            buf {{ARGS}}
+    fi
+
 # Build and validate protos with buf
 buf-build:
-    cd "{{TOP}}/proto" && buf build
+    just _buf build
 
 # Lint protos with buf
 buf-lint:
-    cd "{{TOP}}/proto" && buf lint
+    just _buf lint
 
 # Push protos to Buf Schema Registry (requires: buf registry login)
 buf-push:
-    cd "{{TOP}}/proto" && buf push
+    just _buf push
 
 # Generate proto documentation (outputs to docs/docs/api/proto/)
 # Uses podman locally, docker in CI (auto-detects)
