@@ -14,59 +14,72 @@ metadata:
 # Each build gets a unique tag, so there's never a cache collision.
 
 build:
-  # Use git commit SHA for tags - ensures unique tag per build, avoiding
-  # Kind node image cache collisions. Never use sha256 or latest tags.
+  # Content-based tags from input digest - ensures cache hits when source unchanged
+  # and unique tags when source changes
   tagPolicy:
-    gitCommit:
-      prefix: "dev-"
-      variant: AbbrevCommitSha
+    inputDigest: {}
   local:
-    push: true
-    useBuildkit: false
-    concurrency: 1
+    push: false  # CI uses --push flag
+    useBuildkit: true
+    tryImportMissing: true
   artifacts:
     # Dev targets (default) - fast native builds
+    # RUST_IMAGE can be overridden via environment variable
     - image: ghcr.io/angzarr-io/angzarr-aggregate
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-aggregate-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-projector
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-projector-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-saga
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-saga-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-process-manager
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-process-manager-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-log
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-log-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-topology
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-topology-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-stream
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-stream-dev
+        buildArgs:
+          RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
     - image: ghcr.io/angzarr-io/angzarr-grpc-gateway
       context: .
@@ -83,42 +96,56 @@ profiles:
           docker:
             dockerfile: Containerfile
             target: angzarr-aggregate
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-projector
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-projector
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-saga
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-saga
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-process-manager
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-process-manager
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-log
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-log
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-topology
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-topology
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-stream
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-stream
+            buildArgs:
+              RUST_IMAGE: "{{ .RUST_IMAGE }}"
 
         - image: ghcr.io/angzarr-io/angzarr-grpc-gateway
           context: .
