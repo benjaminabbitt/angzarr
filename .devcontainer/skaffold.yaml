@@ -1,0 +1,20 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr-devcontainer
+
+# Devcontainer image for local development and CI
+# Uses content-based tagging so rebuilds only happen when inputs change
+
+build:
+  tagPolicy:
+    inputDigest: {}
+  local:
+    push: true
+    useBuildkit: true
+    tryImportMissing: true  # Pull from registry if exists
+  artifacts:
+    - image: ghcr.io/angzarr-io/angzarr-dev
+      context: .
+      docker:
+        dockerfile: Containerfile

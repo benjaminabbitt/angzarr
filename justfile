@@ -19,8 +19,9 @@
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
-IMAGE := "angzarr-dev"
 REGISTRY := "ghcr.io/angzarr-io"
+# Container runtime: prefer podman, fall back to docker
+CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null`
 
 mod client "client/justfile"
 mod examples "examples/justfile"
@@ -29,49 +30,62 @@ mod k3s "deploy/k3s/justfile"
 mod kind "deploy/kind/justfile"
 mod tofu "deploy/tofu/justfile"
 
-# Build the devcontainer image
+# Build the devcontainer image with skaffold (content-addressable tags)
+# Outputs built image name to .devcontainer/build.json
 [private]
 _build-image:
-    podman build --network=host -t {{IMAGE}} -f "{{TOP}}/.devcontainer/Containerfile" "{{TOP}}/.devcontainer"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{TOP}}/.devcontainer"
+    skaffold build --file-output=build.json --push=false
+    echo "Built image: $(jq -r '.builds[0].tag' build.json)"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
 _container +ARGS: _build-image
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ]; then
-        just {{ARGS}}
+        just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
-        podman run --rm --network=host \
+        IMAGE=$(jq -r '.builds[0].tag' "{{TOP}}/.devcontainer/build.json")
+        {{CONTAINER_CMD}} run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
             -w /workspace \
             -e CARGO_HOME=/workspace/.cargo-container \
-            {{IMAGE}} just {{ARGS}}
+            "$IMAGE" just {{ARGS}}
     fi
 
-# Run just target in container with podman socket access (for testcontainers)
+# Run just target in container with container socket access (for testcontainers)
 [private]
 _container-dind +ARGS: _build-image
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ]; then
-        just {{ARGS}}
+        just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
-        # Find podman socket
-        PODMAN_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
-        if [ ! -S "$PODMAN_SOCK" ]; then
-            echo "Error: Podman socket not found at $PODMAN_SOCK"
-            echo "Start the podman socket with: systemctl --user start podman.socket"
+        IMAGE=$(jq -r '.builds[0].tag' "{{TOP}}/.devcontainer/build.json")
+        # Find container socket (podman or docker)
+        if command -v podman &>/dev/null; then
+            SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+            SOCK_MSG="Start the podman socket with: systemctl --user start podman.socket"
+        else
+            SOCK="/var/run/docker.sock"
+            SOCK_MSG="Ensure Docker daemon is running"
+        fi
+        if [ ! -S "$SOCK" ]; then
+            echo "Error: Container socket not found at $SOCK"
+            echo "$SOCK_MSG"
             exit 1
         fi
-        podman run --rm --network=host \
+        {{CONTAINER_CMD}} run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
-            -v "$PODMAN_SOCK:/run/podman/podman.sock:Z" \
+            -v "$SOCK:/var/run/docker.sock:Z" \
             -w /workspace \
             -e CARGO_HOME=/workspace/.cargo-container \
-            -e DOCKER_HOST=unix:///run/podman/podman.sock \
+            -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e TESTCONTAINERS_RYUK_DISABLED=true \
-            {{IMAGE}} just {{ARGS}}
+            "$IMAGE" just {{ARGS}}
     fi
 
 default:
@@ -86,7 +100,7 @@ _lang-container LANG +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         {{ARGS}}
     else
-        podman run --rm --network=host \
+        {{CONTAINER_CMD}} run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-{{LANG}}:latest \
@@ -124,7 +138,7 @@ fmt-cpp:
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         find examples/cpp client/cpp \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' \) -exec clang-format -i {} +
     else
-        podman run --rm --network=host \
+        {{CONTAINER_CMD}} run --rm --network=host \
             -v "$(git rev-parse --show-toplevel):/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-base:latest \
@@ -140,7 +154,7 @@ _buf +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ] || command -v buf &>/dev/null; then
         cd "{{TOP}}/proto" && buf {{ARGS}}
     else
-        podman run --rm --network=host \
+        {{CONTAINER_CMD}} run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace/proto \
             {{REGISTRY}}/angzarr-base:latest \
@@ -187,37 +201,51 @@ buf-docs:
 
 # === gRPC Gateway ===
 
+# Run command in Go container (has Go, buf, protoc plugins)
+[private]
+_go +ARGS:
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ] || (command -v go &>/dev/null && command -v buf &>/dev/null); then
+        {{ARGS}}
+    else
+        {{CONTAINER_CMD}} run --rm --network=host \
+            -v "{{TOP}}:/workspace:Z" \
+            -w /workspace \
+            {{REGISTRY}}/angzarr-go:latest \
+            {{ARGS}}
+    fi
+
 # Generate gRPC-Gateway and OpenAPI code from protos
 gateway-gen:
-    cd "{{TOP}}/gateway" && buf generate
+    just _go "cd gateway && buf generate"
 
 # Build gRPC-Gateway binary (for local testing)
 gateway-build: gateway-gen
-    cd "{{TOP}}/gateway" && go build -o /tmp/angzarr-grpc-gateway .
+    just _go "cd gateway && go build -o /tmp/angzarr-grpc-gateway ."
 
 # Run gRPC-Gateway locally (connects to local coordinator)
 gateway-dev: gateway-gen
-    cd "{{TOP}}/gateway" && go run . --grpc-target=localhost:1310
+    just _go "cd gateway && go run . --grpc-target=localhost:1310"
 
 # Build gRPC-Gateway container image
 gateway-image: gateway-gen
-    podman build -t ghcr.io/angzarr-io/angzarr-grpc-gateway:latest -f gateway/Containerfile .
+    {{CONTAINER_CMD}} build -t ghcr.io/angzarr-io/angzarr-grpc-gateway:latest -f gateway/Containerfile .
 
 # Build and push gRPC-Gateway container image (for CI)
 gateway-image-push TAG="latest": gateway-gen
     #!/usr/bin/env bash
     set -euo pipefail
     IMAGE="ghcr.io/angzarr-io/angzarr-grpc-gateway"
-    docker build -t "$IMAGE:{{TAG}}" -f gateway/Containerfile .
-    docker tag "$IMAGE:{{TAG}}" "$IMAGE:latest"
-    docker push "$IMAGE:{{TAG}}"
-    docker push "$IMAGE:latest"
+    {{CONTAINER_CMD}} build -t "$IMAGE:{{TAG}}" -f gateway/Containerfile .
+    {{CONTAINER_CMD}} tag "$IMAGE:{{TAG}}" "$IMAGE:latest"
+    {{CONTAINER_CMD}} push "$IMAGE:{{TAG}}"
+    {{CONTAINER_CMD}} push "$IMAGE:latest"
 
 # Generate OpenAPI spec and copy to docs
 openapi: gateway-gen
-    mkdir -p "{{TOP}}/docs/openapi"
-    cp "{{TOP}}/gateway/api/angzarr.swagger.json" "{{TOP}}/docs/openapi/angzarr.swagger.json"
-    @echo "OpenAPI spec generated at docs/openapi/angzarr.swagger.json"
+    mkdir -p "{{TOP}}/docs/static"
+    cp "{{TOP}}/gateway/api/angzarr.swagger.json" "{{TOP}}/docs/static/openapi.json"
+    @echo "OpenAPI spec generated at docs/static/openapi.json"
 
 # === Build ===
 
@@ -604,8 +632,8 @@ acceptance: _cluster-ready
 # Start Qdrant container for semantic search
 qdrant-start:
     @mkdir -p "{{TOP}}/.vectors/qdrant-data"
-    @podman start qdrant 2>/dev/null || \
-        podman run -d --name qdrant \
+    @{{CONTAINER_CMD}} start qdrant 2>/dev/null || \
+        {{CONTAINER_CMD}} run -d --name qdrant \
             -p 6333:6333 -p 6334:6334 \
             -v "{{TOP}}/.vectors/qdrant-data:/qdrant/storage:Z" \
             docker.io/qdrant/qdrant:latest
@@ -613,7 +641,7 @@ qdrant-start:
 
 # Stop Qdrant container
 qdrant-stop:
-    @podman stop qdrant 2>/dev/null || true
+    @{{CONTAINER_CMD}} stop qdrant 2>/dev/null || true
 
 # Rebuild vector index for semantic codebase search (uses containerized Qdrant)
 reindex: qdrant-start

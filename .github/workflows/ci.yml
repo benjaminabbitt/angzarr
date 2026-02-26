@@ -14,45 +14,78 @@ jobs:
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/angzarr-io/angzarr-base:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      # buf-lint/buf-build use _buf which detects buf in PATH and runs directly
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install Skaffold
+        run: |
+          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+          chmod +x skaffold
+          sudo mv skaffold /usr/local/bin/
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - run: just buf-lint
       - run: just buf-build
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/angzarr-io/angzarr-rust:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      # Mount container justfile - just test calls _container which dispatches here
-      - run: ln -sf justfile.container justfile
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install Skaffold
+        run: |
+          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+          chmod +x skaffold
+          sudo mv skaffold /usr/local/bin/
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - run: just test
 
   gateway:
     name: Build gRPC Gateway
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/angzarr-io/angzarr-go:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      # gateway-* targets run commands directly (no container delegation)
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install Skaffold
+        run: |
+          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+          chmod +x skaffold
+          sudo mv skaffold /usr/local/bin/
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - run: just gateway-gen
       - run: just gateway-build
       - run: just openapi
+
       - name: Upload OpenAPI artifact
         uses: actions/upload-artifact@v4
         with:

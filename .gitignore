@@ -1,6 +1,9 @@
 /target
 **/target/
 .cargo-container/
+
+# Skaffold build output
+.devcontainer/build.json
 *.swp
 *.swo
 .DS_Store
