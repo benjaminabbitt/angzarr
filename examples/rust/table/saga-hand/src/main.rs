@@ -9,7 +9,8 @@
 use angzarr_client::proto::examples::{DealCards, HandStarted, PlayerInHand};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
-    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaRouter, UnpackAny,
+    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaHandlerResponse,
+    SagaRouter, UnpackAny,
 };
 use prost::Message;
 use prost_types::Any;
@@ -36,11 +37,11 @@ impl SagaDomainHandler for TableHandSagaHandler {
         source: &EventBook,
         event: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with("HandStarted") {
             return Self::handle_hand_started(source, event, destinations);
         }
-        Ok(vec![])
+        Ok(SagaHandlerResponse::default())
     }
 }
 
@@ -64,7 +65,7 @@ impl TableHandSagaHandler {
         _source: &EventBook,
         event_any: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         let event: HandStarted = event_any
             .unpack()
             .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandStarted: {}", e)))?;
@@ -103,19 +104,22 @@ impl TableHandSagaHandler {
             value: deal_cards.encode_to_vec(),
         };
 
-        Ok(vec![CommandBook {
-            cover: Some(Cover {
-                domain: "hand".to_string(),
-                root: Some(Uuid { value: event.hand_root }),
-                ..Default::default()
-            }),
-            pages: vec![CommandPage {
-                sequence: dest_seq,
-                payload: Some(command_page::Payload::Command(command_any)),
-                ..Default::default()
+        Ok(SagaHandlerResponse {
+            commands: vec![CommandBook {
+                cover: Some(Cover {
+                    domain: "hand".to_string(),
+                    root: Some(Uuid { value: event.hand_root }),
+                    ..Default::default()
+                }),
+                pages: vec![CommandPage {
+                    sequence: dest_seq,
+                    payload: Some(command_page::Payload::Command(command_any)),
+                    ..Default::default()
+                }],
+                saga_origin: None,
             }],
-            saga_origin: None,
-        }])
+            events: vec![],
+        })
     }
 }
 // docs:end:saga_handler
@@ -127,9 +131,9 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // docs:start:saga_router
+    // docs:start:event_router
     let router = SagaRouter::new("saga-table-hand", "table", TableHandSagaHandler);
-    // docs:end:saga_router
+    // docs:end:event_router
 
     run_saga_server("saga-table-hand", 50011, router)
         .await

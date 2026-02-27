@@ -21,6 +21,19 @@ pub struct FactContext {
     pub prior_events: Option<EventBook>,
 }
 
+/// Result of process manager handle phase.
+///
+/// Contains commands, PM events, and facts to inject to other aggregates.
+#[derive(Debug, Clone, Default)]
+pub struct ProcessManagerHandleResult {
+    /// Commands to send to other aggregates.
+    pub commands: Vec<CommandBook>,
+    /// Events to persist to the PM's own domain.
+    pub process_events: Option<EventBook>,
+    /// Facts to inject to other aggregates.
+    pub facts: Vec<EventBook>,
+}
+
 /// Command handler for a domain aggregate.
 ///
 /// Implement this trait to handle commands for a specific domain.
@@ -386,9 +399,9 @@ impl SagaConfig {
 ///         trigger: &EventBook,
 ///         process_state: Option<&EventBook>,
 ///         _destinations: &[EventBook],
-///     ) -> (Vec<CommandBook>, Option<EventBook>) {
-///         // Pure computation: examine trigger + state, produce commands + PM events
-///         (vec![], None)
+///     ) -> ProcessManagerHandleResult {
+///         // Pure computation: examine trigger + state, produce commands + PM events + facts
+///         ProcessManagerHandleResult::default()
 ///     }
 /// }
 /// ```
@@ -398,15 +411,15 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
     /// Returns destinations to fetch. Most PMs return empty (only need PM state).
     fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover>;
 
-    /// Phase 2: Produce commands + PM events given trigger, PM state, and destinations.
+    /// Phase 2: Produce commands, PM events, and facts given trigger, PM state, and destinations.
     ///
-    /// Returns (commands to execute, optional PM events to persist).
+    /// Returns commands to execute, optional PM events to persist, and facts to inject.
     fn handle(
         &self,
         trigger: &EventBook,
         process_state: Option<&EventBook>,
         destinations: &[EventBook],
-    ) -> (Vec<CommandBook>, Option<EventBook>);
+    ) -> ProcessManagerHandleResult;
 
     /// Handle a rejection notification for commands this PM issued.
     ///

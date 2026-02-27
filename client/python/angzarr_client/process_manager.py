@@ -63,6 +63,7 @@ from typing import Generic, TypeVar
 from google.protobuf.any_pb2 import Any
 
 from .compensation import RejectionHandlerResponse
+from .proto.angzarr import process_manager_pb2 as pm_pb2
 from .proto.angzarr import types_pb2 as types
 from .router import _pack_any, domain, handles, output_domain, prepares, rejected
 
@@ -227,6 +228,16 @@ class ProcessManager(Generic[StateT], ABC):
         self._event_book = process_state
         self._state: StateT = None
         self._new_events: list[Any] = []
+        self._facts: list[types.EventBook] = []
+
+    def emit_fact(self, fact: types.EventBook) -> None:
+        """Emit a fact to inject to another aggregate.
+
+        Args:
+            fact: EventBook containing the event to inject.
+                  The Cover should specify target domain and root.
+        """
+        self._facts.append(fact)
 
     def _get_state(self) -> StateT:
         """Get current state, rebuilding from events if needed."""
@@ -402,7 +413,7 @@ class ProcessManager(Generic[StateT], ABC):
         trigger: types.EventBook,
         process_state: types.EventBook,
         destinations: list[types.EventBook] = None,
-    ) -> tuple[list[types.CommandBook], types.EventBook]:
+    ) -> pm_pb2.ProcessManagerHandleResponse:
         """Phase 2: Handle a trigger event with current process state.
 
         Args:
@@ -411,7 +422,7 @@ class ProcessManager(Generic[StateT], ABC):
             destinations: Additional destination states (from prepare phase).
 
         Returns:
-            Tuple of (commands to send, new process events).
+            ProcessManagerHandleResponse with process_events, commands, and facts.
         """
         pm = cls(process_state)
         root = trigger.cover.root.value if trigger.HasField("cover") else None
@@ -426,7 +437,11 @@ class ProcessManager(Generic[StateT], ABC):
                     pm.dispatch(page.event, root, correlation_id, destinations)
                 )
 
-        return commands, pm.process_events()
+        return pm_pb2.ProcessManagerHandleResponse(
+            process_events=pm.process_events(),
+            commands=commands,
+            facts=pm._facts,
+        )
 
     def handle_revocation(
         self,

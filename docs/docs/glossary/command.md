@@ -37,4 +37,4 @@ Commands are wrapped in a [CommandBook](/glossary/command-book) containing:
 
 Not all messages to aggregates are rejectable requests. External realities (payments processed, packages delivered) are **facts** that must be recorded, not decided upon.
 
-Angzarr distinguishes these by allowing [fact events](/concepts/commands-vs-facts) — events sent directly to aggregates with idempotency keys instead of sequence numbers. This preserves semantic clarity: commands request decisions, facts notify of external reality.
+Angzarr distinguishes these by allowing [fact events](/components/commands-vs-facts) — events sent directly to aggregates with idempotency keys instead of sequence numbers. This preserves semantic clarity: commands request decisions, facts notify of external reality.

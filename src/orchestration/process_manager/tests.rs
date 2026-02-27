@@ -29,6 +29,7 @@ impl ProcessManagerContext for EmptyPm {
         Ok(PmHandleResponse {
             commands: vec![],
             process_events: None,
+            facts: vec![],
         })
     }
     async fn persist_pm_events(
@@ -72,6 +73,7 @@ impl ProcessManagerContext for PmWithEvents {
                 snapshot: None,
                 ..Default::default()
             }),
+            facts: vec![],
         })
     }
     async fn persist_pm_events(
@@ -152,6 +154,7 @@ async fn test_orchestrate_pm_empty_response() {
         &ctx,
         &fetcher,
         &executor,
+        None,
         &trigger,
         "pmg-fulfillment",
         "fulfillment-pm",
@@ -177,6 +180,7 @@ async fn test_orchestrate_pm_persists_events() {
         &ctx,
         &fetcher,
         &executor,
+        None,
         &trigger,
         "pmg-fulfillment",
         "fulfillment-pm",
@@ -203,6 +207,7 @@ async fn test_orchestrate_pm_retries_on_sequence_conflict() {
         &ctx,
         &fetcher,
         &executor,
+        None,
         &trigger,
         "pmg-fulfillment",
         "fulfillment-pm",
@@ -235,6 +240,7 @@ async fn test_orchestrate_pm_exhausts_retries() {
         &ctx,
         &fetcher,
         &executor,
+        None,
         &trigger,
         "pmg-fulfillment",
         "fulfillment-pm",

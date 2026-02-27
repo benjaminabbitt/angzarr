@@ -4,25 +4,25 @@ description: Auto-generated documentation for Angzarr protobuf definitions
 ---
 
 # Protocol Documentation
-<a name="top"></a>
 
-## Table of Contents
+## Table of Contents {#top}
 
-- [angzarr/aggregate.proto](#angzarr_aggregate-proto)
-    - [BusinessResponse](#angzarr-BusinessResponse)
-    - [CommandResponse](#angzarr-CommandResponse)
-    - [ReplayRequest](#angzarr-ReplayRequest)
-    - [ReplayResponse](#angzarr-ReplayResponse)
-    - [RevocationResponse](#angzarr-RevocationResponse)
-    - [SpeculateAggregateRequest](#angzarr-SpeculateAggregateRequest)
-
-    - [CommandHandlerCoordinatorService](#angzarr-CommandHandlerCoordinatorService)
-    - [CommandHandlerService](#angzarr-CommandHandlerService)
-  
 - [angzarr/cloudevents.proto](#angzarr_cloudevents-proto)
     - [CloudEvent](#angzarr-CloudEvent)
     - [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry)
     - [CloudEventsResponse](#angzarr-CloudEventsResponse)
+  
+- [angzarr/command_handler.proto](#angzarr_command_handler-proto)
+    - [BusinessResponse](#angzarr-BusinessResponse)
+    - [CommandResponse](#angzarr-CommandResponse)
+    - [FactInjectionResponse](#angzarr-FactInjectionResponse)
+    - [ReplayRequest](#angzarr-ReplayRequest)
+    - [ReplayResponse](#angzarr-ReplayResponse)
+    - [RevocationResponse](#angzarr-RevocationResponse)
+    - [SpeculateCommandHandlerRequest](#angzarr-SpeculateCommandHandlerRequest)
+  
+    - [CommandHandlerCoordinatorService](#angzarr-CommandHandlerCoordinatorService)
+    - [CommandHandlerService](#angzarr-CommandHandlerService)
   
 - [angzarr/meta.proto](#angzarr_meta-proto)
     - [DeleteEditionEvents](#angzarr-DeleteEditionEvents)
@@ -68,15 +68,19 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [AngzarrDeadLetter.MetadataEntry](#angzarr-AngzarrDeadLetter-MetadataEntry)
     - [CommandBook](#angzarr-CommandBook)
     - [CommandPage](#angzarr-CommandPage)
+    - [CommandRequest](#angzarr-CommandRequest)
     - [ComponentDescriptor](#angzarr-ComponentDescriptor)
     - [ContextualCommand](#angzarr-ContextualCommand)
+    - [ContextualCommandRequest](#angzarr-ContextualCommandRequest)
     - [Cover](#angzarr-Cover)
     - [DomainDivergence](#angzarr-DomainDivergence)
     - [Edition](#angzarr-Edition)
     - [EventBook](#angzarr-EventBook)
     - [EventPage](#angzarr-EventPage)
     - [EventProcessingFailedDetails](#angzarr-EventProcessingFailedDetails)
+    - [EventRequest](#angzarr-EventRequest)
     - [EventStreamFilter](#angzarr-EventStreamFilter)
+    - [FactSequence](#angzarr-FactSequence)
     - [GetDescriptorRequest](#angzarr-GetDescriptorRequest)
     - [Notification](#angzarr-Notification)
     - [Notification.MetadataEntry](#angzarr-Notification-MetadataEntry)
@@ -90,9 +94,6 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [SequenceRange](#angzarr-SequenceRange)
     - [SequenceSet](#angzarr-SequenceSet)
     - [Snapshot](#angzarr-Snapshot)
-    - [SyncCommandBook](#angzarr-SyncCommandBook)
-    - [SyncContextualCommand](#angzarr-SyncContextualCommand)
-    - [SyncEventBook](#angzarr-SyncEventBook)
     - [Target](#angzarr-Target)
     - [TemporalQuery](#angzarr-TemporalQuery)
     - [UUID](#angzarr-UUID)
@@ -157,12 +158,16 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [FundsTransferred](#examples-FundsTransferred)
     - [FundsWithdrawn](#examples-FundsWithdrawn)
     - [PlayerRegistered](#examples-PlayerRegistered)
+    - [PlayerReturningToPlay](#examples-PlayerReturningToPlay)
+    - [PlayerSittingOut](#examples-PlayerSittingOut)
     - [PlayerState](#examples-PlayerState)
     - [PlayerState.TableReservationsEntry](#examples-PlayerState-TableReservationsEntry)
     - [RegisterPlayer](#examples-RegisterPlayer)
     - [ReleaseFunds](#examples-ReleaseFunds)
     - [RequestAction](#examples-RequestAction)
     - [ReserveFunds](#examples-ReserveFunds)
+    - [SitIn](#examples-SitIn)
+    - [SitOut](#examples-SitOut)
     - [TransferFunds](#examples-TransferFunds)
     - [WithdrawFunds](#examples-WithdrawFunds)
   
@@ -197,11 +202,17 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [PlayerSatOut](#examples-PlayerSatOut)
     - [PotResult](#examples-PotResult)
     - [SeatSnapshot](#examples-SeatSnapshot)
-    - [SitIn](#examples-SitIn)
-    - [SitOut](#examples-SitOut)
     - [StartHand](#examples-StartHand)
     - [TableCreated](#examples-TableCreated)
     - [TableState](#examples-TableState)
+  
+- [google/api/annotations.proto](#google_api_annotations-proto)
+    - [File-level Extensions](#google_api_annotations-proto-extensions)
+  
+- [google/api/http.proto](#google_api_http-proto)
+    - [CustomHttpPattern](#google-api-CustomHttpPattern)
+    - [Http](#google-api-Http)
+    - [HttpRule](#google-api-HttpRule)
   
 - [io/cloudevents/v1/cloudevents.proto](#io_cloudevents_v1_cloudevents-proto)
     - [CloudEvent](#io-cloudevents-v1-CloudEvent)
@@ -213,156 +224,14 @@ description: Auto-generated documentation for Angzarr protobuf definitions
 
 
 
-<a name="angzarr_aggregate-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/aggregate.proto
+## angzarr/cloudevents.proto {#angzarr_cloudevents-proto}
 
 
 
-<a name="angzarr-BusinessResponse"></a>
 
-### BusinessResponse
-Wrapper response for BusinessLogic.Handle
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| events | [EventBook](#angzarr-EventBook) |  | Business provides compensation events |
-| revocation | [RevocationResponse](#angzarr-RevocationResponse) |  | Business requests framework action |
-| notification | [Notification](#angzarr-Notification) |  | Forward rejection notification upstream |
-
-
-
-
-
-
-<a name="angzarr-CommandResponse"></a>
-
-### CommandResponse
-Response from entity - aggregate events &#43; sync projector results
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| events | [EventBook](#angzarr-EventBook) |  | Events from the target aggregate |
-| projections | [Projection](#angzarr-Projection) | repeated | Synchronous projector results |
-
-
-
-
-
-
-<a name="angzarr-ReplayRequest"></a>
-
-### ReplayRequest
-Request to replay events and compute resulting state
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| base_snapshot | [Snapshot](#angzarr-Snapshot) |  | Starting state (empty = initial state) |
-| events | [EventPage](#angzarr-EventPage) | repeated | Events to apply in order |
-
-
-
-
-
-
-<a name="angzarr-ReplayResponse"></a>
-
-### ReplayResponse
-Response with computed state after replay
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| state | [google.protobuf.Any](#google-protobuf-Any) |  | Resulting state |
-
-
-
-
-
-
-<a name="angzarr-RevocationResponse"></a>
-
-### RevocationResponse
-client logic requests framework to handle revocation
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| emit_system_revocation | [bool](#bool) |  | Emit SagaCompensationFailed event |
-| send_to_dead_letter_queue | [bool](#bool) |  | Send to DLQ |
-| escalate | [bool](#bool) |  | Flag for alerting/human intervention |
-| abort | [bool](#bool) |  | Stop saga chain, propagate error to caller |
-| reason | [string](#string) |  | Context/reason |
-
-
-
-
-
-
-<a name="angzarr-SpeculateAggregateRequest"></a>
-
-### SpeculateAggregateRequest
-Request for speculative command execution against temporal state.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| command | [CommandBook](#angzarr-CommandBook) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
-
-
-
-
-
- 
-
- 
-
- 
-
-
-<a name="angzarr-CommandHandlerCoordinatorService"></a>
-
-### CommandHandlerCoordinatorService
-CommandHandlerCoordinatorService: orchestrates command processing for aggregates
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| Handle | [CommandBook](#angzarr-CommandBook) | [CommandResponse](#angzarr-CommandResponse) | Async processing - fire and forget |
-| HandleSync | [SyncCommandBook](#angzarr-SyncCommandBook) | [CommandResponse](#angzarr-CommandResponse) | Sync processing - waits for completion based on sync_mode |
-| HandleSyncSpeculative | [SpeculateAggregateRequest](#angzarr-SpeculateAggregateRequest) | [CommandResponse](#angzarr-CommandResponse) | Speculative execution - execute against temporal state without persisting |
-| HandleCompensation | [CommandBook](#angzarr-CommandBook) | [BusinessResponse](#angzarr-BusinessResponse) | Compensation flow - returns BusinessResponse for saga compensation handling. If business returns events, persists them. Caller handles revocation flags. |
-
-
-<a name="angzarr-CommandHandlerService"></a>
-
-### CommandHandlerService
-CommandHandlerService: client logic that processes commands and emits events
-client logic doesn&#39;t care about sync - coordinator decides
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| Handle | [ContextualCommand](#angzarr-ContextualCommand) | [BusinessResponse](#angzarr-BusinessResponse) | Process command and return business response (events or revocation request) |
-| Replay | [ReplayRequest](#angzarr-ReplayRequest) | [ReplayResponse](#angzarr-ReplayResponse) | Replay events to compute state (for conflict detection) Optional: only needed if aggregate supports MERGE_COMMUTATIVE |
-
- 
-
-
-
-<a name="angzarr_cloudevents-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## angzarr/cloudevents.proto
-
-
-
-<a name="angzarr-CloudEvent"></a>
-
-### CloudEvent
+### CloudEvent {#angzarr-CloudEvent}
 docs:start:cloud_event
 CloudEvent represents a single event for external consumption.
 
@@ -377,39 +246,37 @@ proto message that omits sensitive fields.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| type | [string](#string) |  | Event type (e.g., &#34;com.example.order.created&#34;). Default: proto type_url suffix from original event. |
-| data | [google.protobuf.Any](#google-protobuf-Any) |  | Event payload as proto Any. Framework converts to JSON for CloudEvents output. Client should filter sensitive fields before packing. |
+| type | string |  | Event type (e.g., &#34;com.example.order.created&#34;). Default: proto type_url suffix from original event. |
+| data | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  | Event payload as proto Any. Framework converts to JSON for CloudEvents output. Client should filter sensitive fields before packing. |
 | extensions | [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry) | repeated | Custom extension attributes. Keys should follow CloudEvents naming (lowercase, no dots). Framework adds correlationid automatically if present in Cover. |
-| id | [string](#string) | optional | Optional overrides. Framework uses Cover/EventPage values if not set.
+| id | string | optional | Optional overrides. Framework uses Cover/EventPage values if not set.
 
-Default: `{domain}`:`{root_id}`:`{sequence}` |
-| source | [string](#string) | optional | Default: angzarr/`{domain}` |
-| subject | [string](#string) | optional | Default: aggregate root ID |
-
-
+Default: \{domain\}:\{root_id\}:\{sequence\} |
+| source | string | optional | Default: angzarr/\{domain\} |
+| subject | string | optional | Default: aggregate root ID |
 
 
 
 
-<a name="angzarr-CloudEvent-ExtensionsEntry"></a>
 
-### CloudEvent.ExtensionsEntry
+
+
+### CloudEvent.ExtensionsEntry {#angzarr-CloudEvent-ExtensionsEntry}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
+| key | string |  |  |
+| value | string |  |  |
 
 
 
 
 
 
-<a name="angzarr-CloudEventsResponse"></a>
 
-### CloudEventsResponse
+### CloudEventsResponse {#angzarr-CloudEventsResponse}
 CloudEventsResponse is returned by client projectors in Projection.projection.
 
 Framework detects this type by checking projection.type_url and routes
@@ -437,42 +304,198 @@ Client may return 0 events (skip), 1 event (typical), or N events
 
 
 
-<a name="angzarr_meta-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/meta.proto
+## angzarr/command_handler.proto {#angzarr_command_handler-proto}
 
 
 
-<a name="angzarr-DeleteEditionEvents"></a>
 
-### DeleteEditionEvents
+### BusinessResponse {#angzarr-BusinessResponse}
+Wrapper response for BusinessLogic.Handle
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [EventBook](#angzarr-EventBook) |  | Business provides compensation events |
+| revocation | [RevocationResponse](#angzarr-RevocationResponse) |  | Business requests framework action |
+| notification | [Notification](#angzarr-Notification) |  | Forward rejection notification upstream |
+
+
+
+
+
+
+
+### CommandResponse {#angzarr-CommandResponse}
+Response from entity - aggregate events &#43; sync projector results
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [EventBook](#angzarr-EventBook) |  | Events from the target aggregate |
+| projections | [Projection](#angzarr-Projection) | repeated | Synchronous projector results |
+
+
+
+
+
+
+
+### FactInjectionResponse {#angzarr-FactInjectionResponse}
+docs:start:fact_injection
+Response from fact injection.
+Indicates whether facts were newly persisted or already existed (idempotent).
+
+Request uses EventRequest with:
+- events: EventBook containing fact events (with FactSequence markers)
+- sync_mode: Controls sync processing (default: async)
+- route_to_handler: Whether to invoke command handler&#39;s handle_fact (default: true)
+
+IMPORTANT: Set Cover.external_id for idempotency. The coordinator uses this
+to deduplicate fact injections - subsequent requests with the same external_id
+return the original events without re-persisting.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [EventBook](#angzarr-EventBook) |  | Persisted events with real sequence numbers |
+| already_processed | bool |  | True if external_id was already seen (idempotent response) |
+| projections | [Projection](#angzarr-Projection) | repeated | Synchronous projector results (if any) |
+
+
+
+
+
+
+
+### ReplayRequest {#angzarr-ReplayRequest}
+Request to replay events and compute resulting state
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| base_snapshot | [Snapshot](#angzarr-Snapshot) |  | Starting state (empty = initial state) |
+| events | [EventPage](#angzarr-EventPage) | repeated | Events to apply in order |
+
+
+
+
+
+
+
+### ReplayResponse {#angzarr-ReplayResponse}
+Response with computed state after replay
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  | Resulting state |
+
+
+
+
+
+
+
+### RevocationResponse {#angzarr-RevocationResponse}
+client logic requests framework to handle revocation
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| emit_system_revocation | bool |  | Emit SagaCompensationFailed event |
+| send_to_dead_letter_queue | bool |  | Send to DLQ |
+| escalate | bool |  | Flag for alerting/human intervention |
+| abort | bool |  | Stop saga chain, propagate error to caller |
+| reason | string |  | Context/reason |
+
+
+
+
+
+
+
+### SpeculateCommandHandlerRequest {#angzarr-SpeculateCommandHandlerRequest}
+Request for speculative command execution against temporal state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| command | [CommandBook](#angzarr-CommandBook) |  |  |
+| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+
+### CommandHandlerCoordinatorService {#angzarr-CommandHandlerCoordinatorService}
+CommandHandlerCoordinatorService: orchestrates command processing for domain aggregates
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| HandleCommand | [CommandRequest](#angzarr-CommandRequest) | [CommandResponse](#angzarr-CommandResponse) | Process command with optional sync mode (default: async fire-and-forget) |
+| HandleEvent | [EventRequest](#angzarr-EventRequest) | [FactInjectionResponse](#angzarr-FactInjectionResponse) | Inject fact events - external realities that cannot be rejected. Idempotent: subsequent requests with same external_id return original events. Use EventRequest.route_to_handler to control command handler invocation. |
+| HandleSyncSpeculative | [SpeculateCommandHandlerRequest](#angzarr-SpeculateCommandHandlerRequest) | [CommandResponse](#angzarr-CommandResponse) | Speculative execution - execute against temporal state without persisting |
+| HandleCompensation | [CommandRequest](#angzarr-CommandRequest) | [BusinessResponse](#angzarr-BusinessResponse) | Compensation flow - returns BusinessResponse for saga compensation handling. If business returns events, persists them. Caller handles revocation flags. |
+
+
+
+### CommandHandlerService {#angzarr-CommandHandlerService}
+CommandHandlerService: client logic that processes commands and emits events
+Business logic layer that implements command handling for a domain aggregate
+client logic doesn&#39;t care about sync - coordinator decides
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| Handle | [ContextualCommand](#angzarr-ContextualCommand) | [BusinessResponse](#angzarr-BusinessResponse) | Process command and return business response (events or revocation request) |
+| Replay | [ReplayRequest](#angzarr-ReplayRequest) | [ReplayResponse](#angzarr-ReplayResponse) | Replay events to compute state (for conflict detection) Optional: only needed if aggregate supports MERGE_COMMUTATIVE |
+
+ 
+
+
+
+<p align="right"><a href="#top">Top</a></p>
+
+## angzarr/meta.proto {#angzarr_meta-proto}
+
+
+
+
+### DeleteEditionEvents {#angzarr-DeleteEditionEvents}
 Delete all events for an edition&#43;domain combination.
 Main timeline (&#39;angzarr&#39; or empty edition name) cannot be deleted.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| edition | [string](#string) |  | Edition name to delete from |
-| domain | [string](#string) |  | Domain to delete from |
+| edition | string |  | Edition name to delete from |
+| domain | string |  | Domain to delete from |
 
 
 
 
 
 
-<a name="angzarr-EditionEventsDeleted"></a>
 
-### EditionEventsDeleted
+### EditionEventsDeleted {#angzarr-EditionEventsDeleted}
 Response from edition event deletion.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| edition | [string](#string) |  |  |
-| domain | [string](#string) |  |  |
-| deleted_count | [uint32](#uint32) |  |  |
-| deleted_at | [string](#string) |  |  |
+| edition | string |  |  |
+| domain | string |  |  |
+| deleted_count | uint32 |  |  |
+| deleted_at | string |  |  |
 
 
 
@@ -488,16 +511,14 @@ Response from edition event deletion.
 
 
 
-<a name="angzarr_process_manager-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/process_manager.proto
+## angzarr/process_manager.proto {#angzarr_process_manager-proto}
 
 
 
-<a name="angzarr-ProcessManagerHandleRequest"></a>
 
-### ProcessManagerHandleRequest
+### ProcessManagerHandleRequest {#angzarr-ProcessManagerHandleRequest}
 Phase 2 request: full context for PM decision.
 
 
@@ -512,25 +533,25 @@ Phase 2 request: full context for PM decision.
 
 
 
-<a name="angzarr-ProcessManagerHandleResponse"></a>
 
-### ProcessManagerHandleResponse
-Phase 2 response: commands and PM events.
+### ProcessManagerHandleResponse {#angzarr-ProcessManagerHandleResponse}
+Phase 2 response: local events, then remote commands and facts.
+Execution order: process_events persisted first, then commands sent, then facts injected.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| commands | [CommandBook](#angzarr-CommandBook) | repeated | Commands to issue to other aggregates. |
-| process_events | [EventBook](#angzarr-EventBook) |  | Events for the process manager&#39;s own domain (non-duplicative workflow state). These are persisted via CommandHandlerCoordinator to the PM&#39;s domain. |
+| process_events | [EventBook](#angzarr-EventBook) |  | Local: Events for the process manager&#39;s own domain (non-duplicative workflow state). These are persisted via AggregateCoordinator to the PM&#39;s domain. |
+| commands | [CommandBook](#angzarr-CommandBook) | repeated | Remote: Commands to issue to other aggregates. |
+| facts | [EventBook](#angzarr-EventBook) | repeated | Remote: Facts to inject to other aggregates. Each EventBook targets a specific aggregate via its Cover. |
 
 
 
 
 
 
-<a name="angzarr-ProcessManagerPrepareRequest"></a>
 
-### ProcessManagerPrepareRequest
+### ProcessManagerPrepareRequest {#angzarr-ProcessManagerPrepareRequest}
 Phase 1 request: PM declares additional destinations needed.
 
 
@@ -544,9 +565,8 @@ Phase 1 request: PM declares additional destinations needed.
 
 
 
-<a name="angzarr-ProcessManagerPrepareResponse"></a>
 
-### ProcessManagerPrepareResponse
+### ProcessManagerPrepareResponse {#angzarr-ProcessManagerPrepareResponse}
 Phase 1 response: destinations to fetch before Handle.
 
 
@@ -559,16 +579,14 @@ Phase 1 response: destinations to fetch before Handle.
 
 
 
-<a name="angzarr-SpeculatePmRequest"></a>
 
-### SpeculatePmRequest
-Request for speculative PM execution at a point in time.
+### SpeculatePmRequest {#angzarr-SpeculatePmRequest}
+Request for speculative PM execution.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | request | [ProcessManagerHandleRequest](#angzarr-ProcessManagerHandleRequest) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
 
 
 
@@ -581,9 +599,8 @@ Request for speculative PM execution at a point in time.
  
 
 
-<a name="angzarr-ProcessManagerCoordinatorService"></a>
 
-### ProcessManagerCoordinatorService
+### ProcessManagerCoordinatorService {#angzarr-ProcessManagerCoordinatorService}
 ProcessManagerCoordinatorService: orchestrates PM execution
 
 | Method Name | Request Type | Response Type | Description |
@@ -591,9 +608,8 @@ ProcessManagerCoordinatorService: orchestrates PM execution
 | HandleSpeculative | [SpeculatePmRequest](#angzarr-SpeculatePmRequest) | [ProcessManagerHandleResponse](#angzarr-ProcessManagerHandleResponse) | Speculative execution - returns commands and events without persisting |
 
 
-<a name="angzarr-ProcessManagerService"></a>
 
-### ProcessManagerService
+### ProcessManagerService {#angzarr-ProcessManagerService}
 ProcessManagerService: stateful coordinator for long-running workflows across multiple aggregates.
 
 WARNING: Only use when saga &#43; queries is insufficient. Consider:
@@ -608,7 +624,7 @@ Process Manager is warranted when:
 - You must react to events from MULTIPLE domains (saga recommends single domain)
 
 Process Manager IS an aggregate with its own domain, events, and state.
-It reuses all aggregate infrastructure (EventStore, SnapshotStore, CommandHandlerCoordinator).
+It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -619,23 +635,20 @@ It reuses all aggregate infrastructure (EventStore, SnapshotStore, CommandHandle
 
 
 
-<a name="angzarr_projector-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/projector.proto
+## angzarr/projector.proto {#angzarr_projector-proto}
 
 
 
-<a name="angzarr-SpeculateProjectorRequest"></a>
 
-### SpeculateProjectorRequest
-Request for speculative projector execution at a point in time.
+### SpeculateProjectorRequest {#angzarr-SpeculateProjectorRequest}
+Request for speculative projector execution.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | events | [EventBook](#angzarr-EventBook) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
 
 
 
@@ -648,21 +661,19 @@ Request for speculative projector execution at a point in time.
  
 
 
-<a name="angzarr-ProjectorCoordinatorService"></a>
 
-### ProjectorCoordinatorService
+### ProjectorCoordinatorService {#angzarr-ProjectorCoordinatorService}
 ProjectorCoordinatorService: orchestrates projection processing
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| HandleSync | [SyncEventBook](#angzarr-SyncEventBook) | [Projection](#angzarr-Projection) | Sync processing - returns projection based on sync_mode |
-| Handle | [EventBook](#angzarr-EventBook) | [.google.protobuf.Empty](#google-protobuf-Empty) | Async processing - fire and forget |
+| HandleSync | [EventRequest](#angzarr-EventRequest) | [Projection](#angzarr-Projection) | Sync processing - returns projection based on sync_mode |
+| Handle | [EventBook](#angzarr-EventBook) | [.google.protobuf.Empty](https://protobuf.dev/reference/protobuf/google.protobuf/#empty) | Async processing - fire and forget |
 | HandleSpeculative | [SpeculateProjectorRequest](#angzarr-SpeculateProjectorRequest) | [Projection](#angzarr-Projection) | Speculative processing - returns projection without side effects |
 
 
-<a name="angzarr-ProjectorService"></a>
 
-### ProjectorService
+### ProjectorService {#angzarr-ProjectorService}
 ProjectorService: client logic that projects events to read models
 client logic doesn&#39;t care about sync - coordinator decides
 
@@ -675,10 +686,9 @@ client logic doesn&#39;t care about sync - coordinator decides
 
 
 
-<a name="angzarr_query-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/query.proto
+## angzarr/query.proto {#angzarr_query-proto}
 
 
  
@@ -688,53 +698,49 @@ client logic doesn&#39;t care about sync - coordinator decides
  
 
 
-<a name="angzarr-EventQueryService"></a>
 
-### EventQueryService
+### EventQueryService {#angzarr-EventQueryService}
 EventQueryService: query interface for retrieving events
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | GetEventBook | [Query](#angzarr-Query) | [EventBook](#angzarr-EventBook) | Get a single EventBook (unary) - use for explicit queries with gRPC tooling |
-| GetEvents | [Query](#angzarr-Query) | [EventBook](#angzarr-EventBook) stream | Stream EventBooks matching query - use for bulk retrieval |
-| Synchronize | [Query](#angzarr-Query) stream | [EventBook](#angzarr-EventBook) stream |  |
-| GetAggregateRoots | [.google.protobuf.Empty](#google-protobuf-Empty) | [AggregateRoot](#angzarr-AggregateRoot) stream |  |
+| GetEvents | [Query](#angzarr-Query) | [EventBook](#angzarr-EventBook) stream | Stream EventBooks matching query - use for bulk retrieval (SSE) |
+| Synchronize | [Query](#angzarr-Query) stream | [EventBook](#angzarr-EventBook) stream | Bidirectional sync - not exposed via REST (use gRPC directly) |
+| GetAggregateRoots | [.google.protobuf.Empty](https://protobuf.dev/reference/protobuf/google.protobuf/#empty) | [AggregateRoot](#angzarr-AggregateRoot) stream | List all aggregate roots (SSE) |
 
  
 
 
 
-<a name="angzarr_saga-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/saga.proto
+## angzarr/saga.proto {#angzarr_saga-proto}
 
 
 
-<a name="angzarr-SagaCompensationFailed"></a>
 
-### SagaCompensationFailed
+### SagaCompensationFailed {#angzarr-SagaCompensationFailed}
 System event when compensation fails/requested
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | triggering_aggregate | [Cover](#angzarr-Cover) |  |  |
-| triggering_event_sequence | [uint32](#uint32) |  |  |
-| saga_name | [string](#string) |  |  |
-| rejection_reason | [string](#string) |  |  |
-| compensation_failure_reason | [string](#string) |  |  |
+| triggering_event_sequence | uint32 |  |  |
+| saga_name | string |  |  |
+| rejection_reason | string |  |  |
+| compensation_failure_reason | string |  |  |
 | rejected_command | [CommandBook](#angzarr-CommandBook) |  |  |
-| occurred_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| occurred_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="angzarr-SagaExecuteRequest"></a>
 
-### SagaExecuteRequest
+### SagaExecuteRequest {#angzarr-SagaExecuteRequest}
 
 
 
@@ -748,9 +754,8 @@ System event when compensation fails/requested
 
 
 
-<a name="angzarr-SagaPrepareRequest"></a>
 
-### SagaPrepareRequest
+### SagaPrepareRequest {#angzarr-SagaPrepareRequest}
 Two-phase saga protocol messages
 
 
@@ -763,9 +768,8 @@ Two-phase saga protocol messages
 
 
 
-<a name="angzarr-SagaPrepareResponse"></a>
 
-### SagaPrepareResponse
+### SagaPrepareResponse {#angzarr-SagaPrepareResponse}
 
 
 
@@ -778,9 +782,8 @@ Two-phase saga protocol messages
 
 
 
-<a name="angzarr-SagaResponse"></a>
 
-### SagaResponse
+### SagaResponse {#angzarr-SagaResponse}
 Response from saga - commands for other aggregates
 
 
@@ -794,9 +797,8 @@ Response from saga - commands for other aggregates
 
 
 
-<a name="angzarr-SagaRetryRequest"></a>
 
-### SagaRetryRequest
+### SagaRetryRequest {#angzarr-SagaRetryRequest}
 
 
 
@@ -805,24 +807,22 @@ Response from saga - commands for other aggregates
 | source | [EventBook](#angzarr-EventBook) |  |  |
 | destinations | [EventBook](#angzarr-EventBook) | repeated |  |
 | rejected_command | [CommandBook](#angzarr-CommandBook) |  |  |
-| rejection_reason | [string](#string) |  |  |
-| attempt | [uint32](#uint32) |  |  |
+| rejection_reason | string |  |  |
+| attempt | uint32 |  |  |
 
 
 
 
 
 
-<a name="angzarr-SpeculateSagaRequest"></a>
 
-### SpeculateSagaRequest
-Request for speculative saga execution at a point in time.
+### SpeculateSagaRequest {#angzarr-SpeculateSagaRequest}
+Request for speculative saga execution.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | request | [SagaExecuteRequest](#angzarr-SagaExecuteRequest) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
 
 
 
@@ -835,9 +835,8 @@ Request for speculative saga execution at a point in time.
  
 
 
-<a name="angzarr-SagaCoordinatorService"></a>
 
-### SagaCoordinatorService
+### SagaCoordinatorService {#angzarr-SagaCoordinatorService}
 SagaCoordinatorService: orchestrates saga execution
 
 | Method Name | Request Type | Response Type | Description |
@@ -846,9 +845,8 @@ SagaCoordinatorService: orchestrates saga execution
 | ExecuteSpeculative | [SpeculateSagaRequest](#angzarr-SpeculateSagaRequest) | [SagaResponse](#angzarr-SagaResponse) | Speculative execution - returns commands without side effects |
 
 
-<a name="angzarr-SagaService"></a>
 
-### SagaService
+### SagaService {#angzarr-SagaService}
 SagaService: client logic that coordinates across aggregates
 Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
 
@@ -861,10 +859,9 @@ Two-phase protocol: Prepare (declare destinations) → Execute (with fetched sta
 
 
 
-<a name="angzarr_stream-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/stream.proto
+## angzarr/stream.proto {#angzarr_stream-proto}
 
 
  
@@ -874,36 +871,33 @@ Two-phase protocol: Prepare (declare destinations) → Execute (with fetched sta
  
 
 
-<a name="angzarr-EventStreamService"></a>
 
-### EventStreamService
+### EventStreamService {#angzarr-EventStreamService}
 docs:start:event_stream_service
 EventStreamService: streams events to registered subscribers
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| Subscribe | [EventStreamFilter](#angzarr-EventStreamFilter) | [EventBook](#angzarr-EventBook) stream | Subscribe to events matching correlation ID (required) Returns INVALID_ARGUMENT if correlation_id is empty |
+| Subscribe | [EventStreamFilter](#angzarr-EventStreamFilter) | [EventBook](#angzarr-EventBook) stream | Subscribe to events matching correlation ID (required) Returns INVALID_ARGUMENT if correlation_id is empty REST: Server-Sent Events (SSE) stream |
 
  
 
 
 
-<a name="angzarr_types-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/types.proto
+## angzarr/types.proto {#angzarr_types-proto}
 
 
 
-<a name="angzarr-AggregateRoot"></a>
 
-### AggregateRoot
+### AggregateRoot {#angzarr-AggregateRoot}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| domain | [string](#string) |  |  |
+| domain | string |  |  |
 | root | [UUID](#angzarr-UUID) |  |  |
 
 
@@ -911,12 +905,11 @@ EventStreamService: streams events to registered subscribers
 
 
 
-<a name="angzarr-AngzarrDeadLetter"></a>
 
-### AngzarrDeadLetter
+### AngzarrDeadLetter {#angzarr-AngzarrDeadLetter}
 docs:start:dead_letter
 Dead letter queue entry for failed messages requiring manual intervention.
-Per-domain topics: angzarr.dlq.`{domain}`
+Per-domain topics: angzarr.dlq.\{domain\}
 
 
 | Field | Type | Label | Description |
@@ -924,39 +917,37 @@ Per-domain topics: angzarr.dlq.`{domain}`
 | cover | [Cover](#angzarr-Cover) |  | Routing: domain, root, correlation_id |
 | rejected_command | [CommandBook](#angzarr-CommandBook) |  | Command that failed |
 | rejected_events | [EventBook](#angzarr-EventBook) |  | Events that failed (saga/projector failures) |
-| rejection_reason | [string](#string) |  | Human-readable reason |
+| rejection_reason | string |  | Human-readable reason |
 | sequence_mismatch | [SequenceMismatchDetails](#angzarr-SequenceMismatchDetails) |  | Sequence conflict details |
 | event_processing_failed | [EventProcessingFailedDetails](#angzarr-EventProcessingFailedDetails) |  | Handler failure details |
 | payload_retrieval_failed | [PayloadRetrievalFailedDetails](#angzarr-PayloadRetrievalFailedDetails) |  | Payload store failure details |
-| occurred_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| occurred_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 | metadata | [AngzarrDeadLetter.MetadataEntry](#angzarr-AngzarrDeadLetter-MetadataEntry) | repeated | Additional context |
-| source_component | [string](#string) |  | Which component sent to DLQ |
-| source_component_type | [string](#string) |  | &#34;aggregate&#34; | &#34;saga&#34; | &#34;projector&#34; | &#34;process_manager&#34; |
+| source_component | string |  | Which component sent to DLQ |
+| source_component_type | string |  | &#34;aggregate&#34; | &#34;saga&#34; | &#34;projector&#34; | &#34;process_manager&#34; |
 
 
 
 
 
 
-<a name="angzarr-AngzarrDeadLetter-MetadataEntry"></a>
 
-### AngzarrDeadLetter.MetadataEntry
+### AngzarrDeadLetter.MetadataEntry {#angzarr-AngzarrDeadLetter-MetadataEntry}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
+| key | string |  |  |
+| value | string |  |  |
 
 
 
 
 
 
-<a name="angzarr-CommandBook"></a>
 
-### CommandBook
+### CommandBook {#angzarr-CommandBook}
 
 
 
@@ -973,17 +964,16 @@ Tracks origin for compensation flow |
 
 
 
-<a name="angzarr-CommandPage"></a>
 
-### CommandPage
+### CommandPage {#angzarr-CommandPage}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| sequence | [uint32](#uint32) |  | Expected sequence number for this command&#39;s events. Must match the aggregate&#39;s current next sequence (i.e., events.len()). For new aggregates, use 0. |
+| sequence | uint32 |  | Expected sequence number for this command&#39;s events. Must match the aggregate&#39;s current next sequence (i.e., events.len()). For new aggregates, use 0. |
 | merge_strategy | [MergeStrategy](#angzarr-MergeStrategy) |  |  |
-| command | [google.protobuf.Any](#google-protobuf-Any) |  |  |
+| command | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  |  |
 | external | [PayloadReference](#angzarr-PayloadReference) |  | Claim check: payload stored externally |
 
 
@@ -991,16 +981,31 @@ Tracks origin for compensation flow |
 
 
 
-<a name="angzarr-ComponentDescriptor"></a>
 
-### ComponentDescriptor
+### CommandRequest {#angzarr-CommandRequest}
+Request wrapper for command operations.
+Adds execution metadata (sync_mode) to CommandBook.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| command | [CommandBook](#angzarr-CommandBook) |  |  |
+| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
+
+
+
+
+
+
+
+### ComponentDescriptor {#angzarr-ComponentDescriptor}
 Component self-description.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| component_type | [string](#string) |  |  |
+| name | string |  |  |
+| component_type | string |  |  |
 | inputs | [Target](#angzarr-Target) | repeated | Domains I subscribe to (event types I consume) |
 
 
@@ -1008,9 +1013,8 @@ Component self-description.
 
 
 
-<a name="angzarr-ContextualCommand"></a>
 
-### ContextualCommand
+### ContextualCommand {#angzarr-ContextualCommand}
 
 
 
@@ -1024,386 +1028,10 @@ Component self-description.
 
 
 
-<a name="angzarr-Cover"></a>
 
-### Cover
-docs:start:cover
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| domain | [string](#string) |  |  |
-| root | [UUID](#angzarr-UUID) |  |  |
-| correlation_id | [string](#string) |  | Workflow correlation - flows through all commands/events |
-| edition | [Edition](#angzarr-Edition) |  | Edition for diverged timelines; empty name = main timeline |
-
-
-
-
-
-
-<a name="angzarr-DomainDivergence"></a>
-
-### DomainDivergence
-Explicit divergence point for a specific domain.
-Used when creating historical branches or coordinating saga writes across domains.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| domain | [string](#string) |  | Domain name |
-| sequence | [uint32](#uint32) |  | Divergence sequence number |
-
-
-
-
-
-
-<a name="angzarr-Edition"></a>
-
-### Edition
-docs:start:edition
-Edition identifier with optional explicit divergence points.
-
-Two modes:
-- Implicit (divergences empty): Divergence derived from first edition event&#39;s sequence
-- Explicit (divergences populated): Per-domain divergence points for historical branching,
- saga coordination, or speculative execution
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Edition name, e.g., &#34;v2&#34;; empty = main timeline |
-| divergences | [DomainDivergence](#angzarr-DomainDivergence) | repeated | Optional: explicit per-domain divergence points |
-
-
-
-
-
-
-<a name="angzarr-EventBook"></a>
-
-### EventBook
-docs:start:event_book
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| cover | [Cover](#angzarr-Cover) |  |  |
-| snapshot | [Snapshot](#angzarr-Snapshot) |  | Snapshot state; sequence computed by framework on persist |
-| pages | [EventPage](#angzarr-EventPage) | repeated |  |
-| next_sequence | [uint32](#uint32) |  | Field 4 removed: correlation_id moved to Cover Field 5 removed: snapshot_state unified into snapshot field
-
-Computed on load, never stored: (last page seq OR snapshot seq if no pages) &#43; 1 |
-
-
-
-
-
-
-<a name="angzarr-EventPage"></a>
-
-### EventPage
-docs:start:event_page
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| sequence | [uint32](#uint32) |  |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| event | [google.protobuf.Any](#google-protobuf-Any) |  |  |
-| external | [PayloadReference](#angzarr-PayloadReference) |  | Claim check: payload stored externally |
-
-
-
-
-
-
-<a name="angzarr-EventProcessingFailedDetails"></a>
-
-### EventProcessingFailedDetails
-Event processing failure details for DLQ entries.
-Contains information about why a saga/projector failed to process events.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [string](#string) |  | Error message from the handler |
-| retry_count | [uint32](#uint32) |  | Number of retry attempts before DLQ routing |
-| is_transient | [bool](#bool) |  | Whether the failure is considered transient |
-
-
-
-
-
-
-<a name="angzarr-EventStreamFilter"></a>
-
-### EventStreamFilter
-docs:start:event_stream_filter
-Subscription filter for event streaming
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| correlation_id | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="angzarr-GetDescriptorRequest"></a>
-
-### GetDescriptorRequest
-Request for GetDescriptor RPC.
-
-
-
-
-
-
-<a name="angzarr-Notification"></a>
-
-### Notification
-docs:start:notification
-Base notification message for transient system signals.
-Contains routing info via Cover but no persistence semantics.
-Type discrimination via payload.type_url (standard Any behavior).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| cover | [Cover](#angzarr-Cover) |  | Routing: domain, root, correlation_id |
-| payload | [google.protobuf.Any](#google-protobuf-Any) |  | Type-specific content (RejectionNotification, etc.) |
-| sent_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When notification was created |
-| metadata | [Notification.MetadataEntry](#angzarr-Notification-MetadataEntry) | repeated | Optional key-value metadata |
-
-
-
-
-
-
-<a name="angzarr-Notification-MetadataEntry"></a>
-
-### Notification.MetadataEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="angzarr-PayloadReference"></a>
-
-### PayloadReference
-Reference to externally stored payload (claim check pattern).
-Used when event/command payloads exceed message bus size limits.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| storage_type | [PayloadStorageType](#angzarr-PayloadStorageType) |  |  |
-| uri | [string](#string) |  | Location URI: - file:///var/angzarr/payloads/`{hash}`.bin - gs://bucket/prefix/`{hash}`.bin - s3://bucket/prefix/`{hash}`.bin |
-| content_hash | [bytes](#bytes) |  | Content hash for integrity verification and deduplication (SHA-256) |
-| original_size | [uint64](#uint64) |  | Original serialized payload size in bytes |
-| stored_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Timestamp when payload was stored (for TTL cleanup) |
-
-
-
-
-
-
-<a name="angzarr-PayloadRetrievalFailedDetails"></a>
-
-### PayloadRetrievalFailedDetails
-Payload retrieval failure details for DLQ entries.
-Contains information about why an externally stored payload couldn&#39;t be retrieved.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| storage_type | [PayloadStorageType](#angzarr-PayloadStorageType) |  | Storage backend type |
-| uri | [string](#string) |  | URI of the payload that couldn&#39;t be retrieved |
-| content_hash | [bytes](#bytes) |  | Content hash for identification |
-| original_size | [uint64](#uint64) |  | Original payload size in bytes |
-| error | [string](#string) |  | Error message from the retrieval attempt |
-
-
-
-
-
-
-<a name="angzarr-Projection"></a>
-
-### Projection
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| cover | [Cover](#angzarr-Cover) |  |  |
-| projector | [string](#string) |  |  |
-| sequence | [uint32](#uint32) |  |  |
-| projection | [google.protobuf.Any](#google-protobuf-Any) |  |  |
-
-
-
-
-
-
-<a name="angzarr-Query"></a>
-
-### Query
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| cover | [Cover](#angzarr-Cover) |  | Cover identifies the aggregate: domain &#43; (root | correlation_id | both) Query by root: Cover `{ domain, root }` Query by correlation: Cover `{ domain, correlation_id }` |
-| range | [SequenceRange](#angzarr-SequenceRange) |  |  |
-| sequences | [SequenceSet](#angzarr-SequenceSet) |  |  |
-| temporal | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
-
-
-
-
-
-
-<a name="angzarr-RejectionNotification"></a>
-
-### RejectionNotification
-docs:start:rejection_notification
-Notification payload for command rejection scenarios.
-Embedded in Notification.payload when a saga/PM command is rejected.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| rejected_command | [CommandBook](#angzarr-CommandBook) |  | The command that was rejected (full context) |
-| rejection_reason | [string](#string) |  | Why: &#34;insufficient_funds&#34;, &#34;out_of_stock&#34;, etc. |
-| issuer_name | [string](#string) |  | Saga/PM name that issued the command |
-| issuer_type | [string](#string) |  | &#34;saga&#34; | &#34;process_manager&#34; |
-| source_aggregate | [Cover](#angzarr-Cover) |  | Aggregate that originally triggered the flow |
-| source_event_sequence | [uint32](#uint32) |  | Event sequence that triggered the saga/PM |
-
-
-
-
-
-
-<a name="angzarr-SagaCommandOrigin"></a>
-
-### SagaCommandOrigin
-Track saga command origin for compensation flow
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| saga_name | [string](#string) |  | Name of the saga that issued the command |
-| triggering_aggregate | [Cover](#angzarr-Cover) |  | Domain&#43;root of aggregate that triggered the saga |
-| triggering_event_sequence | [uint32](#uint32) |  | Sequence number of the triggering event |
-
-
-
-
-
-
-<a name="angzarr-SequenceMismatchDetails"></a>
-
-### SequenceMismatchDetails
-docs:start:dlq_details
-Sequence mismatch details for DLQ entries.
-Contains expected vs actual sequence for debugging and replay.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| expected_sequence | [uint32](#uint32) |  | What the command expected |
-| actual_sequence | [uint32](#uint32) |  | What the aggregate was at |
-| merge_strategy | [MergeStrategy](#angzarr-MergeStrategy) |  | Strategy that triggered DLQ routing |
-
-
-
-
-
-
-<a name="angzarr-SequenceRange"></a>
-
-### SequenceRange
-Query types
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| lower | [uint32](#uint32) |  |  |
-| upper | [uint32](#uint32) | optional | If not set, query to latest |
-
-
-
-
-
-
-<a name="angzarr-SequenceSet"></a>
-
-### SequenceSet
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| values | [uint32](#uint32) | repeated |  |
-
-
-
-
-
-
-<a name="angzarr-Snapshot"></a>
-
-### Snapshot
-docs:start:aggregate_snapshot
-Snapshot of aggregate state at a given sequence number.
-State must be a protobuf Message to serialize into Any.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| sequence | [uint32](#uint32) |  |  |
-| state | [google.protobuf.Any](#google-protobuf-Any) |  |  |
-| retention | [SnapshotRetention](#angzarr-SnapshotRetention) |  | Controls cleanup behavior |
-
-
-
-
-
-
-<a name="angzarr-SyncCommandBook"></a>
-
-### SyncCommandBook
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| command | [CommandBook](#angzarr-CommandBook) |  |  |
-| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
-
-
-
-
-
-
-<a name="angzarr-SyncContextualCommand"></a>
-
-### SyncContextualCommand
-
+### ContextualCommandRequest {#angzarr-ContextualCommandRequest}
+Request wrapper for contextual command operations (internal use).
+Adds execution metadata (sync_mode) to ContextualCommand.
 
 
 | Field | Type | Label | Description |
@@ -1416,64 +1044,426 @@ State must be a protobuf Message to serialize into Any.
 
 
 
-<a name="angzarr-SyncEventBook"></a>
 
-### SyncEventBook
+### Cover {#angzarr-Cover}
+docs:start:cover
 
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| domain | string |  |  |
+| root | [UUID](#angzarr-UUID) |  |  |
+| correlation_id | string |  | Workflow correlation - flows through all commands/events |
+| edition | [Edition](#angzarr-Edition) |  | Edition for diverged timelines; empty name = main timeline |
+| external_id | string |  | Idempotency key for fact events (e.g., Stripe payment ID, tracking number) |
+
+
+
+
+
+
+
+### DomainDivergence {#angzarr-DomainDivergence}
+Explicit divergence point for a specific domain.
+Used when creating historical branches or coordinating saga writes across domains.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| domain | string |  | Domain name |
+| sequence | uint32 |  | Divergence sequence number |
+
+
+
+
+
+
+
+### Edition {#angzarr-Edition}
+docs:start:edition
+Edition identifier with optional explicit divergence points.
+
+Two modes:
+- Implicit (divergences empty): Divergence derived from first edition event&#39;s sequence
+- Explicit (divergences populated): Per-domain divergence points for historical branching,
+ saga coordination, or speculative execution
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | string |  | Edition name, e.g., &#34;v2&#34;; empty = main timeline |
+| divergences | [DomainDivergence](#angzarr-DomainDivergence) | repeated | Optional: explicit per-domain divergence points |
+
+
+
+
+
+
+
+### EventBook {#angzarr-EventBook}
+docs:start:event_book
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| cover | [Cover](#angzarr-Cover) |  |  |
+| snapshot | [Snapshot](#angzarr-Snapshot) |  | Snapshot state; sequence computed by framework on persist |
+| pages | [EventPage](#angzarr-EventPage) | repeated |  |
+| next_sequence | uint32 |  | Field 4 removed: correlation_id moved to Cover Field 5 removed: snapshot_state unified into snapshot field
+
+Computed on load, never stored: (last page seq OR snapshot seq if no pages) &#43; 1 |
+
+
+
+
+
+
+
+### EventPage {#angzarr-EventPage}
+docs:start:event_page
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sequence | uint32 |  | Normal: explicit position in event stream |
+| fact | [FactSequence](#angzarr-FactSequence) |  | Fact: coordinator assigns next sequence |
+| created_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+| event | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  |  |
+| external | [PayloadReference](#angzarr-PayloadReference) |  | Claim check: payload stored externally |
+
+
+
+
+
+
+
+### EventProcessingFailedDetails {#angzarr-EventProcessingFailedDetails}
+Event processing failure details for DLQ entries.
+Contains information about why a saga/projector failed to process events.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | string |  | Error message from the handler |
+| retry_count | uint32 |  | Number of retry attempts before DLQ routing |
+| is_transient | bool |  | Whether the failure is considered transient |
+
+
+
+
+
+
+
+### EventRequest {#angzarr-EventRequest}
+Request wrapper for event operations (fact injection).
+Adds execution metadata (sync_mode, route_to_handler) to EventBook.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | events | [EventBook](#angzarr-EventBook) |  |  |
 | sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
+| route_to_handler | bool |  | For fact injection: when true (default), invokes command handler&#39;s handle_fact for validation/error checking before persistence. Facts cannot be rejected, but the handler can validate data integrity and log warnings. When false, facts are persisted directly without handler involvement. |
 
 
 
 
 
 
-<a name="angzarr-Target"></a>
 
-### Target
+### EventStreamFilter {#angzarr-EventStreamFilter}
+docs:start:event_stream_filter
+Subscription filter for event streaming
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| correlation_id | string |  |  |
+
+
+
+
+
+
+
+### FactSequence {#angzarr-FactSequence}
+docs:start:fact_sequence
+Marker for fact events - external realities that must be recorded.
+Facts are events that already happened in the external world and cannot be rejected.
+The coordinator assigns the actual sequence number on receipt.
+
+IMPORTANT: When using FactSequence, set Cover.external_id for idempotency.
+The coordinator uses Cover.external_id to deduplicate fact events.
+Cover.external_id propagates through the entire system for tracing.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| source | string |  | Origin system identifier (e.g., &#34;stripe&#34;, &#34;fedex&#34;, &#34;scheduler&#34;) |
+| description | string |  | Human-readable description of why this is a fact (optional) |
+
+
+
+
+
+
+
+### GetDescriptorRequest {#angzarr-GetDescriptorRequest}
+Request for GetDescriptor RPC.
+
+
+
+
+
+
+
+### Notification {#angzarr-Notification}
+docs:start:notification
+Base notification message for transient system signals.
+Contains routing info via Cover but no persistence semantics.
+Type discrimination via payload.type_url (standard Any behavior).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| cover | [Cover](#angzarr-Cover) |  | Routing: domain, root, correlation_id |
+| payload | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  | Type-specific content (RejectionNotification, etc.) |
+| sent_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  | When notification was created |
+| metadata | [Notification.MetadataEntry](#angzarr-Notification-MetadataEntry) | repeated | Optional key-value metadata |
+
+
+
+
+
+
+
+### Notification.MetadataEntry {#angzarr-Notification-MetadataEntry}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | string |  |  |
+| value | string |  |  |
+
+
+
+
+
+
+
+### PayloadReference {#angzarr-PayloadReference}
+Reference to externally stored payload (claim check pattern).
+Used when event/command payloads exceed message bus size limits.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| storage_type | [PayloadStorageType](#angzarr-PayloadStorageType) |  |  |
+| uri | string |  | Location URI: - file:///var/angzarr/payloads/\{hash\}.bin - gs://bucket/prefix/\{hash\}.bin - s3://bucket/prefix/\{hash\}.bin |
+| content_hash | bytes |  | Content hash for integrity verification and deduplication (SHA-256) |
+| original_size | uint64 |  | Original serialized payload size in bytes |
+| stored_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  | Timestamp when payload was stored (for TTL cleanup) |
+
+
+
+
+
+
+
+### PayloadRetrievalFailedDetails {#angzarr-PayloadRetrievalFailedDetails}
+Payload retrieval failure details for DLQ entries.
+Contains information about why an externally stored payload couldn&#39;t be retrieved.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| storage_type | [PayloadStorageType](#angzarr-PayloadStorageType) |  | Storage backend type |
+| uri | string |  | URI of the payload that couldn&#39;t be retrieved |
+| content_hash | bytes |  | Content hash for identification |
+| original_size | uint64 |  | Original payload size in bytes |
+| error | string |  | Error message from the retrieval attempt |
+
+
+
+
+
+
+
+### Projection {#angzarr-Projection}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| cover | [Cover](#angzarr-Cover) |  |  |
+| projector | string |  |  |
+| sequence | uint32 |  |  |
+| projection | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  |  |
+
+
+
+
+
+
+
+### Query {#angzarr-Query}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| cover | [Cover](#angzarr-Cover) |  | Cover identifies the aggregate: domain &#43; (root | correlation_id | both) Query by root: Cover \{ domain, root \} Query by correlation: Cover \{ domain, correlation_id \} |
+| range | [SequenceRange](#angzarr-SequenceRange) |  |  |
+| sequences | [SequenceSet](#angzarr-SequenceSet) |  |  |
+| temporal | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
+
+
+
+
+
+
+
+### RejectionNotification {#angzarr-RejectionNotification}
+docs:start:rejection_notification
+Notification payload for command rejection scenarios.
+Embedded in Notification.payload when a saga/PM command is rejected.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rejected_command | [CommandBook](#angzarr-CommandBook) |  | The command that was rejected (full context) |
+| rejection_reason | string |  | Why: &#34;insufficient_funds&#34;, &#34;out_of_stock&#34;, etc. |
+| issuer_name | string |  | Saga/PM name that issued the command |
+| issuer_type | string |  | &#34;saga&#34; | &#34;process_manager&#34; |
+| source_aggregate | [Cover](#angzarr-Cover) |  | Aggregate that originally triggered the flow |
+| source_event_sequence | uint32 |  | Event sequence that triggered the saga/PM |
+
+
+
+
+
+
+
+### SagaCommandOrigin {#angzarr-SagaCommandOrigin}
+Track saga command origin for compensation flow
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| saga_name | string |  | Name of the saga that issued the command |
+| triggering_aggregate | [Cover](#angzarr-Cover) |  | Domain&#43;root of aggregate that triggered the saga |
+| triggering_event_sequence | uint32 |  | Sequence number of the triggering event |
+
+
+
+
+
+
+
+### SequenceMismatchDetails {#angzarr-SequenceMismatchDetails}
+docs:start:dlq_details
+Sequence mismatch details for DLQ entries.
+Contains expected vs actual sequence for debugging and replay.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| expected_sequence | uint32 |  | What the command expected |
+| actual_sequence | uint32 |  | What the aggregate was at |
+| merge_strategy | [MergeStrategy](#angzarr-MergeStrategy) |  | Strategy that triggered DLQ routing |
+
+
+
+
+
+
+
+### SequenceRange {#angzarr-SequenceRange}
+Query types
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| lower | uint32 |  |  |
+| upper | uint32 | optional | If not set, query to latest |
+
+
+
+
+
+
+
+### SequenceSet {#angzarr-SequenceSet}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| values | uint32 | repeated |  |
+
+
+
+
+
+
+
+### Snapshot {#angzarr-Snapshot}
+docs:start:aggregate_snapshot
+Snapshot of aggregate state at a given sequence number.
+State must be a protobuf Message to serialize into Any.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sequence | uint32 |  |  |
+| state | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  |  |
+| retention | [SnapshotRetention](#angzarr-SnapshotRetention) |  | Controls cleanup behavior |
+
+
+
+
+
+
+
+### Target {#angzarr-Target}
 Describes what a component subscribes to.
 Topology edges derived from inputs: if A subscribes to domain X, edge X→A exists.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| domain | [string](#string) |  |  |
+| domain | string |  |  |
 
 
 
 
 
 
-<a name="angzarr-TemporalQuery"></a>
 
-### TemporalQuery
+### TemporalQuery {#angzarr-TemporalQuery}
 Temporal query: retrieve aggregate state at a point in history.
 Replays events from sequence 0 (no snapshots) to the specified point.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| as_of_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Events with created_at &lt;= this |
-| as_of_sequence | [uint32](#uint32) |  | Events with sequence &lt;= this |
+| as_of_time | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  | Events with created_at &lt;= this |
+| as_of_sequence | uint32 |  | Events with sequence &lt;= this |
 
 
 
 
 
 
-<a name="angzarr-UUID"></a>
 
-### UUID
+### UUID {#angzarr-UUID}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| value | [bytes](#bytes) |  |  |
+| value | bytes |  |  |
 
 
 
@@ -1482,9 +1472,8 @@ Replays events from sequence 0 (no snapshots) to the specified point.
  
 
 
-<a name="angzarr-MergeStrategy"></a>
 
-### MergeStrategy
+### MergeStrategy {#angzarr-MergeStrategy}
 docs:start:merge_strategy
 Controls how concurrent commands to the same aggregate are handled
 
@@ -1497,9 +1486,8 @@ Controls how concurrent commands to the same aggregate are handled
 
 
 
-<a name="angzarr-PayloadStorageType"></a>
 
-### PayloadStorageType
+### PayloadStorageType {#angzarr-PayloadStorageType}
 docs:start:payload_reference
 Storage backend type for externally stored payloads (claim check pattern).
 
@@ -1512,9 +1500,8 @@ Storage backend type for externally stored payloads (claim check pattern).
 
 
 
-<a name="angzarr-SnapshotRetention"></a>
 
-### SnapshotRetention
+### SnapshotRetention {#angzarr-SnapshotRetention}
 docs:start:snapshot_retention
 Controls snapshot retention during cleanup
 
@@ -1526,9 +1513,8 @@ Controls snapshot retention during cleanup
 
 
 
-<a name="angzarr-SyncMode"></a>
 
-### SyncMode
+### SyncMode {#angzarr-SyncMode}
 docs:start:sync_mode
 Controls synchronous processing behavior
 
@@ -1547,22 +1533,20 @@ Controls synchronous processing behavior
 
 
 
-<a name="angzarr_upcaster-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/upcaster.proto
+## angzarr/upcaster.proto {#angzarr_upcaster-proto}
 
 
 
-<a name="angzarr-UpcastRequest"></a>
 
-### UpcastRequest
+### UpcastRequest {#angzarr-UpcastRequest}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| domain | [string](#string) |  |  |
+| domain | string |  |  |
 | events | [EventPage](#angzarr-EventPage) | repeated |  |
 
 
@@ -1570,9 +1554,8 @@ Controls synchronous processing behavior
 
 
 
-<a name="angzarr-UpcastResponse"></a>
 
-### UpcastResponse
+### UpcastResponse {#angzarr-UpcastResponse}
 
 
 
@@ -1591,11 +1574,10 @@ Controls synchronous processing behavior
  
 
 
-<a name="angzarr-UpcasterService"></a>
 
-### UpcasterService
+### UpcasterService {#angzarr-UpcasterService}
 UpcasterService: transforms old event versions to current versions
-Implemented by the client alongside CommandHandlerService on the same gRPC server.
+Implemented by the client alongside AggregateService on the same gRPC server.
 Optionally can be deployed as a separate binary for testing or complex migrations.
 
 | Method Name | Request Type | Response Type | Description |
@@ -1606,24 +1588,22 @@ Optionally can be deployed as a separate binary for testing or complex migration
 
 
 
-<a name="examples_ai_sidecar-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## examples/ai_sidecar.proto
+## examples/ai_sidecar.proto {#examples_ai_sidecar-proto}
 
 
 
-<a name="examples-ActionHistory"></a>
 
-### ActionHistory
+### ActionHistory {#examples-ActionHistory}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
 | action | [ActionType](#examples-ActionType) |  |  |
-| amount | [int64](#int64) |  |  |
+| amount | int64 |  |  |
 | phase | [BettingPhase](#examples-BettingPhase) |  |  |
 
 
@@ -1631,31 +1611,30 @@ Optionally can be deployed as a separate binary for testing or complex migration
 
 
 
-<a name="examples-ActionRequest"></a>
 
-### ActionRequest
+### ActionRequest {#examples-ActionRequest}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| model_id | [string](#string) |  | Game state
+| model_id | string |  | Game state
 
 Which model to use |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
 | phase | [BettingPhase](#examples-BettingPhase) |  |  |
 | hole_cards | [Card](#examples-Card) | repeated | Cards |
 | community_cards | [Card](#examples-Card) | repeated |  |
-| pot_size | [int64](#int64) |  | Betting context |
-| stack_size | [int64](#int64) |  |  |
-| amount_to_call | [int64](#int64) |  |  |
-| min_raise | [int64](#int64) |  |  |
-| max_raise | [int64](#int64) |  |  |
-| position | [int32](#int32) |  | Position info
+| pot_size | int64 |  | Betting context |
+| stack_size | int64 |  |  |
+| amount_to_call | int64 |  |  |
+| min_raise | int64 |  |  |
+| max_raise | int64 |  |  |
+| position | int32 |  | Position info
 
 0 = button, increasing = earlier |
-| players_remaining | [int32](#int32) |  |  |
-| players_to_act | [int32](#int32) |  |  |
+| players_remaining | int32 |  |  |
+| players_to_act | int32 |  |  |
 | action_history | [ActionHistory](#examples-ActionHistory) | repeated | Historical context (for recurrent models) |
 | opponents | [OpponentStats](#examples-OpponentStats) | repeated | Opponent modeling (optional) |
 
@@ -1664,30 +1643,28 @@ Which model to use |
 
 
 
-<a name="examples-ActionResponse"></a>
 
-### ActionResponse
+### ActionResponse {#examples-ActionResponse}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | recommended_action | [ActionType](#examples-ActionType) |  |  |
-| amount | [int64](#int64) |  | For bet/raise |
-| fold_probability | [float](#float) |  | Confidence scores for each action (for analysis) |
-| check_call_probability | [float](#float) |  |  |
-| bet_raise_probability | [float](#float) |  |  |
-| model_version | [string](#string) |  | Model metadata |
-| inference_time_ms | [int64](#int64) |  |  |
+| amount | int64 |  | For bet/raise |
+| fold_probability | float |  | Confidence scores for each action (for analysis) |
+| check_call_probability | float |  |  |
+| bet_raise_probability | float |  |  |
+| model_version | string |  | Model metadata |
+| inference_time_ms | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-BatchActionRequest"></a>
 
-### BatchActionRequest
+### BatchActionRequest {#examples-BatchActionRequest}
 
 
 
@@ -1700,9 +1677,8 @@ Which model to use |
 
 
 
-<a name="examples-BatchActionResponse"></a>
 
-### BatchActionResponse
+### BatchActionResponse {#examples-BatchActionResponse}
 
 
 
@@ -1715,50 +1691,47 @@ Which model to use |
 
 
 
-<a name="examples-HealthRequest"></a>
 
-### HealthRequest
-
+### HealthRequest {#examples-HealthRequest}
 
 
 
 
 
 
-<a name="examples-HealthResponse"></a>
 
-### HealthResponse
+
+### HealthResponse {#examples-HealthResponse}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| healthy | [bool](#bool) |  |  |
-| model_id | [string](#string) |  |  |
-| model_version | [string](#string) |  |  |
-| uptime_seconds | [int64](#int64) |  |  |
-| requests_served | [int64](#int64) |  |  |
+| healthy | bool |  |  |
+| model_id | string |  |  |
+| model_version | string |  |  |
+| uptime_seconds | int64 |  |  |
+| requests_served | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-OpponentStats"></a>
 
-### OpponentStats
+### OpponentStats {#examples-OpponentStats}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| position | [int32](#int32) |  |  |
-| stack | [int64](#int64) |  |  |
-| vpip | [float](#float) |  | Voluntarily put in pot % |
-| pfr | [float](#float) |  | Pre-flop raise % |
-| aggression | [float](#float) |  | Bet/raise frequency |
-| hands_played | [int32](#int32) |  |  |
+| player_root | bytes |  |  |
+| position | int32 |  |  |
+| stack | int64 |  |  |
+| vpip | float |  | Voluntarily put in pot % |
+| pfr | float |  | Pre-flop raise % |
+| aggression | float |  | Bet/raise frequency |
+| hands_played | int32 |  |  |
 
 
 
@@ -1771,9 +1744,8 @@ Which model to use |
  
 
 
-<a name="examples-AiSidecar"></a>
 
-### AiSidecar
+### AiSidecar {#examples-AiSidecar}
 
 
 | Method Name | Request Type | Response Type | Description |
@@ -1786,37 +1758,34 @@ Which model to use |
 
 
 
-<a name="examples_hand-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## examples/hand.proto
+## examples/hand.proto {#examples_hand-proto}
 
 
 
-<a name="examples-ActionTaken"></a>
 
-### ActionTaken
+### ActionTaken {#examples-ActionTaken}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
 | action | [ActionType](#examples-ActionType) |  |  |
-| amount | [int64](#int64) |  |  |
-| player_stack | [int64](#int64) |  | Absolute stack after action |
-| pot_total | [int64](#int64) |  | Absolute pot after action |
-| amount_to_call | [int64](#int64) |  | Current call amount for next player |
-| action_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| amount | int64 |  |  |
+| player_stack | int64 |  | Absolute stack after action |
+| pot_total | int64 |  | Absolute pot after action |
+| amount_to_call | int64 |  | Current call amount for next player |
+| action_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-AwardPot"></a>
 
-### AwardPot
+### AwardPot {#examples-AwardPot}
 
 
 
@@ -1829,59 +1798,56 @@ Which model to use |
 
 
 
-<a name="examples-BettingRoundComplete"></a>
 
-### BettingRoundComplete
+### BettingRoundComplete {#examples-BettingRoundComplete}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | completed_phase | [BettingPhase](#examples-BettingPhase) |  |  |
-| pot_total | [int64](#int64) |  |  |
+| pot_total | int64 |  |  |
 | stacks | [PlayerStackSnapshot](#examples-PlayerStackSnapshot) | repeated |  |
-| completed_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| completed_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-BlindPosted"></a>
 
-### BlindPosted
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| blind_type | [string](#string) |  |  |
-| amount | [int64](#int64) |  |  |
-| player_stack | [int64](#int64) |  | Absolute stack after posting |
-| pot_total | [int64](#int64) |  | Absolute pot after posting |
-| posted_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="examples-CardsDealt"></a>
-
-### CardsDealt
+### BlindPosted {#examples-BlindPosted}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_root | [bytes](#bytes) |  |  |
-| hand_number | [int64](#int64) |  |  |
+| player_root | bytes |  |  |
+| blind_type | string |  |  |
+| amount | int64 |  |  |
+| player_stack | int64 |  | Absolute stack after posting |
+| pot_total | int64 |  | Absolute pot after posting |
+| posted_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### CardsDealt {#examples-CardsDealt}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+| hand_number | int64 |  |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
 | player_cards | [PlayerHoleCards](#examples-PlayerHoleCards) | repeated |  |
-| dealer_position | [int32](#int32) |  |  |
+| dealer_position | int32 |  |  |
 | players | [PlayerInHand](#examples-PlayerInHand) | repeated |  |
-| dealt_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| dealt_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 | remaining_deck | [Card](#examples-Card) | repeated | Cards left after dealing hole cards |
 
 
@@ -1889,43 +1855,40 @@ Which model to use |
 
 
 
-<a name="examples-CardsMucked"></a>
 
-### CardsMucked
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| mucked_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="examples-CardsRevealed"></a>
-
-### CardsRevealed
+### CardsMucked {#examples-CardsMucked}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
+| mucked_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### CardsRevealed {#examples-CardsRevealed}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| player_root | bytes |  |  |
 | cards | [Card](#examples-Card) | repeated |  |
 | ranking | [HandRanking](#examples-HandRanking) |  |  |
-| revealed_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| revealed_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-CommunityCardsDealt"></a>
 
-### CommunityCardsDealt
+### CommunityCardsDealt {#examples-CommunityCardsDealt}
 
 
 
@@ -1934,167 +1897,159 @@ Which model to use |
 | cards | [Card](#examples-Card) | repeated |  |
 | phase | [BettingPhase](#examples-BettingPhase) |  | FLOP, TURN, or RIVER |
 | all_community_cards | [Card](#examples-Card) | repeated | Full board so far |
-| dealt_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| dealt_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-DealCards"></a>
 
-### DealCards
+### DealCards {#examples-DealCards}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_root | [bytes](#bytes) |  |  |
-| hand_number | [int64](#int64) |  |  |
+| table_root | bytes |  |  |
+| hand_number | int64 |  |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
 | players | [PlayerInHand](#examples-PlayerInHand) | repeated |  |
-| dealer_position | [int32](#int32) |  |  |
-| small_blind | [int64](#int64) |  |  |
-| big_blind | [int64](#int64) |  |  |
-| deck_seed | [bytes](#bytes) |  | For deterministic shuffle (testing) |
+| dealer_position | int32 |  |  |
+| small_blind | int64 |  |  |
+| big_blind | int64 |  |  |
+| deck_seed | bytes |  | For deterministic shuffle (testing) |
 
 
 
 
 
 
-<a name="examples-DealCommunityCards"></a>
 
-### DealCommunityCards
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| count | [int32](#int32) |  | 3 for flop, 1 for turn/river |
-
-
-
-
-
-
-<a name="examples-DrawCompleted"></a>
-
-### DrawCompleted
+### DealCommunityCards {#examples-DealCommunityCards}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| cards_discarded | [int32](#int32) |  |  |
-| cards_drawn | [int32](#int32) |  |  |
+| count | int32 |  | 3 for flop, 1 for turn/river |
+
+
+
+
+
+
+
+### DrawCompleted {#examples-DrawCompleted}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| player_root | bytes |  |  |
+| cards_discarded | int32 |  |  |
+| cards_drawn | int32 |  |  |
 | new_cards | [Card](#examples-Card) | repeated | Only visible to this player |
-| drawn_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| drawn_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-HandComplete"></a>
 
-### HandComplete
+### HandComplete {#examples-HandComplete}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_root | [bytes](#bytes) |  |  |
-| hand_number | [int64](#int64) |  |  |
+| table_root | bytes |  |  |
+| hand_number | int64 |  |  |
 | winners | [PotWinner](#examples-PotWinner) | repeated |  |
 | final_stacks | [PlayerStackSnapshot](#examples-PlayerStackSnapshot) | repeated |  |
-| completed_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| completed_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-HandState"></a>
 
-### HandState
+### HandState {#examples-HandState}
 State (for snapshots)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hand_id | [string](#string) |  |  |
-| table_root | [bytes](#bytes) |  |  |
-| hand_number | [int64](#int64) |  |  |
+| hand_id | string |  |  |
+| table_root | bytes |  |  |
+| hand_number | int64 |  |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
 | remaining_deck | [Card](#examples-Card) | repeated | Deck state |
 | players | [PlayerHandState](#examples-PlayerHandState) | repeated | Player state |
 | community_cards | [Card](#examples-Card) | repeated | Community cards |
 | current_phase | [BettingPhase](#examples-BettingPhase) |  | Betting state |
-| action_on_position | [int32](#int32) |  |  |
-| current_bet | [int64](#int64) |  |  |
-| min_raise | [int64](#int64) |  |  |
+| action_on_position | int32 |  |  |
+| current_bet | int64 |  |  |
+| min_raise | int64 |  |  |
 | pots | [Pot](#examples-Pot) | repeated |  |
-| dealer_position | [int32](#int32) |  | Positions |
-| small_blind_position | [int32](#int32) |  |  |
-| big_blind_position | [int32](#int32) |  |  |
-| status | [string](#string) |  | &#34;dealing&#34;, &#34;betting&#34;, &#34;showdown&#34;, &#34;complete&#34; |
+| dealer_position | int32 |  | Positions |
+| small_blind_position | int32 |  |  |
+| big_blind_position | int32 |  |  |
+| status | string |  | &#34;dealing&#34;, &#34;betting&#34;, &#34;showdown&#34;, &#34;complete&#34; |
 
 
 
 
 
 
-<a name="examples-PlayerAction"></a>
 
-### PlayerAction
+### PlayerAction {#examples-PlayerAction}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
 | action | [ActionType](#examples-ActionType) |  |  |
-| amount | [int64](#int64) |  | For bet/raise/call |
+| amount | int64 |  | For bet/raise/call |
 
 
 
 
 
 
-<a name="examples-PlayerHandState"></a>
 
-### PlayerHandState
+### PlayerHandState {#examples-PlayerHandState}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| position | [int32](#int32) |  |  |
+| player_root | bytes |  |  |
+| position | int32 |  |  |
 | hole_cards | [Card](#examples-Card) | repeated |  |
-| stack | [int64](#int64) |  |  |
-| bet_this_round | [int64](#int64) |  |  |
-| total_invested | [int64](#int64) |  |  |
-| has_acted | [bool](#bool) |  |  |
-| has_folded | [bool](#bool) |  |  |
-| is_all_in | [bool](#bool) |  |  |
+| stack | int64 |  |  |
+| bet_this_round | int64 |  |  |
+| total_invested | int64 |  |  |
+| has_acted | bool |  |  |
+| has_folded | bool |  |  |
+| is_all_in | bool |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerHoleCards"></a>
 
-### PlayerHoleCards
+### PlayerHoleCards {#examples-PlayerHoleCards}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
 | cards | [Card](#examples-Card) | repeated |  |
 
 
@@ -2102,119 +2057,112 @@ State (for snapshots)
 
 
 
-<a name="examples-PlayerInHand"></a>
 
-### PlayerInHand
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| position | [int32](#int32) |  |  |
-| stack | [int64](#int64) |  |  |
-
-
-
-
-
-
-<a name="examples-PlayerStackSnapshot"></a>
-
-### PlayerStackSnapshot
+### PlayerInHand {#examples-PlayerInHand}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| stack | [int64](#int64) |  |  |
-| is_all_in | [bool](#bool) |  |  |
-| has_folded | [bool](#bool) |  |  |
+| player_root | bytes |  |  |
+| position | int32 |  |  |
+| stack | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerTimedOut"></a>
 
-### PlayerTimedOut
+### PlayerStackSnapshot {#examples-PlayerStackSnapshot}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
+| stack | int64 |  |  |
+| is_all_in | bool |  |  |
+| has_folded | bool |  |  |
+
+
+
+
+
+
+
+### PlayerTimedOut {#examples-PlayerTimedOut}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| player_root | bytes |  |  |
 | default_action | [ActionType](#examples-ActionType) |  | Usually FOLD or CHECK |
-| timed_out_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| timed_out_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-PostBlind"></a>
 
-### PostBlind
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| blind_type | [string](#string) |  | &#34;small&#34;, &#34;big&#34;, &#34;ante&#34; |
-| amount | [int64](#int64) |  |  |
-
-
-
-
-
-
-<a name="examples-PotAward"></a>
-
-### PotAward
+### PostBlind {#examples-PostBlind}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| amount | [int64](#int64) |  |  |
-| pot_type | [string](#string) |  |  |
+| player_root | bytes |  |  |
+| blind_type | string |  | &#34;small&#34;, &#34;big&#34;, &#34;ante&#34; |
+| amount | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-PotAwarded"></a>
 
-### PotAwarded
+### PotAward {#examples-PotAward}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| player_root | bytes |  |  |
+| amount | int64 |  |  |
+| pot_type | string |  |  |
+
+
+
+
+
+
+
+### PotAwarded {#examples-PotAwarded}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | winners | [PotWinner](#examples-PotWinner) | repeated |  |
-| awarded_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| awarded_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-PotWinner"></a>
 
-### PotWinner
+### PotWinner {#examples-PotWinner}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| amount | [int64](#int64) |  |  |
-| pot_type | [string](#string) |  |  |
+| player_root | bytes |  |  |
+| amount | int64 |  |  |
+| pot_type | string |  |  |
 | winning_hand | [HandRanking](#examples-HandRanking) |  |  |
 
 
@@ -2222,48 +2170,45 @@ State (for snapshots)
 
 
 
-<a name="examples-RequestDraw"></a>
 
-### RequestDraw
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| card_indices | [int32](#int32) | repeated | Which cards to discard (0-indexed) |
-
-
-
-
-
-
-<a name="examples-RevealCards"></a>
-
-### RevealCards
+### RequestDraw {#examples-RequestDraw}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| muck | [bool](#bool) |  | True to hide cards (fold at showdown) |
+| player_root | bytes |  |  |
+| card_indices | int32 | repeated | Which cards to discard (0-indexed) |
 
 
 
 
 
 
-<a name="examples-ShowdownStarted"></a>
 
-### ShowdownStarted
+### RevealCards {#examples-RevealCards}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| players_to_show | [bytes](#bytes) | repeated | Order of revelation |
-| started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| player_root | bytes |  |  |
+| muck | bool |  | True to hide cards (fold at showdown) |
+
+
+
+
+
+
+
+### ShowdownStarted {#examples-ShowdownStarted}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| players_to_show | bytes | repeated | Order of revelation |
+| started_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
@@ -2279,42 +2224,39 @@ State (for snapshots)
 
 
 
-<a name="examples_player-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## examples/player.proto
+## examples/player.proto {#examples_player-proto}
 
 
 
-<a name="examples-ActionRequested"></a>
 
-### ActionRequested
+### ActionRequested {#examples-ActionRequested}
 Emitted when action is needed - AI players respond via sidecar
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hand_root | [bytes](#bytes) |  |  |
-| table_root | [bytes](#bytes) |  |  |
-| player_root | [bytes](#bytes) |  |  |
+| hand_root | bytes |  |  |
+| table_root | bytes |  |  |
+| player_root | bytes |  |  |
 | player_type | [PlayerType](#examples-PlayerType) |  |  |
-| amount_to_call | [int64](#int64) |  |  |
-| min_raise | [int64](#int64) |  |  |
-| max_raise | [int64](#int64) |  |  |
+| amount_to_call | int64 |  |  |
+| min_raise | int64 |  |  |
+| max_raise | int64 |  |  |
 | hole_cards | [Card](#examples-Card) | repeated |  |
 | community_cards | [Card](#examples-Card) | repeated |  |
-| pot_size | [int64](#int64) |  |  |
+| pot_size | int64 |  |  |
 | phase | [BettingPhase](#examples-BettingPhase) |  |  |
-| deadline | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| deadline | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-DepositFunds"></a>
 
-### DepositFunds
+### DepositFunds {#examples-DepositFunds}
 
 
 
@@ -2327,9 +2269,8 @@ Emitted when action is needed - AI players respond via sidecar
 
 
 
-<a name="examples-FundsDeposited"></a>
 
-### FundsDeposited
+### FundsDeposited {#examples-FundsDeposited}
 
 
 
@@ -2337,75 +2278,71 @@ Emitted when action is needed - AI players respond via sidecar
 | ----- | ---- | ----- | ----------- |
 | amount | [Currency](#examples-Currency) |  |  |
 | new_balance | [Currency](#examples-Currency) |  | Absolute value after deposit |
-| deposited_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| deposited_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-FundsReleased"></a>
 
-### FundsReleased
+### FundsReleased {#examples-FundsReleased}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | amount | [Currency](#examples-Currency) |  |  |
-| table_root | [bytes](#bytes) |  |  |
+| table_root | bytes |  |  |
 | new_available_balance | [Currency](#examples-Currency) |  |  |
 | new_reserved_balance | [Currency](#examples-Currency) |  |  |
-| released_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| released_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-FundsReserved"></a>
 
-### FundsReserved
+### FundsReserved {#examples-FundsReserved}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | amount | [Currency](#examples-Currency) |  |  |
-| table_root | [bytes](#bytes) |  |  |
+| table_root | bytes |  |  |
 | new_available_balance | [Currency](#examples-Currency) |  | Bankroll minus reserved |
 | new_reserved_balance | [Currency](#examples-Currency) |  | Total reserved across tables |
-| reserved_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| reserved_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-FundsTransferred"></a>
 
-### FundsTransferred
+### FundsTransferred {#examples-FundsTransferred}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| from_player_root | [bytes](#bytes) |  |  |
-| to_player_root | [bytes](#bytes) |  |  |
+| from_player_root | bytes |  |  |
+| to_player_root | bytes |  |  |
 | amount | [Currency](#examples-Currency) |  |  |
-| hand_root | [bytes](#bytes) |  |  |
-| reason | [string](#string) |  |  |
+| hand_root | bytes |  |  |
+| reason | string |  |  |
 | new_balance | [Currency](#examples-Currency) |  | Recipient&#39;s new balance |
-| transferred_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| transferred_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-FundsWithdrawn"></a>
 
-### FundsWithdrawn
+### FundsWithdrawn {#examples-FundsWithdrawn}
 
 
 
@@ -2413,165 +2350,214 @@ Emitted when action is needed - AI players respond via sidecar
 | ----- | ---- | ----- | ----------- |
 | amount | [Currency](#examples-Currency) |  |  |
 | new_balance | [Currency](#examples-Currency) |  | Absolute value after withdrawal |
-| withdrawn_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| withdrawn_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerRegistered"></a>
 
-### PlayerRegistered
+### PlayerRegistered {#examples-PlayerRegistered}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| display_name | [string](#string) |  |  |
-| email | [string](#string) |  |  |
+| display_name | string |  |  |
+| email | string |  |  |
 | player_type | [PlayerType](#examples-PlayerType) |  |  |
-| ai_model_id | [string](#string) |  |  |
-| registered_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| ai_model_id | string |  |  |
+| registered_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerState"></a>
 
-### PlayerState
+### PlayerReturningToPlay {#examples-PlayerReturningToPlay}
+Player has chosen to return to play at a table
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+| sat_in_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### PlayerSittingOut {#examples-PlayerSittingOut}
+Player has chosen to sit out at a table
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+| sat_out_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### PlayerState {#examples-PlayerState}
 State (for snapshots)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_id | [string](#string) |  |  |
-| display_name | [string](#string) |  |  |
-| email | [string](#string) |  |  |
+| player_id | string |  |  |
+| display_name | string |  |  |
+| email | string |  |  |
 | player_type | [PlayerType](#examples-PlayerType) |  |  |
-| ai_model_id | [string](#string) |  |  |
+| ai_model_id | string |  |  |
 | bankroll | [Currency](#examples-Currency) |  |  |
 | reserved_funds | [Currency](#examples-Currency) |  |  |
 | table_reservations | [PlayerState.TableReservationsEntry](#examples-PlayerState-TableReservationsEntry) | repeated | table_root_hex -&gt; amount |
-| status | [string](#string) |  | &#34;active&#34;, &#34;suspended&#34;, etc. |
+| status | string |  | &#34;active&#34;, &#34;suspended&#34;, etc. |
 
 
 
 
 
 
-<a name="examples-PlayerState-TableReservationsEntry"></a>
 
-### PlayerState.TableReservationsEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [int64](#int64) |  |  |
-
-
-
-
-
-
-<a name="examples-RegisterPlayer"></a>
-
-### RegisterPlayer
+### PlayerState.TableReservationsEntry {#examples-PlayerState-TableReservationsEntry}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| display_name | [string](#string) |  |  |
-| email | [string](#string) |  | Used for root derivation |
+| key | string |  |  |
+| value | int64 |  |  |
+
+
+
+
+
+
+
+### RegisterPlayer {#examples-RegisterPlayer}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| display_name | string |  |  |
+| email | string |  | Used for root derivation |
 | player_type | [PlayerType](#examples-PlayerType) |  | HUMAN or AI |
-| ai_model_id | [string](#string) |  | For AI players: which model to use |
+| ai_model_id | string |  | For AI players: which model to use |
 
 
 
 
 
 
-<a name="examples-ReleaseFunds"></a>
 
-### ReleaseFunds
+### ReleaseFunds {#examples-ReleaseFunds}
 Release reserved funds back to bankroll (leave table)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_root | [bytes](#bytes) |  |  |
+| table_root | bytes |  |  |
 
 
 
 
 
 
-<a name="examples-RequestAction"></a>
 
-### RequestAction
+### RequestAction {#examples-RequestAction}
 Request action from player (triggers AI sidecar for AI players)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hand_root | [bytes](#bytes) |  |  |
-| table_root | [bytes](#bytes) |  |  |
-| amount_to_call | [int64](#int64) |  |  |
-| min_raise | [int64](#int64) |  |  |
-| max_raise | [int64](#int64) |  | Player&#39;s remaining stack |
+| hand_root | bytes |  |  |
+| table_root | bytes |  |  |
+| amount_to_call | int64 |  |  |
+| min_raise | int64 |  |  |
+| max_raise | int64 |  | Player&#39;s remaining stack |
 | hole_cards | [Card](#examples-Card) | repeated |  |
 | community_cards | [Card](#examples-Card) | repeated |  |
-| pot_size | [int64](#int64) |  |  |
+| pot_size | int64 |  |  |
 | phase | [BettingPhase](#examples-BettingPhase) |  |  |
-| timeout_seconds | [int32](#int32) |  |  |
+| timeout_seconds | int32 |  |  |
 
 
 
 
 
 
-<a name="examples-ReserveFunds"></a>
 
-### ReserveFunds
+### ReserveFunds {#examples-ReserveFunds}
 Reserve funds when joining a table (buy-in)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | amount | [Currency](#examples-Currency) |  |  |
-| table_root | [bytes](#bytes) |  | Which table the funds are reserved for |
+| table_root | bytes |  | Which table the funds are reserved for |
 
 
 
 
 
 
-<a name="examples-TransferFunds"></a>
 
-### TransferFunds
+### SitIn {#examples-SitIn}
+Player decides to return to play at a table
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+
+
+
+
+
+
+
+### SitOut {#examples-SitOut}
+Player decides to sit out at a table (stop receiving hands)
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+
+
+
+
+
+
+
+### TransferFunds {#examples-TransferFunds}
 Transfer funds from one player to another (pot award)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| from_player_root | [bytes](#bytes) |  | Source player (for reserved funds) |
+| from_player_root | bytes |  | Source player (for reserved funds) |
 | amount | [Currency](#examples-Currency) |  |  |
-| hand_root | [bytes](#bytes) |  | Which hand this transfer is for |
-| reason | [string](#string) |  | &#34;pot_win&#34;, &#34;side_pot_win&#34;, etc. |
+| hand_root | bytes |  | Which hand this transfer is for |
+| reason | string |  | &#34;pot_win&#34;, &#34;side_pot_win&#34;, etc. |
 
 
 
 
 
 
-<a name="examples-WithdrawFunds"></a>
 
-### WithdrawFunds
+### WithdrawFunds {#examples-WithdrawFunds}
 
 
 
@@ -2593,16 +2579,14 @@ Transfer funds from one player to another (pot award)
 
 
 
-<a name="examples_poker_types-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## examples/poker_types.proto
+## examples/poker_types.proto {#examples_poker_types-proto}
 
 
 
-<a name="examples-Card"></a>
 
-### Card
+### Card {#examples-Card}
 Card representation
 
 
@@ -2616,25 +2600,23 @@ Card representation
 
 
 
-<a name="examples-Currency"></a>
 
-### Currency
+### Currency {#examples-Currency}
 Currency amount (in smallest unit, e.g., cents)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| amount | [int64](#int64) |  |  |
-| currency_code | [string](#string) |  | &#34;USD&#34;, &#34;EUR&#34;, &#34;CHIPS&#34; |
+| amount | int64 |  |  |
+| currency_code | string |  | &#34;USD&#34;, &#34;EUR&#34;, &#34;CHIPS&#34; |
 
 
 
 
 
 
-<a name="examples-HandRanking"></a>
 
-### HandRanking
+### HandRanking {#examples-HandRanking}
 Hand ranking result
 
 
@@ -2642,43 +2624,41 @@ Hand ranking result
 | ----- | ---- | ----- | ----------- |
 | rank_type | [HandRankType](#examples-HandRankType) |  |  |
 | kickers | [Rank](#examples-Rank) | repeated | For tie-breaking |
-| score | [int32](#int32) |  | Numeric score for comparison |
+| score | int32 |  | Numeric score for comparison |
 
 
 
 
 
 
-<a name="examples-Pot"></a>
 
-### Pot
+### Pot {#examples-Pot}
 Pot structure (for side pots)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| amount | [int64](#int64) |  |  |
-| eligible_players | [bytes](#bytes) | repeated | Player roots eligible for this pot |
-| pot_type | [string](#string) |  | &#34;main&#34; or &#34;side_N&#34; |
+| amount | int64 |  |  |
+| eligible_players | bytes | repeated | Player roots eligible for this pot |
+| pot_type | string |  | &#34;main&#34; or &#34;side_N&#34; |
 
 
 
 
 
 
-<a name="examples-Seat"></a>
 
-### Seat
+### Seat {#examples-Seat}
 Position at table
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| position | [int32](#int32) |  | 0-9 for 10-max table |
-| player_root | [bytes](#bytes) |  | Player aggregate root |
+| position | int32 |  | 0-9 for 10-max table |
+| player_root | bytes |  | Player aggregate root |
 | stack | [Currency](#examples-Currency) |  | Current stack at table |
-| is_active | [bool](#bool) |  | Still in current hand |
-| is_sitting_out | [bool](#bool) |  | Temporarily away |
+| is_active | bool |  | Still in current hand |
+| is_sitting_out | bool |  | Temporarily away |
 
 
 
@@ -2687,9 +2667,8 @@ Position at table
  
 
 
-<a name="examples-ActionType"></a>
 
-### ActionType
+### ActionType {#examples-ActionType}
 Player action type
 
 | Name | Number | Description |
@@ -2704,9 +2683,8 @@ Player action type
 
 
 
-<a name="examples-BettingPhase"></a>
 
-### BettingPhase
+### BettingPhase {#examples-BettingPhase}
 Betting round phase
 
 | Name | Number | Description |
@@ -2721,9 +2699,8 @@ Betting round phase
 
 
 
-<a name="examples-GameVariant"></a>
 
-### GameVariant
+### GameVariant {#examples-GameVariant}
 Game variant configuration
 
 | Name | Number | Description |
@@ -2736,9 +2713,8 @@ Game variant configuration
 
 
 
-<a name="examples-HandRankType"></a>
 
-### HandRankType
+### HandRankType {#examples-HandRankType}
 
 
 | Name | Number | Description |
@@ -2757,9 +2733,8 @@ Game variant configuration
 
 
 
-<a name="examples-PlayerType"></a>
 
-### PlayerType
+### PlayerType {#examples-PlayerType}
 Player type - abstraction for human vs AI
 
 | Name | Number | Description |
@@ -2770,9 +2745,8 @@ Player type - abstraction for human vs AI
 
 
 
-<a name="examples-Rank"></a>
 
-### Rank
+### Rank {#examples-Rank}
 
 
 | Name | Number | Description |
@@ -2794,9 +2768,8 @@ Player type - abstraction for human vs AI
 
 
 
-<a name="examples-Suit"></a>
 
-### Suit
+### Suit {#examples-Suit}
 
 
 | Name | Number | Description |
@@ -2816,78 +2789,73 @@ Player type - abstraction for human vs AI
 
 
 
-<a name="examples_table-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## examples/table.proto
-
-
-
-<a name="examples-AddChips"></a>
-
-### AddChips
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| amount | [int64](#int64) |  |  |
+## examples/table.proto {#examples_table-proto}
 
 
 
 
-
-
-<a name="examples-ChipsAdded"></a>
-
-### ChipsAdded
+### AddChips {#examples-AddChips}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| amount | [int64](#int64) |  |  |
-| new_stack | [int64](#int64) |  | Absolute stack after add |
-| added_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| player_root | bytes |  |  |
+| amount | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-CreateTable"></a>
 
-### CreateTable
+### ChipsAdded {#examples-ChipsAdded}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_name | [string](#string) |  |  |
+| player_root | bytes |  |  |
+| amount | int64 |  |  |
+| new_stack | int64 |  | Absolute stack after add |
+| added_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### CreateTable {#examples-CreateTable}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_name | string |  |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
-| small_blind | [int64](#int64) |  |  |
-| big_blind | [int64](#int64) |  |  |
-| min_buy_in | [int64](#int64) |  |  |
-| max_buy_in | [int64](#int64) |  |  |
-| max_players | [int32](#int32) |  | 2-10 |
-| action_timeout_seconds | [int32](#int32) |  |  |
+| small_blind | int64 |  |  |
+| big_blind | int64 |  |  |
+| min_buy_in | int64 |  |  |
+| max_buy_in | int64 |  |  |
+| max_players | int32 |  | 2-10 |
+| action_timeout_seconds | int32 |  |  |
 
 
 
 
 
 
-<a name="examples-EndHand"></a>
 
-### EndHand
+### EndHand {#examples-EndHand}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hand_root | [bytes](#bytes) |  |  |
+| hand_root | bytes |  |  |
 | results | [PotResult](#examples-PotResult) | repeated |  |
 
 
@@ -2895,176 +2863,166 @@ Player type - abstraction for human vs AI
 
 
 
-<a name="examples-HandEnded"></a>
 
-### HandEnded
+### HandEnded {#examples-HandEnded}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hand_root | [bytes](#bytes) |  |  |
+| hand_root | bytes |  |  |
 | results | [PotResult](#examples-PotResult) | repeated |  |
 | stack_changes | [HandEnded.StackChangesEntry](#examples-HandEnded-StackChangesEntry) | repeated | player_root_hex -&gt; delta |
-| ended_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| ended_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-HandEnded-StackChangesEntry"></a>
 
-### HandEnded.StackChangesEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [int64](#int64) |  |  |
-
-
-
-
-
-
-<a name="examples-HandStarted"></a>
-
-### HandStarted
+### HandEnded.StackChangesEntry {#examples-HandEnded-StackChangesEntry}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hand_root | [bytes](#bytes) |  | New hand aggregate root |
-| hand_number | [int64](#int64) |  |  |
-| dealer_position | [int32](#int32) |  |  |
-| small_blind_position | [int32](#int32) |  |  |
-| big_blind_position | [int32](#int32) |  |  |
+| key | string |  |  |
+| value | int64 |  |  |
+
+
+
+
+
+
+
+### HandStarted {#examples-HandStarted}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| hand_root | bytes |  | New hand aggregate root |
+| hand_number | int64 |  |  |
+| dealer_position | int32 |  |  |
+| small_blind_position | int32 |  |  |
+| big_blind_position | int32 |  |  |
 | active_players | [SeatSnapshot](#examples-SeatSnapshot) | repeated |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
-| small_blind | [int64](#int64) |  |  |
-| big_blind | [int64](#int64) |  |  |
-| started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| small_blind | int64 |  |  |
+| big_blind | int64 |  |  |
+| started_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-JoinTable"></a>
 
-### JoinTable
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| preferred_seat | [int32](#int32) |  | -1 for any available |
-| buy_in_amount | [int64](#int64) |  |  |
-
-
-
-
-
-
-<a name="examples-LeaveTable"></a>
-
-### LeaveTable
+### JoinTable {#examples-JoinTable}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| player_root | bytes |  |  |
+| preferred_seat | int32 |  | -1 for any available |
+| buy_in_amount | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerJoined"></a>
 
-### PlayerJoined
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| seat_position | [int32](#int32) |  |  |
-| buy_in_amount | [int64](#int64) |  |  |
-| stack | [int64](#int64) |  | Absolute stack after buy-in |
-| joined_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="examples-PlayerLeft"></a>
-
-### PlayerLeft
+### LeaveTable {#examples-LeaveTable}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| seat_position | [int32](#int32) |  |  |
-| chips_cashed_out | [int64](#int64) |  |  |
-| left_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| player_root | bytes |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerSatIn"></a>
 
-### PlayerSatIn
+### PlayerJoined {#examples-PlayerJoined}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| sat_in_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| player_root | bytes |  |  |
+| seat_position | int32 |  |  |
+| buy_in_amount | int64 |  |  |
+| stack | int64 |  | Absolute stack after buy-in |
+| joined_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-PlayerSatOut"></a>
 
-### PlayerSatOut
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-| sat_out_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="examples-PotResult"></a>
-
-### PotResult
+### PlayerLeft {#examples-PlayerLeft}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| winner_root | [bytes](#bytes) |  |  |
-| amount | [int64](#int64) |  |  |
-| pot_type | [string](#string) |  | &#34;main&#34; or &#34;side_N&#34; |
+| player_root | bytes |  |  |
+| seat_position | int32 |  |  |
+| chips_cashed_out | int64 |  |  |
+| left_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### PlayerSatIn {#examples-PlayerSatIn}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| player_root | bytes |  |  |
+| sat_in_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### PlayerSatOut {#examples-PlayerSatOut}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| player_root | bytes |  |  |
+| sat_out_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### PotResult {#examples-PotResult}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| winner_root | bytes |  |  |
+| amount | int64 |  |  |
+| pot_type | string |  | &#34;main&#34; or &#34;side_N&#34; |
 | winning_hand | [HandRanking](#examples-HandRanking) |  |  |
 
 
@@ -3072,56 +3030,24 @@ Player type - abstraction for human vs AI
 
 
 
-<a name="examples-SeatSnapshot"></a>
 
-### SeatSnapshot
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| position | [int32](#int32) |  |  |
-| player_root | [bytes](#bytes) |  |  |
-| stack | [int64](#int64) |  |  |
-
-
-
-
-
-
-<a name="examples-SitIn"></a>
-
-### SitIn
+### SeatSnapshot {#examples-SeatSnapshot}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
+| position | int32 |  |  |
+| player_root | bytes |  |  |
+| stack | int64 |  |  |
 
 
 
 
 
 
-<a name="examples-SitOut"></a>
 
-### SitOut
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | [bytes](#bytes) |  |  |
-
-
-
-
-
-
-<a name="examples-StartHand"></a>
-
-### StartHand
+### StartHand {#examples-StartHand}
 No parameters - uses current table state
 Dealer button advances automatically
 
@@ -3130,51 +3056,49 @@ Dealer button advances automatically
 
 
 
-<a name="examples-TableCreated"></a>
 
-### TableCreated
+### TableCreated {#examples-TableCreated}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_name | [string](#string) |  |  |
+| table_name | string |  |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
-| small_blind | [int64](#int64) |  |  |
-| big_blind | [int64](#int64) |  |  |
-| min_buy_in | [int64](#int64) |  |  |
-| max_buy_in | [int64](#int64) |  |  |
-| max_players | [int32](#int32) |  |  |
-| action_timeout_seconds | [int32](#int32) |  |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| small_blind | int64 |  |  |
+| big_blind | int64 |  |  |
+| min_buy_in | int64 |  |  |
+| max_buy_in | int64 |  |  |
+| max_players | int32 |  |  |
+| action_timeout_seconds | int32 |  |  |
+| created_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="examples-TableState"></a>
 
-### TableState
+### TableState {#examples-TableState}
 State (for snapshots)
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| table_id | [string](#string) |  |  |
-| table_name | [string](#string) |  |  |
+| table_id | string |  |  |
+| table_name | string |  |  |
 | game_variant | [GameVariant](#examples-GameVariant) |  |  |
-| small_blind | [int64](#int64) |  |  |
-| big_blind | [int64](#int64) |  |  |
-| min_buy_in | [int64](#int64) |  |  |
-| max_buy_in | [int64](#int64) |  |  |
-| max_players | [int32](#int32) |  |  |
-| action_timeout_seconds | [int32](#int32) |  |  |
+| small_blind | int64 |  |  |
+| big_blind | int64 |  |  |
+| min_buy_in | int64 |  |  |
+| max_buy_in | int64 |  |  |
+| max_players | int32 |  |  |
+| action_timeout_seconds | int32 |  |  |
 | seats | [Seat](#examples-Seat) | repeated |  |
-| dealer_position | [int32](#int32) |  |  |
-| hand_count | [int64](#int64) |  |  |
-| current_hand_root | [bytes](#bytes) |  |  |
-| status | [string](#string) |  | &#34;waiting&#34;, &#34;in_hand&#34;, &#34;paused&#34; |
+| dealer_position | int32 |  |  |
+| hand_count | int64 |  |  |
+| current_hand_root | bytes |  |  |
+| status | string |  | &#34;waiting&#34;, &#34;in_hand&#34;, &#34;paused&#34; |
 
 
 
@@ -3190,44 +3114,406 @@ State (for snapshots)
 
 
 
-<a name="io_cloudevents_v1_cloudevents-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## io/cloudevents/v1/cloudevents.proto
+## google/api/annotations.proto {#google_api_annotations-proto}
+
+
+ 
+
+ 
 
 
 
-<a name="io-cloudevents-v1-CloudEvent"></a>
+### File-level Extensions {#google_api_annotations-proto-extensions}
+| Extension | Type | Base | Number | Description |
+| --------- | ---- | ---- | ------ | ----------- |
+| http | HttpRule | .google.protobuf.MethodOptions | 72295728 | See `HttpRule`. |
 
-### CloudEvent
+ 
+
+ 
+
+
+
+<p align="right"><a href="#top">Top</a></p>
+
+## google/api/http.proto {#google_api_http-proto}
+
+
+
+
+### CustomHttpPattern {#google-api-CustomHttpPattern}
+A custom pattern is used for defining custom HTTP verb.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | string |  | The name of this custom HTTP verb. |
+| path | string |  | The path matched by this custom verb. |
+
+
+
+
+
+
+
+### Http {#google-api-Http}
+Defines the HTTP configuration for an API service. It contains a list of
+[HttpRule][google.api.HttpRule], each specifying the mapping of an RPC method
+to one or more HTTP REST API methods.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rules | [HttpRule](#google-api-HttpRule) | repeated | A list of HTTP configuration rules that apply to individual API methods.
+
+**NOTE:** All service configuration rules follow &#34;last one wins&#34; order. |
+| fully_decode_reserved_expansion | bool |  | When set to true, URL path parameters will be fully URI-decoded except in cases of single segment matches in reserved expansion, where &#34;%2F&#34; will be left encoded.
+
+The default behavior is to not decode RFC 6570 reserved characters in multi segment matches. |
+
+
+
+
+
+
+
+### HttpRule {#google-api-HttpRule}
+gRPC Transcoding
+
+gRPC Transcoding is a feature for mapping between a gRPC method and one or
+more HTTP REST endpoints. It allows developers to build a single API service
+that supports both gRPC APIs and REST APIs. Many systems, including [Google
+APIs](https://github.com/googleapis/googleapis),
+[Cloud Endpoints](https://cloud.google.com/endpoints), [gRPC
+Gateway](https://github.com/grpc-ecosystem/grpc-gateway),
+and [Envoy](https://github.com/envoyproxy/envoy) proxy support this feature
+and use it for large scale production services.
+
+`HttpRule` defines the schema of the gRPC/REST mapping. The mapping specifies
+how different portions of the gRPC request message are mapped to the URL
+path, URL query parameters, and HTTP request body. It also controls how the
+gRPC response message is mapped to the HTTP response body. `HttpRule` is
+typically specified as an `google.api.http` annotation on the gRPC method.
+
+Each mapping specifies a URL path template and an HTTP method. The path
+template may refer to one or more fields in the gRPC request message, as long
+as each field is a non-repeated field with a primitive (non-message) type.
+The path template controls how fields of the request message are mapped to
+the URL path.
+
+Example:
+
+    service Messaging \{
+      rpc GetMessage(GetMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+            get: &#34;/v1/\{name=messages/*\}&#34;
+        \};
+      \}
+    \}
+    message GetMessageRequest \{
+      string name = 1; // Mapped to URL path.
+    \}
+    message Message \{
+      string text = 1; // The resource content.
+    \}
+
+This enables an HTTP REST to gRPC mapping as below:
+
+- HTTP: `GET /v1/messages/123456`
+- gRPC: `GetMessage(name: &#34;messages/123456&#34;)`
+
+Any fields in the request message which are not bound by the path template
+automatically become HTTP query parameters if there is no HTTP request body.
+For example:
+
+    service Messaging \{
+      rpc GetMessage(GetMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+            get:&#34;/v1/messages/\{message_id\}&#34;
+        \};
+      \}
+    \}
+    message GetMessageRequest \{
+      message SubMessage \{
+        string subfield = 1;
+      \}
+      string message_id = 1; // Mapped to URL path.
+      int64 revision = 2;    // Mapped to URL query parameter `revision`.
+      SubMessage sub = 3;    // Mapped to URL query parameter `sub.subfield`.
+    \}
+
+This enables a HTTP JSON to RPC mapping as below:
+
+- HTTP: `GET /v1/messages/123456?revision=2&amp;sub.subfield=foo`
+- gRPC: `GetMessage(message_id: &#34;123456&#34; revision: 2 sub:
+SubMessage(subfield: &#34;foo&#34;))`
+
+Note that fields which are mapped to URL query parameters must have a
+primitive type or a repeated primitive type or a non-repeated message type.
+In the case of a repeated type, the parameter can be repeated in the URL
+as `...?param=A&amp;param=B`. In the case of a message type, each field of the
+message is mapped to a separate parameter, such as
+`...?foo.a=A&amp;foo.b=B&amp;foo.c=C`.
+
+For HTTP methods that allow a request body, the `body` field
+specifies the mapping. Consider a REST update method on the
+message resource collection:
+
+    service Messaging \{
+      rpc UpdateMessage(UpdateMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+          patch: &#34;/v1/messages/\{message_id\}&#34;
+          body: &#34;message&#34;
+        \};
+      \}
+    \}
+    message UpdateMessageRequest \{
+      string message_id = 1; // mapped to the URL
+      Message message = 2;   // mapped to the body
+    \}
+
+The following HTTP JSON to RPC mapping is enabled, where the
+representation of the JSON in the request body is determined by
+protos JSON encoding:
+
+- HTTP: `PATCH /v1/messages/123456 \{ &#34;text&#34;: &#34;Hi!&#34; \}`
+- gRPC: `UpdateMessage(message_id: &#34;123456&#34; message \{ text: &#34;Hi!&#34; \})`
+
+The special name `*` can be used in the body mapping to define that
+every field not bound by the path template should be mapped to the
+request body.  This enables the following alternative definition of
+the update method:
+
+    service Messaging \{
+      rpc UpdateMessage(Message) returns (Message) \{
+        option (google.api.http) = \{
+          patch: &#34;/v1/messages/\{message_id\}&#34;
+          body: &#34;*&#34;
+        \};
+      \}
+    \}
+    message Message \{
+      string message_id = 1;
+      string text = 2;
+    \}
+
+
+The following HTTP JSON to RPC mapping is enabled:
+
+- HTTP: `PATCH /v1/messages/123456 \{ &#34;text&#34;: &#34;Hi!&#34; \}`
+- gRPC: `UpdateMessage(message_id: &#34;123456&#34; text: &#34;Hi!&#34;)`
+
+Note that when using `*` in the body mapping, it is not possible to
+have HTTP parameters, as all fields not bound by the path end in
+the body. This makes this option more rarely used in practice when
+defining REST APIs. The common usage of `*` is in custom methods
+which don&#39;t use the URL at all for transferring data.
+
+It is possible to define multiple HTTP methods for one RPC by using
+the `additional_bindings` option. Example:
+
+    service Messaging \{
+      rpc GetMessage(GetMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+          get: &#34;/v1/messages/\{message_id\}&#34;
+          additional_bindings \{
+            get: &#34;/v1/users/\{user_id\}/messages/\{message_id\}&#34;
+          \}
+        \};
+      \}
+    \}
+    message GetMessageRequest \{
+      string message_id = 1;
+      string user_id = 2;
+    \}
+
+This enables the following two alternative HTTP JSON to RPC mappings:
+
+- HTTP: `GET /v1/messages/123456`
+- gRPC: `GetMessage(message_id: &#34;123456&#34;)`
+
+- HTTP: `GET /v1/users/me/messages/123456`
+- gRPC: `GetMessage(user_id: &#34;me&#34; message_id: &#34;123456&#34;)`
+
+Rules for HTTP mapping
+
+1. Leaf request fields (recursive expansion nested messages in the request
+   message) are classified into three categories:
+   - Fields referred by the path template. They are passed via the URL path.
+   - Fields referred by the [HttpRule.body][google.api.HttpRule.body]. They
+   are passed via the HTTP
+     request body.
+   - All other fields are passed via the URL query parameters, and the
+     parameter name is the field path in the request message. A repeated
+     field can be represented as multiple query parameters under the same
+     name.
+ 2. If [HttpRule.body][google.api.HttpRule.body] is &#34;*&#34;, there is no URL
+ query parameter, all fields
+    are passed via URL path and HTTP request body.
+ 3. If [HttpRule.body][google.api.HttpRule.body] is omitted, there is no HTTP
+ request body, all
+    fields are passed via URL path and URL query parameters.
+
+Path template syntax
+
+    Template = &#34;/&#34; Segments [ Verb ] ;
+    Segments = Segment \{ &#34;/&#34; Segment \} ;
+    Segment  = &#34;*&#34; | &#34;**&#34; | LITERAL | Variable ;
+    Variable = &#34;\{&#34; FieldPath [ &#34;=&#34; Segments ] &#34;\}&#34; ;
+    FieldPath = IDENT \{ &#34;.&#34; IDENT \} ;
+    Verb     = &#34;:&#34; LITERAL ;
+
+The syntax `*` matches a single URL path segment. The syntax `**` matches
+zero or more URL path segments, which must be the last part of the URL path
+except the `Verb`.
+
+The syntax `Variable` matches part of the URL path as specified by its
+template. A variable template must not contain other variables. If a variable
+matches a single path segment, its template may be omitted, e.g. `\{var\}`
+is equivalent to `\{var=*\}`.
+
+The syntax `LITERAL` matches literal text in the URL path. If the `LITERAL`
+contains any reserved character, such characters should be percent-encoded
+before the matching.
+
+If a variable contains exactly one path segment, such as `&#34;\{var\}&#34;` or
+`&#34;\{var=*\}&#34;`, when such a variable is expanded into a URL path on the client
+side, all characters except `[-_.~0-9a-zA-Z]` are percent-encoded. The
+server side does the reverse decoding. Such variables show up in the
+[Discovery
+Document](https://developers.google.com/discovery/v1/reference/apis) as
+`\{var\}`.
+
+If a variable contains multiple path segments, such as `&#34;\{var=foo/*\}&#34;`
+or `&#34;\{var=**\}&#34;`, when such a variable is expanded into a URL path on the
+client side, all characters except `[-_.~/0-9a-zA-Z]` are percent-encoded.
+The server side does the reverse decoding, except &#34;%2F&#34; and &#34;%2f&#34; are left
+unchanged. Such variables show up in the
+[Discovery
+Document](https://developers.google.com/discovery/v1/reference/apis) as
+`\{&#43;var\}`.
+
+Using gRPC API Service Configuration
+
+gRPC API Service Configuration (service config) is a configuration language
+for configuring a gRPC service to become a user-facing product. The
+service config is simply the YAML representation of the `google.api.Service`
+proto message.
+
+As an alternative to annotating your proto file, you can configure gRPC
+transcoding in your service config YAML files. You do this by specifying a
+`HttpRule` that maps the gRPC method to a REST endpoint, achieving the same
+effect as the proto annotation. This can be particularly useful if you
+have a proto that is reused in multiple services. Note that any transcoding
+specified in the service config will override any matching transcoding
+configuration in the proto.
+
+The following example selects a gRPC method and applies an `HttpRule` to it:
+
+    http:
+      rules:
+        - selector: example.v1.Messaging.GetMessage
+          get: /v1/messages/\{message_id\}/\{sub.subfield\}
+
+Special notes
+
+When gRPC Transcoding is used to map a gRPC to JSON REST endpoints, the
+proto to JSON conversion must follow the [proto3
+specification](https://developers.google.com/protocol-buffers/docs/proto3#json).
+
+While the single segment variable follows the semantics of
+[RFC 6570](https://tools.ietf.org/html/rfc6570) Section 3.2.2 Simple String
+Expansion, the multi segment variable **does not** follow RFC 6570 Section
+3.2.3 Reserved Expansion. The reason is that the Reserved Expansion
+does not expand special characters like `?` and `#`, which would lead
+to invalid URLs. As the result, gRPC Transcoding uses a custom encoding
+for multi segment variables.
+
+The path variables **must not** refer to any repeated or mapped field,
+because client libraries are not capable of handling such variable expansion.
+
+The path variables **must not** capture the leading &#34;/&#34; character. The reason
+is that the most common use case &#34;\{var\}&#34; does not capture the leading &#34;/&#34;
+character. For consistency, all path variables must share the same behavior.
+
+Repeated message fields must not be mapped to URL query parameters, because
+no client library can support such complicated mapping.
+
+If an API needs to use a JSON array for request or response body, it can map
+the request or response body to a repeated field. However, some gRPC
+Transcoding implementations may not support this feature.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| selector | string |  | Selects a method to which this rule applies.
+
+Refer to [selector][google.api.DocumentationRule.selector] for syntax details. |
+| get | string |  | Maps to HTTP GET. Used for listing and getting information about resources. |
+| put | string |  | Maps to HTTP PUT. Used for replacing a resource. |
+| post | string |  | Maps to HTTP POST. Used for creating a resource or performing an action. |
+| delete | string |  | Maps to HTTP DELETE. Used for deleting a resource. |
+| patch | string |  | Maps to HTTP PATCH. Used for updating a resource. |
+| custom | [CustomHttpPattern](#google-api-CustomHttpPattern) |  | The custom pattern is used for specifying an HTTP method that is not included in the `pattern` field, such as HEAD, or &#34;*&#34; to leave the HTTP method unspecified for this rule. The wild-card rule is useful for services that provide content to Web (HTML) clients. |
+| body | string |  | The name of the request field whose value is mapped to the HTTP request body, or `*` for mapping all request fields not captured by the path pattern to the HTTP body, or omitted for not having any HTTP request body.
+
+NOTE: the referred field must be present at the top-level of the request message type. |
+| response_body | string |  | Optional. The name of the response field whose value is mapped to the HTTP response body. When omitted, the entire response message will be used as the HTTP response body.
+
+NOTE: The referred field must be present at the top-level of the response message type. |
+| additional_bindings | [HttpRule](#google-api-HttpRule) | repeated | Additional HTTP bindings for the selector. Nested bindings must not contain an `additional_bindings` field themselves (that is, the nesting may only be one level deep). |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+
+
+<p align="right"><a href="#top">Top</a></p>
+
+## io/cloudevents/v1/cloudevents.proto {#io_cloudevents_v1_cloudevents-proto}
+
+
+
+
+### CloudEvent {#io-cloudevents-v1-CloudEvent}
 CloudEvent represents a single CloudEvent in protobuf format.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [string](#string) |  | Required Attributes |
-| source | [string](#string) |  | URI-reference |
-| spec_version | [string](#string) |  |  |
-| type | [string](#string) |  |  |
+| id | string |  | Required Attributes |
+| source | string |  | URI-reference |
+| spec_version | string |  |  |
+| type | string |  |  |
 | attributes | [CloudEvent.AttributesEntry](#io-cloudevents-v1-CloudEvent-AttributesEntry) | repeated | Optional &amp; Extension Attributes |
-| binary_data | [bytes](#bytes) |  | Binary data |
-| text_data | [string](#string) |  | Text data |
-| proto_data | [google.protobuf.Any](#google-protobuf-Any) |  | Protobuf message |
+| binary_data | bytes |  | Binary data |
+| text_data | string |  | Text data |
+| proto_data | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  | Protobuf message |
 
 
 
 
 
 
-<a name="io-cloudevents-v1-CloudEvent-AttributesEntry"></a>
 
-### CloudEvent.AttributesEntry
+### CloudEvent.AttributesEntry {#io-cloudevents-v1-CloudEvent-AttributesEntry}
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
+| key | string |  |  |
 | value | [CloudEventAttributeValue](#io-cloudevents-v1-CloudEventAttributeValue) |  |  |
 
 
@@ -3235,30 +3521,28 @@ CloudEvent represents a single CloudEvent in protobuf format.
 
 
 
-<a name="io-cloudevents-v1-CloudEventAttributeValue"></a>
 
-### CloudEventAttributeValue
+### CloudEventAttributeValue {#io-cloudevents-v1-CloudEventAttributeValue}
 CloudEventAttributeValue supports the CloudEvents type system.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| ce_boolean | [bool](#bool) |  |  |
-| ce_integer | [int32](#int32) |  |  |
-| ce_string | [string](#string) |  |  |
-| ce_bytes | [bytes](#bytes) |  |  |
-| ce_uri | [string](#string) |  |  |
-| ce_uri_ref | [string](#string) |  |  |
-| ce_timestamp | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| ce_boolean | bool |  |  |
+| ce_integer | int32 |  |  |
+| ce_string | string |  |  |
+| ce_bytes | bytes |  |  |
+| ce_uri | string |  |  |
+| ce_uri_ref | string |  |  |
+| ce_timestamp | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 
 
 
 
 
 
-<a name="io-cloudevents-v1-CloudEventBatch"></a>
 
-### CloudEventBatch
+### CloudEventBatch {#io-cloudevents-v1-CloudEventBatch}
 CloudEventBatch is a container for multiple CloudEvents.
 
 

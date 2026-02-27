@@ -38,10 +38,10 @@ public class SpeculativeClientTests
     }
 
     [Fact]
-    public void Class_ShouldHaveAggregateMethod()
+    public void Class_ShouldHaveCommandHandlerMethod()
     {
-        // Verify Aggregate method exists
-        var method = typeof(SpeculativeClient).GetMethod("Aggregate");
+        // Verify CommandHandler method exists (renamed from Aggregate)
+        var method = typeof(SpeculativeClient).GetMethod("CommandHandler");
         method.Should().NotBeNull();
         method!.ReturnType.Should().Be(typeof(CommandResponse));
     }

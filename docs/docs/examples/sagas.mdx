@@ -19,7 +19,7 @@ When a table starts a hand, the **table-hand saga** translates the table domain'
 
 | Style | Description | Best For |
 |-------|-------------|----------|
-| **OO (Object-Oriented)** | Saga class with `@prepares`/`@reacts_to` decorators | Rich translation logic, type safety |
+| **OO (Object-Oriented)** | Saga class with `@prepares`/`@handles` decorators | Rich translation logic, type safety |
 | **Functional** | EventRouter with function handlers | Simple mappings, composition |
 
 | Language | OO | Functional |
@@ -155,7 +155,7 @@ When a saga-issued command is rejected, the source aggregate receives a **Notifi
 
 ### OO Pattern (Java/Python)
 
-OO sagas use annotation-based routing. The framework discovers `@Prepares` and `@ReactsTo` methods via reflection:
+OO sagas use annotation-based routing. The framework discovers `@Prepares` and `@Handles` methods via reflection:
 
 <Tabs groupId="language">
 <TabItem value="java" label="Java" default>

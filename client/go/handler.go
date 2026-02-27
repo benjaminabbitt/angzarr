@@ -690,7 +690,7 @@ type OOSaga interface {
 	InputDomain() string
 	OutputDomain() string
 	PrepareDestinations(source *pb.EventBook) []*pb.Cover
-	Execute(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error)
+	Execute(source *pb.EventBook, destinations []*pb.EventBook) (*SagaHandlerResponse, error)
 }
 
 // OOSagaHandler wraps an OO-style saga for the gRPC Saga service.
@@ -712,7 +712,7 @@ func (h *OOSagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest)
 
 // Execute processes events and returns commands for other aggregates.
 func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
-	commands, err := h.saga.Execute(req.Source, req.Destinations)
+	response, err := h.saga.Execute(req.Source, req.Destinations)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {
@@ -720,7 +720,10 @@ func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest)
 		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &pb.SagaResponse{Commands: commands}, nil
+	if response == nil {
+		response = &SagaHandlerResponse{}
+	}
+	return &pb.SagaResponse{Commands: response.Commands, Events: response.Events}, nil
 }
 
 // RegisterOOSagaHandler returns a ServiceRegistrar that registers an OO saga handler.
@@ -804,6 +807,78 @@ func RegisterOOProcessManagerHandler(pm OOProcessManager) ServiceRegistrar {
 func RunOOProcessManagerServer(name, defaultPort string, pm OOProcessManager) {
 	RunServer(RegisterOOProcessManagerHandler(pm), ServerOptions{
 		ServiceName:      "ProcessManager",
+		Domain:           name,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}
+
+// ============================================================================
+// Upcaster Handler
+// ============================================================================
+
+// UpcasterHandleFunc transforms a slice of EventPages to their current versions.
+type UpcasterHandleFunc func(events []*pb.EventPage) []*pb.EventPage
+
+// UpcasterGrpcHandler wraps a handle function for the gRPC Upcaster service.
+//
+// Example:
+//
+//	router := NewUpcasterRouter("player").
+//	    On("examples.PlayerRegisteredV1", upcastPlayerRegistered)
+//
+//	handler := NewUpcasterGrpcHandler("upcaster-player", "player").
+//	    WithHandle(func(events []*pb.EventPage) []*pb.EventPage {
+//	        return router.Upcast(events)
+//	    })
+//
+//	RunUpcasterServer("upcaster-player", "50401", handler)
+type UpcasterGrpcHandler struct {
+	pb.UnimplementedUpcasterServiceServer
+	name     string
+	domain   string
+	handleFn UpcasterHandleFunc
+}
+
+// NewUpcasterGrpcHandler creates a new upcaster handler.
+func NewUpcasterGrpcHandler(name, domain string) *UpcasterGrpcHandler {
+	return &UpcasterGrpcHandler{
+		name:   name,
+		domain: domain,
+	}
+}
+
+// WithHandle sets the event transformation callback.
+func (h *UpcasterGrpcHandler) WithHandle(fn UpcasterHandleFunc) *UpcasterGrpcHandler {
+	h.handleFn = fn
+	return h
+}
+
+// Upcast transforms events to current versions.
+func (h *UpcasterGrpcHandler) Upcast(ctx context.Context, req *pb.UpcastRequest) (*pb.UpcastResponse, error) {
+	events := req.Events
+	if h.handleFn != nil {
+		events = h.handleFn(events)
+	}
+	return &pb.UpcastResponse{Events: events}, nil
+}
+
+// RegisterUpcasterGrpcHandler returns a ServiceRegistrar that registers an upcaster handler.
+func RegisterUpcasterGrpcHandler(handler *UpcasterGrpcHandler) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterUpcasterServiceServer(server, handler)
+	}
+}
+
+// RunUpcasterServer starts a gRPC server for an upcaster.
+//
+// Parameters:
+//   - name: The upcaster's name (e.g., "upcaster-player")
+//   - defaultPort: Default TCP port if PORT env not set
+//   - handler: UpcasterGrpcHandler with configured handle function
+func RunUpcasterServer(name, defaultPort string, handler *UpcasterGrpcHandler) {
+	RunServer(RegisterUpcasterGrpcHandler(handler), ServerOptions{
+		ServiceName:      "Upcaster",
 		Domain:           name,
 		DefaultPort:      defaultPort,
 		EnableReflection: true,

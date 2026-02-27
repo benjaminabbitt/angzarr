@@ -1,11 +1,13 @@
 ---
-sidebar_position: 1
-slug: /
+sidebar_position: 3
 ---
 
-# Introduction
+# Introduction to Angzarr
 
-**⍼ Angzarr** is a polyglot CQRS/Event Sourcing framework. You write business logic in any language with [gRPC support](https://grpc.io/docs/languages/)—the framework handles event persistence, saga coordination, projection management, and all the infrastructure complexity that typically derails CQRS/ES projects.
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+**⍼ Angzarr** is a polyglot framework for building event-sourced systems. You write business logic in any language with [gRPC support](https://grpc.io/docs/languages/)—the framework handles event persistence, saga coordination, projection management, and all the infrastructure complexity that typically derails CQRS/ES projects.
 
 The symbol ⍼ (U+237C, "angzarr") has existed in Unicode since 2002 without a defined purpose. The right angle represents the origin point—your event store. The zigzag arrow represents events cascading through your system. We gave it meaning.
 
@@ -23,46 +25,9 @@ Contributors are welcome. There are a few rough edges, but mostly the project ne
 
 ---
 
-## The Problem
+## What Angzarr Provides
 
-CQRS and Event Sourcing deliver real architectural benefits: complete audit history, temporal queries, independent read/write scaling, and natural alignment with domain-driven design. The implementation cost, however, remains steep.
-
-⍼ Angzarr's original inspiration was **airline flight network repair after disruption**—when weather or mechanical issues cascade through a schedule, operations teams need to see exactly what happened, why decisions were made, and how to unwind partial recoveries. That domain's requirements (audit, state machines, cross-domain coordination, temporal queries) recur across industries: billing systems, insurance claims, logistics. In the author's experience, roughly **one-third of enterprise projects** exhibit these patterns. Yet most teams can't justify the infrastructure investment.
-
-Teams attempting CQRS/ES consistently face:
-
-- **Infrastructure gravity**: Event stores, message buses, projection databases, and their failure modes dominate early development. Business logic becomes entangled with persistence concerns.
-- **Schema management**: Events are append-only and permanent. Schema evolution requires discipline that frameworks rarely enforce.
-- **Operational complexity**: Snapshotting, projection rebuilds, idempotency, exactly-once delivery, and saga coordination demand specialized knowledge.
-- **Language lock-in**: Most frameworks assume a single ecosystem. Organizations with mixed stacks maintain parallel implementations or force standardization.
-
----
-
-## When ⍼ Angzarr Fits
-
-⍼ Angzarr is **not** a do-everything framework. Your domain must fit these constraints:
-
-| Requirement | Why It Matters |
-|-------------|----------------|
-| **Eventual consistency acceptable** | Events propagate asynchronously. If you need synchronous, strongly-consistent responses, traditional CRUD is simpler. |
-| **Audit/validation important** | Event sourcing's overhead only pays off when you need to answer "what happened and why?" |
-| **State reconstructable from events** | If your domain has external dependencies that can't be replayed, event sourcing won't help. |
-
-### Probably NOT a Good Fit
-
-- **Real-time games**: Latency-sensitive gameplay where milliseconds matter. Event sourcing adds overhead without proportional benefit.
-- **Simple CRUD**: If your domain is "store this, retrieve that" without complex state transitions, use a database directly.
-- **Strong consistency required**: Banking ledgers that must never show intermediate states. (Though event sourcing *can* work here with careful design.)
-
-### The Poker Paradox
-
-Yes, the example domain is a game. Poker works as an *example* because it exercises every pattern—but most games shouldn't use event sourcing in production. The author is developing a board game with ⍼ Angzarr, but primarily because **event logs make game flow understandable during development**, not because it's the optimal production architecture for games.
-
----
-
-## The ⍼ Angzarr Approach
-
-⍼ Angzarr inverts the typical framework relationship. Rather than providing libraries that applications import, Angzarr provides infrastructure that applications connect to via gRPC.
+Angzarr inverts the typical framework relationship. Rather than providing libraries that applications import, Angzarr provides infrastructure that applications connect to via gRPC.
 
 **Your data model lives in `.proto` files, not code.** Commands, events, and state are defined as Protocol Buffer messages—language-neutral, versionable, and shared across all implementations. This is what enables true polyglot support: the same event stream can be produced by a Rust aggregate and consumed by a Python projector.
 
@@ -144,26 +109,6 @@ Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code h
 
 ---
 
-## For Decision Makers
-
-If you're evaluating Angzarr for your organization:
-
-- **[Technical Pitch](/pitch)** — Complete architectural pitch with detailed rationale
-- **[Architecture](./architecture)** — Core concepts: data model, coordinators, sync modes
-- **[Why Poker](./examples/why-poker)** — Why our example domain exercises every pattern
-
----
-
-## For Developers
-
-Ready to build:
-
-- **[Getting Started](./getting-started)** — Prerequisites, installation, first aggregate
-- **[Components](./components/aggregate)** — Aggregates, sagas, projectors, process managers
-- **[Examples](./examples/aggregates)** — Code samples in all six languages
-
----
-
 ## Language Support
 
 **Any language with gRPC support works.** Your business logic communicates with ⍼ Angzarr coordinators via gRPC—the framework doesn't care what's behind the endpoint. If your language appears on the [gRPC supported languages matrix](https://grpc.io/docs/languages/), you can use it with Angzarr. This includes C#, C++, Dart, Go, Java, Kotlin, Node.js, Objective-C, PHP, Python, Ruby, Rust, and more.
@@ -186,9 +131,6 @@ All six implementations share the same Gherkin specifications, ensuring identica
 ## Quick Example
 
 The same handler across all six languages. Each follows the **guard → validate → compute** pattern:
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
 <Tabs>
 <TabItem value="python" label="Python" default>
@@ -377,8 +319,28 @@ examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd, const
 
 ---
 
+## For Decision Makers
+
+If you're evaluating Angzarr for your organization:
+
+- **[Technical Pitch](/pitch)** — Complete architectural pitch with detailed rationale
+- **[Architecture](./architecture)** — Core concepts: data model, coordinators, sync modes
+- **[Why Poker](./examples/why-poker)** — Why our example domain exercises every pattern
+
+---
+
+## For Developers
+
+Ready to build:
+
+- **[Getting Started](./getting-started)** — Prerequisites, installation, first aggregate
+- **[Components](./components/aggregate)** — Aggregates, sagas, projectors, process managers
+- **[Examples](./examples/aggregates)** — Code samples in all six languages
+
+---
+
 ## Next Steps
 
-1. **Understand the concepts** — [CQRS & Event Sourcing](./concepts/cqrs-event-sourcing)
+1. **Understand the patterns** — [CQRS & Event Sourcing Explained](./patterns-explained)
 2. **See the architecture** — [Architecture](./architecture)
 3. **Get hands-on** — [Getting Started](./getting-started)

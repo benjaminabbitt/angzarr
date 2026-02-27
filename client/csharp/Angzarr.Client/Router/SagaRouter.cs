@@ -1,3 +1,4 @@
+using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 
 namespace Angzarr.Client.Router;
@@ -93,7 +94,7 @@ public class SagaRouter<THandler>
     /// </summary>
     /// <param name="source">Source event book.</param>
     /// <param name="destinations">Fetched destination aggregate states.</param>
-    /// <returns>Saga response with commands.</returns>
+    /// <returns>Saga response with commands and events.</returns>
     public Angzarr.SagaResponse Dispatch(
         Angzarr.EventBook source,
         IReadOnlyList<Angzarr.EventBook>? destinations = null
@@ -107,14 +108,53 @@ public class SagaRouter<THandler>
         if (eventAny == null)
             throw new InvalidArgumentError("Missing event payload");
 
-        var commands = _handler.Execute(
+        // Check for Notification
+        if (eventAny.TypeUrl.EndsWith("Notification"))
+            return DispatchNotification(eventAny);
+
+        var handlerResponse = _handler.Execute(
             source,
             eventAny,
             destinations ?? Array.Empty<Angzarr.EventBook>()
         );
 
         var response = new Angzarr.SagaResponse();
-        response.Commands.AddRange(commands);
+        response.Commands.AddRange(handlerResponse.Commands);
+        response.Events.AddRange(handlerResponse.Events);
+        return response;
+    }
+
+    private Angzarr.SagaResponse DispatchNotification(Any eventAny)
+    {
+        var notification = eventAny.Unpack<Angzarr.Notification>();
+
+        string targetDomain = "";
+        string targetCommand = "";
+
+        if (notification.Payload != null)
+        {
+            try
+            {
+                var rejection = notification.Payload.Unpack<Angzarr.RejectionNotification>();
+                if (rejection.RejectedCommand?.Pages.Count > 0)
+                {
+                    targetDomain = rejection.RejectedCommand.Cover?.Domain ?? "";
+                    targetCommand = Helpers.TypeNameFromUrl(
+                        rejection.RejectedCommand.Pages[0].Command?.TypeUrl ?? ""
+                    );
+                }
+            }
+            catch (InvalidProtocolBufferException)
+            {
+                // Malformed rejection notification
+            }
+        }
+
+        var rejectionResponse = _handler.OnRejected(notification, targetDomain, targetCommand);
+
+        var response = new Angzarr.SagaResponse();
+        if (rejectionResponse.Events != null)
+            response.Events.Add(rejectionResponse.Events);
         return response;
     }
 }

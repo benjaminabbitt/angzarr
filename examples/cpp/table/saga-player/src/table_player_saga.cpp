@@ -7,14 +7,14 @@
 namespace table {
 namespace saga {
 
-angzarr::EventRouter create_table_player_router() {
-    return angzarr::EventRouter("saga-table-player")
-        .domain("table")
-        .prepare<examples::HandEnded>(prepare_hand_ended)
-        .on<examples::HandEnded>(handle_hand_ended);
-}
+// Prepare handler: declare all players from stack_changes as destinations.
+static std::vector<angzarr::Cover> prepare_hand_ended(const google::protobuf::Any& event_any,
+                                                      const angzarr::UUID* root) {
+    (void)root;
 
-std::vector<angzarr::Cover> prepare_hand_ended(const examples::HandEnded& event) {
+    examples::HandEnded event;
+    event_any.UnpackTo(&event);
+
     std::vector<angzarr::Cover> covers;
 
     for (const auto& [player_hex, delta] : event.stack_changes()) {
@@ -35,8 +35,15 @@ std::vector<angzarr::Cover> prepare_hand_ended(const examples::HandEnded& event)
     return covers;
 }
 
-angzarr::CommandBook handle_hand_ended(const examples::HandEnded& event,
-                                       const std::vector<angzarr::EventBook>& destinations) {
+// Handle HandEnded: produce ReleaseFunds commands for each player.
+static std::vector<angzarr::CommandBook> handle_hand_ended(
+    const google::protobuf::Any& event_any, const std::string& source_root,
+    const std::string& correlation_id, const std::vector<angzarr::EventBook>& destinations) {
+    (void)source_root;
+
+    examples::HandEnded event;
+    event_any.UnpackTo(&event);
+
     // Build map from player root hex to destination for sequence lookup
     std::unordered_map<std::string, const angzarr::EventBook*> dest_map;
     for (const auto& dest : destinations) {
@@ -50,15 +57,8 @@ angzarr::CommandBook handle_hand_ended(const examples::HandEnded& event,
         }
     }
 
-    // We'll return a single CommandBook with multiple pages for simplicity,
-    // but in practice, sagas return multiple CommandBooks (one per destination).
-    // For C++, we'll handle the first player only and let the framework call
-    // us multiple times, or we can modify to return a vector.
+    std::vector<angzarr::CommandBook> commands;
 
-    angzarr::CommandBook cmd_book;
-
-    // For simplicity, handle all players in one go (framework would typically
-    // call handler once and expect all commands)
     for (const auto& [player_hex, delta] : event.stack_changes()) {
         // Convert hex to bytes
         std::string player_root;
@@ -82,16 +82,27 @@ angzarr::CommandBook handle_hand_ended(const examples::HandEnded& event,
         google::protobuf::Any cmd_any;
         cmd_any.PackFrom(release_funds, "type.googleapis.com/");
 
-        // Set cover for this command book
+        // Build command book for this player
+        angzarr::CommandBook cmd_book;
         cmd_book.mutable_cover()->set_domain("player");
         cmd_book.mutable_cover()->mutable_root()->set_value(player_root);
+        cmd_book.mutable_cover()->set_correlation_id(correlation_id);
 
         auto* page = cmd_book.add_pages();
         page->set_sequence(dest_seq);
         page->mutable_command()->CopyFrom(cmd_any);
+
+        commands.push_back(std::move(cmd_book));
     }
 
-    return cmd_book;
+    return commands;
+}
+
+angzarr::EventRouter create_table_player_router() {
+    return angzarr::EventRouter("saga-table-player")
+        .domain("table")
+        .prepare("HandEnded", prepare_hand_ended)
+        .on("HandEnded", handle_hand_ended);
 }
 
 }  // namespace saga

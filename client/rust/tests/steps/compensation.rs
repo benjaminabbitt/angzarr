@@ -123,6 +123,7 @@ impl CompensationContext {
                 }),
                 correlation_id: self.correlation_id.clone(),
                 edition: None,
+                external_id: String::new(),
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -163,6 +164,7 @@ fn make_saga_command(
             }),
             correlation_id: "workflow-123".to_string(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence: 0,

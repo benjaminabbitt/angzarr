@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
-use crate::proto::{CommandBook, Cover, EventBook};
+use crate::proto::{CommandBook, Cover, EventBook, SagaResponse};
 use crate::proto_ext::CoverExt;
 use crate::standalone::CommandRouter;
 use crate::standalone::SagaHandler;
@@ -88,21 +88,21 @@ impl SagaRetryContext for LocalSagaContext {
     async fn re_execute_saga(
         &self,
         destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = self.source.edition().to_string();
-        let response = self
+        let mut response = self
             .saga_handler
             .execute(&self.source, &destinations)
             .await
             .map_err(box_err)?;
 
-        let mut commands = response.commands;
-        for cmd in &mut commands {
+        // Stamp edition on commands
+        for cmd in &mut response.commands {
             if let Some(c) = &mut cmd.cover {
                 c.stamp_edition_if_empty(&edition);
             }
         }
-        Ok(commands)
+        Ok(response)
     }
 
     fn source_cover(&self) -> Option<&crate::proto::Cover> {

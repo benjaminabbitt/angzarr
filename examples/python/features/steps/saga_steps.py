@@ -223,8 +223,8 @@ class SagaRouter:
             if domain and saga.input_domain != domain:
                 continue
             try:
-                saga_commands = saga.__class__.execute(source, [])
-                commands.extend(saga_commands)
+                response = saga.__class__.execute(source, [])
+                commands.extend(response.commands)
             except Exception:
                 # Continue routing to other sagas even if one fails
                 pass
@@ -475,7 +475,8 @@ def step_when_saga_handles_event(context):
         ),
         pages=[event_page],
     )
-    context.commands = context.saga.__class__.execute(event_book, [])
+    response = context.saga.__class__.execute(event_book, [])
+    context.commands = response.commands
 
 
 @when("the router routes the event")

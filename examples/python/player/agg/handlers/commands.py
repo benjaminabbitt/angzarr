@@ -161,18 +161,41 @@ def handle_release_funds(
     )
 
 
-@command_handler(player_proto.RequestAction)
-def handle_request_action(
-    cmd: player_proto.RequestAction, state: PlayerState, seq: int
-) -> player_proto.ActionRequested:
-    """Request action from player (for AI players)."""
+@command_handler(player_proto.SitOut)
+def handle_sit_out(
+    cmd: player_proto.SitOut, state: PlayerState, seq: int
+) -> player_proto.PlayerSittingOut:
+    """Player chooses to sit out at a table."""
     # Guard
     if not state.exists:
         raise CommandRejectedError("Player does not exist")
-    # Compute - just acknowledge the request
-    return player_proto.ActionRequested(
-        hand_root=cmd.hand_root,
-        requested_at=now(),
+    # Validate
+    table_key = cmd.table_root.hex()
+    if table_key not in state.table_reservations:
+        raise CommandRejectedError("Player is not at this table")
+    # Compute
+    return player_proto.PlayerSittingOut(
+        table_root=cmd.table_root,
+        sat_out_at=now(),
+    )
+
+
+@command_handler(player_proto.SitIn)
+def handle_sit_in(
+    cmd: player_proto.SitIn, state: PlayerState, seq: int
+) -> player_proto.PlayerReturningToPlay:
+    """Player chooses to return to play at a table."""
+    # Guard
+    if not state.exists:
+        raise CommandRejectedError("Player does not exist")
+    # Validate
+    table_key = cmd.table_root.hex()
+    if table_key not in state.table_reservations:
+        raise CommandRejectedError("Player is not at this table")
+    # Compute
+    return player_proto.PlayerReturningToPlay(
+        table_root=cmd.table_root,
+        sat_in_at=now(),
     )
 
 
@@ -182,5 +205,6 @@ __all__ = [
     "handle_withdraw_funds",
     "handle_reserve_funds",
     "handle_release_funds",
-    "handle_request_action",
+    "handle_sit_out",
+    "handle_sit_in",
 ]

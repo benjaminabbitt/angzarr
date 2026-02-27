@@ -69,8 +69,9 @@ impl ProcessManagerContext for LocalPMContext {
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = trigger.edition().to_string();
-        let (mut commands, process_events) = self.handler.handle(trigger, pm_state, destinations);
+        let result = self.handler.handle(trigger, pm_state, destinations);
 
+        let mut commands = result.commands;
         for cmd in &mut commands {
             if let Some(c) = &mut cmd.cover {
                 c.stamp_edition_if_empty(&edition);
@@ -79,7 +80,8 @@ impl ProcessManagerContext for LocalPMContext {
 
         Ok(PmHandleResponse {
             commands,
-            process_events,
+            process_events: result.process_events,
+            facts: result.facts,
         })
     }
 

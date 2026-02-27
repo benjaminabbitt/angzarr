@@ -18,6 +18,7 @@ use crate::orchestration::aggregate::{
     ClientLogic, PipelineMode,
 };
 use crate::orchestration::correlation;
+use crate::orchestration::{FactExecutor, FactInjectionError};
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, CommandResponse, ContextualCommand, Cover,
     MergeStrategy, Uuid as ProtoUuid,
@@ -386,6 +387,30 @@ impl CommandRouter {
         self.stores
             .get(domain)
             .ok_or_else(|| Status::not_found(format!("No storage configured for domain: {domain}")))
+    }
+}
+
+#[async_trait::async_trait]
+impl FactExecutor for CommandRouter {
+    async fn inject(&self, fact: crate::proto::EventBook) -> Result<(), FactInjectionError> {
+        // Extract domain before moving fact
+        let domain = fact
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Use inject_fact with route_to_handler=true to allow aggregate's handle_fact
+        // to transform the event if needed
+        self.inject_fact(fact, true).await.map_err(|status| {
+            if status.code() == tonic::Code::NotFound {
+                FactInjectionError::AggregateNotFound { domain }
+            } else {
+                FactInjectionError::Internal(status.message().to_string())
+            }
+        })?;
+
+        Ok(())
     }
 }
 

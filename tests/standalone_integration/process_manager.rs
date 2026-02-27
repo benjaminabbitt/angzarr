@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use angzarr::descriptor::Target;
 use angzarr::proto::{command_page, event_page};
-use angzarr::standalone::{ProcessManagerConfig, ProcessManagerHandler};
+use angzarr::standalone::{
+    ProcessManagerConfig, ProcessManagerHandleResult, ProcessManagerHandler,
+};
 
 // ============================================================================
 // Fixtures: PM that tracks state across invocations
@@ -52,7 +54,7 @@ impl ProcessManagerHandler for StateTrackingPM {
         trigger: &EventBook,
         process_state: Option<&EventBook>,
         _destinations: &[EventBook],
-    ) -> (Vec<CommandBook>, Option<EventBook>) {
+    ) -> ProcessManagerHandleResult {
         self.handle_count.fetch_add(1, Ordering::SeqCst);
 
         // Track if we received prior state
@@ -70,7 +72,7 @@ impl ProcessManagerHandler for StateTrackingPM {
             .unwrap_or_default();
 
         if correlation_id.is_empty() {
-            return (vec![], None);
+            return ProcessManagerHandleResult::default();
         }
 
         // Determine next sequence from existing state
@@ -107,7 +109,11 @@ impl ProcessManagerHandler for StateTrackingPM {
             ..Default::default()
         };
 
-        (vec![], Some(pm_events))
+        ProcessManagerHandleResult {
+            commands: vec![],
+            process_events: Some(pm_events),
+            facts: vec![],
+        }
     }
 }
 
@@ -124,7 +130,7 @@ impl ProcessManagerHandler for PMWrapper {
         trigger: &EventBook,
         process_state: Option<&EventBook>,
         destinations: &[EventBook],
-    ) -> (Vec<CommandBook>, Option<EventBook>) {
+    ) -> ProcessManagerHandleResult {
         self.0.handle(trigger, process_state, destinations)
     }
 }

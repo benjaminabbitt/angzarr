@@ -6,4 +6,4 @@ pub mod state;
 
 pub use handler::TableHandler;
 pub use handlers::*;
-pub use state::{SeatState, TableState, STATE_ROUTER};
+pub use state::{rebuild_state, SeatState, TableState, STATE_ROUTER};

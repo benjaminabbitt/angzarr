@@ -22,6 +22,7 @@ use crate::bus::{BusError, EventHandler};
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::saga::{orchestrate_saga, OutputDomainValidator, SagaContextFactory};
+use crate::orchestration::FactExecutor;
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::saga_backoff;
@@ -36,6 +37,7 @@ pub struct SagaEventHandler {
     context_factory: Arc<dyn SagaContextFactory>,
     command_executor: Arc<dyn CommandExecutor>,
     destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
+    fact_executor: Option<Arc<dyn FactExecutor>>,
     output_domain_validator: Option<Arc<OutputDomainValidator>>,
     backoff: ExponentialBuilder,
 }
@@ -51,16 +53,18 @@ impl SagaEventHandler {
             context_factory,
             command_executor,
             destination_fetcher,
+            fact_executor: None,
             output_domain_validator: None,
             backoff: saga_backoff(),
         }
     }
 
-    /// Create from a context factory with output domain validation.
+    /// Create from a context factory with output domain validation and fact injection.
     pub fn from_factory_with_validator(
         context_factory: Arc<dyn SagaContextFactory>,
         command_executor: Arc<dyn CommandExecutor>,
         destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
+        fact_executor: Option<Arc<dyn FactExecutor>>,
         output_domain_validator: Option<Arc<OutputDomainValidator>>,
         backoff: ExponentialBuilder,
     ) -> Self {
@@ -68,6 +72,7 @@ impl SagaEventHandler {
             context_factory,
             command_executor,
             destination_fetcher,
+            fact_executor,
             output_domain_validator,
             backoff,
         }
@@ -83,6 +88,7 @@ impl EventHandler for SagaEventHandler {
         let factory = self.context_factory.clone();
         let executor = self.command_executor.clone();
         let fetcher = self.destination_fetcher.clone();
+        let fact_executor = self.fact_executor.clone();
         let validator = self.output_domain_validator.clone();
         let backoff = self.backoff;
 
@@ -92,11 +98,13 @@ impl EventHandler for SagaEventHandler {
 
                 let validator_ref: Option<&OutputDomainValidator> = validator.as_deref();
                 let fetcher_ref: Option<&dyn DestinationFetcher> = fetcher.as_deref();
+                let fact_executor_ref: Option<&dyn FactExecutor> = fact_executor.as_deref();
 
                 if let Err(e) = orchestrate_saga(
                     ctx.as_ref(),
                     executor.as_ref(),
                     fetcher_ref,
+                    fact_executor_ref,
                     &saga_name,
                     &correlation_id,
                     validator_ref,

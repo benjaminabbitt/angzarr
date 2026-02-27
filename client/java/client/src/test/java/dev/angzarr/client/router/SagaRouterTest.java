@@ -49,14 +49,14 @@ class SagaRouterTest {
         }
 
         @Override
-        public List<CommandBook> execute(EventBook source, Any event, List<EventBook> destinations)
+        public SagaHandlerResponse execute(EventBook source, Any event, List<EventBook> destinations)
                 throws CommandRejectedError {
             String typeUrl = event.getTypeUrl();
             if (typeUrl.endsWith("OrderCompleted")) {
                 // Get destination sequence for optimistic concurrency
                 int destSeq = destinations.isEmpty() ? 0 : destinations.get(0).getPagesCount();
 
-                return List.of(CommandBook.newBuilder()
+                return SagaHandlerResponse.withCommands(List.of(CommandBook.newBuilder()
                         .setCover(Cover.newBuilder()
                                 .setDomain("fulfillment")
                                 .setRoot(source.getCover().getRoot())
@@ -67,11 +67,11 @@ class SagaRouterTest {
                                         .setTypeUrl("type.googleapis.com/test.StartFulfillment")
                                         .build())
                                 .build())
-                        .build());
+                        .build()));
             } else if (typeUrl.endsWith("OrderCancelled")) {
-                return Collections.emptyList();
+                return SagaHandlerResponse.empty();
             }
-            return Collections.emptyList();
+            return SagaHandlerResponse.empty();
         }
     }
 
@@ -273,7 +273,7 @@ class SagaRouterTest {
                 }
 
                 @Override
-                public List<CommandBook> execute(EventBook source, Any event, List<EventBook> destinations)
+                public SagaHandlerResponse execute(EventBook source, Any event, List<EventBook> destinations)
                         throws CommandRejectedError {
                     throw CommandRejectedError.of("Cannot process this event");
                 }

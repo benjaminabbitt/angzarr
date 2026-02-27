@@ -41,9 +41,33 @@ class ClientError : public std::runtime_error {
  */
 class CommandRejectedError : public ClientError {
    public:
-    explicit CommandRejectedError(const std::string& message) : ClientError(message) {}
+    explicit CommandRejectedError(const std::string& message)
+        : ClientError(message), status_code(grpc::StatusCode::FAILED_PRECONDITION) {}
+
+    CommandRejectedError(const std::string& message, grpc::StatusCode code)
+        : ClientError(message), status_code(code) {}
 
     bool is_precondition_failed() const override { return true; }
+
+    /// gRPC status code for this rejection.
+    grpc::StatusCode status_code;
+
+    /// Factory methods for common rejection types.
+    static CommandRejectedError precondition_failed(const std::string& message) {
+        return CommandRejectedError(message, grpc::StatusCode::FAILED_PRECONDITION);
+    }
+
+    static CommandRejectedError invalid_argument(const std::string& message) {
+        return CommandRejectedError(message, grpc::StatusCode::INVALID_ARGUMENT);
+    }
+
+    static CommandRejectedError not_found(const std::string& message) {
+        return CommandRejectedError(message, grpc::StatusCode::NOT_FOUND);
+    }
+
+    static CommandRejectedError already_exists(const std::string& message) {
+        return CommandRejectedError(message, grpc::StatusCode::ALREADY_EXISTS);
+    }
 };
 
 /**

@@ -7,4 +7,4 @@ pub mod state;
 
 pub use handler::HandHandler;
 pub use handlers::*;
-pub use state::{HandState, PlayerHandState, PotState, STATE_ROUTER};
+pub use state::{rebuild_state, HandState, PlayerHandState, PotState, STATE_ROUTER};

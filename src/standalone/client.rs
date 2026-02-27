@@ -384,6 +384,7 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
         Ok(ProcessManagerHandleResponse {
             commands: result.commands,
             process_events: result.process_events,
+            facts: result.facts,
         })
     }
 }

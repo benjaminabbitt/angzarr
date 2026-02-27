@@ -136,6 +136,12 @@ def given_hand_process_manager(ctx):
     pass  # Already created in fixture
 
 
+@given("a HandFlowPM")
+def given_hand_flow_pm(ctx):
+    """Create HandFlowPM (alias for HandProcessManager)."""
+    pass  # Already created in fixture
+
+
 def parse_datatable(datatable) -> list[dict]:
     """Convert pytest-bdd datatable (list of lists) to list of dicts."""
     if not datatable or len(datatable) < 2:
@@ -445,25 +451,42 @@ def when_start_hand(ctx):
 
 @when("the process manager handles the event")
 def when_handle_event(ctx):
-    """Handle event with process manager."""
+    """Handle event with process manager.
+
+    Handler methods return CommandBooks rather than calling command_sender directly.
+    We capture the returned commands and append to commands_sent for test assertions.
+    """
     event_type = type(ctx.event).__name__
+    result = None
 
     if event_type == "CardsDealt":
-        ctx.manager.handle_cards_dealt(ctx.hand_id, ctx.event)
+        result = ctx.manager.handle_cards_dealt(ctx.hand_id, ctx.event)
     elif event_type == "BlindPosted":
-        ctx.manager.handle_blind_posted(ctx.hand_id, ctx.event)
+        result = ctx.manager.handle_blind_posted(ctx.hand_id, ctx.event)
     elif event_type == "ActionTaken":
-        ctx.manager.handle_action_taken(ctx.hand_id, ctx.event)
+        result = ctx.manager.handle_action_taken(ctx.hand_id, ctx.event)
     elif event_type == "CommunityCardsDealt":
-        ctx.manager.handle_community_dealt(ctx.hand_id, ctx.event)
+        result = ctx.manager.handle_community_cards_dealt(ctx.hand_id, ctx.event)
     elif event_type == "PotAwarded":
-        ctx.manager.handle_pot_awarded(ctx.hand_id, ctx.event)
+        result = ctx.manager.handle_pot_awarded(ctx.hand_id, ctx.event)
+
+    # Capture returned command(s)
+    if result is not None:
+        if isinstance(result, list):
+            ctx.commands_sent.extend(result)
+        else:
+            ctx.commands_sent.append(result)
 
 
 @when("the process manager ends the betting round")
 def when_end_betting_round(ctx):
     """End betting round."""
-    ctx.manager._end_betting_round(ctx.process)
+    result = ctx.manager._end_betting_round_cmd(ctx.process)
+    if result is not None:
+        if isinstance(result, list):
+            ctx.commands_sent.extend(result)
+        else:
+            ctx.commands_sent.append(result)
 
 
 @when("the action times out")
@@ -760,7 +783,9 @@ class TestProcessManagerDatatables:
             player_stack=495,
         )
 
-        manager.handle_blind_posted(process.hand_id, blind_event)
+        result = manager.handle_blind_posted(process.hand_id, blind_event)
+        if result is not None:
+            commands_sent.append(result)
 
         # Should send PostBlind command for big blind
         post_blind_cmds = [
@@ -792,7 +817,12 @@ class TestProcessManagerDatatables:
             player_stack=490,
         )
 
-        manager.handle_action_taken(process.hand_id, fold_event)
+        result = manager.handle_action_taken(process.hand_id, fold_event)
+        if result is not None:
+            if isinstance(result, list):
+                commands_sent.extend(result)
+            else:
+                commands_sent.append(result)
 
         # Should send AwardPot command
         award_cmds = [

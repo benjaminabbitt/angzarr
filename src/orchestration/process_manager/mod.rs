@@ -51,6 +51,7 @@ use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, Uuid as Pro
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
+use super::FactExecutor;
 
 /// Response from a process manager's prepare phase.
 pub struct PmPrepareResponse {
@@ -64,6 +65,8 @@ pub struct PmHandleResponse {
     pub commands: Vec<CommandBook>,
     /// Optional PM events to persist to the PM's own domain.
     pub process_events: Option<EventBook>,
+    /// Facts to inject to other aggregates.
+    pub facts: Vec<EventBook>,
 }
 
 /// PM-specific operations abstracted over transport.
@@ -169,15 +172,17 @@ pub trait PMContextFactory: Send + Sync {
 /// 1. Fetch PM state by correlation_id (PM root = correlation_id by design)
 /// 2. Prepare: PM declares additional destinations needed
 /// 3. Fetch destination event books
-/// 4. Handle: PM produces commands + PM events
+/// 4. Handle: PM produces commands + PM events + facts
 /// 5. Persist PM events (retries on sequence conflict)
 /// 6. Execute commands with saga_origin stamped for compensation routing
+/// 7. Inject facts into target aggregates
 #[allow(clippy::too_many_arguments)]
 #[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_name, %pm_domain, %correlation_id))]
 pub async fn orchestrate_pm(
     ctx: &dyn ProcessManagerContext,
     fetcher: &dyn DestinationFetcher,
     executor: &dyn CommandExecutor,
+    fact_executor: Option<&dyn FactExecutor>,
     trigger: &EventBook,
     pm_name: &str,
     pm_domain: &str,
@@ -326,6 +331,31 @@ pub async fn orchestrate_pm(
             pm_domain,
         )
         .await;
+
+        // Inject facts into target aggregates.
+        //
+        // Facts are events emitted by the PM that are injected directly into target
+        // aggregates without command handling. The coordinator stamps sequence numbers
+        // on receipt based on the aggregate's current state.
+        //
+        // Facts must have `external_id` set in their Cover for idempotent handling.
+        // Fact injection failure fails the entire PM operation — facts are not
+        // best-effort, they're part of the transaction.
+        if let Some(fact_exec) = fact_executor {
+            for fact in response.facts {
+                let domain = fact
+                    .cover
+                    .as_ref()
+                    .map(|c| c.domain.as_str())
+                    .unwrap_or("unknown");
+                debug!(%domain, "Injecting fact from PM");
+
+                fact_exec
+                    .inject(fact)
+                    .await
+                    .map_err(|e| BusError::Publish(format!("PM fact injection failed: {e}")))?;
+            }
+        }
 
         // Exit retry loop. PM events are persisted, commands are dispatched.
         // The workflow continues asynchronously via Notifications.

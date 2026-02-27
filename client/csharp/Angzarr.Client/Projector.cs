@@ -26,9 +26,18 @@ public abstract class Projector
     public abstract string Name { get; }
 
     /// <summary>
-    /// The domain this projector listens to.
+    /// The domains this projector listens to.
+    /// Override this for multi-domain projectors.
+    /// Single-domain projectors can override InputDomain instead.
     /// </summary>
-    public abstract string InputDomain { get; }
+    public virtual IReadOnlyList<string> InputDomains => new[] { InputDomain };
+
+    /// <summary>
+    /// The domain this projector listens to.
+    /// Override this for single-domain projectors.
+    /// Multi-domain projectors should override InputDomains instead.
+    /// </summary>
+    public virtual string InputDomain => "";
 
     protected Projector()
     {

@@ -78,8 +78,9 @@ from .handler_protocols import (
     ProjectorDomainHandler,
 )
 from .helpers import TYPE_URL_PREFIX
-from .proto.angzarr import command_handler_pb2 as command_handler
+from .proto.angzarr import command_handler_pb2 as ch_pb2
 from .proto.angzarr import process_manager_pb2 as pm
+from .proto.angzarr import saga_pb2
 from .proto.angzarr import types_pb2 as types
 
 if TYPE_CHECKING:
@@ -383,6 +384,53 @@ def prepares(event_type: type):
 
 
 # ============================================================================
+# @command_handler decorator for functional command handlers
+# ============================================================================
+
+
+def command_handler(command_type: type):
+    """Decorator for functional command handler functions.
+
+    Marks a function as a command handler for the given command type.
+    Used with CommandHandlerRouter for the functional/fluent handler pattern.
+
+    The decorated function must have signature:
+        (cmd: CommandType, state: StateType, seq: int) -> EventType
+
+    Args:
+        command_type: The protobuf command class to handle.
+
+    Example:
+        @command_handler(RegisterPlayer)
+        def handle_register_player(
+            cmd: RegisterPlayer, state: PlayerState, seq: int
+        ) -> PlayerRegistered:
+            if state.exists:
+                raise CommandRejectedError("Player already exists")
+            return PlayerRegistered(name=cmd.name, ...)
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match command_type.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        # Validate at decoration time (cmd is at index 0 for functions)
+        validate_command_handler(
+            func, command_type, cmd_param_index=0, decorator_name="command_handler"
+        )
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        wrapper._is_handler = True
+        wrapper._command_type = command_type
+        return wrapper
+
+    return decorator
+
+
+# ============================================================================
 # @rejected decorator for compensation handlers
 # ============================================================================
 
@@ -469,6 +517,8 @@ class Router:
         # domain -> {type_suffix -> (msg_type, handler)}
         self._handlers: dict[str, dict[str, tuple[type, Callable]]] = {}
         self._prepare_handlers: dict[str, dict[str, tuple[type, Callable]]] = {}
+        # "domain/command" -> (handler, domain, command)
+        self._rejection_handlers: dict[str, tuple[Callable, str, str]] = {}
 
     @property
     def name(self) -> str:
@@ -577,6 +627,54 @@ class Router:
         """
         return type_url.rsplit(".", 1)[-1] if type_url else ""
 
+    def register_rejection(
+        self,
+        domain: str,
+        command: str,
+        handler: Callable,
+    ) -> None:
+        """Register a rejection handler for a domain/command pair.
+
+        Args:
+            domain: The target domain of the rejected command.
+            command: The command type name (e.g., "CreateHand").
+            handler: The handler function.
+        """
+        key = f"{domain}/{command}"
+        self._rejection_handlers[key] = (handler, domain, command)
+
+    def dispatch_rejection(
+        self,
+        notification: types.Notification,
+        *args,
+        **kwargs,
+    ) -> TypingAny:
+        """Dispatch rejection notification to matching handler.
+
+        Uses suffix matching on command type (like existing code).
+
+        Args:
+            notification: The Notification message.
+            *args, **kwargs: Additional arguments passed to the handler.
+
+        Returns:
+            Handler result, or None if no handler matched.
+        """
+        rejection = types.RejectionNotification()
+        if notification.HasField("payload"):
+            notification.payload.Unpack(rejection)
+
+        domain, command_suffix = _extract_rejection_key(rejection)
+
+        for key, (
+            handler,
+            expected_domain,
+            expected_command,
+        ) in self._rejection_handlers.items():
+            if domain == expected_domain and command_suffix.endswith(expected_command):
+                return handler(notification, *args, **kwargs)
+        return None
+
     # =========================================================================
     # Static helpers (shared across all router types)
     # =========================================================================
@@ -675,6 +773,10 @@ class _FluentRouterBase:
         domain = self._get_registration_domain()
         self._router.register(domain, msg_type, handler)
 
+    def _register_rejection(self, domain: str, command: str, handler: Callable) -> None:
+        """Register a rejection handler."""
+        self._router.register_rejection(domain, command, handler)
+
     def prepare_destinations(self, source: types.EventBook | None) -> list[types.Cover]:
         """Execute prepare phase for source events."""
         if source is None or not source.pages:
@@ -693,8 +795,48 @@ class _FluentRouterBase:
 
     def dispatch(
         self, source: types.EventBook, destinations: list[types.EventBook]
+    ) -> saga_pb2.SagaResponse:
+        """Execute handle phase for source events.
+
+        Returns:
+            SagaResponse containing commands and events.
+        """
+        if not source.pages:
+            return saga_pb2.SagaResponse()
+
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return saga_pb2.SagaResponse()
+
+        event_any = event_page.event
+
+        # Check if this is a Notification (rejection)
+        if event_any.type_url.endswith("Notification"):
+            commands = self.dispatch_rejection(source, destinations)
+            return saga_pb2.SagaResponse(commands=commands)
+
+        root = source.cover.root if source.HasField("cover") else None
+        correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
+        domain = self._get_dispatch_domain(source)
+
+        result = self._router.dispatch(
+            domain, event_any, root, correlation_id, destinations
+        )
+        commands = result if result is not None else []
+        return saga_pb2.SagaResponse(commands=commands)
+
+    def dispatch_rejection(
+        self, source: types.EventBook, destinations: list[types.EventBook]
     ) -> list[types.CommandBook]:
-        """Execute handle phase for source events."""
+        """Dispatch rejection notification to handler.
+
+        Args:
+            source: The source EventBook containing the Notification.
+            destinations: EventBooks for destinations (for compensating commands).
+
+        Returns:
+            List of CommandBooks (compensating commands), or empty list if no handler.
+        """
         if not source.pages:
             return []
 
@@ -703,12 +845,17 @@ class _FluentRouterBase:
             return []
 
         event_any = event_page.event
+        if not event_any.type_url.endswith("Notification"):
+            return []
+
+        notification = types.Notification()
+        event_any.Unpack(notification)
+
         root = source.cover.root if source.HasField("cover") else None
         correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
-        domain = self._get_dispatch_domain(source)
 
-        result = self._router.dispatch(
-            domain, event_any, root, correlation_id, destinations
+        result = self._router.dispatch_rejection(
+            notification, root, correlation_id, destinations
         )
         return result if result is not None else []
 
@@ -796,6 +943,38 @@ class SingleFluentRouter(_FluentRouterBase):
             Self for fluent chaining.
         """
         self._register_handler(msg_type, handler)
+        return self
+
+    def on_rejected(
+        self,
+        domain: str,
+        command: str,
+        handler: Callable[
+            [types.Notification, types.UUID | None, str, list[types.EventBook]],
+            list[types.CommandBook],
+        ],
+    ) -> SingleFluentRouter:
+        """Register a rejection handler for a domain/command pair.
+
+        Called when a command emitted by this saga is rejected.
+
+        Args:
+            domain: The target domain of the rejected command.
+            command: The command type name (e.g., "CreateHand").
+            handler: Function (notification, root, correlation_id, destinations) -> list[CommandBook].
+
+        Returns:
+            Self for fluent chaining.
+
+        Example:
+            router = (
+                SingleFluentRouter("saga-table-hand", "table")
+                .prepare(HandStarted, prepare_hand)
+                .on(HandStarted, handle_started)
+                .on_rejected("hand", "CreateHand", handle_hand_rejected)
+            )
+        """
+        self._register_rejection(domain, command, handler)
         return self
 
 
@@ -889,6 +1068,37 @@ class FluentRouter(_FluentRouterBase):
         self._register_handler(msg_type, handler)
         return self
 
+    def on_rejected(
+        self,
+        domain: str,
+        command: str,
+        handler: Callable[
+            [types.Notification, types.UUID | None, str, list[types.EventBook]],
+            list[types.CommandBook],
+        ],
+    ) -> FluentRouter:
+        """Register a rejection handler for a domain/command pair.
+
+        Called when a command emitted by this saga/PM is rejected.
+
+        Args:
+            domain: The target domain of the rejected command.
+            command: The command type name (e.g., "CreateHand").
+            handler: Function (notification, root, correlation_id, destinations) -> list[CommandBook].
+
+        Returns:
+            Self for fluent chaining.
+
+        Example:
+            router = (
+                FluentRouter("pmg-order-workflow")
+                .domain("order").on(OrderCreated, handle_order)
+                .on_rejected("inventory", "ReserveStock", handle_reserve_rejected)
+            )
+        """
+        self._register_rejection(domain, command, handler)
+        return self
+
 
 class OORouter:
     """Multi-domain router with fluent class registration.
@@ -980,6 +1190,12 @@ class OORouter:
                 event_type = attr._event_type
                 self._register_prepare_handler(cls, attr_name, class_domain, event_type)
 
+            # Check for @rejected decorated methods
+            if getattr(attr, "_is_rejection_handler", False):
+                domain = attr._rejection_domain
+                command = attr._rejection_command
+                self._register_rejection_handler(cls, attr_name, domain, command)
+
     def _register_handler(
         self, cls, method_name: str, domain: str, msg_type: type
     ) -> None:
@@ -1013,6 +1229,22 @@ class OORouter:
 
         self._router.register(domain, msg_type, handler, is_prepare=True)
 
+    def _register_rejection_handler(
+        self, cls, method_name: str, domain: str, command: str
+    ) -> None:
+        """Register a rejection handler that creates instance and calls method."""
+
+        def handler(notification, root, correlation_id, destinations):
+            instance = cls()
+            method = getattr(instance, method_name)
+            # Check method signature for destinations param
+            sig = inspect.signature(method)
+            if "destinations" in sig.parameters:
+                return method(notification, destinations=destinations)
+            return method(notification)
+
+        self._router.register_rejection(domain, command, handler)
+
     def prepare_destinations(self, source: types.EventBook | None) -> list[types.Cover]:
         """Execute prepare phase."""
         if source is None or not source.pages:
@@ -1033,22 +1265,67 @@ class OORouter:
         self,
         source: types.EventBook,
         destinations: list[types.EventBook],
-    ) -> list[types.CommandBook]:
-        """Execute handle phase."""
+    ) -> saga_pb2.SagaResponse:
+        """Execute handle phase.
+
+        Returns:
+            SagaResponse containing commands and events.
+        """
         if not source.pages:
-            return []
+            return saga_pb2.SagaResponse()
 
         domain = source.cover.domain if source.HasField("cover") else ""
         event_page = source.pages[-1]
         if not event_page.HasField("event"):
-            return []
+            return saga_pb2.SagaResponse()
 
         event_any = event_page.event
+
+        # Check if this is a Notification (rejection)
+        if event_any.type_url.endswith("Notification"):
+            commands = self.dispatch_rejection(source, destinations)
+            return saga_pb2.SagaResponse(commands=commands)
+
         root = source.cover.root if source.HasField("cover") else None
         correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
 
         result = self._router.dispatch(
             domain, event_any, root, correlation_id, destinations
+        )
+        commands = result if result is not None else []
+        return saga_pb2.SagaResponse(commands=commands)
+
+    def dispatch_rejection(
+        self, source: types.EventBook, destinations: list[types.EventBook]
+    ) -> list[types.CommandBook]:
+        """Dispatch rejection notification to handler.
+
+        Args:
+            source: The source EventBook containing the Notification.
+            destinations: EventBooks for destinations (for compensating commands).
+
+        Returns:
+            List of CommandBooks (compensating commands), or empty list if no handler.
+        """
+        if not source.pages:
+            return []
+
+        event_page = source.pages[-1]
+        if not event_page.HasField("event"):
+            return []
+
+        event_any = event_page.event
+        if not event_any.type_url.endswith("Notification"):
+            return []
+
+        notification = types.Notification()
+        event_any.Unpack(notification)
+
+        root = source.cover.root if source.HasField("cover") else None
+        correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
+
+        result = self._router.dispatch_rejection(
+            notification, root, correlation_id, destinations
         )
         return result if result is not None else []
 
@@ -1128,9 +1405,7 @@ class CommandHandlerRouter(Generic[S]):
         """Rebuild state from events using the handler's state router."""
         return self._handler.state_router().with_event_book(events)
 
-    def dispatch(
-        self, cmd: types.ContextualCommand
-    ) -> command_handler.BusinessResponse:
+    def dispatch(self, cmd: types.ContextualCommand) -> ch_pb2.BusinessResponse:
         """Dispatch a ContextualCommand to the handler.
 
         Extracts command + prior events, rebuilds state, matches type_url,
@@ -1175,13 +1450,13 @@ class CommandHandlerRouter(Generic[S]):
 
         # Execute handler
         events = self._handler.handle(command_book, command_any, state, seq)
-        return command_handler.BusinessResponse(events=events)
+        return ch_pb2.BusinessResponse(events=events)
 
     def _dispatch_rejection(
         self,
         notification: types.Notification,
         state: S,
-    ) -> command_handler.BusinessResponse:
+    ) -> ch_pb2.BusinessResponse:
         """Dispatch a rejection Notification to the handler's on_rejected."""
         # Unpack rejection details from notification payload
         rejection = types.RejectionNotification()
@@ -1195,12 +1470,12 @@ class CommandHandlerRouter(Generic[S]):
         )
 
         if response.events is not None:
-            return command_handler.BusinessResponse(events=response.events)
+            return ch_pb2.BusinessResponse(events=response.events)
         elif response.notification is not None:
-            return command_handler.BusinessResponse(notification=response.notification)
+            return ch_pb2.BusinessResponse(notification=response.notification)
         else:
-            return command_handler.BusinessResponse(
-                revocation=command_handler.RevocationResponse(
+            return ch_pb2.BusinessResponse(
+                revocation=ch_pb2.RevocationResponse(
                     emit_system_revocation=True,
                     reason=f"Handler returned empty response for {domain}/{command_type_name}",
                 )
@@ -1399,8 +1674,9 @@ class ProcessManagerRouter(Generic[S]):
         response = handler.handle(trigger, state, event_any, destinations or [])
 
         return pm.ProcessManagerHandleResponse(
-            commands=response.commands,
             process_events=response.events,
+            commands=response.commands,
+            facts=response.facts if hasattr(response, "facts") else [],
         )
 
     def _dispatch_notification(

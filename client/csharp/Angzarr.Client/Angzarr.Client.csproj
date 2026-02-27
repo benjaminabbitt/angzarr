@@ -22,22 +22,12 @@
 
     <ItemGroup>
         <PackageReference Include="Google.Protobuf" Version="3.25.1" />
-        <PackageReference Include="Google.Api.CommonProtos" Version="2.14.0" />
+        <PackageReference Include="Google.Api.CommonProtos" Version="2.15.0" />
         <PackageReference Include="Grpc.Net.Client" Version="2.60.0" />
-        <PackageReference Include="Grpc.Tools" Version="2.60.0" PrivateAssets="All" />
     </ItemGroup>
 
-    <!-- Proto compilation -->
+    <!-- Reference examples proto project for framework types -->
     <ItemGroup>
-        <Protobuf
-            Include="../../../proto/angzarr/*.proto"
-            GrpcServices="Both"
-            ProtoRoot="../../../proto"
-        />
-        <Protobuf
-            Include="../../../proto/examples/*.proto"
-            GrpcServices="Both"
-            ProtoRoot="../../../proto"
-        />
+        <ProjectReference Include="../../../examples/csharp/Angzarr.Proto/Angzarr.Proto.csproj" />
     </ItemGroup>
 </Project>

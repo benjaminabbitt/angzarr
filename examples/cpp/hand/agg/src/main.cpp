@@ -13,7 +13,7 @@
 #include "../handlers/deal_handler.hpp"
 #include "../handlers/post_blind_handler.hpp"
 #include "angzarr/command_handler.grpc.pb.h"
-#include "angzarr/command_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "hand_state.hpp"

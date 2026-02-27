@@ -44,13 +44,15 @@ class TestHandle:
 
     def test_custom_returns_commands_and_events(self):
         def handle_fn(trigger, process_state, destinations):
-            commands = [
-                types.CommandBook(cover=types.Cover(domain="target")),
-            ]
-            events = types.EventBook(
-                pages=[types.EventPage(sequence=0)],
+            # Now returns ProcessManagerHandleResponse (proto-generated type)
+            return pm.ProcessManagerHandleResponse(
+                process_events=types.EventBook(
+                    pages=[types.EventPage(sequence=0)],
+                ),
+                commands=[
+                    types.CommandBook(cover=types.Cover(domain="target")),
+                ],
             )
-            return commands, events
 
         h = ProcessManagerHandler("test").with_handle(handle_fn)
         req = pm.ProcessManagerHandleRequest(trigger=_trigger())
@@ -66,7 +68,7 @@ class TestHandle:
 
         def handle_fn(trigger, process_state, destinations):
             received["destinations"] = destinations
-            return [], None
+            return pm.ProcessManagerHandleResponse()
 
         h = ProcessManagerHandler("test").with_handle(handle_fn)
         dest = types.EventBook(pages=[types.EventPage(), types.EventPage()])

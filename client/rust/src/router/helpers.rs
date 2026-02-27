@@ -58,6 +58,7 @@ pub fn pack_event<M: Message>(msg: &M, type_name: &str) -> Any {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto_ext::EventPageExt;
 
     #[test]
     fn event_page_sets_sequence() {
@@ -66,7 +67,7 @@ mod tests {
             value: vec![],
         };
         let page = event_page(42, event);
-        assert_eq!(page.sequence, 42);
+        assert_eq!(page.sequence_num(), 42);
         assert!(page.created_at.is_some());
     }
 
@@ -79,7 +80,7 @@ mod tests {
         };
         let book = new_event_book(&cmd, 1, event);
         assert_eq!(book.pages.len(), 1);
-        assert_eq!(book.pages[0].sequence, 1);
+        assert_eq!(book.pages[0].sequence_num(), 1);
     }
 
     #[test]
@@ -97,7 +98,7 @@ mod tests {
         ];
         let book = new_event_book_multi(&cmd, 5, events);
         assert_eq!(book.pages.len(), 2);
-        assert_eq!(book.pages[0].sequence, 5);
-        assert_eq!(book.pages[1].sequence, 6);
+        assert_eq!(book.pages[0].sequence_num(), 5);
+        assert_eq!(book.pages[1].sequence_num(), 6);
     }
 }

@@ -9,10 +9,8 @@ use async_trait::async_trait;
 use tonic::Status;
 
 use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
-use crate::proto::{
-    CommandBook, Cover, EventBook, Notification, Projection, RevocationResponse, SagaResponse,
-};
-use crate::standalone::{ProcessManagerHandler, SagaHandler};
+use crate::proto::{Cover, EventBook, Notification, Projection, RevocationResponse, SagaResponse};
+use crate::standalone::{ProcessManagerHandleResult, ProcessManagerHandler, SagaHandler};
 
 #[cfg(feature = "otel")]
 use super::metrics::{
@@ -201,7 +199,7 @@ impl<T: ProcessManagerHandler> ProcessManagerHandler for InstrumentedPMHandler<T
         trigger: &EventBook,
         process_state: Option<&EventBook>,
         destinations: &[EventBook],
-    ) -> (Vec<CommandBook>, Option<EventBook>) {
+    ) -> ProcessManagerHandleResult {
         let start = Instant::now();
         let domain = trigger
             .cover
@@ -302,8 +300,8 @@ mod tests {
             _trigger: &EventBook,
             _process_state: Option<&EventBook>,
             _destinations: &[EventBook],
-        ) -> (Vec<CommandBook>, Option<EventBook>) {
-            (vec![], None)
+        ) -> ProcessManagerHandleResult {
+            ProcessManagerHandleResult::default()
         }
     }
 
@@ -313,8 +311,9 @@ mod tests {
         let handler = InstrumentedPMHandler::new(inner, "test-pm");
 
         let trigger = EventBook::default();
-        let (commands, events) = handler.handle(&trigger, None, &[]);
-        assert!(commands.is_empty());
-        assert!(events.is_none());
+        let result = handler.handle(&trigger, None, &[]);
+        assert!(result.commands.is_empty());
+        assert!(result.process_events.is_none());
+        assert!(result.facts.is_empty());
     }
 }

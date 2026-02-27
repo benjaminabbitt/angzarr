@@ -12,7 +12,7 @@ namespace Angzarr.Client.Tests.Steps;
 public class AggregateClientSteps
 {
     private readonly ScenarioContext _ctx;
-    private AggregateRouter<TestAggregateState, FlexibleAggregateHandler>? _aggregateRouter;
+    private CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>? _aggregateRouter;
     private SagaRouter<FlexibleSagaHandler>? _sagaRouter;
     private ProjectorRouter? _projectorRouter;
     private ProcessManagerRouter<TestPMState>? _pmRouter;
@@ -29,7 +29,7 @@ public class AggregateClientSteps
     // ==========================================================================
 
     [Given(@"an aggregate router with handlers for ""(.*)"" and ""(.*)""")]
-    public void GivenAggregateRouterWithHandlers(string type1, string type2)
+    public void GivenCommandHandlerRouterWithHandlers(string type1, string type2)
     {
         var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
             (state, _) => state.Counter++
@@ -45,7 +45,7 @@ public class AggregateClientSteps
             }
         );
 
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -53,7 +53,7 @@ public class AggregateClientSteps
     }
 
     [Given(@"an aggregate router")]
-    public void GivenAnAggregateRouter()
+    public void GivenAnCommandHandlerRouter()
     {
         var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
             (state, _) => state.Counter++
@@ -69,7 +69,7 @@ public class AggregateClientSteps
             }
         );
 
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -170,11 +170,10 @@ public class AggregateClientSteps
                     return MakeEventBook(s);
                 }
             );
-            _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
-                "test",
-                "test",
-                handler
-            );
+            _aggregateRouter = new CommandHandlerRouter<
+                TestAggregateState,
+                FlexibleAggregateHandler
+            >("test", "test", handler);
         }
 
         try
@@ -219,7 +218,7 @@ public class AggregateClientSteps
             }
         );
 
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -548,7 +547,7 @@ public class AggregateClientSteps
             }
         );
 
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -985,7 +984,7 @@ public class AggregateClientSteps
             new string[0],
             (cmdType, book, any, state, seq) => MakeEventBook(seq)
         );
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -1008,7 +1007,7 @@ public class AggregateClientSteps
                 return MakeEventBook(seq);
             }
         );
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -1016,7 +1015,7 @@ public class AggregateClientSteps
     }
 
     [Given(@"an aggregate router with handlers for ""([^""]+)""$")]
-    public void GivenAnAggregateRouterWithHandlersFor(string type)
+    public void GivenAnCommandHandlerRouterWithHandlersFor(string type)
     {
         var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
             (state, _) => state.Counter++
@@ -1030,7 +1029,7 @@ public class AggregateClientSteps
                 return MakeEventBook(seq);
             }
         );
-        _aggregateRouter = new AggregateRouter<TestAggregateState, FlexibleAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestAggregateState, FlexibleAggregateHandler>(
             "test",
             "test",
             handler
@@ -1664,7 +1663,7 @@ public class TestPMState
 /// <summary>
 /// Flexible aggregate handler that can be configured with command types and a dispatch function.
 /// </summary>
-public class FlexibleAggregateHandler : IAggregateDomainHandler<TestAggregateState>
+public class FlexibleAggregateHandler : ICommandHandlerDomainHandler<TestAggregateState>
 {
     private readonly StateRouter<TestAggregateState> _stateRouter;
     private readonly string[] _commandTypes;
@@ -1748,7 +1747,7 @@ public class FlexibleSagaHandler : ISagaDomainHandler
         return new List<Angzarr.Cover>();
     }
 
-    public IReadOnlyList<Angzarr.CommandBook> Execute(
+    public SagaHandlerResponse Execute(
         Angzarr.EventBook source,
         Any eventPayload,
         IReadOnlyList<Angzarr.EventBook> destinations
@@ -1759,10 +1758,11 @@ public class FlexibleSagaHandler : ISagaDomainHandler
         {
             if (typeUrl.EndsWith(evtType))
             {
-                return _dispatch(evtType, source, eventPayload, destinations);
+                var commands = _dispatch(evtType, source, eventPayload, destinations);
+                return SagaHandlerResponse.WithCommands(commands);
             }
         }
-        return new List<Angzarr.CommandBook>();
+        return SagaHandlerResponse.Empty();
     }
 }
 

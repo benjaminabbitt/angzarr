@@ -41,6 +41,24 @@ public class StateRouter<TState>
     ///
     /// Example:
     /// <code>
+    /// var router = new StateRouter&lt;HandState&gt;(() =&gt; new HandState
+    /// {
+    ///     Pots = new List&lt;PotInfo&gt; { new PotInfo { PotType = "main" } }
+    /// });
+    /// </code>
+    /// </summary>
+    /// <param name="factory">Factory function to create initial state.</param>
+    public StateRouter(Func<TState> factory)
+    {
+        _factory = factory;
+    }
+
+    /// <summary>
+    /// Create a StateRouter with a custom state factory.
+    /// Alternative static factory method.
+    ///
+    /// Example:
+    /// <code>
     /// var router = StateRouter&lt;HandState&gt;.WithFactory(() =&gt; new HandState
     /// {
     ///     Pots = new List&lt;PotState&gt; { new PotState { PotType = "main" } }
@@ -52,11 +70,6 @@ public class StateRouter<TState>
     public static StateRouter<TState> WithFactory(Func<TState> factory)
     {
         return new StateRouter<TState>(factory);
-    }
-
-    private StateRouter(Func<TState> factory)
-    {
-        _factory = factory;
     }
 
     private TState CreateState()
@@ -98,6 +111,15 @@ public class StateRouter<TState>
             ApplyEvent(state, page.Event);
         }
         return state;
+    }
+
+    /// <summary>
+    /// Apply a single event to an existing state.
+    /// Useful when state is managed externally (e.g., in OO aggregates).
+    /// </summary>
+    public void ApplySingle(TState state, Any eventAny)
+    {
+        ApplyEvent(state, eventAny);
     }
 
     private void ApplyEvent(TState state, Any eventAny)

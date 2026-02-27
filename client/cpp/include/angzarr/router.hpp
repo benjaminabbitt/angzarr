@@ -34,7 +34,7 @@ class CommandRouter {
     using CommandHandler =
         std::function<EventBook(const CommandBook&, const google::protobuf::Any&, State&, int)>;
     using RejectionHandler = std::function<RejectionHandlerResponse(const Notification&, State&)>;
-    using StateRebuilder = std::function<State(const EventBook*)>;
+    using StateRebuilder = std::function<State(const EventBook&)>;
 
     explicit CommandRouter(const std::string& domain, StateRebuilder rebuild = nullptr)
         : domain_(domain), rebuild_(std::move(rebuild)) {}
@@ -44,6 +44,37 @@ class CommandRouter {
      */
     CommandRouter& on(const std::string& suffix, CommandHandler handler) {
         handlers_.emplace_back(suffix, std::move(handler));
+        return *this;
+    }
+
+    /**
+     * Register a typed handler for a command/event pair.
+     *
+     * The handler signature is: Event(const Command&, const State&)
+     * This provides type-safe auto-unpacking of commands and auto-packing of events.
+     *
+     * @tparam Command The protobuf command type
+     * @tparam Event The protobuf event type to emit
+     * @param handler Function taking (const Command&, const State&) and returning Event
+     */
+    template <typename Command, typename Event>
+    CommandRouter& on(std::function<Event(const Command&, const State&)> handler) {
+        std::string suffix = Command::descriptor()->name();
+        handlers_.emplace_back(
+            suffix,
+            [handler](const CommandBook& cmd_book, const google::protobuf::Any& cmd_any,
+                      State& state, int seq) -> EventBook {
+                Command cmd;
+                cmd_any.UnpackTo(&cmd);
+                Event event = handler(cmd, state);
+
+                EventBook result;
+                result.mutable_cover()->CopyFrom(cmd_book.cover());
+                auto* page = result.add_pages();
+                page->set_sequence(seq);
+                page->mutable_event()->PackFrom(event);
+                return result;
+            });
         return *this;
     }
 
@@ -61,10 +92,10 @@ class CommandRouter {
      */
     BusinessResponse dispatch(const ContextualCommand& cmd) {
         const auto& command_book = cmd.command();
-        const auto* prior_events = cmd.has_events() ? &cmd.events() : nullptr;
+        const EventBook& prior_events = cmd.events();
 
         auto state = get_state(prior_events);
-        int seq = helpers::next_sequence(prior_events);
+        int seq = cmd.has_events() ? helpers::next_sequence(&prior_events) : 0;
 
         if (command_book.pages_size() == 0) {
             throw InvalidArgumentError("No command pages");
@@ -98,7 +129,7 @@ class CommandRouter {
     }
 
    private:
-    State get_state(const EventBook* event_book) {
+    State get_state(const EventBook& event_book) {
         if (rebuild_) {
             return rebuild_(event_book);
         }

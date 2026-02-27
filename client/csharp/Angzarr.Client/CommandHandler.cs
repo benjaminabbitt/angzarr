@@ -273,7 +273,12 @@ public abstract class CommandHandler<TState>
         _eventBook.Pages.Add(page);
     }
 
-    private void ApplyEvent(TState state, Any eventAny)
+    /// <summary>
+    /// Apply a single event to state.
+    /// Default implementation uses [Applies] attributes to dispatch.
+    /// Override this method if you need custom dispatch logic.
+    /// </summary>
+    protected virtual void ApplyEvent(TState state, Any eventAny)
     {
         var applierTable = _applierTables[GetType()];
         foreach (var (suffix, (method, eventType)) in applierTable)

@@ -40,6 +40,6 @@ pub use runtime::Runtime;
 pub use server::{ServerInfo, SingleDomainEventQuery, StandaloneAggregateService};
 pub use speculative::{DomainStateSpec, PmSpeculativeResult, SpeculativeExecutor};
 pub use traits::{
-    CommandHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectionMode, ProjectorConfig,
-    ProjectorHandler, SagaConfig, SagaHandler,
+    CommandHandler, ProcessManagerConfig, ProcessManagerHandleResult, ProcessManagerHandler,
+    ProjectionMode, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler,
 };

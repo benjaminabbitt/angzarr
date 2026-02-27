@@ -73,11 +73,13 @@ class ProcessManager {
      */
     struct DispatchResult {
         std::vector<CommandBook> commands;
+        std::vector<EventBook> facts;
         std::optional<RejectionHandlerResponse> rejection_response;
     };
 
     DispatchResult dispatch(const EventBook& book, const EventBook* prior_events = nullptr) {
         rebuild_state(prior_events);
+        clear_facts();
 
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
         if (correlation_id.empty()) {
@@ -95,7 +97,7 @@ class ProcessManager {
                 page.event().UnpackTo(&notification);
                 auto response = dispatch_rejection(notification);
                 // Return rejection response
-                return DispatchResult{{}, response};
+                return DispatchResult{{}, get_facts(), response};
             }
 
             auto suffix = helpers::type_name_from_url(page.event().type_url());
@@ -113,7 +115,7 @@ class ProcessManager {
                 commands.insert(commands.end(), cmds.begin(), cmds.end());
             }
         }
-        return DispatchResult{commands, std::nullopt};
+        return DispatchResult{commands, get_facts(), std::nullopt};
     }
 
     /**
@@ -148,6 +150,26 @@ class ProcessManager {
      * Create an empty state instance.
      */
     virtual StateT create_empty_state() = 0;
+
+    /**
+     * Emit a fact to be injected into another aggregate.
+     *
+     * Facts are events injected directly into target aggregates, bypassing
+     * command validation. Use for cross-aggregate coordination.
+     *
+     * @param fact The event book to emit.
+     */
+    void emit_fact(EventBook fact) { facts_.push_back(std::move(fact)); }
+
+    /**
+     * Clear accumulated facts. Called before each dispatch.
+     */
+    void clear_facts() { facts_.clear(); }
+
+    /**
+     * Get accumulated facts.
+     */
+    std::vector<EventBook> get_facts() const { return facts_; }
 
     /**
      * Pack commands for output.
@@ -254,6 +276,7 @@ class ProcessManager {
     }
 
     StateT state_;
+    std::vector<EventBook> facts_;
     bool exists_ = false;
 };
 

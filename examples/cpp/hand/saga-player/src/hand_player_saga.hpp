@@ -1,6 +1,6 @@
 #pragma once
 
-#include "angzarr/event_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/player.pb.h"
@@ -13,12 +13,7 @@ namespace saga {
 /// Sends DepositFunds commands to Player domain.
 angzarr::EventRouter create_hand_player_router();
 
-/// Prepare handler: declare all winners as destinations.
-std::vector<angzarr::Cover> prepare_pot_awarded(const examples::PotAwarded& event);
-
-/// Handle PotAwarded: produce DepositFunds commands for each winner.
-angzarr::CommandBook handle_pot_awarded(const examples::PotAwarded& event,
-                                        const std::vector<angzarr::EventBook>& destinations);
+// Note: Handlers are internal to the router - only create_hand_player_router is public
 
 }  // namespace saga
 }  // namespace hand

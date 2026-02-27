@@ -96,12 +96,18 @@ pub use router::{
     new_event_book,
     new_event_book_multi,
     pack_event,
+    // Upcaster types
+    BoxedUpcasterHandler,
+    // CloudEvents types
+    CloudEventsHandler,
+    CloudEventsProjector,
+    CloudEventsRouter,
     // Handler traits
-    AggregateDomainHandler,
+    CommandHandlerDomainHandler,
     // Mode markers
-    AggregateMode,
+    CommandHandlerMode,
     // Router types
-    AggregateRouter,
+    CommandHandlerRouter,
     // Error types
     CommandRejectedError,
     CommandResult,
@@ -115,12 +121,18 @@ pub use router::{
     ProjectorMode,
     ProjectorRouter,
     RejectionHandlerResponse,
+    // Saga types
+    SagaContext,
     SagaDomainHandler,
+    SagaHandlerResponse,
     SagaMode,
     SagaRouter,
     StateFactory,
     StateRouter,
     UnpackAny,
+    UpcasterHandler,
+    UpcasterMode,
+    UpcasterRouter,
 };
 
 // Note: dispatch_command! and dispatch_event! macros are available at crate root
@@ -128,13 +140,14 @@ pub use router::{
 
 // Re-export handler types
 pub use handler::{
-    CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler, StatePacker,
+    CloudEventsGrpcHandler, CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler,
+    SagaHandler, StatePacker, UpcasterGrpcHandler, UpcasterHandleClosureFn, UpcasterHandleFn,
 };
 
 // Re-export server utilities
 pub use server::{
-    run_command_handler_server, run_process_manager_server, run_projector_server, run_saga_server,
-    ServerConfig,
+    run_cloudevents_projector, run_command_handler_server, run_process_manager_server,
+    run_projector_server, run_saga_server, run_upcaster_server, ServerConfig,
 };
 
 // Re-export validation helpers

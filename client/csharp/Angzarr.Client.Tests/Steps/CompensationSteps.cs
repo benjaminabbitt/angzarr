@@ -15,7 +15,10 @@ public class CompensationSteps
     private RejectionHandlerResponse? _response;
     private Angzarr.Notification? _notification;
     private Angzarr.RejectionNotification? _rejectionNotification;
-    private AggregateRouter<CompensationTestState, CompensationAggregateHandler>? _aggregateRouter;
+    private CommandHandlerRouter<
+        CompensationTestState,
+        CompensationAggregateHandler
+    >? _aggregateRouter;
     private Angzarr.BusinessResponse? _businessResponse;
 
     public CompensationSteps(ScenarioContext ctx) => _ctx = ctx;
@@ -77,11 +80,10 @@ public class CompensationSteps
                 };
             }
         );
-        _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
-            "test",
-            "test",
-            handler
-        );
+        _aggregateRouter = new CommandHandlerRouter<
+            CompensationTestState,
+            CompensationAggregateHandler
+        >("test", "test", handler);
     }
 
     [When(@"I get the rejected command")]
@@ -173,11 +175,10 @@ public class CompensationSteps
                 return new RejectionHandlerResponse { Notification = notification };
             }
         );
-        _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
-            "test",
-            "test",
-            handler
-        );
+        _aggregateRouter = new CommandHandlerRouter<
+            CompensationTestState,
+            CompensationAggregateHandler
+        >("test", "test", handler);
     }
 
     [Given(@"a rejection handler that emits compensation events")]
@@ -209,11 +210,10 @@ public class CompensationSteps
                 };
             }
         );
-        _aggregateRouter = new AggregateRouter<CompensationTestState, CompensationAggregateHandler>(
-            "test",
-            "test",
-            handler
-        );
+        _aggregateRouter = new CommandHandlerRouter<
+            CompensationTestState,
+            CompensationAggregateHandler
+        >("test", "test", handler);
     }
 
     // Additional compensation steps
@@ -780,7 +780,7 @@ public class CompensationTestState
 /// <summary>
 /// Aggregate handler for compensation testing that supports rejection handling.
 /// </summary>
-public class CompensationAggregateHandler : IAggregateDomainHandler<CompensationTestState>
+public class CompensationAggregateHandler : ICommandHandlerDomainHandler<CompensationTestState>
 {
     private readonly StateRouter<CompensationTestState> _stateRouter;
     private readonly string _rejectionDomain;

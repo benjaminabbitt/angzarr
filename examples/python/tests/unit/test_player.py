@@ -20,6 +20,13 @@ sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "player" / "agg"))
 sys.path.insert(0, str(root / "player" / "agg" / "handlers"))
 
+from handlers.commands import (
+    handle_deposit_funds,
+    handle_register_player,
+    handle_release_funds,
+    handle_reserve_funds,
+    handle_withdraw_funds,
+)
 from handlers.state import PlayerState, build_state
 
 from angzarr_client.errors import CommandRejectedError
@@ -37,12 +44,6 @@ def state_from_event_book(event_book):
     events = [page.event for page in event_book.pages if page.event]
     return build_state(state, events)
 
-
-from handlers.deposit_funds import handle_deposit_funds
-from handlers.register_player import handle_register_player
-from handlers.release_funds import handle_release_funds
-from handlers.reserve_funds import handle_reserve_funds
-from handlers.withdraw_funds import handle_withdraw_funds
 
 from tests.conftest import (
     ScenarioContext,
@@ -76,22 +77,26 @@ def _event_book(ctx: ScenarioContext) -> types.EventBook:
 
 
 def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
-    """Execute a command handler."""
-    cmd_any = ProtoAny()
-    cmd_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
+    """Execute a command handler.
 
+    The functional handlers take (cmd, state, seq) and return raw events.
+    We wrap the result in an EventBook for the test assertions.
+    """
     event_book = _event_book(ctx)
     state = state_from_event_book(event_book)
     seq = len(ctx.events)
 
-    cmd_book = make_command_book(
-        make_cover(ctx.domain, ctx.root),
-        cmd_any,
-        seq,
-    )
-
     try:
-        ctx.result = handler_fn(cmd_book, cmd_any, state, seq)
+        # Call handler with functional signature: (cmd, state, seq)
+        event = handler_fn(command_msg, state, seq)
+
+        # Wrap event in EventBook for test assertions
+        event_any = ProtoAny()
+        event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+
+        result = types.EventBook()
+        result.pages.append(types.EventPage(event=event_any, sequence=seq))
+        ctx.result = result
         ctx.error = None
     except CommandRejectedError as e:
         ctx.result = None
@@ -250,7 +255,7 @@ def handle_release_funds_cmd(ctx, table_id):
 @when("I rebuild the player state")
 def rebuild_player_state(ctx):
     """Rebuild state from events."""
-    ctx.state = build_state(_event_book(ctx))
+    ctx.state = state_from_event_book(_event_book(ctx))
 
 
 # --- Then steps ---
@@ -399,4 +404,4 @@ def state_has_reserved_funds(ctx, amount):
 def state_has_available_balance(ctx, amount):
     """Verify state available_balance."""
     assert ctx.state is not None
-    assert ctx.state.available_balance() == amount
+    assert ctx.state.available_balance == amount

@@ -11,7 +11,7 @@ namespace Angzarr.Client.Tests.Steps;
 public class RouterSteps
 {
     private readonly ScenarioContext _ctx;
-    private AggregateRouter<TestState, TestAggregateHandler>? _aggregateRouter;
+    private CommandHandlerRouter<TestState, TestAggregateHandler>? _aggregateRouter;
     private SagaRouter<TestSagaHandler>? _sagaRouter;
     private ProcessManagerRouter<TestPMState>? _pmRouter;
     private ProjectorRouter? _projectorRouter;
@@ -124,7 +124,7 @@ public class RouterSteps
     }
 
     // =========================================================================
-    // Aggregate Router steps (using new AggregateRouter)
+    // Aggregate Router steps (using new CommandHandlerRouter)
     // =========================================================================
 
     [Given(@"a CommandRouter for domain ""(.*)""")]
@@ -146,7 +146,7 @@ public class RouterSteps
         _registeredCommandTypes.Add(commandType);
         // Create the aggregate router with the registered command types
         var handler = new TestAggregateHandler(_stateRouter!, _registeredCommandTypes.ToArray());
-        _aggregateRouter = new AggregateRouter<TestState, TestAggregateHandler>(
+        _aggregateRouter = new CommandHandlerRouter<TestState, TestAggregateHandler>(
             _currentDomain,
             _currentDomain,
             handler
@@ -645,9 +645,9 @@ public class TestState
 // TestPMState is defined in AggregateClientSteps.cs
 
 /// <summary>
-/// Test aggregate handler implementing IAggregateDomainHandler.
+/// Test aggregate handler implementing ICommandHandlerDomainHandler.
 /// </summary>
-public class TestAggregateHandler : IAggregateDomainHandler<TestState>
+public class TestAggregateHandler : ICommandHandlerDomainHandler<TestState>
 {
     private readonly StateRouter<TestState> _stateRouter;
     private readonly string[] _commandTypes;
@@ -702,14 +702,14 @@ public class TestSagaHandler : ISagaDomainHandler
         return new List<Angzarr.Cover>();
     }
 
-    public IReadOnlyList<Angzarr.CommandBook> Execute(
+    public SagaHandlerResponse Execute(
         Angzarr.EventBook source,
         Any eventPayload,
         IReadOnlyList<Angzarr.EventBook> destinations
     )
     {
-        // Return empty commands for basic tests
-        return new List<Angzarr.CommandBook>();
+        // Return empty response for basic tests
+        return SagaHandlerResponse.Empty();
     }
 }
 

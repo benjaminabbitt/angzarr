@@ -29,6 +29,7 @@ set(PROTO_FILES
     ${PROTO_DIR}/angzarr/stream.proto
     ${PROTO_DIR}/angzarr/upcaster.proto
     ${PROTO_DIR}/angzarr/meta.proto
+    ${PROTO_DIR}/angzarr/cloudevents.proto
     ${PROTO_DIR}/examples/poker_types.proto
     ${PROTO_DIR}/examples/player.proto
     ${PROTO_DIR}/examples/table.proto
@@ -84,6 +85,9 @@ add_library(angzarr-client
     src/validation.cpp
     src/router.cpp
     src/aggregate.cpp
+    src/saga_context.cpp
+    src/cloudevents.cpp
+    src/upcaster.cpp
     ${PROTO_SRCS}
     ${GRPC_SRCS}
 )
@@ -99,6 +103,7 @@ target_link_libraries(angzarr-client
     PUBLIC
         protobuf::libprotobuf
         gRPC::grpc++
+        gRPC::grpc++_reflection
         absl::strings
 )
 

@@ -13,7 +13,7 @@
 
 use angzarr_client::proto::examples::{DealCards, HandStarted, PlayerInHand};
 use angzarr_client::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid};
-use angzarr_client::{run_saga_server, CommandResult};
+use angzarr_client::{run_saga_server, CommandResult, SagaHandlerResponse};
 #[allow(unused_imports)]
 use angzarr_macros::{prepares, reacts_to, saga};
 use prost::Message;
@@ -43,7 +43,7 @@ impl TableHandSaga {
         &self,
         event: HandStarted,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         // Get the destination's next sequence
         let dest_seq = destinations
             .first()
@@ -78,21 +78,24 @@ impl TableHandSaga {
             value: deal_cards.encode_to_vec(),
         };
 
-        Ok(vec![CommandBook {
-            cover: Some(Cover {
-                domain: "hand".to_string(),
-                root: Some(Uuid {
-                    value: event.hand_root,
+        Ok(SagaHandlerResponse {
+            commands: vec![CommandBook {
+                cover: Some(Cover {
+                    domain: "hand".to_string(),
+                    root: Some(Uuid {
+                        value: event.hand_root,
+                    }),
+                    ..Default::default()
                 }),
-                ..Default::default()
-            }),
-            pages: vec![CommandPage {
-                sequence: dest_seq,
-                payload: Some(angzarr_client::proto::command_page::Payload::Command(command_any)),
-                ..Default::default()
+                pages: vec![CommandPage {
+                    sequence: dest_seq,
+                    payload: Some(angzarr_client::proto::command_page::Payload::Command(command_any)),
+                    ..Default::default()
+                }],
+                saga_origin: None,
             }],
-            saga_origin: None,
-        }])
+            events: vec![],
+        })
     }
 }
 

@@ -30,10 +30,13 @@
 //!     .domain("hand", HandProjectorHandler::new());
 //! ```
 
+mod cloudevents;
 mod dispatch;
 mod helpers;
+mod saga_context;
 mod state;
 mod traits;
+mod upcaster;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -50,12 +53,17 @@ use crate::proto::{
 
 // Re-export public types
 pub use helpers::{event_book_from, event_page, new_event_book, new_event_book_multi, pack_event};
+pub use saga_context::SagaContext;
 pub use state::{EventApplier, StateFactory, StateRouter};
 pub use traits::{
-    AggregateDomainHandler, CommandRejectedError, CommandResult, ProcessManagerDomainHandler,
+    CommandHandlerDomainHandler, CommandRejectedError, CommandResult, ProcessManagerDomainHandler,
     ProcessManagerResponse, ProjectorDomainHandler, RejectionHandlerResponse, SagaDomainHandler,
-    UnpackAny,
+    SagaHandlerResponse, UnpackAny,
 };
+pub use upcaster::{BoxedUpcasterHandler, UpcasterHandler, UpcasterMode, UpcasterRouter};
+
+// CloudEvents
+pub use cloudevents::{CloudEventsHandler, CloudEventsProjector, CloudEventsRouter};
 
 // Re-export macros (defined in dispatch module via #[macro_export])
 pub use crate::dispatch_command;
@@ -65,8 +73,8 @@ pub use crate::dispatch_event;
 // Mode Markers
 // ============================================================================
 
-/// Mode marker for aggregate routers (commands → events).
-pub struct AggregateMode;
+/// Mode marker for command handler routers (commands → events).
+pub struct CommandHandlerMode;
 
 /// Mode marker for saga routers (events → commands, stateless).
 pub struct SagaMode;
@@ -78,16 +86,16 @@ pub struct ProcessManagerMode;
 pub struct ProjectorMode;
 
 // ============================================================================
-// SingleDomainRouter — Aggregate Mode
+// SingleDomainRouter — CommandHandler Mode
 // ============================================================================
 
-/// Router for aggregate components (commands → events, single domain).
+/// Router for command handler components (commands → events, single domain).
 ///
 /// Domain is set at construction time. No `.domain()` method exists,
 /// enforcing single-domain constraint at compile time.
-pub struct AggregateRouter<S, H>
+pub struct CommandHandlerRouter<S, H>
 where
-    H: AggregateDomainHandler<State = S>,
+    H: CommandHandlerDomainHandler<State = S>,
 {
     name: String,
     domain: String,
@@ -95,12 +103,12 @@ where
     _state: PhantomData<S>,
 }
 
-impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
-    AggregateRouter<S, H>
+impl<S: Default + Send + Sync + 'static, H: CommandHandlerDomainHandler<State = S>>
+    CommandHandlerRouter<S, H>
 {
-    /// Create a new aggregate router.
+    /// Create a new command handler router.
     ///
-    /// Aggregates handle commands and emit events. Single domain enforced at construction.
+    /// Command handlers accept commands and emit events. Single domain enforced at construction.
     pub fn new(name: impl Into<String>, domain: impl Into<String>, handler: H) -> Self {
         Self {
             name: name.into(),
@@ -125,7 +133,7 @@ impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
         self.handler.command_types()
     }
 
-    /// Get subscriptions for this aggregate.
+    /// Get subscriptions for this command handler.
     pub fn subscriptions(&self) -> Vec<(String, Vec<String>)> {
         vec![(self.domain.clone(), self.command_types())]
     }
@@ -165,7 +173,7 @@ impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
 
         // Check for Notification (rejection/compensation)
         if type_url.ends_with("Notification") {
-            return dispatch_aggregate_notification(&self.handler, command_any, &state);
+            return dispatch_command_handler_notification(&self.handler, command_any, &state);
         }
 
         // Execute handler
@@ -179,9 +187,9 @@ impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
     }
 }
 
-/// Dispatch a Notification to the aggregate's rejection handler.
-fn dispatch_aggregate_notification<S: Default + 'static>(
-    handler: &dyn AggregateDomainHandler<State = S>,
+/// Dispatch a Notification to the command handler's rejection handler.
+fn dispatch_command_handler_notification<S: Default + 'static>(
+    handler: &dyn CommandHandlerDomainHandler<State = S>,
     command_any: &Any,
     state: &S,
 ) -> Result<BusinessResponse, Status> {
@@ -312,13 +320,49 @@ impl<H: SagaDomainHandler> SagaRouter<H> {
             _ => return Err(Status::invalid_argument("Missing event payload")),
         };
 
-        let commands = self.handler.execute(source, event_any, destinations)?;
+        // Check for Notification (rejection/compensation)
+        if event_any.type_url.ends_with("Notification") {
+            return dispatch_saga_notification(&self.handler, event_any);
+        }
+
+        let response = self.handler.execute(source, event_any, destinations)?;
 
         Ok(SagaResponse {
-            commands,
-            events: vec![],
+            commands: response.commands,
+            events: response.events,
         })
     }
+}
+
+/// Dispatch a Notification to the saga's rejection handler.
+fn dispatch_saga_notification<H: SagaDomainHandler>(
+    handler: &H,
+    event_any: &Any,
+) -> Result<SagaResponse, Status> {
+    use prost::Message;
+
+    let notification = Notification::decode(event_any.value.as_slice())
+        .map_err(|e| Status::invalid_argument(format!("Failed to decode Notification: {}", e)))?;
+
+    let rejection = notification
+        .payload
+        .as_ref()
+        .map(|p| RejectionNotification::decode(p.value.as_slice()))
+        .transpose()
+        .map_err(|e| {
+            Status::invalid_argument(format!("Failed to decode RejectionNotification: {}", e))
+        })?
+        .unwrap_or_default();
+
+    let (domain, cmd_suffix) = extract_rejection_key(&rejection);
+
+    let response = handler.on_rejected(&notification, &domain, &cmd_suffix)?;
+
+    // Sagas can only return events for compensation (no commands on rejection)
+    Ok(SagaResponse {
+        commands: vec![],
+        events: response.events.into_iter().collect(),
+    })
 }
 
 /// Extract domain and command suffix from a RejectionNotification.
@@ -494,6 +538,7 @@ impl<S: Default + Send + Sync + 'static> ProcessManagerRouter<S> {
         Ok(ProcessManagerHandleResponse {
             commands: response.commands,
             process_events: response.process_events,
+            facts: response.facts,
         })
     }
 }
@@ -526,6 +571,7 @@ fn dispatch_pm_notification<S: Default>(
     Ok(ProcessManagerHandleResponse {
         commands: vec![],
         process_events: response.events,
+        facts: vec![],
     })
 }
 
@@ -606,7 +652,7 @@ mod tests {
     // Test mode markers exist
     #[test]
     fn mode_markers_are_zero_sized() {
-        assert_eq!(std::mem::size_of::<AggregateMode>(), 0);
+        assert_eq!(std::mem::size_of::<CommandHandlerMode>(), 0);
         assert_eq!(std::mem::size_of::<SagaMode>(), 0);
         assert_eq!(std::mem::size_of::<ProcessManagerMode>(), 0);
         assert_eq!(std::mem::size_of::<ProjectorMode>(), 0);

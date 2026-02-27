@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Angzarr.Client", "Angzarr.Client\Angzarr.Client.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Angzarr.Proto", "Angzarr.Proto\Angzarr.Proto.csproj", "{B2C3D4E5-F6A7-8901-BCDE-F12345678901}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Player.Agg", "Player\Agg\Player.Agg.csproj", "{C3D4E5F6-A7B8-9012-CDEF-123456789012}"
@@ -29,6 +27,16 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HandFlowOO", "HandFlowOO\HandFlowOO.csproj", "{0A1B2C3D-4E5F-6789-ABCD-123456789ABC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Player.Upc", "Player\Upc\Player.Upc.csproj", "{1B2C3D4E-5F6A-789B-CDEF-234567890DEF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrjCloudEvents", "PrjCloudEvents\PrjCloudEvents.csproj", "{2C3D4E5F-6A7B-89AC-DEF0-345678901EF0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Table.SagaHandOO", "Table\SagaHandOO\Table.SagaHandOO.csproj", "{3D4E5F6A-7B8C-9ABD-EF01-456789012F01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrjOutputOO", "PrjOutputOO\PrjOutputOO.csproj", "{4E5F6A7B-8C9D-ABCE-F012-56789012A012}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Player.SagaTable", "Player\SagaTable\Player.SagaTable.csproj", "{5F6A7B8C-9DAE-BCDF-0123-6789012B0123}"
+EndProject
 
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -36,10 +44,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -88,5 +92,25 @@ Global
 		{0A1B2C3D-4E5F-6789-ABCD-123456789ABC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0A1B2C3D-4E5F-6789-ABCD-123456789ABC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0A1B2C3D-4E5F-6789-ABCD-123456789ABC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1B2C3D4E-5F6A-789B-CDEF-234567890DEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B2C3D4E-5F6A-789B-CDEF-234567890DEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B2C3D4E-5F6A-789B-CDEF-234567890DEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B2C3D4E-5F6A-789B-CDEF-234567890DEF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C3D4E5F-6A7B-89AC-DEF0-345678901EF0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C3D4E5F-6A7B-89AC-DEF0-345678901EF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C3D4E5F-6A7B-89AC-DEF0-345678901EF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C3D4E5F-6A7B-89AC-DEF0-345678901EF0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D4E5F6A-7B8C-9ABD-EF01-456789012F01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D4E5F6A-7B8C-9ABD-EF01-456789012F01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D4E5F6A-7B8C-9ABD-EF01-456789012F01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D4E5F6A-7B8C-9ABD-EF01-456789012F01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E5F6A7B-8C9D-ABCE-F012-56789012A012}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E5F6A7B-8C9D-ABCE-F012-56789012A012}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E5F6A7B-8C9D-ABCE-F012-56789012A012}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E5F6A7B-8C9D-ABCE-F012-56789012A012}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6A7B8C-9DAE-BCDF-0123-6789012B0123}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6A7B8C-9DAE-BCDF-0123-6789012B0123}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6A7B8C-9DAE-BCDF-0123-6789012B0123}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6A7B8C-9DAE-BCDF-0123-6789012B0123}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

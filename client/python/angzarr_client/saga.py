@@ -54,6 +54,7 @@ from abc import ABC
 from google.protobuf.any_pb2 import Any
 
 from .helpers import TYPE_URL_PREFIX
+from .proto.angzarr import saga_pb2
 from .proto.angzarr import types_pb2 as types
 from .router import (
     _pack_any,
@@ -124,6 +125,19 @@ class Saga(ABC):
     _dispatch_table: dict[str, tuple[str, type]] = {}
     _prepare_table: dict[str, tuple[str, type]] = {}
     _validated: bool = False
+
+    def __init__(self) -> None:
+        """Initialize saga instance with empty event accumulator."""
+        self._events: list[types.EventBook] = []
+
+    def emit_event(self, event: types.EventBook) -> None:
+        """Emit a fact (event to inject to another aggregate).
+
+        Args:
+            event: EventBook containing the event to inject.
+                   The Cover should specify target domain and root.
+        """
+        self._events.append(event)
 
     @property
     def input_domain(self) -> str:
@@ -331,8 +345,8 @@ class Saga(ABC):
         cls,
         source: types.EventBook,
         destinations: list[types.EventBook] = None,
-    ) -> list[types.CommandBook]:
-        """Phase 2: Process EventBook and return commands.
+    ) -> saga_pb2.SagaResponse:
+        """Phase 2: Process EventBook and return commands and events.
 
         Creates a saga instance and dispatches each event.
         This is the entry point for gRPC integration.
@@ -342,7 +356,7 @@ class Saga(ABC):
             destinations: Optional list of destination EventBooks from prepare phase.
 
         Returns:
-            List of CommandBooks to send.
+            SagaResponse containing commands and events.
         """
         cls._ensure_configured()
         saga = cls()
@@ -356,4 +370,4 @@ class Saga(ABC):
                     saga.dispatch(page.event, root, correlation_id, destinations)
                 )
 
-        return commands
+        return saga_pb2.SagaResponse(commands=commands, events=saga._events)

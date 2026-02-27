@@ -14,6 +14,12 @@ from .client import (
     QueryClient,
     SpeculativeClient,
 )
+from .cloudevents import (
+    CloudEvent,
+    CloudEventsProjector,
+    CloudEventsResponse,
+    CloudEventsRouter,
+)
 from .compensation import (
     CompensationContext,
     RejectionHandlerResponse,
@@ -105,6 +111,7 @@ from .router import (
     next_sequence as router_next_sequence,
 )
 from .saga import Saga
+from .saga_context import SagaContext
 from .saga_handler import ExecuteFunc, PrepareFunc, SagaHandler, run_saga_server
 from .server import (
     cleanup_socket,
@@ -278,4 +285,11 @@ __all__ = [
     "ProcessManagerDomainHandler",
     "ProjectorDomainHandler",
     "ProcessManagerResponse",
+    # CloudEvents
+    "CloudEvent",
+    "CloudEventsProjector",
+    "CloudEventsRouter",
+    "CloudEventsResponse",
+    # Saga Context
+    "SagaContext",
 ]

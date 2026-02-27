@@ -1,4 +1,8 @@
-"""Step definitions for player aggregate tests."""
+"""Step definitions for player aggregate tests.
+
+Uses functional handler pattern: handlers are standalone functions
+that take (cmd, state, seq) and return events.
+"""
 
 import sys
 from datetime import datetime, timezone
@@ -11,10 +15,19 @@ sys.path.insert(0, str(project_root))
 from behave import given, then, use_step_matcher, when
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
-from player.agg.handlers import Player
+from player.agg.handlers import (
+    handle_deposit_funds,
+    handle_register_player,
+    handle_release_funds,
+    handle_reserve_funds,
+    handle_sit_in,
+    handle_sit_out,
+    handle_withdraw_funds,
+)
+from player.agg.handlers.state import PlayerState, build_state
 
 from angzarr_client.errors import CommandRejectedError
-from angzarr_client.helpers import try_unpack, type_matches, type_name_from_url
+from angzarr_client.helpers import try_unpack, type_name_from_url
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
@@ -135,24 +148,54 @@ def step_given_funds_reserved(context, amount, table_id):
 
 # --- When steps ---
 
+# Handler lookup by method name
+_HANDLER_MAP = {
+    "register": handle_register_player,
+    "deposit": handle_deposit_funds,
+    "withdraw": handle_withdraw_funds,
+    "reserve": handle_reserve_funds,
+    "release": handle_release_funds,
+    "sit_out": handle_sit_out,
+    "sit_in": handle_sit_in,
+}
+
+
+def _build_state_from_events(events: list) -> PlayerState:
+    """Build player state from list of EventPages."""
+    state = PlayerState()
+    event_anys = [page.event for page in events if page.HasField("event")]
+    return build_state(state, event_anys)
+
 
 def _execute_handler(context, method_name: str, cmd):
-    """Execute a command handler method on the Player aggregate."""
-    event_book = _make_event_book(context.events if hasattr(context, "events") else [])
-    agg = Player(event_book)
+    """Execute a functional command handler."""
+    events = context.events if hasattr(context, "events") else []
+    state = _build_state_from_events(events)
+    seq = len(events)
+
+    handler = _HANDLER_MAP.get(method_name)
+    if not handler:
+        raise ValueError(f"Unknown handler: {method_name}")
 
     try:
-        method = getattr(agg, method_name)
-        result = method(cmd)
-        # Get the event book with new events
-        result_book = agg.event_book()
+        result_event = handler(cmd, state, seq)
+
+        # Pack result into EventPage and EventBook
+        event_any = ProtoAny()
+        event_any.Pack(result_event, type_url_prefix="type.googleapis.com/")
+        result_page = types.EventPage(
+            sequence=seq,
+            event=event_any,
+            created_at=make_timestamp(),
+        )
+        result_book = _make_event_book([result_page])
+
         context.result = result_book
         context.error = None
-        # Extract the event for assertion steps
-        if result_book.pages:
-            context.result_event_any = result_book.pages[0].event
-        # Store aggregate for state access
-        context.agg = agg
+        context.result_event_any = event_any
+
+        # Store state for assertion steps (apply new event)
+        context.state = build_state(state, [event_any])
     except CommandRejectedError as e:
         context.result = None
         context.error = e
@@ -228,8 +271,7 @@ def step_when_release_funds(context, table_id):
 @when(r"I rebuild the player state")
 def step_when_rebuild_state(context):
     """Rebuild player state from events."""
-    event_book = _make_event_book(context.events)
-    context.agg = Player(event_book)
+    context.state = _build_state_from_events(context.events)
 
 
 # --- Then steps ---
@@ -345,26 +387,26 @@ def step_then_error_contains(context, text):
 @then(r"the player state has bankroll (?P<amount>\d+)")
 def step_then_state_has_bankroll(context, amount):
     """Verify the player state bankroll."""
-    assert context.agg is not None, "No player aggregate"
-    assert context.agg.bankroll == int(
+    assert context.state is not None, "No player state"
+    assert context.state.bankroll == int(
         amount
-    ), f"Expected bankroll={amount}, got {context.agg.bankroll}"
+    ), f"Expected bankroll={amount}, got {context.state.bankroll}"
 
 
 @then(r"the player state has reserved_funds (?P<amount>\d+)")
 def step_then_state_has_reserved_funds(context, amount):
     """Verify the player state reserved_funds."""
-    assert context.agg is not None, "No player aggregate"
-    assert context.agg.reserved_funds == int(
+    assert context.state is not None, "No player state"
+    assert context.state.reserved_funds == int(
         amount
-    ), f"Expected reserved_funds={amount}, got {context.agg.reserved_funds}"
+    ), f"Expected reserved_funds={amount}, got {context.state.reserved_funds}"
 
 
 @then(r"the player state has available_balance (?P<amount>\d+)")
 def step_then_state_has_available_balance(context, amount):
     """Verify the player state available_balance."""
-    assert context.agg is not None, "No player aggregate"
-    available = context.agg.available_balance
+    assert context.state is not None, "No player state"
+    available = context.state.available_balance
     assert available == int(
         amount
     ), f"Expected available_balance={amount}, got {available}"

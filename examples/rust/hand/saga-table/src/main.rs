@@ -6,7 +6,8 @@
 use angzarr_client::proto::examples::{EndHand, HandComplete, PotResult};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
-    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaRouter, UnpackAny,
+    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaHandlerResponse,
+    SagaRouter, UnpackAny,
 };
 use prost::Message;
 use prost_types::Any;
@@ -32,11 +33,11 @@ impl SagaDomainHandler for HandTableSagaHandler {
         source: &EventBook,
         event: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with("HandComplete") {
             return Self::handle_hand_complete(source, event, destinations);
         }
-        Ok(vec![])
+        Ok(SagaHandlerResponse::default())
     }
 }
 
@@ -59,7 +60,7 @@ impl HandTableSagaHandler {
         source: &EventBook,
         event_any: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         let event: HandComplete = event_any
             .unpack()
             .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandComplete: {}", e)))?;
@@ -101,19 +102,22 @@ impl HandTableSagaHandler {
             value: end_hand.encode_to_vec(),
         };
 
-        Ok(vec![CommandBook {
-            cover: Some(Cover {
-                domain: "table".to_string(),
-                root: Some(Uuid { value: event.table_root }),
-                ..Default::default()
-            }),
-            pages: vec![CommandPage {
-                sequence: dest_seq,
-                payload: Some(command_page::Payload::Command(command_any)),
-                ..Default::default()
+        Ok(SagaHandlerResponse {
+            commands: vec![CommandBook {
+                cover: Some(Cover {
+                    domain: "table".to_string(),
+                    root: Some(Uuid { value: event.table_root }),
+                    ..Default::default()
+                }),
+                pages: vec![CommandPage {
+                    sequence: dest_seq,
+                    payload: Some(command_page::Payload::Command(command_any)),
+                    ..Default::default()
+                }],
+                saga_origin: None,
             }],
-            saga_origin: None,
-        }])
+            events: vec![],
+        })
     }
 }
 

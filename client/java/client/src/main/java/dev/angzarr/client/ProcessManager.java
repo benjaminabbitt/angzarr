@@ -60,6 +60,7 @@ public abstract class ProcessManager<S extends Message> {
     private final Map<String, BiConsumer<S, Any>> appliers = new HashMap<>();
     private final Map<String, BiFunction<Notification, S, RejectionHandlerResponse>> rejectionHandlers = new HashMap<>();
     private final Map<String, Function<Any, List<Cover>>> prepareHandlers = new HashMap<>();
+    private final List<EventBook> facts = new ArrayList<>();
 
     private S state;
     private boolean exists = false;
@@ -79,19 +80,29 @@ public abstract class ProcessManager<S extends Message> {
     protected abstract S createEmptyState();
 
     /**
-     * Result from PM dispatch - commands for normal events, or rejection response.
+     * Result from PM dispatch - commands and facts for normal events, or rejection response.
      */
     public static class DispatchResult {
         private final List<CommandBook> commands;
+        private final List<EventBook> facts;
         private final RejectionHandlerResponse rejectionResponse;
 
-        public DispatchResult(List<CommandBook> commands, RejectionHandlerResponse rejectionResponse) {
+        public DispatchResult(List<CommandBook> commands, List<EventBook> facts, RejectionHandlerResponse rejectionResponse) {
             this.commands = commands;
+            this.facts = facts;
             this.rejectionResponse = rejectionResponse;
         }
 
         public List<CommandBook> getCommands() {
             return commands;
+        }
+
+        public List<EventBook> getFacts() {
+            return facts;
+        }
+
+        public boolean hasFacts() {
+            return facts != null && !facts.isEmpty();
         }
 
         public RejectionHandlerResponse getRejectionResponse() {
@@ -108,11 +119,12 @@ public abstract class ProcessManager<S extends Message> {
      */
     public DispatchResult dispatch(EventBook book, EventBook priorEvents) {
         rebuildState(priorEvents);
+        clearFacts();
 
         String correlationId = book.hasCover() ? book.getCover().getCorrelationId() : "";
         if (correlationId.isEmpty()) {
             // PMs require correlation ID
-            return new DispatchResult(List.of(), null);
+            return new DispatchResult(List.of(), List.of(), null);
         }
 
         List<CommandBook> commands = new ArrayList<>();
@@ -124,7 +136,7 @@ public abstract class ProcessManager<S extends Message> {
                 try {
                     Notification notification = page.getEvent().unpack(Notification.class);
                     RejectionHandlerResponse response = dispatchRejection(notification);
-                    return new DispatchResult(List.of(), response);
+                    return new DispatchResult(List.of(), List.of(), response);
                 } catch (InvalidProtocolBufferException e) {
                     // Ignore malformed notifications
                 }
@@ -145,7 +157,7 @@ public abstract class ProcessManager<S extends Message> {
                 commands.addAll(handler.apply(page.getEvent(), correlationId));
             }
         }
-        return new DispatchResult(commands, null);
+        return new DispatchResult(commands, getFacts(), null);
     }
 
     /**
@@ -196,6 +208,36 @@ public abstract class ProcessManager<S extends Message> {
         builder.addPages(page);
 
         return List.of(builder.build());
+    }
+
+    /**
+     * Emit a fact to be injected into another aggregate.
+     *
+     * <p>Facts are events injected directly into target aggregates, bypassing
+     * command validation. Use for cross-aggregate coordination where the
+     * aggregate must accept the fact (e.g., "hand says it's your turn").
+     *
+     * <p>Call this during handler execution. The facts will be included
+     * in the DispatchResult.
+     *
+     * @param fact The event book to emit as a fact
+     */
+    protected void emitFact(EventBook fact) {
+        facts.add(fact);
+    }
+
+    /**
+     * Clear accumulated facts. Called before each dispatch.
+     */
+    protected void clearFacts() {
+        facts.clear();
+    }
+
+    /**
+     * Get accumulated facts (for internal use).
+     */
+    protected List<EventBook> getFacts() {
+        return new ArrayList<>(facts);
     }
 
     private void rebuildState(EventBook eventBook) {

@@ -22,8 +22,8 @@ impl SagaRetryContext for AlwaysSucceeds {
     async fn re_execute_saga(
         &self,
         _destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![])
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(SagaResponse::default())
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     fn source_cover(&self) -> Option<&Cover> {
@@ -44,8 +44,11 @@ impl SagaRetryContext for RetryingSagaContext {
     async fn re_execute_saga(
         &self,
         _destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![CommandBook::default()])
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(SagaResponse {
+            commands: vec![CommandBook::default()],
+            events: vec![],
+        })
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     fn source_cover(&self) -> Option<&Cover> {
@@ -67,8 +70,8 @@ impl SagaRetryContext for AlwaysRejects {
     async fn re_execute_saga(
         &self,
         _destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![])
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(SagaResponse::default())
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
         self.rejection_count.fetch_add(1, Ordering::SeqCst);
@@ -222,6 +225,7 @@ async fn test_orchestrate_saga_with_domain_validator() {
         &ctx,
         &executor,
         None,
+        None,
         "test-saga",
         "corr-1",
         Some(&validator),
@@ -288,8 +292,11 @@ impl SagaRetryContext for CachedStateContext {
     async fn re_execute_saga(
         &self,
         _destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![CommandBook::default()])
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(SagaResponse {
+            commands: vec![CommandBook::default()],
+            events: vec![],
+        })
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     fn source_cover(&self) -> Option<&Cover> {

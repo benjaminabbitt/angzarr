@@ -23,7 +23,7 @@ pub struct ItemAdded {
 
 fn make_event_page(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         created_at: Some(prost_types::Timestamp {
             seconds: 1704067200, // 2024-01-01
             nanos: 0,
@@ -45,6 +45,7 @@ fn make_event_book(events: Vec<EventPage>) -> EventBook {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: events,
         snapshot: None,
@@ -139,7 +140,7 @@ async fn given_event_page_with_event_payload(world: &mut EventDecodingWorld) {
 async fn given_event_page_with_offloaded(world: &mut EventDecodingWorld) {
     // PayloadReference variant (External in the oneof)
     world.current_event = Some(EventPage {
-        sequence: 0,
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
         created_at: None,
         payload: Some(event_page::Payload::External(
             angzarr_client::proto::PayloadReference {
@@ -217,7 +218,7 @@ async fn given_corrupted_payload(world: &mut EventDecodingWorld) {
 #[given("an EventPage with payload = None")]
 async fn given_event_page_no_payload(world: &mut EventDecodingWorld) {
     world.current_event = Some(EventPage {
-        sequence: 0,
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
         created_at: None,
         payload: None,
     });
@@ -505,7 +506,11 @@ async fn then_no_error_raised(world: &mut EventDecodingWorld) {
 #[then(expr = "event.sequence should be {int}")]
 async fn then_event_sequence(world: &mut EventDecodingWorld, expected: u32) {
     if let Some(ref event) = world.current_event {
-        assert_eq!(event.sequence, expected);
+        let seq = match &event.sequence_type {
+            Some(event_page::SequenceType::Sequence(s)) => *s,
+            _ => 0,
+        };
+        assert_eq!(seq, expected);
     }
 }
 

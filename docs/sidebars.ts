@@ -2,17 +2,32 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    'intro',
-    'architecture',
-    'getting-started',
+    'why-event-sourcing',
     {
       type: 'category',
-      label: 'Concepts',
+      label: 'Features',
+      link: {
+        type: 'doc',
+        id: 'features',
+      },
       items: [
-        'concepts/cqrs-event-sourcing',
-        'concepts/commands-vs-facts',
+        'features/small-footprint',
+        'features/facts',
+        'features/compensation',
+        'features/editions',
+        'features/ml-training',
+        'features/upcasting',
+        'features/projections',
+        'features/cloudevents',
+        'features/polyglot',
+        'features/performance',
+        'features/observability',
       ],
     },
+    'patterns-explained',
+    'intro',
+    'getting-started',
+    'architecture',
     {
       type: 'category',
       label: 'Components',
@@ -21,6 +36,7 @@ const sidebars: SidebarsConfig = {
         'components/saga',
         'components/projector',
         'components/process-manager',
+        'components/commands-vs-facts',
         'components/framework-projectors',
         'components/cloudevents',
       ],

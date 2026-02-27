@@ -1,8 +1,10 @@
 package dev.angzarr.client.router;
 
 import com.google.protobuf.Any;
+import com.google.protobuf.InvalidProtocolBufferException;
 import dev.angzarr.*;
 import dev.angzarr.client.Helpers;
+import dev.angzarr.client.compensation.RejectionHandlerResponse;
 
 import java.util.AbstractMap;
 import java.util.Collections;
@@ -112,7 +114,7 @@ public class SagaRouter {
      *
      * @param source The source event book
      * @param destinations The fetched destination event books
-     * @return The saga response containing commands
+     * @return The saga response containing commands and events
      * @throws RouterException if dispatch fails
      */
     public SagaResponse dispatch(EventBook source, List<EventBook> destinations)
@@ -129,14 +131,62 @@ public class SagaRouter {
 
         Any eventAny = eventPage.getEvent();
 
+        // Check for Notification
+        if (eventAny.getTypeUrl().endsWith("Notification")) {
+            return dispatchNotification(eventAny);
+        }
+
         try {
-            List<CommandBook> commands = handler.execute(source, eventAny, destinations);
+            SagaHandlerResponse response = handler.execute(source, eventAny, destinations);
 
             return SagaResponse.newBuilder()
-                    .addAllCommands(commands)
+                    .addAllCommands(response.getCommands())
+                    .addAllEvents(response.getEvents())
                     .build();
         } catch (CommandRejectedError e) {
             throw new RouterException("Event processing failed: " + e.getReason(), e);
+        }
+    }
+
+    /**
+     * Dispatch a notification to the saga's rejection handler.
+     */
+    private SagaResponse dispatchNotification(Any eventAny) throws RouterException {
+        try {
+            Notification notification = eventAny.unpack(Notification.class);
+
+            String targetDomain = "";
+            String targetCommand = "";
+
+            if (notification.hasPayload()) {
+                try {
+                    RejectionNotification rejection = notification.getPayload()
+                            .unpack(RejectionNotification.class);
+                    if (rejection.hasRejectedCommand() &&
+                            rejection.getRejectedCommand().getPagesCount() > 0) {
+                        CommandBook rejectedCmd = rejection.getRejectedCommand();
+                        targetDomain = rejectedCmd.hasCover() ?
+                                rejectedCmd.getCover().getDomain() : "";
+                        targetCommand = Helpers.typeNameFromUrl(
+                                rejectedCmd.getPages(0).getCommand().getTypeUrl());
+                    }
+                } catch (InvalidProtocolBufferException ignored) {
+                    // Malformed rejection notification
+                }
+            }
+
+            RejectionHandlerResponse response = handler.onRejected(
+                    notification, targetDomain, targetCommand);
+
+            SagaResponse.Builder builder = SagaResponse.newBuilder();
+            if (response.hasEvents()) {
+                builder.addEvents(response.getEvents());
+            }
+            return builder.build();
+        } catch (InvalidProtocolBufferException e) {
+            throw new RouterException("Failed to decode Notification", e);
+        } catch (CommandRejectedError e) {
+            throw new RouterException("Rejection handler failed: " + e.getReason(), e);
         }
     }
 

@@ -14,7 +14,7 @@
 #include "../handlers/transfer_handler.hpp"
 #include "../handlers/withdraw_handler.hpp"
 #include "angzarr/command_handler.grpc.pb.h"
-#include "angzarr/command_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/player.pb.h"
 #include "player_state.hpp"

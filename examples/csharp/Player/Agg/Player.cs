@@ -12,7 +12,7 @@ namespace Player.Agg;
 /// <summary>
 /// Player aggregate - OO style with decorator-based command dispatch.
 /// </summary>
-public class PlayerAggregate : Aggregate<PlayerState>
+public class PlayerAggregate : CommandHandler<PlayerState>
 {
     public const string Domain = "player";
 

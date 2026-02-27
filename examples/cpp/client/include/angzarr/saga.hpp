@@ -9,18 +9,19 @@
 #include <unordered_map>
 #include <vector>
 
+#include "angzarr/event_router.hpp"
 #include "angzarr/types.pb.h"
 
 namespace angzarr {
 
 /// Base class for sagas using CRTP pattern.
-/// Sagas translate events from one domain into commands for another domain.
+/// Sagas translate events from one domain into commands/facts for another domain.
 template <typename Derived>
 class Saga {
    public:
     using PrepareHandler = std::function<std::vector<Cover>(const google::protobuf::Message&)>;
-    using ReactHandler =
-        std::function<CommandBook(const google::protobuf::Message&, const std::vector<EventBook>&)>;
+    using ReactHandler = std::function<SagaHandlerResponse(const google::protobuf::Message&,
+                                                           const std::vector<EventBook>&)>;
 
    protected:
     std::unordered_map<std::string, PrepareHandler> prepare_handlers_;
@@ -46,13 +47,13 @@ class Saga {
         return it->second(event);
     }
 
-    /// Handle phase - process event and produce commands.
+    /// Handle phase - process event and produce commands/facts.
     template <typename EventType>
-    CommandBook handle(const EventType& event, const std::vector<EventBook>& destinations) {
+    SagaHandlerResponse handle(const EventType& event, const std::vector<EventBook>& destinations) {
         const std::string type_name = EventType::descriptor()->full_name();
         auto it = react_handlers_.find(type_name);
         if (it == react_handlers_.end()) {
-            return CommandBook{};
+            return SagaHandlerResponse::empty();
         }
         return it->second(event, destinations);
     }
@@ -85,7 +86,8 @@ class Saga {
     /// Register a react handler.
     template <typename EventType>
     void register_react(
-        std::function<CommandBook(const EventType&, const std::vector<EventBook>&)> handler) {
+        std::function<SagaHandlerResponse(const EventType&, const std::vector<EventBook>&)>
+            handler) {
         const std::string type_name = EventType::descriptor()->full_name();
         react_handlers_[type_name] = [handler](const google::protobuf::Message& msg,
                                                const std::vector<EventBook>& destinations) {

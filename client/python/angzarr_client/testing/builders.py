@@ -66,20 +66,17 @@ def make_cover(domain: str, root: bytes, correlation_id: str = "") -> Cover:
 def make_event_page(
     sequence: int,
     event: ProtoAny,
-    num: int = 0,
 ) -> EventPage:
     """Create an EventPage.
 
     Args:
         sequence: The event sequence number
         event: The packed event (ProtoAny)
-        num: The page number (defaults to 0)
 
     Returns:
         EventPage proto
     """
     return EventPage(
-        num=num,
         sequence=sequence,
         event=event,
         created_at=_now(),

@@ -75,12 +75,16 @@ message ProcessManagerHandleRequest {
   repeated EventBook destinations = 3;
 }
 
-// Phase 2 response: commands and PM events.
+// Phase 2 response: local events, then remote commands and facts.
+// Execution order: process_events persisted first, then commands sent, then facts injected.
 message ProcessManagerHandleResponse {
-  // Commands to issue to other aggregates.
-  repeated CommandBook commands = 1;
-  // Events for the process manager's own domain (non-duplicative workflow state).
+  // Local: Events for the process manager's own domain (non-duplicative workflow state).
   // These are persisted via AggregateCoordinator to the PM's domain.
-  EventBook process_events = 2;
+  EventBook process_events = 1;
+  // Remote: Commands to issue to other aggregates.
+  repeated CommandBook commands = 2;
+  // Remote: Facts to inject to other aggregates.
+  // Each EventBook targets a specific aggregate via its Cover.
+  repeated EventBook facts = 3;
 }
 

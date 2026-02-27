@@ -51,6 +51,8 @@ pub struct PmSpeculativeResult {
     pub commands: Vec<CommandBook>,
     /// PM events that would be persisted (not persisted).
     pub process_events: Option<EventBook>,
+    /// Facts the PM would inject to other aggregates (not injected).
+    pub facts: Vec<EventBook>,
 }
 
 // ============================================================================
@@ -296,12 +298,13 @@ impl SpeculativeExecutor {
         // Phase 2: resolve destinations
         let destinations = self.resolve_destinations(&covers, domain_specs).await?;
 
-        // Phase 3: handle — produce commands + PM events
-        let (commands, process_events) = handler.handle(trigger, pm_state.as_ref(), &destinations);
+        // Phase 3: handle — produce commands + PM events + facts
+        let result = handler.handle(trigger, pm_state.as_ref(), &destinations);
 
         Ok(PmSpeculativeResult {
-            commands,
-            process_events,
+            commands: result.commands,
+            process_events: result.process_events,
+            facts: result.facts,
         })
     }
 
@@ -479,10 +482,12 @@ mod tests {
         let result = PmSpeculativeResult {
             commands: vec![],
             process_events: None,
+            facts: vec![],
         };
 
         assert!(result.commands.is_empty());
         assert!(result.process_events.is_none());
+        assert!(result.facts.is_empty());
     }
 
     #[test]
@@ -491,6 +496,7 @@ mod tests {
         let result = PmSpeculativeResult {
             commands: vec![cmd],
             process_events: None,
+            facts: vec![],
         };
 
         assert_eq!(result.commands.len(), 1);
@@ -502,9 +508,22 @@ mod tests {
         let result = PmSpeculativeResult {
             commands: vec![],
             process_events: Some(events),
+            facts: vec![],
         };
 
         assert!(result.process_events.is_some());
+    }
+
+    #[test]
+    fn test_pm_speculative_result_with_facts() {
+        let fact = EventBook::default();
+        let result = PmSpeculativeResult {
+            commands: vec![],
+            process_events: None,
+            facts: vec![fact],
+        };
+
+        assert_eq!(result.facts.len(), 1);
     }
 
     #[test]
@@ -512,6 +531,7 @@ mod tests {
         let result = PmSpeculativeResult {
             commands: vec![],
             process_events: None,
+            facts: vec![],
         };
         // Should be Debug-printable
         assert!(format!("{:?}", result).contains("PmSpeculativeResult"));

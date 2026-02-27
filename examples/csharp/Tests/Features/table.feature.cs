@@ -112,13 +112,13 @@ namespace Tests.Features
 #line 38
     testRunner.Given("no prior events for the table aggregate", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-                TechTalk.SpecFlow.Table table12 = new TechTalk.SpecFlow.Table(new string[] {
+                TechTalk.SpecFlow.Table table14 = new TechTalk.SpecFlow.Table(new string[] {
                             "small_blind",
                             "big_blind",
                             "min_buy_in",
                             "max_buy_in",
                             "max_players"});
-                table12.AddRow(new string[] {
+                table14.AddRow(new string[] {
                             "5",
                             "10",
                             "200",
@@ -126,7 +126,7 @@ namespace Tests.Features
                             "9"});
 #line 39
     testRunner.When("I handle a CreateTable command with name \"Main Table\" and variant \"TEXAS_HOLDEM\":" +
-                        "", ((string)(null)), table12, "When ");
+                        "", ((string)(null)), table14, "When ");
 #line hidden
 #line 42
     testRunner.Then("the result is a TableCreated event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
@@ -167,13 +167,13 @@ namespace Tests.Features
 #line 49
     testRunner.Given("no prior events for the table aggregate", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-                TechTalk.SpecFlow.Table table13 = new TechTalk.SpecFlow.Table(new string[] {
+                TechTalk.SpecFlow.Table table15 = new TechTalk.SpecFlow.Table(new string[] {
                             "small_blind",
                             "big_blind",
                             "min_buy_in",
                             "max_buy_in",
                             "max_players"});
-                table13.AddRow(new string[] {
+                table15.AddRow(new string[] {
                             "10",
                             "20",
                             "400",
@@ -181,7 +181,7 @@ namespace Tests.Features
                             "6"});
 #line 50
     testRunner.When("I handle a CreateTable command with name \"Draw Table\" and variant \"FIVE_CARD_DRAW" +
-                        "\":", ((string)(null)), table13, "When ");
+                        "\":", ((string)(null)), table15, "When ");
 #line hidden
 #line 53
     testRunner.Then("the result is a TableCreated event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
@@ -213,13 +213,13 @@ namespace Tests.Features
 #line 57
     testRunner.Given("a TableCreated event for \"Main Table\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-                TechTalk.SpecFlow.Table table14 = new TechTalk.SpecFlow.Table(new string[] {
+                TechTalk.SpecFlow.Table table16 = new TechTalk.SpecFlow.Table(new string[] {
                             "small_blind",
                             "big_blind",
                             "min_buy_in",
                             "max_buy_in",
                             "max_players"});
-                table14.AddRow(new string[] {
+                table16.AddRow(new string[] {
                             "5",
                             "10",
                             "200",
@@ -227,7 +227,7 @@ namespace Tests.Features
                             "9"});
 #line 58
     testRunner.When("I handle a CreateTable command with name \"Another Table\" and variant \"TEXAS_HOLDE" +
-                        "M\":", ((string)(null)), table14, "When ");
+                        "M\":", ((string)(null)), table16, "When ");
 #line hidden
 #line 61
     testRunner.Then("the command fails with status \"FAILED_PRECONDITION\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
@@ -813,13 +813,13 @@ namespace Tests.Features
         }
         
         [NUnit.Framework.TestAttribute()]
-        [NUnit.Framework.DescriptionAttribute("Rebuild state with multiple players")]
-        public void RebuildStateWithMultiplePlayers()
+        [NUnit.Framework.DescriptionAttribute("End hand updates player stacks with wins and losses")]
+        public void EndHandUpdatesPlayerStacksWithWinsAndLosses()
         {
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
-            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state with multiple players", null, tagsOfScenario, argumentsOfScenario, featureTags);
-#line 214
+            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("End hand updates player stacks with wins and losses", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 208
   this.ScenarioInitialize(scenarioInfo);
 #line hidden
             if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
@@ -829,28 +829,82 @@ namespace Tests.Features
             else
             {
                 this.ScenarioStart();
-#line 215
+#line 209
     testRunner.Given("a TableCreated event for \"Main Table\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-#line 216
+#line 210
     testRunner.And("a PlayerJoined event for player \"player-1\" at seat 0 with stack 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
+#line 211
+    testRunner.And("a PlayerJoined event for player \"player-2\" at seat 1 with stack 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+#line 212
+    testRunner.And("a HandStarted event for hand 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+                TechTalk.SpecFlow.Table table17 = new TechTalk.SpecFlow.Table(new string[] {
+                            "player",
+                            "change"});
+                table17.AddRow(new string[] {
+                            "player-1",
+                            "150"});
+                table17.AddRow(new string[] {
+                            "player-2",
+                            "-150"});
+#line 213
+    testRunner.When("I handle an EndHand command with results:", ((string)(null)), table17, "When ");
+#line hidden
 #line 217
-    testRunner.And("a PlayerJoined event for player \"player-2\" at seat 3 with stack 800", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.Then("the result is a HandEnded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 218
-    testRunner.When("I rebuild the table state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
+    testRunner.And("player \"player-1\" stack change is 150", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 219
+    testRunner.And("player \"player-2\" stack change is -150", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+            }
+            this.ScenarioCleanup();
+        }
+        
+        [NUnit.Framework.TestAttribute()]
+        [NUnit.Framework.DescriptionAttribute("Rebuild state with multiple players")]
+        public void RebuildStateWithMultiplePlayers()
+        {
+            string[] tagsOfScenario = ((string[])(null));
+            System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
+            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state with multiple players", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 227
+  this.ScenarioInitialize(scenarioInfo);
+#line hidden
+            if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
+            {
+                testRunner.SkipScenario();
+            }
+            else
+            {
+                this.ScenarioStart();
+#line 228
+    testRunner.Given("a TableCreated event for \"Main Table\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
+#line hidden
+#line 229
+    testRunner.And("a PlayerJoined event for player \"player-1\" at seat 0 with stack 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+#line 230
+    testRunner.And("a PlayerJoined event for player \"player-2\" at seat 3 with stack 800", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+#line 231
+    testRunner.When("I rebuild the table state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
+#line hidden
+#line 232
     testRunner.Then("the table state has 2 players", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
-#line 220
+#line 233
     testRunner.And("the table state has seat 0 occupied by \"player-1\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 221
+#line 234
     testRunner.And("the table state has seat 3 occupied by \"player-2\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 222
+#line 235
     testRunner.And("the table state has status \"waiting\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }
@@ -864,7 +918,7 @@ namespace Tests.Features
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
             TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state during hand", null, tagsOfScenario, argumentsOfScenario, featureTags);
-#line 224
+#line 237
   this.ScenarioInitialize(scenarioInfo);
 #line hidden
             if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
@@ -874,25 +928,25 @@ namespace Tests.Features
             else
             {
                 this.ScenarioStart();
-#line 225
+#line 238
     testRunner.Given("a TableCreated event for \"Main Table\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-#line 226
+#line 239
     testRunner.And("a PlayerJoined event for player \"player-1\" at seat 0", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 227
+#line 240
     testRunner.And("a PlayerJoined event for player \"player-2\" at seat 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 228
+#line 241
     testRunner.And("a HandStarted event for hand 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 229
+#line 242
     testRunner.When("I rebuild the table state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
-#line 230
+#line 243
     testRunner.Then("the table state has status \"in_hand\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
-#line 231
+#line 244
     testRunner.And("the table state has hand_count 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }

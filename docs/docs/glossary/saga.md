@@ -25,4 +25,4 @@ Sagas can emit two types of messages:
 
 When the source event represents an external fact (payment processed, delivery confirmed), the saga emits a fact event rather than a command. The target aggregate records the fact without decision logic.
 
-See [Commands vs Facts](/concepts/commands-vs-facts) for the full pattern.
+See [Commands vs Facts](/components/commands-vs-facts) for the full pattern.

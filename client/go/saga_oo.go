@@ -63,6 +63,7 @@ type SagaBase struct {
 	outputDomain string
 	prepares     map[string]prepareOOFunc
 	handlers     map[string]handlerOOFunc
+	events       []*pb.EventBook // Accumulated events for EmitFact
 }
 
 // Init initializes the saga base with name and domain configuration.
@@ -343,12 +344,32 @@ func (s *SagaBase) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
 	return covers
 }
 
-// Execute processes events and returns commands for other aggregates.
+// EmitFact queues an EventBook to be emitted as a fact.
+//
+// Facts are events injected directly into target aggregates, bypassing
+// command validation. Use for cross-aggregate coordination where the
+// aggregate must accept the fact (e.g., "hand says it's your turn").
+//
+// Call this during handler execution. The events will be included
+// in the SagaHandlerResponse.
+func (s *SagaBase) EmitFact(event *pb.EventBook) {
+	s.events = append(s.events, event)
+}
+
+// ClearEvents resets the accumulated events. Called before each Execute.
+func (s *SagaBase) ClearEvents() {
+	s.events = nil
+}
+
+// Execute processes events and returns commands and facts for other aggregates.
 // Called during the Execute phase of the two-phase saga protocol.
-func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
+func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (*SagaHandlerResponse, error) {
 	if source == nil || len(source.Pages) == 0 {
-		return nil, nil
+		return &SagaHandlerResponse{}, nil
 	}
+
+	// Clear accumulated events from any prior execution
+	s.ClearEvents()
 
 	var commands []*pb.CommandBook
 	for _, page := range source.Pages {
@@ -369,7 +390,10 @@ func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (
 			}
 		}
 	}
-	return commands, nil
+	return &SagaHandlerResponse{
+		Commands: commands,
+		Events:   s.events,
+	}, nil
 }
 
 // HandlerTypes returns the registered fully-qualified event type names.

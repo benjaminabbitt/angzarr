@@ -1,0 +1,163 @@
+---
+sidebar_position: 2
+---
+
+# Commands vs Facts
+
+Not everything is a request. Some things are reality.
+
+---
+
+## The Distinction
+
+A **command** is a request that can be rejected. "Please reserve this inventory." The aggregate validates the request against business rules and either produces events or rejects.
+
+A **fact** is an announcement of something that already happened externally. "Stripe confirms the payment succeeded." "FedEx scanned the package in Memphis." "The floor manager issued a ruling."
+
+You cannot reject reality. You can only record it.
+
+---
+
+## Why This Matters
+
+### External Systems Don't Ask Permission
+
+When Stripe sends a webhook confirming payment, the payment has already happened. Your system's opinion is irrelevant. The event must be recorded.
+
+### Audit Trail Clarity
+
+Commands and facts have different semantics in your audit trail:
+
+| Type | Semantics | Example |
+|------|-----------|---------|
+| Command | "We decided to do X" | ReserveInventory → InventoryReserved |
+| Fact | "X happened externally" | PaymentConfirmed (from Stripe) |
+
+Mixing them obscures who made decisions and when.
+
+### Idempotency Requirements
+
+Facts from external systems often arrive multiple times (webhook retries, network issues). The system must handle duplicates gracefully without creating duplicate events.
+
+---
+
+## How It Works
+
+Facts use a special marker instead of a sequence number:
+
+```protobuf
+message EventPage {
+  oneof sequence_type {
+    uint32 sequence = 1;      // Normal: position in stream
+    FactSequence fact = 5;    // Fact: coordinator assigns sequence
+  }
+}
+
+message FactSequence {
+  string source = 1;          // Origin system (e.g., "stripe")
+  string description = 2;     // Human-readable description
+}
+```
+
+The coordinator:
+1. Checks idempotency via `external_id`
+2. Routes to aggregate for state update (if configured)
+3. Assigns a real sequence number
+4. Persists the event
+5. Publishes to downstream consumers
+
+---
+
+## Idempotency
+
+Facts carry an `external_id` on their Cover for idempotency:
+
+```python
+cover = Cover(
+    domain="payments",
+    root=payment_id,
+    external_id="stripe_pi_abc123",  # Idempotency key
+)
+
+fact = PaymentConfirmed(
+    amount=Money(amount=5000, currency="USD"),
+    provider="stripe",
+    provider_reference="pi_abc123",
+)
+```
+
+If the same `external_id` arrives twice, the second is silently ignored. No duplicate events.
+
+---
+
+## Configuration
+
+By default, facts route to the aggregate before persistence:
+
+```yaml
+route_facts_to_aggregate: true
+```
+
+This allows the aggregate to update its state and potentially emit additional events in response to the fact.
+
+Set to `false` if facts should persist directly without aggregate processing.
+
+---
+
+## Examples
+
+### Payment Webhooks
+
+```python
+# Stripe webhook handler
+@webhook("/stripe")
+def handle_stripe_webhook(event: StripeEvent):
+    if event.type == "payment_intent.succeeded":
+        emit_fact(
+            domain="orders",
+            root=order_id_from_metadata(event),
+            external_id=event.id,
+            event=PaymentConfirmed(
+                amount=event.data.amount,
+                provider="stripe",
+            ),
+        )
+```
+
+### IoT Sensor Data
+
+```python
+# Temperature reading from sensor
+emit_fact(
+    domain="warehouse",
+    root=zone_id,
+    external_id=f"{sensor_id}:{timestamp}",
+    event=TemperatureRecorded(
+        celsius=reading.value,
+        sensor_id=sensor_id,
+    ),
+)
+```
+
+### External Rulings
+
+```python
+# Floor manager ruling in poker
+emit_fact(
+    domain="hand",
+    root=hand_id,
+    external_id=f"ruling:{ruling_id}",
+    event=RulingIssued(
+        ruling_type=RulingType.DEAD_HAND,
+        issued_by="floor_manager_jane",
+        reason="Cards exposed during deal",
+    ),
+)
+```
+
+---
+
+## See Also
+
+- [Compensation flow](./compensation) — What happens when commands fail
+- [Components: Commands vs Facts](../components/commands-vs-facts) — Technical deep-dive

@@ -24,6 +24,13 @@ public abstract class Saga
         Type,
         Dictionary<string, (MethodInfo Method, Type EventType)>
     > _prepareTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type? EventType)>
+    > _rejectionTables = new();
+
+    // Accumulated events for EmitFact
+    private readonly List<Angzarr.EventBook> _events = new();
 
     /// <summary>
     /// The name of this saga (e.g., "saga-order-fulfillment").
@@ -89,8 +96,68 @@ public abstract class Saga
                 }
             }
             _prepareTables[type] = prepares;
+
+            // Build rejection handler dispatch table
+            var rejections = new Dictionary<string, (MethodInfo, Type?)>();
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
+            {
+                var attr = method.GetCustomAttribute<RejectedAttribute>();
+                if (attr != null)
+                {
+                    var key = $"{attr.Domain}/{attr.Command}";
+                    rejections[key] = (method, null);
+                }
+            }
+            _rejectionTables[type] = rejections;
         }
     }
+
+    /// <summary>
+    /// Emit a fact to be injected into another aggregate.
+    /// Facts are events injected directly into target aggregates, bypassing
+    /// command validation. Use for cross-aggregate coordination.
+    /// </summary>
+    /// <param name="fact">The event book to emit.</param>
+    protected void EmitFact(Angzarr.EventBook fact)
+    {
+        _events.Add(fact);
+    }
+
+    /// <summary>
+    /// Get the next sequence number from a destination EventBook.
+    /// Returns 1 if the destination is null or has no pages.
+    /// </summary>
+    protected static uint NextSequence(Angzarr.EventBook? destination)
+    {
+        if (destination == null || destination.Pages.Count == 0)
+            return 1;
+        return destination.Pages[^1].Sequence + 1;
+    }
+
+    /// <summary>
+    /// Pack a command message into an Any.
+    /// </summary>
+    protected static Any PackCommand(IMessage command)
+    {
+        return Any.Pack(command, "type.googleapis.com/");
+    }
+
+    /// <summary>
+    /// Clear accumulated events. Called before each dispatch.
+    /// </summary>
+    protected void ClearEvents()
+    {
+        _events.Clear();
+    }
+
+    /// <summary>
+    /// Get accumulated events.
+    /// </summary>
+    protected List<Angzarr.EventBook> GetEvents() => new(_events);
 
     /// <summary>
     /// Phase 1: Declare destination aggregates needed.

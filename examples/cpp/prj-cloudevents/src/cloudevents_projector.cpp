@@ -6,13 +6,12 @@
 #include <optional>
 #include <string>
 
-#include "angzarr/client.hpp"
-#include "angzarr/proto/angzarr/cloudevents.pb.h"
-#include "angzarr/proto/examples/player.pb.h"
+#include "angzarr/angzarr.hpp"
+#include "angzarr/cloudevents.pb.h"
+#include "examples/player.pb.h"
 
 using namespace angzarr;
-using namespace angzarr::proto::angzarr;
-using namespace angzarr::proto::examples;
+using namespace examples;
 
 // docs:start:cloudevents_oo
 class PlayerCloudEventsProjector : public CloudEventsProjector {

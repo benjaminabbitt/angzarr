@@ -29,10 +29,13 @@
 #include "unified_router.hpp"
 
 // OO base classes with macro registration
-#include "aggregate.hpp"
+#include "command_handler.hpp"
 #include "process_manager.hpp"
 #include "projector.hpp"
 #include "saga.hpp"
+
+// CloudEvents support
+#include "cloudevents.hpp"
 
 // gRPC client classes
 #include "client.hpp"

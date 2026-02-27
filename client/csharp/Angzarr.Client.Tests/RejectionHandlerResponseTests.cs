@@ -91,7 +91,7 @@ public class RejectionHandlerResponseTests
     }
 
     // =========================================================================
-    // AggregateRouter Rejection Handling Tests (using new unified router pattern)
+    // CommandHandlerRouter Rejection Handling Tests (using new unified router pattern)
     // =========================================================================
 
     private class TestState
@@ -102,7 +102,7 @@ public class RejectionHandlerResponseTests
     /// <summary>
     /// Handler that processes rejection notifications and returns compensation events.
     /// </summary>
-    private class RejectionTestHandler : IAggregateDomainHandler<TestState>
+    private class RejectionTestHandler : ICommandHandlerDomainHandler<TestState>
     {
         private readonly StateRouter<TestState> _stateRouter = new StateRouter<TestState>();
         private readonly Func<Notification, TestState, RejectionHandlerResponse>? _rejectionHandler;
@@ -141,7 +141,7 @@ public class RejectionHandlerResponseTests
     }
 
     [Fact]
-    public void AggregateRouter_WithRejectionHandler_ReturnsEvents()
+    public void CommandHandlerRouter_WithRejectionHandler_ReturnsEvents()
     {
         var handler = new RejectionTestHandler(
             (notification, state) =>
@@ -165,7 +165,11 @@ public class RejectionHandlerResponseTests
             }
         );
 
-        var router = new AggregateRouter<TestState, RejectionTestHandler>("test", "test", handler);
+        var router = new CommandHandlerRouter<TestState, RejectionTestHandler>(
+            "test",
+            "test",
+            handler
+        );
 
         var notification = MakeNotification("inventory", "ReserveStock", "out of stock");
         var notificationAny = Any.Pack(notification);
@@ -182,7 +186,7 @@ public class RejectionHandlerResponseTests
     }
 
     [Fact]
-    public void AggregateRouter_WithRejectionHandler_HandlerReceivesNotification()
+    public void CommandHandlerRouter_WithRejectionHandler_HandlerReceivesNotification()
     {
         Notification? receivedNotification = null;
 
@@ -200,7 +204,11 @@ public class RejectionHandlerResponseTests
             }
         );
 
-        var router = new AggregateRouter<TestState, RejectionTestHandler>("test", "test", handler);
+        var router = new CommandHandlerRouter<TestState, RejectionTestHandler>(
+            "test",
+            "test",
+            handler
+        );
 
         var notification = MakeNotification("payment", "Charge", "declined");
         var notificationAny = Any.Pack(notification);
@@ -217,12 +225,16 @@ public class RejectionHandlerResponseTests
     }
 
     [Fact]
-    public void AggregateRouter_NoHandler_ReturnsRevocationResponse()
+    public void CommandHandlerRouter_NoHandler_ReturnsRevocationResponse()
     {
         // Handler without rejection handling
         var handler = new RejectionTestHandler(null);
 
-        var router = new AggregateRouter<TestState, RejectionTestHandler>("test", "test", handler);
+        var router = new CommandHandlerRouter<TestState, RejectionTestHandler>(
+            "test",
+            "test",
+            handler
+        );
 
         var notification = MakeNotification("unknown", "UnknownCommand", "reason");
         var notificationAny = Any.Pack(notification);
