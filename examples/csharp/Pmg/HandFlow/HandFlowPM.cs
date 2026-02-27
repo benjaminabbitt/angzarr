@@ -32,7 +32,7 @@ public class HandFlowState
 // docs:start:pm_handler
 public class HandFlowPM : ProcessManager<HandFlowState>
 {
-    [ReactsTo(typeof(HandStarted))]
+    [Handles(typeof(HandStarted))]
     public IEnumerable<CommandBook> HandleHandStarted(HandStarted evt, HandFlowState state)
     {
         state.HandId = evt.HandId;
@@ -45,14 +45,14 @@ public class HandFlowPM : ProcessManager<HandFlowState>
         );
     }
 
-    [ReactsTo(typeof(CardsDealt))]
+    [Handles(typeof(CardsDealt))]
     public IEnumerable<CommandBook> HandleCardsDealt(CardsDealt evt, HandFlowState state)
     {
         state.Phase = HandPhase.Blinds;
         yield return BuildCommand("hand", new PostBlinds { HandId = state.HandId });
     }
 
-    [ReactsTo(typeof(HandComplete))]
+    [Handles(typeof(HandComplete))]
     public IEnumerable<CommandBook> HandleHandComplete(HandComplete evt, HandFlowState state)
     {
         state.Phase = HandPhase.Complete;

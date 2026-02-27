@@ -71,8 +71,8 @@ public abstract class CommandHandler<TState>
                 var attr = method.GetCustomAttribute<HandlesAttribute>();
                 if (attr != null)
                 {
-                    var suffix = attr.CommandType.Name;
-                    dispatch[suffix] = (method, attr.CommandType);
+                    var suffix = attr.EventType.Name;
+                    dispatch[suffix] = (method, attr.EventType);
                 }
             }
             _dispatchTables[type] = dispatch;

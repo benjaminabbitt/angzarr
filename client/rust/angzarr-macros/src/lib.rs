@@ -40,7 +40,7 @@
 //! # Saga Example
 //!
 //! ```rust,ignore
-//! use angzarr_macros::{saga, prepares, reacts_to};
+//! use angzarr_macros::{saga, prepares, handles};
 //!
 //! #[saga(name = "saga-order-fulfillment", input = "order")]
 //! impl OrderFulfillmentSaga {
@@ -49,7 +49,7 @@
 //!         // ...
 //!     }
 //!
-//!     #[reacts_to(OrderCompleted)]
+//!     #[handles(OrderCompleted)]
 //!     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
 //!         -> CommandResult<SagaHandlerResponse> {
 //!         // ...
@@ -378,7 +378,7 @@ pub fn applies(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```rust,ignore
 /// #[saga(name = "saga-order-fulfillment", input = "order")]
 /// impl OrderFulfillmentSaga {
-///     #[reacts_to(OrderCompleted)]
+///     #[handles(OrderCompleted)]
 ///     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
 ///         -> CommandResult<SagaHandlerResponse> {
 ///         // ...
@@ -453,7 +453,7 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
                     if let Ok(event_type) = get_attr_ident(attr) {
                         prepare_handlers.push((method.sig.ident.clone(), event_type));
                     }
-                } else if attr.path().is_ident("reacts_to") {
+                } else if attr.path().is_ident("handles") {
                     if let Ok(event_type) = get_attr_ident(attr) {
                         event_handlers.push((method.sig.ident.clone(), event_type));
                     }
@@ -505,7 +505,7 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
     for item in &mut input.items {
         if let ImplItem::Fn(method) = item {
             method.attrs.retain(|attr| {
-                !attr.path().is_ident("prepares") && !attr.path().is_ident("reacts_to")
+                !attr.path().is_ident("prepares") && !attr.path().is_ident("handles")
             });
         }
     }
@@ -585,14 +585,14 @@ pub fn prepares(_attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// # Example
 /// ```rust,ignore
-/// #[reacts_to(OrderCompleted)]
+/// #[handles(OrderCompleted)]
 /// fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
 ///     -> CommandResult<SagaHandlerResponse> {
 ///     // ...
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn reacts_to(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn handles(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 

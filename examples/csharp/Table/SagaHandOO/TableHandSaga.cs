@@ -17,7 +17,7 @@ namespace Table.SagaHandOO;
 ///
 /// Uses annotation-based handler registration with:
 /// - [Prepares(typeof(EventType))] for prepare phase handlers
-/// - [ReactsTo(typeof(EventType))] for execute phase handlers
+/// - [Handles(typeof(EventType))] for execute phase handlers
 /// </summary>
 public class TableHandSaga : Saga
 {
@@ -51,7 +51,7 @@ public class TableHandSaga : Saga
     /// Called during the execute phase with the source event and
     /// fetched destination EventBooks. Returns the command to send.
     /// </summary>
-    [ReactsTo(typeof(HandStarted))]
+    [Handles(typeof(HandStarted))]
     public CommandBook HandleHandStarted(HandStarted evt, List<EventBook> destinations)
     {
         var destSeq = NextSequence(destinations.Count > 0 ? destinations[0] : null);

@@ -5,8 +5,8 @@ package dev.angzarr.examples.table.sagahand;
 import com.google.protobuf.Any;
 import dev.angzarr.*;
 import dev.angzarr.client.Saga;
+import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.examples.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +32,7 @@ public class TableHandSaga extends Saga {
             .build());
   }
 
-  @ReactsTo(HandStarted.class)
+  @Handles(HandStarted.class)
   public CommandBook handleHandStarted(HandStarted event, List<EventBook> destinations) {
     int destSeq = Saga.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
 

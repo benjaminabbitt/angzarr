@@ -32,9 +32,9 @@ Every saga follows this pattern:
 
 1. **Receive** EventBook with domain events
 2. **Filter** for events this saga cares about
-3. **Extract** data needed to build commands
-4. **Create** CommandBooks targeting other aggregates
-5. **Return** commands (which Angzarr dispatches)
+3. **Extract** data needed to build commands or facts
+4. **Create** CommandBooks or FactBooks targeting other aggregates
+5. **Return** commands/facts (which Angzarr dispatches)
 
 ```mermaid
 flowchart LR
@@ -310,6 +310,37 @@ For complex scenarios (DLQ routing, escalation webhooks, RevocationResponse flag
 
 ---
 
+## Commands vs Facts
+
+Sagas can emit either **commands** or **facts** to target domains:
+
+| Output | Can Reject | Use Case |
+|--------|------------|----------|
+| **Command** | Yes | Request action that may fail validation |
+| **Fact** | No | Assert external reality the aggregate must accept |
+
+Commands go through the target aggregate's guard/validate/compute flow and can be rejected. Facts bypass validation entirely—the aggregate must accept them.
+
+```python
+# Command: request an action (can be rejected)
+def handle_hand_started(event: HandStarted, destinations: list[EventBook]):
+    return CommandBook(
+        cover=Cover(domain="player", root=event.player_id),
+        pages=[CommandPage(sequence=dest_seq, command=DeductBlinds(amount=50))],
+    )
+
+# Fact: assert reality (cannot be rejected)
+def handle_turn_assigned(event: TurnAssigned, destinations: list[EventBook]):
+    return FactBook(
+        cover=Cover(domain="player", root=event.player_id, external_id=f"turn:{event.hand_id}"),
+        pages=[FactPage(fact=FactSequence(source="hand"), event=YourTurn(hand_id=event.hand_id))],
+    )
+```
+
+Use facts when the source domain has authority the target must accept—tournament seating, dealer rulings, external system confirmations. See **[Commands vs Facts](/features/facts)** for details.
+
+---
+
 ## Sequence Handling
 
 **Sagas MUST set correct sequence numbers on commands.** The framework validates sequences for optimistic concurrency.
@@ -371,6 +402,7 @@ CQRS/ES architectures **cannot provide distributed ACID transactions**. Instead:
 
 ## Next Steps
 
+- **[Commands vs Facts](/features/facts)** — When to emit facts instead of commands
 - **[Projectors](/components/projector)** — Building read models
 - **[Process Managers](/components/process-manager)** — Stateful multi-domain coordination
 - **[Error Recovery](/operations/error-recovery)** — DLQ, retry, compensation details

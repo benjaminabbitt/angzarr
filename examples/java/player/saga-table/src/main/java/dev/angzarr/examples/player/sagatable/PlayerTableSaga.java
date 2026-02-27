@@ -4,8 +4,8 @@ import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
 import dev.angzarr.*;
 import dev.angzarr.client.Saga;
+import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.client.router.SagaHandlerResponse;
 import dev.angzarr.examples.*;
 import java.util.Collections;
@@ -58,7 +58,7 @@ public class PlayerTableSaga extends Saga {
   }
 
   /** Execute phase: translate PlayerSittingOut -> PlayerSatOut fact for table. */
-  @ReactsTo(PlayerSittingOut.class)
+  @Handles(PlayerSittingOut.class)
   public void handleSittingOut(PlayerSittingOut event) {
     // Create PlayerSatOut fact for the table
     PlayerSatOut satOut =
@@ -80,7 +80,7 @@ public class PlayerTableSaga extends Saga {
   }
 
   /** Execute phase: translate PlayerReturningToPlay -> PlayerSatIn fact for table. */
-  @ReactsTo(PlayerReturningToPlay.class)
+  @Handles(PlayerReturningToPlay.class)
   public void handleReturningToPlay(PlayerReturningToPlay event) {
     // Create PlayerSatIn fact for the table
     PlayerSatIn satIn =

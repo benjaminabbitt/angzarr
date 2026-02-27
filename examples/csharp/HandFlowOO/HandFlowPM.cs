@@ -61,7 +61,7 @@ public class HandFlowPM : ProcessManager<PMState>
     /// Initialize hand process (not persisted in this simplified version).
     /// The saga-table-hand will send DealCards, so we don't emit commands here.
     /// </summary>
-    [ReactsTo(typeof(HandStarted), InputDomain = "table")]
+    [Handles(typeof(HandStarted), InputDomain = "table")]
     public List<CommandBook> HandleHandStarted(HandStarted evt, List<EventBook> destinations)
     {
         return new List<CommandBook>();
@@ -73,7 +73,7 @@ public class HandFlowPM : ProcessManager<PMState>
     /// Post small blind command. In a real implementation, we'd track state
     /// to know which blind to post.
     /// </summary>
-    [ReactsTo(typeof(CardsDealt), InputDomain = "hand")]
+    [Handles(typeof(CardsDealt), InputDomain = "hand")]
     public List<CommandBook> HandleCardsDealt(CardsDealt evt, List<EventBook> destinations)
     {
         return new List<CommandBook>();
@@ -85,7 +85,7 @@ public class HandFlowPM : ProcessManager<PMState>
     /// In a full implementation, we'd check if both blinds are posted
     /// and then start the betting round.
     /// </summary>
-    [ReactsTo(typeof(BlindPosted), InputDomain = "hand")]
+    [Handles(typeof(BlindPosted), InputDomain = "hand")]
     public List<CommandBook> HandleBlindPosted(BlindPosted evt, List<EventBook> destinations)
     {
         return new List<CommandBook>();
@@ -97,7 +97,7 @@ public class HandFlowPM : ProcessManager<PMState>
     /// In a full implementation, we'd check if betting is complete
     /// and advance to the next phase.
     /// </summary>
-    [ReactsTo(typeof(ActionTaken), InputDomain = "hand")]
+    [Handles(typeof(ActionTaken), InputDomain = "hand")]
     public List<CommandBook> HandleActionTaken(ActionTaken evt, List<EventBook> destinations)
     {
         return new List<CommandBook>();
@@ -108,7 +108,7 @@ public class HandFlowPM : ProcessManager<PMState>
     ///
     /// Start new betting round after community cards.
     /// </summary>
-    [ReactsTo(typeof(CommunityCardsDealt), InputDomain = "hand")]
+    [Handles(typeof(CommunityCardsDealt), InputDomain = "hand")]
     public List<CommandBook> HandleCommunityDealt(
         CommunityCardsDealt evt,
         List<EventBook> destinations
@@ -122,7 +122,7 @@ public class HandFlowPM : ProcessManager<PMState>
     ///
     /// Hand is complete. Clean up.
     /// </summary>
-    [ReactsTo(typeof(PotAwarded), InputDomain = "hand")]
+    [Handles(typeof(PotAwarded), InputDomain = "hand")]
     public List<CommandBook> HandlePotAwarded(PotAwarded evt, List<EventBook> destinations)
     {
         return new List<CommandBook>();

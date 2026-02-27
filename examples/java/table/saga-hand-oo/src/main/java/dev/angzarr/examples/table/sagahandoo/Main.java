@@ -12,7 +12,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Spring Boot application for Table -> Hand saga using OO pattern.
  *
  * <p>This example demonstrates using the {@link Saga} base class with annotation-based handler
- * registration (@Prepares, @ReactsTo).
+ * registration (@Prepares, @Handles).
  *
  * <p>Compare with the functional EventRouter pattern in table/saga-hand.
  */

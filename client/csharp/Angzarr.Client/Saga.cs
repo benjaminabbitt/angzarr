@@ -10,7 +10,7 @@ namespace Angzarr.Client;
 ///
 /// Subclasses must:
 /// - Override Name, InputDomain, OutputDomain properties
-/// - Decorate event handlers with [ReactsTo(typeof(EventType))]
+/// - Decorate event handlers with [Handles(typeof(EventType))]
 /// - Optionally decorate prepare handlers with [Prepares(typeof(EventType))]
 /// </summary>
 public abstract class Saga
@@ -71,7 +71,7 @@ public abstract class Saga
                 )
             )
             {
-                var attr = method.GetCustomAttribute<ReactsToAttribute>();
+                var attr = method.GetCustomAttribute<HandlesAttribute>();
                 if (attr != null)
                 {
                     var suffix = attr.EventType.Name;

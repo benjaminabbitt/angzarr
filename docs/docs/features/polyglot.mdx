@@ -191,6 +191,32 @@ public ActionRecorded handle(PlayerAction cmd, HandState state) {
 ```
 
 </TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+public ActionRecorded Handle(PlayerAction cmd, HandState state)
+{
+    if (!state.IsPlayerTurn(cmd.PlayerId))
+    {
+        throw CommandRejectedError.PreconditionFailed("Not your turn");
+    }
+    return new ActionRecorded { ... };
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+ActionTaken handle_action(const PlayerAction& cmd, const HandState& state) {
+    if (!state.is_player_turn(cmd.player_id())) {
+        throw angzarr::CommandRejectedError::precondition_failed("Not your turn");
+    }
+    return ActionTaken{...};
+}
+```
+
+</TabItem>
 </Tabs>
 
 Same pattern. Same semantics. Different syntax.

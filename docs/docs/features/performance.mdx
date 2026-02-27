@@ -36,56 +36,83 @@ flowchart LR
 
 Without: replay 100,000 events. With: replay 999 events.
 
-### Automatic Snapshotting
+### Client-Driven Snapshotting
 
-The coordinator creates snapshots based on configuration:
-
-```yaml
-snapshot:
-  interval: 1000      # Snapshot every 1000 events
-  min_events: 100     # Don't snapshot if fewer than 100 events since last
-```
-
-### Manual Snapshotting
-
-Trigger snapshots programmatically for long-running aggregates:
+The aggregate handler decides when to snapshot by including state in the EventBook:
 
 ```python
-# After a significant operation
-if state.event_count % 500 == 0:
-    request_snapshot()
+def handle_command(cmd, event_book):
+    state = build_state(event_book)
+    event = compute(cmd, state)
+
+    # Include snapshot state when appropriate
+    new_state = apply_event(state, event)
+    if should_snapshot(event_book, new_state):
+        event_book.snapshot.state = Any.pack(new_state)
+
+    return event_book
+
+def should_snapshot(event_book, state):
+    # Snapshot every 1000 events
+    return len(event_book.pages) > 0 and state.event_count % 1000 == 0
 ```
 
-### Snapshot Storage
+The framework persists the snapshot automatically when the handler provides state. The aggregate owns the decision logic—snapshot after N events, after certain event types, or based on state size.
 
-Snapshots store the serialized state alongside position metadata:
+### On Command Arrival
 
-```
-┌─────────────────────────────────────┐
-│ Snapshot                            │
-├─────────────────────────────────────┤
-│ aggregate_id: "player-abc"          │
-│ sequence: 99000                     │
-│ state: <serialized PlayerState>     │
-│ created_at: 2024-01-15T10:30:00Z    │
-└─────────────────────────────────────┘
-```
-
-On command arrival, the coordinator:
-1. Loads the most recent snapshot
+The coordinator:
+1. Loads the most recent snapshot (if any)
 2. Replays events after that sequence
 3. Applies the command to reconstructed state
+4. Persists the snapshot if the handler included state
 
 ---
 
-## Sync vs Async Modes
+## Synchronicity Modes
 
-Trade consistency for throughput:
+**Prefer async.** Sync modes exist for the cases where you genuinely need them, but they work against the grain of event-sourced systems. CQRS achieves scale by decoupling writes from reads—sync modes reintroduce that coupling.
+
+That said, sync modes have legitimate uses: user-facing flows where read-after-write consistency matters, or integration points where downstream systems expect synchronous semantics. Use them surgically, not as a default.
+
+Trade consistency for throughput with three modes:
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
 | **Async** (default) | Command returns immediately | High throughput, eventual consistency |
-| **Sync** | Command waits for projectors | Read-after-write needed |
+| **Simple** | Wait for projectors only | Read-after-write for local domain |
+| **Cascade** | Wait for projectors + saga commands | Cross-domain consistency (expensive) |
+
+```mermaid
+flowchart LR
+    subgraph async["Async (default)"]
+        c1["Command"] --> a1["Aggregate"] --> e1["Event"]
+        e1 -.-> p1["Projector"]
+        e1 -.-> s1["Saga"]
+        c1 --> r1["Return ✓"]
+    end
+```
+
+```mermaid
+flowchart LR
+    subgraph simple["Simple Sync"]
+        c2["Command"] --> a2["Aggregate"] --> e2["Event"]
+        e2 --> p2["Projector"]
+        p2 --> r2["Return ✓"]
+        e2 -.-> s2["Saga"]
+    end
+```
+
+```mermaid
+flowchart LR
+    subgraph cascade["Cascade Sync"]
+        c3["Command"] --> a3["Aggregate"] --> e3["Event"]
+        e3 --> p3["Projector"]
+        e3 --> s3["Saga"] --> c4["Command₂"] --> a4["Aggregate₂"] --> e4["Event₂"]
+        e4 --> p4["Projector₂"]
+        p4 --> r3["Return ✓"]
+    end
+```
 
 Sync mode is specified per-command by the caller:
 
@@ -93,15 +120,81 @@ Sync mode is specified per-command by the caller:
 # Async (default): fire-and-forget, high throughput
 send_command(PlayerAction(action=FOLD))
 
-# Sync: wait for projectors before returning
+# Simple sync: wait for projectors in this domain
 result = send_command(
     DepositFunds(amount=1000),
     sync_mode=SyncMode.SYNC_MODE_SIMPLE,
 )
-# Projections guaranteed updated when this returns
+# Local projections guaranteed updated
+
+# Cascade sync: wait for full saga chain to complete
+result = send_command(
+    CompleteOrder(order_id=order_id),
+    sync_mode=SyncMode.SYNC_MODE_CASCADE,
+)
+# All downstream domains have processed and projected
 ```
 
-Projectors are unaware of sync mode—they just project. The framework decides whether to wait for them based on the command request.
+### When to Use Each
+
+| Mode | Latency | Consistency | Example |
+|------|---------|-------------|---------|
+| Async | Lowest | Eventual | Player folds, leaderboard updates |
+| Simple | Medium | Local read-after-write | Deposit shows in balance immediately |
+| Cascade | Highest | Cross-domain | Order completion triggers fulfillment, inventory reserved |
+
+Cascade sync follows the entire event chain: if Order → Fulfillment → Inventory, the original command won't return until Inventory's projectors complete. Use sparingly—the latency cost compounds with each hop.
+
+Projectors and sagas are unaware of sync mode—they just process events. The framework decides whether to wait based on the command request.
+
+### How Sync Recovery Works
+
+Sync modes cannot simply wait for events to arrive on the bus. Events may be in-flight, delayed, or arrive out of order. To guarantee consistency, the framework **polls the event store directly**:
+
+```mermaid
+flowchart LR
+    cmd["Sync Command"] --> agg["Aggregate"]
+    agg --> store["Event Store"]
+    store --> bus["Bus"]
+    bus -.-> proj["Projector"]
+
+    subgraph recovery["Sync Coordination"]
+        wait["Wait for sequence N"]
+        poll["Poll event store"]
+        wait --> poll
+        poll --> wait
+    end
+
+    store --> recovery
+    recovery --> ret["Return ✓"]
+```
+
+When a sync command completes, the coordinator knows the resulting event's sequence number. Rather than trusting the bus to deliver events in time, it:
+
+1. Records the expected sequence for each downstream component
+2. Polls the event store until those sequences appear in projector checkpoints
+3. Only then returns to the caller
+
+This bypasses the bus entirely for consistency—the event store is the source of truth.
+
+### Why CASCADE Is Expensive
+
+CASCADE compounds this cost at every hop:
+
+| Hops | Operations | Example |
+|------|------------|---------|
+| 1 | 1 aggregate + N projectors polled | Simple sync |
+| 2 | 2 aggregates + 2×N projectors polled | Order → Fulfillment |
+| 3 | 3 aggregates + 3×N projectors polled | Order → Fulfillment → Inventory |
+
+Each hop adds:
+- **Event store load**: Polling queries multiply with depth
+- **Latency**: Sequential waits through the saga chain
+- **Coordination overhead**: Tracking sequences across domains
+
+:::warning
+CASCADE sync can easily 10× your event store read load compared to async. Profile carefully before using in hot paths. If you find yourself needing CASCADE frequently, consider whether your domain boundaries are correct—tightly coupled sync requirements often indicate domains that should be merged.
+:::
 
 ---
 
@@ -120,15 +213,97 @@ enum MergeStrategy {
 
 ### MERGE_COMMUTATIVE (Default)
 
-Retry the command with the latest state. Works for most operations where the outcome doesn't depend on exact timing.
+When sequences mismatch, commutative merge compares **state at expected sequence** vs **state at actual sequence** to detect which fields changed. If those fields don't overlap with what the incoming command modifies, the command proceeds—the operations commute.
+
+#### Algorithm
+
+1. Command arrives expecting sequence N, but aggregate is at sequence M
+2. Replay state at N (what the command assumed)
+3. Replay state at M (current reality)
+4. Diff the two states → fields changed by intervening events
+5. Determine which fields the command would modify
+6. If disjoint → proceed; if overlap → retry with fresh state
 
 ```
-Command A (seq 5) ─┐
-                   ├─→ Both expect seq 5
-Command B (seq 5) ─┘
+Player State @ seq 5:           Player State @ seq 6:
+  bankroll: 1000                  bankroll: 1000        (unchanged)
+  display_name: "Alice"           display_name: "Ace"   (changed)
 
-A succeeds (seq 5 → 6)
-B retries with seq 6 → succeeds (seq 6 → 7)
+Command B: DepositFunds(500) arrives expecting seq 5, aggregate at seq 6
+
+Intervening changes: {display_name}
+Command B modifies:  {bankroll}
+
+Intersection: ∅ → disjoint → proceed without retry
+```
+
+Compare to a true conflict:
+
+```
+Player State @ seq 5:           Player State @ seq 6:
+  bankroll: 1000                  bankroll: 1500        (changed)
+
+Command B: WithdrawFunds(200) arrives expecting seq 5, aggregate at seq 6
+
+Intervening changes: {bankroll}
+Command B modifies:  {bankroll}
+
+Intersection: {bankroll} → overlap → must retry with seq 6 state
+```
+
+#### Why State Comparison
+
+Comparing states (not events) is essential. Events describe *what happened*, but states describe *what matters*. Two events might both mention `bankroll` in their payload, but if one was a no-op or the values converged, the states may still be identical. State comparison catches the actual semantic conflict.
+
+#### Replay RPC
+
+The aggregate must implement a `Replay` RPC that returns state given an EventBook:
+
+```rust
+async fn replay(&self, events: &EventBook) -> Result<Any, Status> {
+    let state = build_state_from_events(events);
+    Ok(Any::pack(&state))
+}
+```
+
+The framework calls this twice per conflict check—once for expected sequence, once for actual. States are then diffed using protobuf field-level comparison.
+
+#### Graceful Degradation
+
+If `Replay` is unimplemented or fails, commutative merge degrades to STRICT behavior: any sequence mismatch triggers retry. This is conservative—better to retry unnecessarily than risk incorrect merges.
+
+#### Field Wildcards
+
+When the framework cannot determine which fields a command modifies, it assumes `*` (all fields). This forces retry on any sequence mismatch. To enable fine-grained commutativity, annotate commands with their field dependencies.
+
+#### Caller Retry Flow
+
+When fields overlap (or STRICT mode), the framework returns `FAILED_PRECONDITION` with sequence information. **The caller is responsible for retry**:
+
+```
+1. Send command expecting sequence N
+2. Receive FAILED_PRECONDITION: "expected N, aggregate at M"
+3. Fetch current events for the aggregate
+4. Evaluate: do intervening events invalidate our intent?
+5. If still valid: rebuild command with sequence M, retry
+6. If invalid: abort or adjust business logic
+```
+
+The framework does not automatically return the intervening events—the caller must fetch them. This is intentional: the caller needs to evaluate whether the command still makes business sense given what happened. A blind retry could produce incorrect results.
+
+```python
+result = send_command(cmd, sequence=5)
+if result.is_precondition_failed():
+    # Fetch what happened since our last read
+    events = query_events(domain, root, after_sequence=5)
+
+    # Business decision: does our intent still hold?
+    if events_invalidate_our_action(events):
+        return Error("Action no longer valid")
+
+    # Rebuild with current sequence
+    new_sequence = events[-1].sequence + 1
+    result = send_command(cmd, sequence=new_sequence)
 ```
 
 ### MERGE_STRICT
@@ -165,7 +340,8 @@ def handle_with_merge(
 | Player aggregate | MERGE_COMMUTATIVE | Deposits can retry |
 | Table aggregate | Snapshots @ 100 | Many events per session |
 | Leaderboard projector | Async | Can lag behind |
-| Balance projector | Sync | Visible immediately |
+| Balance projector | Simple sync | Visible immediately |
+| Order completion | Cascade sync | Fulfillment must be ready |
 
 ---
 
@@ -197,20 +373,107 @@ lag = projection_time - event_time
 
 ## Scaling Horizontally
 
-Aggregates partition by ID. Each aggregate instance handles one root:
+Aggregate instances are stateless between requests. Each instance can handle any root—the coordinator loads the appropriate EventBook and re-initializes state on every command:
 
 ```mermaid
 flowchart LR
-    ea["Table A events"] --> ca["Coordinator A"] --> aa["Table A aggregate"]
-    eb["Table B events"] --> cb["Coordinator B"] --> ab["Table B aggregate"]
+    subgraph coordinator["Coordinator Pool"]
+        c1["Instance 1"]
+        c2["Instance 2"]
+        c3["Instance 3"]
+    end
+
+    cmd1["Command (Table A)"] --> c1
+    cmd2["Command (Table B)"] --> c2
+    cmd3["Command (Table A)"] --> c3
+
+    c1 --> store["Event Store"]
+    c2 --> store
+    c3 --> store
 ```
 
-No cross-aggregate coordination needed. Scale by adding coordinator instances.
+Any coordinator instance handles any root. The event store is the single source of truth—instances don't cache state across requests. This enables:
+
+- **Horizontal scaling**: Add instances based on command throughput
+- **No sticky routing**: Load balancer distributes freely
+- **No cross-instance coordination**: Optimistic concurrency via sequence numbers
+
+Scale by adding coordinator instances. The event store becomes the bottleneck at extreme scale—every command reads the aggregate's event history and writes new events. [Snapshots](#snapshots) reduce read amplification by caching state at intervals, but writes remain sequential per aggregate root.
+
+---
+
+## Process Managers and Correlation IDs
+
+When workflows span multiple domains, **correlation IDs become aggregate roots** in process managers. The PM is itself an aggregate—its root is the correlation ID identifying the cross-domain process.
+
+```mermaid
+flowchart LR
+    subgraph order["Order Domain"]
+        o1["OrderCreated<br/>correlation: abc-123"]
+    end
+
+    subgraph pm["Process Manager"]
+        pm1["PM State<br/>root: abc-123"]
+    end
+
+    subgraph fulfillment["Fulfillment Domain"]
+        f1["FulfillmentRequested<br/>correlation: abc-123"]
+    end
+
+    o1 --> pm1
+    pm1 --> f1
+```
+
+The correlation ID (`abc-123`) flows through all events in the workflow. The PM:
+
+1. Receives events from multiple domains filtered by correlation ID
+2. Maintains its own event-sourced state (keyed by correlation ID)
+3. Emits **commands** or **facts** to other domains, preserving the correlation ID
+
+### Commands vs Facts
+
+Sagas and PMs can emit either:
+
+| Output | Validation | Can Reject | Use Case |
+|--------|------------|------------|----------|
+| **Command** | Goes through aggregate validation | Yes | Request an action that may fail |
+| **Fact** | Injected directly, bypasses validation | No | Assert external reality the aggregate must accept |
+
+Facts represent things that have already happened—the aggregate cannot reject reality. Examples:
+
+- "The hand says it's your turn" → Player aggregate must accept this
+- "Payment processor confirmed charge" → Order aggregate must record it
+- "Tournament system assigned seating" → Table aggregate must honor it
+
+```python
+# Saga emitting a command (can be rejected)
+yield Command(domain="player", type=DeductChips(amount=100))
+
+# Saga emitting a fact (cannot be rejected)
+yield Fact(domain="player", type=TurnAssigned(hand_id=hand_id))
+```
+
+See **[Commands vs Facts](/features/facts)** for idempotency handling, external system integration, and detailed examples.
+
+This enables complex orchestration patterns:
+
+| Pattern | Description |
+|---------|-------------|
+| **Saga** | Stateless domain translation (no PM needed) |
+| **Choreography** | Domains react to events independently |
+| **Orchestration** | PM coordinates sequence, handles failures |
+
+PMs scale the same way as aggregates—each correlation ID is independent. A PM instance can handle any correlation ID; the event store partitions by root.
+
+:::note
+Sagas are stateless translators (one domain → one domain). When you need to correlate events across multiple domains or maintain workflow state, use a process manager. The correlation ID is your aggregate root.
+:::
 
 ---
 
 ## See Also
 
 - [Architecture](../architecture) — How coordinators manage aggregates
+- [Commands vs Facts](./facts) — When to use facts over commands
 - [Observability](./observability) — Monitoring performance
 - [Operations: Infrastructure](../operations/infrastructure) — Deployment patterns

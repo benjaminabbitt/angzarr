@@ -5,8 +5,8 @@ package dev.angzarr.examples.table.sagahandoo;
 import com.google.protobuf.Any;
 import dev.angzarr.*;
 import dev.angzarr.client.Saga;
+import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.examples.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +21,7 @@ import java.util.List;
  *
  * <ul>
  *   <li>{@code @Prepares(EventType.class)} for prepare phase handlers
- *   <li>{@code @ReactsTo(EventType.class)} for execute phase handlers
+ *   <li>{@code @Handles(EventType.class)} for execute phase handlers
  * </ul>
  */
 public class TableHandSaga extends Saga {
@@ -51,7 +51,7 @@ public class TableHandSaga extends Saga {
    * <p>Called during the execute phase with the source event and fetched destination EventBooks.
    * Returns the command to send.
    */
-  @ReactsTo(HandStarted.class)
+  @Handles(HandStarted.class)
   public CommandBook handleHandStarted(HandStarted event, List<EventBook> destinations) {
     int destSeq = Saga.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
 

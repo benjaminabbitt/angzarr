@@ -159,6 +159,36 @@ All events in a workflow share the same correlation ID, allowing the PM to:
 - Receive events from multiple domains
 - Maintain workflow state across events
 - Track progress through the state machine
+- Emit **commands** or **facts** to target domains
+
+---
+
+## Commands vs Facts
+
+PMs can emit either **commands** (requests that can be rejected) or **facts** (assertions the target must accept):
+
+| Output | Can Reject | Use Case |
+|--------|------------|----------|
+| **Command** | Yes | Request action that may fail validation |
+| **Fact** | No | Assert PM's orchestration decision |
+
+Facts are useful when the PM has authority the target aggregate must accept—phase transitions, timeouts, tournament rulings:
+
+```python
+# Command: request action, may be rejected
+def handle_hand_complete(event: HandComplete, state: WorkflowState):
+    return CommandBook(domain="player", command=TransferChips(amount=event.pot))
+
+# Fact: assert PM decision, cannot be rejected
+def handle_timeout(event: PlayerTimedOut, state: WorkflowState):
+    return FactBook(
+        domain="hand",
+        external_id=f"timeout:{state.correlation_id}:{event.player_id}",
+        event=PlayerForceFolded(player_id=event.player_id, reason="timeout"),
+    )
+```
+
+See **[Commands vs Facts](/features/facts)** for details on when to use each.
 
 ---
 
@@ -252,5 +282,6 @@ def handle_player_timed_out(self, event: PlayerTimedOut, state: HandFlowState):
 ## Next Steps
 
 - **[Sagas](/components/saga)** — Simpler stateless coordination
+- **[Commands vs Facts](/features/facts)** — When to emit facts instead of commands
 - **[Why Poker](/examples/why-poker#5-process-manager-orchestration)** — PM patterns in poker
 - **[Testing](/operations/testing)** — Testing PMs with Gherkin

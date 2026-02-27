@@ -5,8 +5,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import dev.angzarr.*;
 import dev.angzarr.client.annotations.Applies;
+import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.client.annotations.Rejected;
 import dev.angzarr.client.compensation.RejectionHandlerResponse;
 
@@ -34,7 +34,7 @@ import java.util.function.Function;
  *         return HandFlowState.newBuilder().build();
  *     }
  *
- *     @ReactsTo(HandStarted.class)
+ *     @Handles(HandStarted.class)
  *     public List<CommandBook> handleHandStarted(HandStarted event) {
  *         // Use getState() to access current PM state
  *         return packCommands("player", DeductBuyIn.newBuilder()...build(), correlationId);
@@ -291,10 +291,10 @@ public abstract class ProcessManager<S extends Message> {
     @SuppressWarnings("unchecked")
     private void buildDispatchTables() {
         for (Method method : this.getClass().getDeclaredMethods()) {
-            // ReactsTo handlers
-            ReactsTo reactsTo = method.getAnnotation(ReactsTo.class);
-            if (reactsTo != null) {
-                Class<? extends Message> eventType = reactsTo.value();
+            // Handles handlers (event handlers for process managers)
+            Handles handles = method.getAnnotation(Handles.class);
+            if (handles != null) {
+                Class<? extends Message> eventType = handles.value();
                 String suffix = eventType.getSimpleName();
                 method.setAccessible(true);
 

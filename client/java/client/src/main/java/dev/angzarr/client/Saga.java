@@ -4,8 +4,8 @@ import com.google.protobuf.Any;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import dev.angzarr.*;
+import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.client.annotations.Rejected;
 import dev.angzarr.client.compensation.RejectionHandlerResponse;
 import dev.angzarr.client.router.SagaHandlerResponse;
@@ -33,7 +33,7 @@ import java.util.function.Function;
  *             .build());
  *     }
  *
- *     @ReactsTo(OrderCompleted.class)
+ *     @Handles(OrderCompleted.class)
  *     public CreateShipment handleOrderCompleted(OrderCompleted event) {
  *         return CreateShipment.newBuilder()
  *             .setOrderId(event.getOrderId())
@@ -215,10 +215,10 @@ public abstract class Saga {
 
     private void buildDispatchTables() {
         for (Method method : this.getClass().getDeclaredMethods()) {
-            // ReactsTo handlers
-            ReactsTo reactsTo = method.getAnnotation(ReactsTo.class);
-            if (reactsTo != null) {
-                Class<? extends Message> eventType = reactsTo.value();
+            // Handles handlers (event handlers for sagas)
+            Handles handles = method.getAnnotation(Handles.class);
+            if (handles != null) {
+                Class<? extends Message> eventType = handles.value();
                 String suffix = eventType.getSimpleName();
                 method.setAccessible(true);
 

@@ -5,7 +5,7 @@
 //
 // Two-phase protocol support:
 //   - Prepare: Declare destination aggregates needed (via Prepares)
-//   - Execute: Produce commands given source + destination state (via ReactsTo)
+//   - Execute: Produce commands given source + destination state (via Handles)
 //
 // Example usage:
 //
@@ -17,7 +17,7 @@
 //	    s := &TableHandSaga{}
 //	    s.Init("saga-table-hand", "table", "hand")
 //	    s.Prepares(s.prepareHandStarted)
-//	    s.ReactsTo(s.handleHandStarted)
+//	    s.Handles(s.handleHandStarted)
 //	    return s
 //	}
 //
@@ -56,7 +56,7 @@ type handlerOOFunc func(eventAny *anypb.Any, dests []*pb.EventBook) ([]*pb.Comma
 // SagaBase provides OO-style saga infrastructure.
 //
 // Embed this in your saga struct and call Init() to set up the base.
-// Then register handlers with Prepares() and ReactsTo().
+// Then register handlers with Prepares() and Handles().
 type SagaBase struct {
 	name         string
 	inputDomain  string
@@ -162,7 +162,7 @@ func (s *SagaBase) Prepares(handler any) {
 	s.prepares[fullName] = wrapper
 }
 
-// ReactsTo registers an event handler.
+// Handles registers an event handler.
 //
 // The handler function can have two signatures:
 //
@@ -173,7 +173,7 @@ func (s *SagaBase) Prepares(handler any) {
 //
 // Example:
 //
-//	s.ReactsTo(s.handleHandStarted)
+//	s.Handles(s.handleHandStarted)
 //
 //	func (s *TableHandSaga) handleHandStarted(
 //	    event *table.HandStarted,
@@ -183,7 +183,7 @@ func (s *SagaBase) Prepares(handler any) {
 //	    // ... build command
 //	    return &pb.CommandBook{...}, nil
 //	}
-func (s *SagaBase) ReactsTo(handler any) {
+func (s *SagaBase) Handles(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -253,14 +253,14 @@ func (s *SagaBase) ReactsTo(handler any) {
 	s.handlers[fullName] = wrapper
 }
 
-// ReactsToMulti registers an event handler that returns multiple commands.
+// HandlesMulti registers an event handler that returns multiple commands.
 //
 // The handler function must have signature:
 // func(*EventType, []*pb.EventBook) ([]*pb.CommandBook, error)
 //
 // The event type is automatically extracted via proto reflection.
 // Use this for broadcasting to multiple aggregates.
-func (s *SagaBase) ReactsToMulti(handler any) {
+func (s *SagaBase) HandlesMulti(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 

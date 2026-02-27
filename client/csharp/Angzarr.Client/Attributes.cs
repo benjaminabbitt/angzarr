@@ -1,17 +1,20 @@
 namespace Angzarr.Client;
 
 /// <summary>
-/// Marks a method as a command handler for the specified command type.
-/// The method should return an event or tuple of events.
+/// Marks a method as a handler for the specified message type.
+/// For aggregates: handles commands, returns events.
+/// For sagas/PMs: handles events, returns commands.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public class HandlesAttribute : Attribute
 {
-    public Type CommandType { get; }
+    public Type EventType { get; }
+    public string? InputDomain { get; set; }
+    public string? OutputDomain { get; set; }
 
-    public HandlesAttribute(Type commandType)
+    public HandlesAttribute(Type eventType)
     {
-        CommandType = commandType;
+        EventType = eventType;
     }
 }
 
@@ -25,23 +28,6 @@ public class AppliesAttribute : Attribute
     public Type EventType { get; }
 
     public AppliesAttribute(Type eventType)
-    {
-        EventType = eventType;
-    }
-}
-
-/// <summary>
-/// Marks a method as an event handler for sagas or process managers.
-/// The method should return a command or tuple of commands.
-/// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public class ReactsToAttribute : Attribute
-{
-    public Type EventType { get; }
-    public string? InputDomain { get; set; }
-    public string? OutputDomain { get; set; }
-
-    public ReactsToAttribute(Type eventType)
     {
         EventType = eventType;
     }

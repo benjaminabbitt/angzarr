@@ -8,7 +8,7 @@ Orchestrates the flow of poker hands by:
 This example demonstrates the OO pattern using:
 - ProcessManager[StateT] base class
 - @prepares decorator for destination declaration
-- @reacts_to decorator for event handlers
+- @handles decorator for event handlers
 - _create_empty_state() and _apply_event() for state management
 """
 
@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from google.protobuf.any_pb2 import Any
 
-from angzarr_client import ProcessManager, prepares, reacts_to
+from angzarr_client import ProcessManager, handles, prepares
 from angzarr_client.process_manager_handler import (
     ProcessManagerHandler,
     run_process_manager_server,
@@ -89,7 +89,7 @@ class HandFlowPM(ProcessManager[PMState]):
             )
         ]
 
-    @reacts_to(table.HandStarted, input_domain="table")
+    @handles(table.HandStarted, input_domain="table")
     def handle_hand_started(
         self,
         event: table.HandStarted,
@@ -102,7 +102,7 @@ class HandFlowPM(ProcessManager[PMState]):
         """
         return None
 
-    @reacts_to(hand.CardsDealt, input_domain="hand")
+    @handles(hand.CardsDealt, input_domain="hand")
     def handle_cards_dealt(
         self,
         event: hand.CardsDealt,
@@ -115,7 +115,7 @@ class HandFlowPM(ProcessManager[PMState]):
         """
         return None
 
-    @reacts_to(hand.BlindPosted, input_domain="hand")
+    @handles(hand.BlindPosted, input_domain="hand")
     def handle_blind_posted(
         self,
         event: hand.BlindPosted,
@@ -128,7 +128,7 @@ class HandFlowPM(ProcessManager[PMState]):
         """
         return None
 
-    @reacts_to(hand.ActionTaken, input_domain="hand")
+    @handles(hand.ActionTaken, input_domain="hand")
     def handle_action_taken(
         self,
         event: hand.ActionTaken,
@@ -141,7 +141,7 @@ class HandFlowPM(ProcessManager[PMState]):
         """
         return None
 
-    @reacts_to(hand.CommunityCardsDealt, input_domain="hand")
+    @handles(hand.CommunityCardsDealt, input_domain="hand")
     def handle_community_dealt(
         self,
         event: hand.CommunityCardsDealt,
@@ -153,7 +153,7 @@ class HandFlowPM(ProcessManager[PMState]):
         """
         return None
 
-    @reacts_to(hand.PotAwarded, input_domain="hand")
+    @handles(hand.PotAwarded, input_domain="hand")
     def handle_pot_awarded(
         self,
         event: hand.PotAwarded,

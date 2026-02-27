@@ -231,7 +231,7 @@ def build_inventory_pm_router() -> ProcessManagerRouter[RouterPMState]:
 # =============================================================================
 
 
-class TestReactsToWithInputDomain:
+class TestHandlesWithInputDomain:
     def test_decorator_stores_input_domain(self):
         method = OrderWorkflowPM.on_order_created
         assert method._input_domain == "order"

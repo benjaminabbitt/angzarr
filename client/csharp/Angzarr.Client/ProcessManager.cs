@@ -11,7 +11,7 @@ namespace Angzarr.Client;
 /// Subclasses must:
 /// - Override Name property
 /// - Override CreateEmptyState() and ApplyEvent()
-/// - Decorate event handlers with [ReactsTo(typeof(EventType), InputDomain = "...")]
+/// - Decorate event handlers with [Handles(typeof(EventType), InputDomain = "...")]
 /// - Optionally decorate prepare handlers with [Prepares(typeof(EventType))]
 /// - Optionally decorate rejection handlers with [Rejected("domain", "command")]
 /// </summary>
@@ -81,7 +81,7 @@ public abstract class ProcessManager<TState>
                 )
             )
             {
-                var attr = method.GetCustomAttribute<ReactsToAttribute>();
+                var attr = method.GetCustomAttribute<HandlesAttribute>();
                 if (attr != null)
                 {
                     var suffix = attr.EventType.Name;

@@ -2,7 +2,7 @@
 
 Demonstrates the OO-style ProcessManager using:
 - @prepares decorator for destination declaration
-- @reacts_to decorator for event handling
+- @handles decorator for event handling
 - @rejected decorator for compensation
 
 This PM coordinates an order workflow across order, inventory, and payment domains.
@@ -18,7 +18,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "client" / "python"))
 
-from angzarr_client import ProcessManager, prepares, reacts_to, rejected
+from angzarr_client import ProcessManager, handles, prepares, rejected
 from angzarr_client.helpers import type_name_from_url
 from angzarr_client.process_manager_handler import (
     ProcessManagerHandler,
@@ -178,7 +178,7 @@ class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
     # Event handlers
     # -------------------------------------------------------------------------
 
-    @reacts_to(OrderCreated, input_domain="order")
+    @handles(OrderCreated, input_domain="order")
     def on_order_created(
         self,
         event: OrderCreated,
@@ -195,7 +195,7 @@ class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
             sku="default-sku",  # Would come from order details
         )
 
-    @reacts_to(InventoryReserved, input_domain="inventory")
+    @handles(InventoryReserved, input_domain="inventory")
     def on_inventory_reserved(
         self,
         event: InventoryReserved,
@@ -209,7 +209,7 @@ class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
             amount=self.state.amount,
         )
 
-    @reacts_to(PaymentReceived, input_domain="payment")
+    @handles(PaymentReceived, input_domain="payment")
     def on_payment_received(self, event: PaymentReceived) -> None:
         """React to PaymentReceived by marking workflow complete."""
         self.state.payment_received = True

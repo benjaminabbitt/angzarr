@@ -4,8 +4,8 @@ import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
 import dev.angzarr.*;
 import dev.angzarr.client.Saga;
+import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.examples.*;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,7 +37,7 @@ public class TablePlayerSaga extends Saga {
     return covers;
   }
 
-  @ReactsTo(HandEnded.class)
+  @Handles(HandEnded.class)
   public List<CommandBook> handleHandEnded(HandEnded event, List<EventBook> destinations) {
     // Build destination map for sequence lookup
     Map<String, EventBook> destMap = new HashMap<>();

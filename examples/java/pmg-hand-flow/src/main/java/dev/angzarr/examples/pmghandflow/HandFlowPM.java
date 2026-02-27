@@ -40,7 +40,7 @@ class HandFlowState {
 // docs:start:pm_handler
 public class HandFlowPM extends ProcessManager<HandFlowState> {
 
-    @ReactsTo(HandStarted.class)
+    @Handles(HandStarted.class)
     public List<CommandBook> handleHandStarted(HandStarted event, HandFlowState state) {
         state.setHandId(event.getHandId());
         state.setPhase(HandPhase.DEALING);
@@ -52,7 +52,7 @@ public class HandFlowPM extends ProcessManager<HandFlowState> {
             .build()));
     }
 
-    @ReactsTo(CardsDealt.class)
+    @Handles(CardsDealt.class)
     public List<CommandBook> handleCardsDealt(CardsDealt event, HandFlowState state) {
         state.setPhase(HandPhase.BLINDS);
         return List.of(buildCommand("hand", PostBlinds.newBuilder()
@@ -60,7 +60,7 @@ public class HandFlowPM extends ProcessManager<HandFlowState> {
             .build()));
     }
 
-    @ReactsTo(HandComplete.class)
+    @Handles(HandComplete.class)
     public List<CommandBook> handleHandComplete(HandComplete event, HandFlowState state) {
         state.setPhase(HandPhase.COMPLETE);
         return List.of(buildCommand("table", EndHand.newBuilder()

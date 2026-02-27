@@ -9,13 +9,13 @@
 //! This example demonstrates the OO pattern using:
 //! - `#[saga(name = "...", input = "...", output = "...")]` on impl blocks
 //! - `#[prepares(EventType)]` on prepare methods
-//! - `#[reacts_to(EventType)]` on handler methods
+//! - `#[handles(EventType)]` on handler methods
 
 use angzarr_client::proto::examples::{DealCards, HandStarted, PlayerInHand};
 use angzarr_client::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{run_saga_server, CommandResult, SagaHandlerResponse};
 #[allow(unused_imports)]
-use angzarr_macros::{prepares, reacts_to, saga};
+use angzarr_macros::{prepares, handles, saga};
 use prost::Message;
 use prost_types::Any;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -38,7 +38,7 @@ impl TableHandSaga {
     }
 
     /// Execute handler: translate HandStarted → DealCards.
-    #[reacts_to(HandStarted)]
+    #[handles(HandStarted)]
     fn handle_hand_started(
         &self,
         event: HandStarted,

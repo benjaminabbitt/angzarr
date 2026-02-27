@@ -8,7 +8,7 @@ namespace Table.SagaHandOO;
 /// Spring Boot application for Table -> Hand saga using OO pattern.
 ///
 /// This example demonstrates using the Saga base class with
-/// annotation-based handler registration ([Prepares], [ReactsTo]).
+/// annotation-based handler registration ([Prepares], [Handles]).
 ///
 /// Compare with the functional EventRouter pattern in Table/SagaHand.
 /// </summary>

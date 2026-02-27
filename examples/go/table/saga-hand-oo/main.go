@@ -29,7 +29,7 @@ func NewTableHandSaga() *TableHandSaga {
 	s.Prepares(s.prepareHandStarted)
 
 	// Register event handler
-	s.ReactsTo(s.handleHandStarted)
+	s.Handles(s.handleHandStarted)
 
 	return s
 }

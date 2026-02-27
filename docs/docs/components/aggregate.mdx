@@ -379,6 +379,35 @@ Both patterns produce identical behavior—choose based on team preference. The 
 
 ---
 
+## Receiving Facts
+
+Aggregates receive **facts** in addition to commands. Facts are events injected directly—they bypass guard/validate/compute because they represent external reality the aggregate cannot reject.
+
+```python
+# Command handler: can reject
+@handles("DepositFunds")
+def handle_deposit(cmd: DepositFunds, state: PlayerState) -> FundsDeposited:
+    if cmd.amount <= 0:
+        raise CommandRejectedError("Invalid amount")  # Can reject
+    return FundsDeposited(new_bankroll=state.bankroll + cmd.amount)
+
+# Fact handler: cannot reject, just update state
+@handles_fact("TurnAssigned")
+def handle_turn_assigned(fact: TurnAssigned, state: PlayerState) -> None:
+    # No validation, no rejection—just apply to state
+    state.current_hand = fact.hand_id
+    state.is_my_turn = True
+```
+
+Facts arrive from:
+- **Sagas/PMs** asserting cross-domain decisions
+- **External systems** (payment confirmations, IoT sensors)
+- **Human overrides** (floor manager rulings)
+
+The aggregate's only job is to record the fact and update state. See **[Commands vs Facts](/features/facts)** for details.
+
+---
+
 ## Event Sequencing
 
 Each event has a `sequence` field. The aggregate computes the next sequence from prior events:
@@ -412,4 +441,5 @@ On subsequent commands, only events after the snapshot are loaded.
 
 - **[Sagas](/components/saga)** — Cross-domain command orchestration
 - **[Projectors](/components/projector)** — Building read models
+- **[Commands vs Facts](/features/facts)** — When to use facts over commands
 - **[Testing](/operations/testing)** — Three-level testing strategy

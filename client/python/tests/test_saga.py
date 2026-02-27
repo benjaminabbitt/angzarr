@@ -158,7 +158,7 @@ def build_inventory_router() -> SingleFluentRouter:
 # =============================================================================
 
 
-class TestReactsToDecorator:
+class TestHandlesDecorator:
     def test_decorator_marks_handler(self):
         method = OrderFulfillmentSaga.handle_completed
         assert hasattr(method, "_is_handler")
