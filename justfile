@@ -509,8 +509,9 @@ infra-ci:
     helm upgrade --install angzarr-redis "{{HELM_K8S}}/redis" \
         -n angzarr --set auth.password=angzarr --wait --timeout 2m
     # RabbitMQ (simple, no operator)
+    # Note: name=angzarr-mq-rabbitmq creates service name that Helm templates expect
     helm upgrade --install angzarr-mq "{{HELM_K8S}}/rabbitmq" \
-        -n angzarr --set auth.password=angzarr --wait --timeout 2m
+        -n angzarr --set auth.password=angzarr --set name=angzarr-mq-rabbitmq --wait --timeout 2m
     echo "=== CI Infrastructure deployed ==="
     kubectl get pods -n angzarr
 
