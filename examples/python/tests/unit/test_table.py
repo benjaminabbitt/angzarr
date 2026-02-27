@@ -1,10 +1,7 @@
 """Table aggregate unit tests."""
 
-import importlib
-import importlib.util
 import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
@@ -16,71 +13,11 @@ from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.proto.examples import table_pb2 as table
 
-
-# Load table handlers as unique modules to avoid collision with other aggregates
-def _load_handler_package(agg_path: Path, pkg_name: str) -> dict:
-    """Load all handler modules under a unique package name."""
-    handlers_path = agg_path / "handlers"
-
-    # Create fake package for relative imports
-    handlers_pkg = ModuleType(pkg_name)
-    handlers_pkg.__path__ = [str(handlers_path)]
-    handlers_pkg.__file__ = str(handlers_path / "__init__.py")
-    sys.modules[pkg_name] = handlers_pkg
-
-    modules = {}
-
-    def load_module(module_name: str) -> ModuleType:
-        file_path = handlers_path / f"{module_name}.py"
-        full_name = f"{pkg_name}.{module_name}"
-
-        spec = importlib.util.spec_from_file_location(
-            full_name, file_path, submodule_search_locations=[str(handlers_path)]
-        )
-        module = importlib.util.module_from_spec(spec)
-        module.__package__ = pkg_name
-        sys.modules[full_name] = module
-        spec.loader.exec_module(module)
-        modules[module_name] = module
-        return module
-
-    # Load in dependency order (state first, then handlers that depend on it)
-    load_module("state")
-    load_module("create_table")
-    load_module("join_table")
-    load_module("leave_table")
-    load_module("start_hand")
-    load_module("end_hand")
-
-    return modules
-
-
-_agg_path = Path(__file__).parent.parent.parent / "table" / "agg"
-_mods = _load_handler_package(_agg_path, "table_handlers")
-
-TableState = _mods["state"].TableState
-build_state = _mods["state"].build_state
-TableState = _mods["state"].TableState
-
-
-def state_from_event_book(event_book):
-    """Build state from EventBook - extracts Any-wrapped events and applies them."""
-    state = TableState()
-    if event_book is None:
-        return state
-    events = [page.event for page in event_book.pages if page.event]
-    return build_state(state, events)
-
-
-handle_create_table = _mods["create_table"].handle_create_table
-handle_join_table = _mods["join_table"].handle_join_table
-handle_leave_table = _mods["leave_table"].handle_leave_table
-handle_start_hand = _mods["start_hand"].handle_start_hand
-handle_end_hand = _mods["end_hand"].handle_end_hand
-
-# Add tests to path for conftest import
+# Add root to path for importing Table and conftest
 root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root))
+
+from table.agg.handlers import Table
 
 from tests.conftest import (
     ScenarioContext,
@@ -108,23 +45,40 @@ def _event_book(ctx: ScenarioContext) -> types.EventBook:
     return ctx.event_book()
 
 
-def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
-    """Execute a command handler."""
-    cmd_any = ProtoAny()
-    cmd_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
+def _handle_command(ctx: ScenarioContext, command_msg):
+    """Execute a command handler using the Table class.
 
+    The OO-style Table class extends CommandHandler which uses @handles
+    decorators. We call the handler methods directly rather than dispatch
+    since we have the typed command message.
+    """
     event_book = _event_book(ctx)
-    state = state_from_event_book(event_book)
-    seq = len(ctx.events)
-
-    cmd_book = make_command_book(
-        make_cover(ctx.domain, ctx.root),
-        cmd_any,
-        seq,
-    )
+    tbl = Table(event_book)
 
     try:
-        ctx.result = handler_fn(cmd_book, cmd_any, state, seq)
+        # Call the appropriate handler based on command type
+        # The handler returns a raw event, which we wrap in an EventBook
+        if isinstance(command_msg, table.CreateTable):
+            event = tbl.create(command_msg)
+        elif isinstance(command_msg, table.JoinTable):
+            event = tbl.join(command_msg)
+        elif isinstance(command_msg, table.LeaveTable):
+            event = tbl.leave(command_msg)
+        elif isinstance(command_msg, table.StartHand):
+            event = tbl.start_hand(command_msg)
+        elif isinstance(command_msg, table.EndHand):
+            event = tbl.end_hand(command_msg)
+        else:
+            raise ValueError(f"Unknown command type: {type(command_msg)}")
+
+        # Wrap event in EventBook for test assertions
+        event_any = ProtoAny()
+        event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+
+        result = types.EventBook()
+        seq = len(ctx.events)
+        result.pages.append(types.EventPage(event=event_any, sequence=seq))
+        ctx.result = result
         ctx.error = None
     except CommandRejectedError as e:
         ctx.result = None
@@ -294,7 +248,7 @@ def handle_create_table_cmd(ctx, name, variant, datatable):
         max_players=int(row["max_players"]),
         action_timeout_seconds=30,
     )
-    _handle_command(ctx, cmd, handle_create_table)
+    _handle_command(ctx, cmd)
 
 
 @when(
@@ -309,7 +263,7 @@ def handle_join_table_cmd(ctx, player_id, seat, buy_in):
         preferred_seat=seat,
         buy_in_amount=buy_in,
     )
-    _handle_command(ctx, cmd, handle_join_table)
+    _handle_command(ctx, cmd)
 
 
 @when(parsers.parse('I handle a LeaveTable command for player "{player_id}"'))
@@ -318,14 +272,14 @@ def handle_leave_table_cmd(ctx, player_id):
     cmd = table.LeaveTable(
         player_root=player_id.encode(),
     )
-    _handle_command(ctx, cmd, handle_leave_table)
+    _handle_command(ctx, cmd)
 
 
 @when("I handle a StartHand command")
 def handle_start_hand_cmd(ctx):
     """Handle StartHand command."""
     cmd = table.StartHand()
-    _handle_command(ctx, cmd, handle_start_hand)
+    _handle_command(ctx, cmd)
 
 
 @when(
@@ -335,11 +289,11 @@ def handle_start_hand_cmd(ctx):
 )
 def handle_end_hand_cmd(ctx, winner_id, amount):
     """Handle EndHand command."""
-    # Need hand root from state
-    state = build_state(_event_book(ctx))
+    # Get current hand root from state
+    tbl = Table(_event_book(ctx))
 
     cmd = table.EndHand(
-        hand_root=state.current_hand_root or b"",
+        hand_root=tbl.current_hand_root or b"",
         results=[
             table.PotResult(
                 winner_root=winner_id.encode(),
@@ -347,13 +301,38 @@ def handle_end_hand_cmd(ctx, winner_id, amount):
             )
         ],
     )
-    _handle_command(ctx, cmd, handle_end_hand)
+    _handle_command(ctx, cmd)
+
+
+@when("I handle an EndHand command with results:")
+def handle_end_hand_cmd_with_results(ctx, datatable):
+    """Handle EndHand command with multiple results from datatable."""
+    # Get current hand root from state
+    tbl = Table(_event_book(ctx))
+
+    # datatable is a list of lists: [headers, row1, row2...]
+    headers = datatable[0]
+    results = []
+    for row in datatable[1:]:
+        row_dict = dict(zip(headers, row))
+        results.append(
+            table.PotResult(
+                winner_root=row_dict["player"].encode(),
+                amount=int(row_dict["change"]),
+            )
+        )
+
+    cmd = table.EndHand(
+        hand_root=tbl.current_hand_root or b"",
+        results=results,
+    )
+    _handle_command(ctx, cmd)
 
 
 @when("I rebuild the table state")
 def rebuild_table_state(ctx):
     """Rebuild state from events."""
-    ctx.state = build_state(_event_book(ctx))
+    ctx.state = Table(_event_book(ctx))
 
 
 # --- Then steps ---
@@ -512,7 +491,7 @@ def error_message_contains(ctx, text):
 def state_has_players(ctx, count):
     """Verify state player count."""
     assert ctx.state is not None
-    assert ctx.state.player_count() == count
+    assert ctx.state.player_count == count
 
 
 @then(parsers.parse('the table state has seat {seat:d} occupied by "{player_id}"'))

@@ -21,6 +21,7 @@ public abstract class ProcessManager<TState>
     private Angzarr.EventBook _eventBook;
     private TState? _state;
     private readonly List<Any> _newEvents = new();
+    private readonly List<Angzarr.EventBook> _facts = new();
 
     // Dispatch tables built via reflection on first use
     private static readonly Dictionary<
@@ -336,6 +337,30 @@ public abstract class ProcessManager<TState>
 
         _newEvents.Add(eventAny);
     }
+
+    /// <summary>
+    /// Emit a fact to be injected into another aggregate.
+    /// Facts are events injected directly into target aggregates, bypassing
+    /// command validation. Use for cross-aggregate coordination.
+    /// </summary>
+    /// <param name="fact">The event book to emit.</param>
+    protected void EmitFact(Angzarr.EventBook fact)
+    {
+        _facts.Add(fact);
+    }
+
+    /// <summary>
+    /// Clear accumulated facts. Called before each dispatch.
+    /// </summary>
+    protected void ClearFacts()
+    {
+        _facts.Clear();
+    }
+
+    /// <summary>
+    /// Get accumulated facts.
+    /// </summary>
+    public List<Angzarr.EventBook> GetFacts() => new(_facts);
 
     private void HandleResult(object? result)
     {

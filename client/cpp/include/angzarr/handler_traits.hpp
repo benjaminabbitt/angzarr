@@ -46,6 +46,35 @@ struct RejectionHandlerResponse {
 };
 
 /**
+ * Response from saga handlers.
+ */
+struct SagaHandlerResponse {
+    /// Commands to send to other aggregates.
+    std::vector<CommandBook> commands;
+    /// Events/facts to inject directly into target aggregates.
+    std::vector<EventBook> events;
+
+    /// Default: empty response.
+    static SagaHandlerResponse empty() { return {{}, {}}; }
+
+    /// Create response with commands only.
+    static SagaHandlerResponse with_commands(std::vector<CommandBook> commands) {
+        return {std::move(commands), {}};
+    }
+
+    /// Create response with events only.
+    static SagaHandlerResponse with_events(std::vector<EventBook> events) {
+        return {{}, std::move(events)};
+    }
+
+    /// Create response with both commands and events.
+    static SagaHandlerResponse with_both(std::vector<CommandBook> commands,
+                                         std::vector<EventBook> events) {
+        return {std::move(commands), std::move(events)};
+    }
+};
+
+/**
  * Response from process manager handlers.
  */
 struct ProcessManagerResponse {
@@ -53,23 +82,36 @@ struct ProcessManagerResponse {
     std::vector<CommandBook> commands;
     /// Events to persist to the PM's own domain.
     std::optional<EventBook> process_events;
+    /// Facts to inject directly into other aggregates.
+    std::vector<EventBook> facts;
 
     /// Default: empty response.
-    static ProcessManagerResponse empty() { return {{}, std::nullopt}; }
+    static ProcessManagerResponse empty() { return {{}, std::nullopt, {}}; }
 
     /// Create response with commands only.
     static ProcessManagerResponse with_commands(std::vector<CommandBook> commands) {
-        return {std::move(commands), std::nullopt};
+        return {std::move(commands), std::nullopt, {}};
     }
 
     /// Create response with PM events only.
     static ProcessManagerResponse with_process_events(EventBook events) {
-        return {{}, std::move(events)};
+        return {{}, std::move(events), {}};
     }
 
-    /// Create response with both commands and PM events.
+    /// Create response with facts only.
+    static ProcessManagerResponse with_facts(std::vector<EventBook> facts) {
+        return {{}, std::nullopt, std::move(facts)};
+    }
+
+    /// Create response with commands and PM events.
     static ProcessManagerResponse with_both(std::vector<CommandBook> commands, EventBook events) {
-        return {std::move(commands), std::move(events)};
+        return {std::move(commands), std::move(events), {}};
+    }
+
+    /// Create response with all fields.
+    static ProcessManagerResponse with_all(std::vector<CommandBook> commands, EventBook events,
+                                           std::vector<EventBook> facts) {
+        return {std::move(commands), std::move(events), std::move(facts)};
     }
 };
 
@@ -300,10 +342,11 @@ class AggregateDomainHandler {
  *           // Return covers for destinations to fetch
  *       }
  *
- *       std::vector<CommandBook> execute(const EventBook& source,
- *                                        const google::protobuf::Any& event,
- *                                        const std::vector<EventBook>& destinations) override {
- *           // Transform event into commands
+ *       SagaHandlerResponse execute(const EventBook& source,
+ *                                   const google::protobuf::Any& event,
+ *                                   const std::vector<EventBook>& destinations) override {
+ *           // Transform event into commands and/or events
+ *           return SagaHandlerResponse::with_commands({...});
  *       }
  *   };
  * @endcode
@@ -332,19 +375,40 @@ class SagaDomainHandler {
                                        const google::protobuf::Any& event) = 0;
 
     /**
-     * Execute phase -- produce commands.
+     * Execute phase -- produce commands and/or events.
      *
      * Called with source event and fetched destination state.
      *
      * @param source The source event book
      * @param event The event being processed
      * @param destinations Fetched destination event books
-     * @return Commands to send to other aggregates
+     * @return Response containing commands and/or events to inject
      * @throws CommandRejectedError if execution fails
      */
-    virtual std::vector<CommandBook> execute(const EventBook& source,
-                                             const google::protobuf::Any& event,
-                                             const std::vector<EventBook>& destinations) = 0;
+    virtual SagaHandlerResponse execute(const EventBook& source, const google::protobuf::Any& event,
+                                        const std::vector<EventBook>& destinations) = 0;
+
+    /**
+     * Handle a rejection notification.
+     *
+     * Called when a command issued by this saga was rejected by the target
+     * aggregate. Override to provide custom compensation logic.
+     *
+     * Default implementation returns an empty response (framework handles).
+     *
+     * @param notification The rejection notification
+     * @param target_domain The domain that rejected the command
+     * @param target_command The command type that was rejected
+     * @return RejectionHandlerResponse with compensation events or forwarded notification
+     */
+    virtual RejectionHandlerResponse on_rejected(const Notification& notification,
+                                                 const std::string& target_domain,
+                                                 const std::string& target_command) {
+        (void)notification;
+        (void)target_domain;
+        (void)target_command;
+        return RejectionHandlerResponse::empty();
+    }
 };
 
 // ============================================================================

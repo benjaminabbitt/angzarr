@@ -323,11 +323,11 @@ class TestSagaExecute:
             pages=[types.EventPage(event=event_any)],
         )
 
-        commands = OrderFulfillmentSaga.execute(source)
+        response = OrderFulfillmentSaga.execute(source)
 
-        assert len(commands) == 1
-        assert commands[0].cover.domain == "fulfillment"
-        assert commands[0].cover.correlation_id == "corr-abc"
+        assert len(response.commands) == 1
+        assert response.commands[0].cover.domain == "fulfillment"
+        assert response.commands[0].cover.correlation_id == "corr-abc"
 
     def test_execute_multiple_events(self):
         event1 = OrderCompleted(order_id="order-1")
@@ -344,9 +344,9 @@ class TestSagaExecute:
             ],
         )
 
-        commands = OrderFulfillmentSaga.execute(source)
+        response = OrderFulfillmentSaga.execute(source)
 
-        assert len(commands) == 2
+        assert len(response.commands) == 2
 
     def test_execute_skips_unhandled_events(self):
         handled = OrderCompleted(order_id="handled")
@@ -361,9 +361,9 @@ class TestSagaExecute:
             ],
         )
 
-        commands = OrderFulfillmentSaga.execute(source)
+        response = OrderFulfillmentSaga.execute(source)
 
-        assert len(commands) == 1
+        assert len(response.commands) == 1
 
 
 # =============================================================================
@@ -385,11 +385,11 @@ class TestSingleFluentRouter:
             pages=[types.EventPage(event=event_any)],
         )
 
-        commands = router.dispatch(source, [])
+        response = router.dispatch(source, [])
 
-        assert len(commands) == 1
-        assert commands[0].cover.domain == "fulfillment"
-        assert commands[0].cover.correlation_id == "corr-fn-1"
+        assert len(response.commands) == 1
+        assert response.commands[0].cover.domain == "fulfillment"
+        assert response.commands[0].cover.correlation_id == "corr-fn-1"
 
     def test_router_dispatch_multiple_commands(self):
         router = build_inventory_router()
@@ -403,11 +403,11 @@ class TestSingleFluentRouter:
             pages=[types.EventPage(event=event_any)],
         )
 
-        commands = router.dispatch(source, [])
+        response = router.dispatch(source, [])
 
-        assert len(commands) == 2
-        assert commands[0].cover.domain == "order"
-        assert commands[1].cover.domain == "order"
+        assert len(response.commands) == 2
+        assert response.commands[0].cover.domain == "order"
+        assert response.commands[1].cover.domain == "order"
 
 
 # =============================================================================
@@ -423,17 +423,18 @@ class TestPatternEquivalence:
         event_any = any_pb2.Any()
         event_any.Pack(event)
 
-        # OO pattern
+        # OO pattern - dispatch returns list[CommandBook]
         saga = OrderFulfillmentSaga()
         oo_commands = saga.dispatch(event_any, b"\x01", "corr-eq")
 
-        # SingleFluentRouter pattern
+        # SingleFluentRouter pattern - dispatch returns SagaResponse
         router = build_order_fulfillment_router()
         source = types.EventBook(
             cover=types.Cover(domain="order", correlation_id="corr-eq"),
             pages=[types.EventPage(event=event_any)],
         )
-        router_commands = router.dispatch(source, [])
+        response = router.dispatch(source, [])
+        router_commands = response.commands
 
         # Both produce one command to fulfillment domain
         assert len(oo_commands) == len(router_commands) == 1
@@ -447,3 +448,67 @@ class TestPatternEquivalence:
             == router_commands[0].cover.correlation_id
             == "corr-eq"
         )
+
+
+# =============================================================================
+# Tests for Saga event output (fact injection)
+# =============================================================================
+
+
+@domain("order")
+@output_domain("fulfillment")
+class OrderSagaWithEvents(Saga):
+    """Saga that emits events in addition to commands."""
+
+    name = "saga-order-with-events"
+
+    @handles(OrderCompleted)
+    def handle_completed(self, event: OrderCompleted) -> CreateShipment:
+        # Emit an event (fact) to another aggregate
+        self.emit_event(
+            types.EventBook(
+                cover=types.Cover(domain="analytics", correlation_id="test"),
+                pages=[
+                    types.EventPage(event=any_pb2.Any(type_url="test/OrderAnalytics"))
+                ],
+            )
+        )
+        return CreateShipment(order_id=event.order_id, address="default")
+
+
+class TestSagaEventOutput:
+    def test_emit_event_accumulates_events(self):
+        saga = OrderSagaWithEvents()
+        event = OrderCompleted(order_id="order-123")
+        event_any = any_pb2.Any()
+        event_any.Pack(event)
+
+        saga.dispatch(event_any, b"\x01\x02", "corr-1")
+
+        assert len(saga._events) == 1
+        assert saga._events[0].cover.domain == "analytics"
+
+    def test_execute_returns_events_in_response(self):
+        event = OrderCompleted(order_id="order-123")
+        event_any = any_pb2.Any()
+        event_any.Pack(event)
+
+        source = types.EventBook(
+            cover=types.Cover(domain="order", correlation_id="corr-abc"),
+            pages=[types.EventPage(event=event_any)],
+        )
+
+        response = OrderSagaWithEvents.execute(source)
+
+        assert len(response.commands) == 1
+        assert len(response.events) == 1
+        assert response.events[0].cover.domain == "analytics"
+
+    def test_saga_init_resets_events(self):
+        # Each saga instance should start with empty events
+        saga1 = OrderSagaWithEvents()
+        saga1.emit_event(types.EventBook(cover=types.Cover(domain="test")))
+        assert len(saga1._events) == 1
+
+        saga2 = OrderSagaWithEvents()
+        assert len(saga2._events) == 0

@@ -1,219 +1,374 @@
-"""Tests for Player aggregate."""
+"""Tests for Player aggregate functional handlers.
+
+Tests follow the guard/validate/compute pattern, testing pure functions
+directly without infrastructure dependencies.
+"""
 
 import pytest
+from google.protobuf.any_pb2 import Any as AnyProto
 
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
-from .player import Player
+from .commands import (
+    handle_deposit_funds,
+    handle_register_player,
+    handle_release_funds,
+    handle_reserve_funds,
+    handle_withdraw_funds,
+)
+from .state import PlayerState, build_state
+
+
+def pack_event(event) -> AnyProto:
+    """Pack an event into Any for state application."""
+    event_any = AnyProto()
+    event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+    return event_any
+
+
+def apply_event(state: PlayerState, event) -> PlayerState:
+    """Pack and apply a single event to state."""
+    return build_state(state, [pack_event(event)])
 
 
 class TestRegister:
-    """Test Player.register()."""
+    """Test handle_register_player()."""
 
     def test_register_creates_player(self):
-        p = Player()
-        assert not p.exists
+        state = PlayerState()
+        assert not state.exists
 
         cmd = player.RegisterPlayer(
             display_name="Alice",
             email="alice@example.com",
             player_type=poker_types.PlayerType.HUMAN,
         )
-        event = p.register(cmd)
+        event = handle_register_player(cmd, state, seq=0)
 
-        assert p.exists
-        assert p.display_name == "Alice"
-        assert p.email == "alice@example.com"
-        assert p.bankroll == 0
+        # Apply event to state
+        apply_event(state, event)
+
+        assert state.exists
+        assert state.display_name == "Alice"
+        assert state.email == "alice@example.com"
+        assert state.bankroll == 0
         assert event.display_name == "Alice"
 
     def test_register_ai_player(self):
-        p = Player()
+        state = PlayerState()
         cmd = player.RegisterPlayer(
             display_name="Bot-1",
             email="bot@ai.local",
             player_type=poker_types.PlayerType.AI,
             ai_model_id="gpt-poker-v1",
         )
-        p.register(cmd)
+        event = handle_register_player(cmd, state, seq=0)
+        apply_event(state, event)
 
-        assert p.is_ai
-        assert p.ai_model_id == "gpt-poker-v1"
+        assert state.player_type == poker_types.PlayerType.AI
+        assert state.ai_model_id == "gpt-poker-v1"
 
     def test_register_rejects_existing_player(self):
-        p = Player()
+        state = PlayerState()
         cmd = player.RegisterPlayer(display_name="Alice", email="a@b.com")
-        p.register(cmd)
+        event = handle_register_player(cmd, state, seq=0)
+        apply_event(state, event)
 
         with pytest.raises(CommandRejectedError, match="already exists"):
-            p.register(cmd)
+            handle_register_player(cmd, state, seq=1)
 
     def test_register_requires_display_name(self):
-        p = Player()
+        state = PlayerState()
         cmd = player.RegisterPlayer(email="a@b.com")
 
         with pytest.raises(CommandRejectedError, match="display_name"):
-            p.register(cmd)
+            handle_register_player(cmd, state, seq=0)
 
     def test_register_requires_email(self):
-        p = Player()
+        state = PlayerState()
         cmd = player.RegisterPlayer(display_name="Alice")
 
         with pytest.raises(CommandRejectedError, match="email"):
-            p.register(cmd)
+            handle_register_player(cmd, state, seq=0)
 
 
 class TestDeposit:
-    """Test Player.deposit()."""
+    """Test handle_deposit_funds()."""
 
     def test_deposit_increases_bankroll(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
 
         cmd = player.DepositFunds(amount=poker_types.Currency(amount=500))
-        event = p.deposit(cmd)
+        event = handle_deposit_funds(cmd, state, seq=1)
+        apply_event(state, event)
 
-        assert p.bankroll == 500
+        assert state.bankroll == 500
         assert event.new_balance.amount == 500
 
     def test_multiple_deposits_accumulate(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
 
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=50)))
+        event1 = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=100)),
+            state,
+            seq=1,
+        )
+        apply_event(state, event1)
 
-        assert p.bankroll == 150
+        event2 = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=50)),
+            state,
+            seq=2,
+        )
+        apply_event(state, event2)
+
+        assert state.bankroll == 150
 
     def test_deposit_requires_existing_player(self):
-        p = Player()
+        state = PlayerState()
         cmd = player.DepositFunds(amount=poker_types.Currency(amount=100))
 
         with pytest.raises(CommandRejectedError, match="does not exist"):
-            p.deposit(cmd)
+            handle_deposit_funds(cmd, state, seq=0)
 
     def test_deposit_requires_positive_amount(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
 
         with pytest.raises(CommandRejectedError, match="positive"):
-            p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=0)))
+            handle_deposit_funds(
+                player.DepositFunds(amount=poker_types.Currency(amount=0)),
+                state,
+                seq=1,
+            )
 
 
 class TestWithdraw:
-    """Test Player.withdraw()."""
+    """Test handle_withdraw_funds()."""
 
     def test_withdraw_decreases_bankroll(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=500)))
-
-        event = p.withdraw(
-            player.WithdrawFunds(amount=poker_types.Currency(amount=200))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
         )
+        apply_event(state, reg_event)
 
-        assert p.bankroll == 300
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=500)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
+
+        event = handle_withdraw_funds(
+            player.WithdrawFunds(amount=poker_types.Currency(amount=200)),
+            state,
+            seq=2,
+        )
+        apply_event(state, event)
+
+        assert state.bankroll == 300
         assert event.new_balance.amount == 300
 
     def test_withdraw_rejects_insufficient_funds(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=100)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
 
         with pytest.raises(CommandRejectedError, match="Insufficient"):
-            p.withdraw(player.WithdrawFunds(amount=poker_types.Currency(amount=200)))
+            handle_withdraw_funds(
+                player.WithdrawFunds(amount=poker_types.Currency(amount=200)),
+                state,
+                seq=2,
+            )
 
 
 class TestReserve:
-    """Test Player.reserve()."""
+    """Test handle_reserve_funds()."""
 
     def test_reserve_tracks_table_reservation(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=1000)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=1000)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
 
         table_root = b"\x01\x02\x03\x04"
         cmd = player.ReserveFunds(
             table_root=table_root,
             amount=poker_types.Currency(amount=200),
         )
-        p.reserve(cmd)
+        event = handle_reserve_funds(cmd, state, seq=2)
+        apply_event(state, event)
 
-        assert p.reserved_funds == 200
-        assert p.available_balance == 800
-        assert table_root.hex() in p.table_reservations
+        assert state.reserved_funds == 200
+        assert state.available_balance == 800
+        assert table_root.hex() in state.table_reservations
 
     def test_reserve_rejects_duplicate_table(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=1000)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=1000)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
 
         table_root = b"\x01\x02\x03\x04"
         cmd = player.ReserveFunds(
             table_root=table_root,
             amount=poker_types.Currency(amount=200),
         )
-        p.reserve(cmd)
+        event = handle_reserve_funds(cmd, state, seq=2)
+        apply_event(state, event)
 
         with pytest.raises(CommandRejectedError, match="already reserved"):
-            p.reserve(cmd)
+            handle_reserve_funds(cmd, state, seq=3)
 
 
 class TestRelease:
-    """Test Player.release()."""
+    """Test handle_release_funds()."""
 
     def test_release_removes_reservation(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=1000)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=1000)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
 
         table_root = b"\x01\x02\x03\x04"
-        p.reserve(
+        res_event = handle_reserve_funds(
             player.ReserveFunds(
                 table_root=table_root,
                 amount=poker_types.Currency(amount=200),
-            )
+            ),
+            state,
+            seq=2,
         )
+        apply_event(state, res_event)
 
-        p.release(player.ReleaseFunds(table_root=table_root))
+        event = handle_release_funds(
+            player.ReleaseFunds(table_root=table_root),
+            state,
+            seq=3,
+        )
+        apply_event(state, event)
 
-        assert p.reserved_funds == 0
-        assert p.available_balance == 1000
-        assert table_root.hex() not in p.table_reservations
+        assert state.reserved_funds == 0
+        assert state.available_balance == 1000
+        assert table_root.hex() not in state.table_reservations
 
     def test_release_rejects_no_reservation(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
 
         with pytest.raises(CommandRejectedError, match="No funds reserved"):
-            p.release(player.ReleaseFunds(table_root=b"\x01\x02\x03\x04"))
+            handle_release_funds(
+                player.ReleaseFunds(table_root=b"\x01\x02\x03\x04"),
+                state,
+                seq=1,
+            )
 
 
 class TestStateAccessors:
     """Test state accessor properties."""
 
     def test_player_id_format(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="alice@test.com"))
-        assert p.player_id == "player_alice@test.com"
+        state = PlayerState()
+        event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="alice@test.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, event)
+        assert state.player_id == "player_alice@test.com"
 
     def test_player_type_returns_enum(self):
-        p = Player()
-        p.register(
+        state = PlayerState()
+        event = handle_register_player(
             player.RegisterPlayer(
                 display_name="Bot",
                 email="bot@ai.local",
                 player_type=poker_types.PlayerType.AI,
-            )
+            ),
+            state,
+            seq=0,
         )
-        assert p.player_type == poker_types.PlayerType.AI
+        apply_event(state, event)
+        assert state.player_type == poker_types.PlayerType.AI
 
     def test_status_after_register(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        assert p.status == "active"
+        state = PlayerState()
+        event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, event)
+        assert state.status == "active"
 
 
 class TestEventHandlers:
@@ -221,10 +376,6 @@ class TestEventHandlers:
 
     def test_funds_transferred_updates_bankroll(self):
         """FundsTransferred event is generated by sagas, not commands."""
-        from google.protobuf.any_pb2 import Any
-
-        from angzarr_client.proto.angzarr import types_pb2 as types
-
         # Build event book with registration + transfer events
         event_book = types.EventBook()
 
@@ -233,7 +384,7 @@ class TestEventHandlers:
             display_name="Alice",
             email="alice@test.com",
         )
-        registered_any = Any()
+        registered_any = AnyProto()
         registered_any.Pack(registered, type_url_prefix="type.googleapis.com/")
         event_book.pages.append(types.EventPage(event=registered_any))
 
@@ -241,103 +392,182 @@ class TestEventHandlers:
         transferred = player.FundsTransferred(
             new_balance=poker_types.Currency(amount=500, currency_code="CHIPS"),
         )
-        transferred_any = Any()
+        transferred_any = AnyProto()
         transferred_any.Pack(transferred, type_url_prefix="type.googleapis.com/")
         event_book.pages.append(types.EventPage(event=transferred_any))
 
-        # Create player from event book
-        p = Player(event_book)
+        # Create state from event book
+        state = PlayerState()
+        events = [page.event for page in event_book.pages]
+        build_state(state, events)
 
-        assert p.exists
-        assert p.bankroll == 500
+        assert state.exists
+        assert state.bankroll == 500
 
 
 class TestEdgeCases:
     """Test edge cases for full coverage."""
 
     def test_withdraw_requires_existing_player(self):
-        p = Player()
+        state = PlayerState()
         with pytest.raises(CommandRejectedError, match="does not exist"):
-            p.withdraw(player.WithdrawFunds(amount=poker_types.Currency(amount=100)))
+            handle_withdraw_funds(
+                player.WithdrawFunds(amount=poker_types.Currency(amount=100)),
+                state,
+                seq=0,
+            )
 
     def test_withdraw_requires_positive_amount(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=100)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
+
         with pytest.raises(CommandRejectedError, match="positive"):
-            p.withdraw(player.WithdrawFunds(amount=poker_types.Currency(amount=0)))
+            handle_withdraw_funds(
+                player.WithdrawFunds(amount=poker_types.Currency(amount=0)),
+                state,
+                seq=2,
+            )
 
     def test_reserve_requires_existing_player(self):
-        p = Player()
+        state = PlayerState()
         with pytest.raises(CommandRejectedError, match="does not exist"):
-            p.reserve(
+            handle_reserve_funds(
                 player.ReserveFunds(
                     table_root=b"\x01\x02",
                     amount=poker_types.Currency(amount=100),
-                )
+                ),
+                state,
+                seq=0,
             )
 
     def test_reserve_requires_positive_amount(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=100)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
+
         with pytest.raises(CommandRejectedError, match="positive"):
-            p.reserve(
+            handle_reserve_funds(
                 player.ReserveFunds(
                     table_root=b"\x01\x02",
                     amount=poker_types.Currency(amount=0),
-                )
+                ),
+                state,
+                seq=2,
             )
 
     def test_reserve_rejects_insufficient_funds(self):
-        p = Player()
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
+        state = PlayerState()
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=100)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
+
         with pytest.raises(CommandRejectedError, match="Insufficient"):
-            p.reserve(
+            handle_reserve_funds(
                 player.ReserveFunds(
                     table_root=b"\x01\x02",
                     amount=poker_types.Currency(amount=500),
-                )
+                ),
+                state,
+                seq=2,
             )
 
     def test_release_requires_existing_player(self):
-        p = Player()
+        state = PlayerState()
         with pytest.raises(CommandRejectedError, match="does not exist"):
-            p.release(player.ReleaseFunds(table_root=b"\x01\x02"))
+            handle_release_funds(
+                player.ReleaseFunds(table_root=b"\x01\x02"),
+                state,
+                seq=0,
+            )
 
 
 class TestCompleteLifecycle:
     """Test complete player lifecycle."""
 
     def test_register_deposit_reserve_release_withdraw(self):
-        p = Player()
+        state = PlayerState()
 
         # Register
-        p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
-        assert p.exists
-        assert p.bankroll == 0
+        reg_event = handle_register_player(
+            player.RegisterPlayer(display_name="Alice", email="a@b.com"),
+            state,
+            seq=0,
+        )
+        apply_event(state, reg_event)
+        assert state.exists
+        assert state.bankroll == 0
 
         # Deposit
-        p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=1000)))
-        assert p.bankroll == 1000
+        dep_event = handle_deposit_funds(
+            player.DepositFunds(amount=poker_types.Currency(amount=1000)),
+            state,
+            seq=1,
+        )
+        apply_event(state, dep_event)
+        assert state.bankroll == 1000
 
         # Reserve for table
         table_root = b"\xaa\xbb\xcc\xdd"
-        p.reserve(
+        res_event = handle_reserve_funds(
             player.ReserveFunds(
                 table_root=table_root,
                 amount=poker_types.Currency(amount=200),
-            )
+            ),
+            state,
+            seq=2,
         )
-        assert p.reserved_funds == 200
-        assert p.available_balance == 800
+        apply_event(state, res_event)
+        assert state.reserved_funds == 200
+        assert state.available_balance == 800
 
         # Release reservation
-        p.release(player.ReleaseFunds(table_root=table_root))
-        assert p.reserved_funds == 0
-        assert p.available_balance == 1000
+        rel_event = handle_release_funds(
+            player.ReleaseFunds(table_root=table_root),
+            state,
+            seq=3,
+        )
+        apply_event(state, rel_event)
+        assert state.reserved_funds == 0
+        assert state.available_balance == 1000
 
         # Withdraw
-        p.withdraw(player.WithdrawFunds(amount=poker_types.Currency(amount=300)))
-        assert p.bankroll == 700
+        with_event = handle_withdraw_funds(
+            player.WithdrawFunds(amount=poker_types.Currency(amount=300)),
+            state,
+            seq=4,
+        )
+        apply_event(state, with_event)
+        assert state.bankroll == 700

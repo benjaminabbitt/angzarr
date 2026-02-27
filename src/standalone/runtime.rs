@@ -21,6 +21,7 @@ use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
 use crate::orchestration::saga::local::LocalSagaContextFactory;
+use crate::orchestration::FactExecutor;
 use crate::proto::CommandBook;
 use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
@@ -271,6 +272,8 @@ impl Runtime {
         }
 
         // Sagas — domain-filtered subscribers
+        // Cast router to FactExecutor for fact injection support
+        let fact_executor: Arc<dyn FactExecutor> = router.clone();
         for (name, (handler, config)) in sagas {
             let factory = Arc::new(LocalSagaContextFactory::new(handler, name.clone()));
             let validator = build_output_domain_validator(&name, &config.output_domains);
@@ -278,6 +281,7 @@ impl Runtime {
                 factory,
                 executor.clone(),
                 Some(fetcher.clone()),
+                Some(fact_executor.clone()),
                 Some(Arc::new(validator)),
                 crate::utils::retry::saga_backoff(),
             );
@@ -307,6 +311,7 @@ impl Runtime {
                 fetcher.clone(),
                 executor.clone(),
             )
+            .with_fact_executor(Some(fact_executor.clone()))
             .with_targets(subscriptions);
             let sub = event_bus
                 .create_subscriber(&format!("pm-{name}"), None)

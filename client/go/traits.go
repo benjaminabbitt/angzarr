@@ -19,12 +19,22 @@ import (
 // RejectionHandlerResponse is defined in compensation.go.
 // It contains optional Events (compensation) and Notification (upstream propagation).
 
+// SagaHandlerResponse is the response from saga handlers.
+type SagaHandlerResponse struct {
+	// Commands to send to other aggregates.
+	Commands []*pb.CommandBook
+	// Facts/events to inject to other aggregates.
+	Events []*pb.EventBook
+}
+
 // ProcessManagerResponse is the response from process manager handlers.
 type ProcessManagerResponse struct {
 	// Commands to send to other aggregates.
 	Commands []*pb.CommandBook
 	// Events to persist to the PM's own domain.
 	ProcessEvents *pb.EventBook
+	// Facts to inject to other aggregates.
+	Facts []*pb.EventBook
 }
 
 // ============================================================================
@@ -112,8 +122,8 @@ type CommandHandlerDomainHandler[S any] interface {
 //	    source *pb.EventBook,
 //	    event *anypb.Any,
 //	    destinations []*pb.EventBook,
-//	) ([]*pb.CommandBook, error) {
-//	    // Produce commands
+//	) (*SagaHandlerResponse, error) {
+//	    // Produce commands and/or events
 //	}
 type SagaDomainHandler interface {
 	// EventTypes returns the fully-qualified event type names this handler processes.
@@ -124,13 +134,22 @@ type SagaDomainHandler interface {
 	// Called before Execute to fetch destination aggregate state.
 	Prepare(source *pb.EventBook, event *anypb.Any) []*pb.Cover
 
-	// Execute produces commands.
+	// Execute produces commands and/or events.
 	// Called with source event and fetched destination state.
 	Execute(
 		source *pb.EventBook,
 		event *anypb.Any,
 		destinations []*pb.EventBook,
-	) ([]*pb.CommandBook, error)
+	) (*SagaHandlerResponse, error)
+
+	// OnRejected handles a rejection notification.
+	// Called when a saga-issued command was rejected.
+	// Default implementation should return an empty response.
+	OnRejected(
+		notification *pb.Notification,
+		targetDomain string,
+		targetCommand string,
+	) (*RejectionHandlerResponse, error)
 }
 
 // ============================================================================

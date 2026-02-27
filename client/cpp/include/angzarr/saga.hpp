@@ -47,6 +47,14 @@ class Saga {
     using PrepareDispatcher =
         std::function<std::vector<Cover>(Saga*, const google::protobuf::Any&)>;
 
+    /**
+     * Result from saga dispatch - commands plus any emitted facts.
+     */
+    struct DispatchResult {
+        std::vector<CommandBook> commands;
+        std::vector<EventBook> facts;
+    };
+
     virtual ~Saga() = default;
 
     /**
@@ -85,9 +93,12 @@ class Saga {
 
     /**
      * Dispatch all events to handlers.
+     *
+     * Returns commands and any facts emitted via emit_fact().
      */
-    std::vector<CommandBook> dispatch(const EventBook& book,
-                                      const std::vector<EventBook>& destinations = {}) {
+    DispatchResult dispatch(const EventBook& book,
+                            const std::vector<EventBook>& destinations = {}) {
+        clear_facts();
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
 
         std::vector<CommandBook> commands;
@@ -101,7 +112,7 @@ class Saga {
                 commands.insert(commands.end(), cmds.begin(), cmds.end());
             }
         }
-        return commands;
+        return DispatchResult{commands, get_facts()};
     }
 
     /**
@@ -116,6 +127,26 @@ class Saga {
     }
 
    protected:
+    /**
+     * Emit a fact to be injected into another aggregate.
+     *
+     * Facts are events injected directly into target aggregates, bypassing
+     * command validation. Use for cross-aggregate coordination.
+     *
+     * @param fact The event book to emit.
+     */
+    void emit_fact(EventBook fact) { facts_.push_back(std::move(fact)); }
+
+    /**
+     * Clear accumulated facts. Called before each dispatch.
+     */
+    void clear_facts() { facts_.clear(); }
+
+    /**
+     * Get accumulated facts.
+     */
+    std::vector<EventBook> get_facts() const { return facts_; }
+
     /**
      * Pack a single command into a CommandBook.
      */
@@ -170,6 +201,8 @@ class Saga {
         static std::map<std::string, PrepareDispatcher> p;
         return p;
     }
+
+    std::vector<EventBook> facts_;
 };
 
 }  // namespace angzarr

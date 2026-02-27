@@ -73,7 +73,6 @@ class ScenarioContext:
         for i, event_any in enumerate(self.events):
             pages.append(
                 EventPage(
-                    num=i,
                     sequence=i,
                     event=event_any,
                     created_at=now(),

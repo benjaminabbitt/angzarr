@@ -16,6 +16,7 @@ use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoor
 use crate::proto::saga_service_client::SagaServiceClient;
 use crate::proto::{
     CommandBook, CommandRequest, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest,
+    SagaResponse,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::box_err;
@@ -86,7 +87,7 @@ impl SagaRetryContext for GrpcSagaContext {
     async fn re_execute_saga(
         &self,
         destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = self.source.correlation_id();
         let edition = self.source.edition().to_string();
         let mut client = self.saga_client.lock().await;
@@ -94,18 +95,19 @@ impl SagaRetryContext for GrpcSagaContext {
             source: Some(self.source.clone()),
             destinations,
         };
-        let response = client
+        let mut response = client
             .execute(correlated_request(request, correlation_id))
             .await
-            .map_err(box_err)?;
+            .map_err(box_err)?
+            .into_inner();
 
-        let mut commands = response.into_inner().commands;
-        for cmd in &mut commands {
+        // Stamp edition on commands
+        for cmd in &mut response.commands {
             if let Some(c) = &mut cmd.cover {
                 c.stamp_edition_if_empty(&edition);
             }
         }
-        Ok(commands)
+        Ok(response)
     }
 
     fn source_cover(&self) -> Option<&Cover> {

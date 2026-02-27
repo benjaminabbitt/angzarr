@@ -14,15 +14,13 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr_client import (
     CommandHandler,
+    CommandHandlerRouter,
     CommandRejectedError,
-    CommandRouter,
     ProcessManager,
     handles,
-    reacts_to,
     rejected,
 )
 from angzarr_client.helpers import type_name_from_url
-from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
 from angzarr_client.proto.angzarr import types_pb2 as types
 
 # Use regex matchers for flexibility
@@ -467,14 +465,14 @@ def step_inventory_rejects_simple(context):
 # ============================================================================
 
 
-@given(r"a CommandRouter for domain \"([^\"]+)\" with:")
+@given(r"a CommandHandlerRouter for domain \"([^\"]+)\" with:")
 def step_command_router_with(context, domain):
-    """Create CommandRouter with specified handlers."""
+    """Create CommandHandlerRouter with specified handlers."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter(domain, rebuild)
+    context.router = CommandHandlerRouter(domain, rebuild)
 
     for row in context.table:
         if row.get("on"):
@@ -486,14 +484,14 @@ def step_command_router_with(context, domain):
             context.router.on_rejected(domain, cmd, lambda *args: make_event_book())
 
 
-@given("a CommandRouter with on_rejected handler")
+@given("a CommandHandlerRouter with on_rejected handler")
 def step_router_with_on_rejected(context):
     """Create router with rejection handler."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter("player", rebuild)
+    context.router = CommandHandlerRouter("player", rebuild)
     context.router.on_rejected(
         "payment",
         "ProcessPayment",
@@ -501,14 +499,14 @@ def step_router_with_on_rejected(context):
     )
 
 
-@given("a CommandRouter with no on_rejected handlers")
+@given("a CommandHandlerRouter with no on_rejected handlers")
 def step_router_without_on_rejected(context):
     """Create router without rejection handlers."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter("player", rebuild)
+    context.router = CommandHandlerRouter("player", rebuild)
 
 
 # ============================================================================
@@ -1358,14 +1356,14 @@ def step_rejection_arrives_for_key(context, domain, command):
     )
 
 
-@given(r"a CommandRouter configured as:")
+@given(r"a CommandHandlerRouter configured as:")
 def step_router_configured_as(context):
     """Create router from docstring config."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter("player", rebuild)
+    context.router = CommandHandlerRouter("player", rebuild)
     context.router.on_rejected("payment", "ProcessPayment", lambda n, s: None)
     context.router.on_rejected("inventory", "ReserveItem", lambda n, s: None)
 
@@ -2101,14 +2099,14 @@ def step_workflow_pm_no_handlers(context):
     context.pm = TestPMWithoutHandlers(pm_events)
 
 
-@given(r"CommandRouter for \"([^\"]+)\" domain configured with:")
+@given(r"CommandHandlerRouter for \"([^\"]+)\" domain configured with:")
 def step_command_router_for_domain(context, domain):
-    """CommandRouter for domain with config."""
+    """CommandHandlerRouter for domain with config."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter(domain, rebuild)
+    context.router = CommandHandlerRouter(domain, rebuild)
     for row in context.table:
         type_col = row.get("type", "")
         key_col = row.get("key", "")
@@ -2120,14 +2118,14 @@ def step_command_router_for_domain(context, domain):
             context.router.on_rejected(d, c, lambda n, s: types.EventBook())
 
 
-@given("CommandRouter with on_rejected handler")
+@given("CommandHandlerRouter with on_rejected handler")
 def step_router_with_handler(context):
     """Router with rejection handler."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter("source", rebuild)
+    context.router = CommandHandlerRouter("source", rebuild)
     context.router.on_rejected(
         "target", "CommandThatWillFail", lambda n, s: types.EventBook()
     )
@@ -2139,24 +2137,24 @@ def step_handler_builds_eventbook(context):
     context.expected_event = "ResourceReleased"
 
 
-@given("CommandRouter with no on_rejected handlers")
+@given("CommandHandlerRouter with no on_rejected handlers")
 def step_router_no_handlers(context):
     """Router without handlers."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter("source", rebuild)
+    context.router = CommandHandlerRouter("source", rebuild)
 
 
-@given("CommandRouter configured as:")
+@given("CommandHandlerRouter configured as:")
 def step_router_configured_docstring(context):
     """Router from docstring config."""
 
     def rebuild(events):
         return PlayerState()
 
-    context.router = CommandRouter("source", rebuild)
+    context.router = CommandHandlerRouter("source", rebuild)
     context.router.on_rejected("target", "CommandThatWillFail", lambda n, s: None)
     context.router.on_rejected("other", "OtherCommand", lambda n, s: None)
 

@@ -18,6 +18,11 @@ Focus on readability and maintainability. The primary costs are developer and AI
 
 Plan *everything* and run it by me prior to executing.  If it requires any meaningful decisions, ask.
 
+## Examples
+Examples are a cqrs-es system playing poker.
+Player domain uses functional aggregates.
+All other domains use object oriented.
+
 ### Definition of Done
 **Nothing is "done" until tests prove it works.** Writing code without runnable tests is incomplete work. This means:
 - Implementation code requires corresponding test code
@@ -498,8 +503,19 @@ Topology serves a REST API for Grafana Node Graph panel:
 
 ### Angzarr
 - **Coordinator**: The angzarr support coordinator that abstracts functionality away from business logic code. Deployed as sidecar container with business logic. Thin wrapper around library code reused in standalone mode.
-- **Events**: Domain-specific facts that have occurred. Immutable. Named in past tense (OrderCreated, StockReserved).
-- **Commands**: Requests to perform actions. Named imperatively (CreateOrder, ReserveStock).
+- **Events**: Domain-specific facts that have occurred. Immutable. Named in past tense (OrderCreated, StockReserved). Events enter the system via commands (validated) or as facts (injected directly).
+- **Commands**: Requests to perform actions. Sequenced, validated, can be rejected. Named imperatively (CreateOrder, ReserveStock). Produce events when accepted.
+- **Facts**: Events injected directly into an aggregate, bypassing command validation. Represent external realities the aggregate must accept (e.g., "hand says it's your turn"). Cannot be rejected. Sequenced and persisted like any other event.
+- **Notifications**: Unsequenced coordination messages. NOT persisted to the event store. Used for framework-level coordination (e.g., `RejectionNotification` for compensation routing). Not events.
+
+  **Entry paths for events:**
+  | Path | Sequenced | Validated | Can Reject |
+  |------|-----------|-----------|------------|
+  | Command → Event | Yes | Yes | Yes |
+  | Fact (direct injection) | Yes | No | No |
+
+  **Notifications** are not events—they are transient coordination messages.
+
 - **Target**: A domain + list of event types. Used for subscriptions (inputs) to filter which events a component receives.
 - **Correlation ID**: Identifies a cross-domain business process. Not a domain entity ID (like `order_id` or `game_id`)—it's the identifier for the workflow/transaction that spans domains. Stable across all events in that process. Flows through sagas/PMs. For PMs, the correlation ID serves as the aggregate root.
 

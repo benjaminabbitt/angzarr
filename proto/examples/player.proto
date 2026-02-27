@@ -42,6 +42,16 @@ message ReleaseFunds {
   bytes table_root = 1;
 }
 
+// Player decides to sit out at a table (stop receiving hands)
+message SitOut {
+  bytes table_root = 1;
+}
+
+// Player decides to return to play at a table
+message SitIn {
+  bytes table_root = 1;
+}
+
 // Transfer funds from one player to another (pot award)
 message TransferFunds {
   bytes from_player_root = 1;    // Source player (for reserved funds)
@@ -126,6 +136,18 @@ message ActionRequested {
   int64 pot_size = 10;
   BettingPhase phase = 11;
   google.protobuf.Timestamp deadline = 12;
+}
+
+// Player has chosen to sit out at a table
+message PlayerSittingOut {
+  bytes table_root = 1;
+  google.protobuf.Timestamp sat_out_at = 2;
+}
+
+// Player has chosen to return to play at a table
+message PlayerReturningToPlay {
+  bytes table_root = 1;
+  google.protobuf.Timestamp sat_in_at = 2;
 }
 
 // State (for snapshots)

@@ -29,9 +29,10 @@ PMPrepareFunc = Callable[
     [types.EventBook, types.EventBook],
     list[types.Cover],
 ]
+# PMHandleFunc returns ProcessManagerHandleResponse (proto-generated type)
 PMHandleFunc = Callable[
     [types.EventBook, types.EventBook, list[types.EventBook]],
-    tuple[list[types.CommandBook], types.EventBook | None],
+    pm.ProcessManagerHandleResponse,
 ]
 
 
@@ -98,29 +99,21 @@ class ProcessManagerHandler(process_manager_pb2_grpc.ProcessManagerServiceServic
         request: pm.ProcessManagerHandleRequest,
         context: grpc.ServicerContext,
     ) -> pm.ProcessManagerHandleResponse:
-        """Phase 2: Produce commands and process events."""
+        """Phase 2: Produce process_events, commands, and facts."""
         # Custom handle takes precedence
         if self._handle_fn is not None:
-            commands, events = self._handle_fn(
+            return self._handle_fn(
                 request.trigger,
                 request.process_state,
                 list(request.destinations),
-            )
-            return pm.ProcessManagerHandleResponse(
-                commands=commands,
-                process_events=events,
             )
 
-        # OO pattern: use ProcessManager class
+        # OO pattern: use ProcessManager class (returns ProcessManagerHandleResponse)
         if self._pm_class is not None:
-            commands, events = self._pm_class.handle(
+            return self._pm_class.handle(
                 request.trigger,
                 request.process_state,
                 list(request.destinations),
-            )
-            return pm.ProcessManagerHandleResponse(
-                commands=commands,
-                process_events=events,
             )
 
         return pm.ProcessManagerHandleResponse()

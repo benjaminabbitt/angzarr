@@ -60,6 +60,15 @@ pub struct RejectionHandlerResponse {
     pub notification: Option<Notification>,
 }
 
+/// Response from saga handlers.
+#[derive(Default)]
+pub struct SagaHandlerResponse {
+    /// Commands to send to other aggregates.
+    pub commands: Vec<CommandBook>,
+    /// Facts/events to inject to other aggregates.
+    pub events: Vec<EventBook>,
+}
+
 /// Response from process manager handlers.
 #[derive(Default)]
 pub struct ProcessManagerResponse {
@@ -67,6 +76,8 @@ pub struct ProcessManagerResponse {
     pub commands: Vec<CommandBook>,
     /// Events to persist to the PM's own domain.
     pub process_events: Option<EventBook>,
+    /// Facts to inject to other aggregates.
+    pub facts: Vec<EventBook>,
 }
 
 /// Helper trait for unpacking Any messages.
@@ -200,7 +211,7 @@ pub trait AggregateDomainHandler: Send + Sync {
 ///         source: &EventBook,
 ///         event: &Any,
 ///         destinations: &[EventBook],
-///     ) -> CommandResult<Vec<CommandBook>> {
+///     ) -> CommandResult<SagaHandlerResponse> {
 ///         dispatch_event!(event, source, destinations, {
 ///             "OrderCompleted" => self.handle_completed,
 ///             "OrderCancelled" => self.handle_cancelled,
@@ -219,16 +230,31 @@ pub trait SagaDomainHandler: Send + Sync {
     /// Called before execute to fetch destination aggregate state.
     fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover>;
 
-    /// Execute phase — produce commands.
+    /// Execute phase — produce commands and/or events.
     ///
     /// Called with source event and fetched destination state.
-    /// Returns commands to send to other aggregates.
+    /// Returns commands to send to other aggregates and events/facts to inject.
     fn execute(
         &self,
         source: &EventBook,
         event: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>>;
+    ) -> CommandResult<SagaHandlerResponse>;
+
+    /// Handle a rejection notification.
+    ///
+    /// Called when a saga-issued command was rejected. Override to provide
+    /// custom compensation logic.
+    ///
+    /// Default implementation returns an empty response (framework handles).
+    fn on_rejected(
+        &self,
+        _notification: &Notification,
+        _target_domain: &str,
+        _target_command: &str,
+    ) -> CommandResult<RejectionHandlerResponse> {
+        Ok(RejectionHandlerResponse::default())
+    }
 }
 
 // ============================================================================
@@ -365,5 +391,13 @@ mod tests {
         let response = ProcessManagerResponse::default();
         assert!(response.commands.is_empty());
         assert!(response.process_events.is_none());
+        assert!(response.facts.is_empty());
+    }
+
+    #[test]
+    fn saga_handler_response_default() {
+        let response = SagaHandlerResponse::default();
+        assert!(response.commands.is_empty());
+        assert!(response.events.is_empty());
     }
 }

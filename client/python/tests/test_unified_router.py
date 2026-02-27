@@ -21,20 +21,32 @@ from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import (
     NOTIFICATION_TYPE_URL,
     CommandHandlerRouter,
+    FluentRouter,
+    OORouter,
     ProcessManagerRouter,
     ProjectorRouter,
     SingleFluentRouter,
     _extract_rejection_key,
     _next_sequence,
+    domain,
+    handles,
+    rejected,
 )
 from angzarr_client.state_builder import StateRouter
 
 from .fixtures import (
+    CreateShipment,
     DepositFunds,
     FundsDeposited,
+    FundsReleased,
+    OrderCompleted,
+    OrderCreated,
     PlayerRegistered,
+    ProcessPayment,
+    ReserveStock,
     StockReserved,
     StockUpdated,
+    WorkflowFailed,
 )
 
 # =============================================================================
@@ -591,8 +603,8 @@ class TestRouterIntegration:
         assert len(destinations) > 0
 
         # Phase 2: Dispatch with fetched destinations
-        commands = router.dispatch(source, [types.EventBook()])
-        assert len(commands) > 0
+        response = router.dispatch(source, [types.EventBook()])
+        assert len(response.commands) > 0
 
     def test_pm_multi_domain_routing(self):
         """Verify PM routes to correct handler per domain."""
@@ -614,3 +626,318 @@ class TestRouterIntegration:
         # Inventory handler returns fulfillment command
         assert len(inv_response.commands) == 1
         assert inv_response.commands[0].cover.domain == "fulfillment"
+
+
+# =============================================================================
+# Rejection Handling Helper Functions
+# =============================================================================
+
+
+def make_rejection_notification(
+    domain: str,
+    command_type: type,
+    reason: str = "Command rejected",
+) -> types.EventBook:
+    """Create an EventBook containing a Notification with RejectionNotification payload."""
+    # Create the RejectionNotification
+    rejection = types.RejectionNotification(
+        rejection_reason=reason,
+        rejected_command=types.CommandBook(
+            cover=types.Cover(domain=domain),
+            pages=[
+                types.CommandPage(
+                    command=any_pb2.Any(
+                        type_url=f"type.googleapis.com/{command_type.DESCRIPTOR.full_name}"
+                    )
+                )
+            ],
+        ),
+    )
+
+    # Pack into Notification
+    notification = types.Notification()
+    notification.payload.Pack(rejection)
+
+    # Pack Notification into Any
+    notification_any = any_pb2.Any()
+    notification_any.Pack(notification)
+
+    return types.EventBook(
+        cover=types.Cover(
+            domain="system",  # Notifications typically come from system
+            root=types.UUID(value=b"\x01\x02\x03"),
+            correlation_id="corr-1",
+        ),
+        pages=[types.EventPage(event=notification_any)],
+    )
+
+
+# =============================================================================
+# SingleFluentRouter Rejection Tests
+# =============================================================================
+
+
+class TestSingleFluentRouterRejection:
+    """Tests for SingleFluentRouter rejection handling."""
+
+    def test_on_rejected_registers_handler(self):
+        """Test that on_rejected registers a handler."""
+
+        def handle_rejected(notification, root, correlation_id, destinations):
+            return [types.CommandBook(cover=types.Cover(domain="compensation"))]
+
+        router = (
+            SingleFluentRouter("saga-test", "order")
+            .on(OrderCreated, lambda *args: [])
+            .on_rejected("inventory", "ReserveStock", handle_rejected)
+        )
+
+        # Handler should be registered in the underlying router
+        assert len(router._router._rejection_handlers) == 1
+        assert "inventory/ReserveStock" in router._router._rejection_handlers
+
+    def test_dispatch_routes_notification_to_rejection_handler(self):
+        """Test that dispatch routes Notification to rejection handler."""
+        calls = []
+
+        def handle_rejected(notification, root, correlation_id, destinations):
+            calls.append(("rejected", notification, root, correlation_id))
+            return [
+                types.CommandBook(
+                    cover=types.Cover(domain="order", correlation_id=correlation_id),
+                    pages=[
+                        types.CommandPage(
+                            command=any_pb2.Any(type_url="test/CancelOrder")
+                        )
+                    ],
+                )
+            ]
+
+        router = (
+            SingleFluentRouter("saga-order-inventory", "order")
+            .on(OrderCreated, lambda *args: [])
+            .on_rejected("inventory", "ReserveStock", handle_rejected)
+        )
+
+        source = make_rejection_notification("inventory", ReserveStock, "Out of stock")
+        response = router.dispatch(source, [])
+
+        assert len(calls) == 1
+        assert len(response.commands) == 1
+        assert response.commands[0].cover.domain == "order"
+
+    def test_dispatch_returns_empty_when_no_handler_matches(self):
+        """Test that dispatch returns empty list when no handler matches."""
+        router = (
+            SingleFluentRouter("saga-test", "order")
+            .on(OrderCreated, lambda *args: [])
+            .on_rejected("inventory", "ReserveStock", lambda *args: [])
+        )
+
+        # Rejection for different domain/command
+        source = make_rejection_notification(
+            "payment", ProcessPayment, "Payment failed"
+        )
+        response = router.dispatch(source, [])
+
+        assert len(response.commands) == 0
+
+    def test_suffix_matching_on_command_type(self):
+        """Test that command type matching uses suffix matching."""
+        calls = []
+
+        def handle_rejected(notification, root, correlation_id, destinations):
+            calls.append("called")
+            return []
+
+        router = SingleFluentRouter("saga-test", "order").on_rejected(
+            "inventory", "ReserveStock", handle_rejected
+        )
+
+        # Type URL includes full proto path: inventory.ReserveStock
+        source = make_rejection_notification("inventory", ReserveStock)
+        router.dispatch(source, [])
+
+        assert len(calls) == 1
+
+    def test_fluent_chaining(self):
+        """Test that on_rejected returns self for fluent chaining."""
+        router = SingleFluentRouter("saga-test", "order")
+
+        result = router.on_rejected("inventory", "ReserveStock", lambda *args: [])
+
+        assert result is router
+
+
+# =============================================================================
+# FluentRouter Rejection Tests
+# =============================================================================
+
+
+class TestFluentRouterRejection:
+    """Tests for FluentRouter rejection handling."""
+
+    def test_on_rejected_registers_handler(self):
+        """Test that on_rejected registers a handler."""
+
+        def handle_rejected(notification, root, correlation_id, destinations):
+            return []
+
+        router = (
+            FluentRouter("pmg-test")
+            .domain("order")
+            .on(OrderCreated, lambda *args: [])
+            .on_rejected("inventory", "ReserveStock", handle_rejected)
+        )
+
+        assert "inventory/ReserveStock" in router._router._rejection_handlers
+
+    def test_dispatch_routes_notification_to_rejection_handler(self):
+        """Test that dispatch routes Notification to rejection handler."""
+        calls = []
+
+        def handle_rejected(notification, root, correlation_id, destinations):
+            calls.append("rejected")
+            return [types.CommandBook(cover=types.Cover(domain="compensation"))]
+
+        router = (
+            FluentRouter("pmg-test")
+            .domain("order")
+            .on(OrderCreated, lambda *args: [])
+            .on_rejected("inventory", "ReserveStock", handle_rejected)
+        )
+
+        source = make_rejection_notification("inventory", ReserveStock)
+        response = router.dispatch(source, [])
+
+        assert len(calls) == 1
+        assert len(response.commands) == 1
+
+    def test_fluent_chaining(self):
+        """Test that on_rejected returns self for fluent chaining."""
+        router = FluentRouter("pmg-test").domain("order")
+
+        result = router.on_rejected("inventory", "ReserveStock", lambda *args: [])
+
+        assert result is router
+
+
+# =============================================================================
+# OORouter Rejection Tests
+# =============================================================================
+
+
+class TestOORouterRejection:
+    """Tests for OORouter rejection handling with @rejected decorator."""
+
+    def test_scans_rejected_decorated_methods(self):
+        """Test that OORouter scans for @rejected decorated methods."""
+
+        @domain("order")
+        class OrderSaga:
+            @handles(OrderCreated)
+            def on_order_created(self, event: OrderCreated):
+                return []
+
+            @rejected(domain="inventory", command="ReserveStock")
+            def handle_reserve_rejected(self, notification: types.Notification):
+                return []
+
+        router = OORouter("saga-test").add(OrderSaga)
+
+        # Rejection handler should be registered
+        assert "inventory/ReserveStock" in router._router._rejection_handlers
+
+    def test_dispatch_routes_to_rejected_handler(self):
+        """Test that dispatch routes Notification to @rejected handler."""
+
+        @domain("order")
+        class OrderSaga:
+            @handles(OrderCreated)
+            def on_order_created(self, event: OrderCreated):
+                return []
+
+            @rejected(domain="inventory", command="ReserveStock")
+            def handle_reserve_rejected(self, notification: types.Notification):
+                return [
+                    types.CommandBook(
+                        cover=types.Cover(domain="order"),
+                        pages=[
+                            types.CommandPage(
+                                command=any_pb2.Any(type_url="test/CancelOrder")
+                            )
+                        ],
+                    )
+                ]
+
+        router = OORouter("saga-test").add(OrderSaga)
+
+        source = make_rejection_notification("inventory", ReserveStock)
+        response = router.dispatch(source, [])
+
+        assert len(response.commands) == 1
+        assert response.commands[0].cover.domain == "order"
+
+    def test_rejected_handler_receives_destinations(self):
+        """Test that @rejected handler can receive destinations parameter."""
+        received_destinations = []
+
+        @domain("order")
+        class OrderSaga:
+            @handles(OrderCreated)
+            def on_order_created(self, event: OrderCreated):
+                return []
+
+            @rejected(domain="inventory", command="ReserveStock")
+            def handle_reserve_rejected(
+                self,
+                notification: types.Notification,
+                destinations: list[types.EventBook],
+            ):
+                received_destinations.extend(destinations)
+                return []
+
+        router = OORouter("saga-test").add(OrderSaga)
+
+        source = make_rejection_notification("inventory", ReserveStock)
+        test_destinations = [types.EventBook(cover=types.Cover(domain="test"))]
+        router.dispatch(source, test_destinations)
+
+        assert len(received_destinations) == 1
+        assert received_destinations[0].cover.domain == "test"
+
+    def test_rejected_handler_metadata(self):
+        """Test that @rejected decorator sets correct metadata."""
+
+        @domain("order")
+        class OrderSaga:
+            @rejected(domain="inventory", command="ReserveStock")
+            def handle_rejected(self, notification: types.Notification):
+                return []
+
+        method = OrderSaga.handle_rejected
+
+        assert method._is_rejection_handler is True
+        assert method._rejection_domain == "inventory"
+        assert method._rejection_command == "ReserveStock"
+
+    def test_dispatch_returns_empty_when_no_handler_matches(self):
+        """Test that dispatch returns empty list when no handler matches."""
+
+        @domain("order")
+        class OrderSaga:
+            @handles(OrderCreated)
+            def on_order_created(self, event: OrderCreated):
+                return []
+
+            @rejected(domain="inventory", command="ReserveStock")
+            def handle_reserve_rejected(self, notification: types.Notification):
+                return [types.CommandBook()]
+
+        router = OORouter("saga-test").add(OrderSaga)
+
+        # Rejection for different domain/command
+        source = make_rejection_notification("payment", ProcessPayment)
+        response = router.dispatch(source, [])
+
+        assert len(response.commands) == 0

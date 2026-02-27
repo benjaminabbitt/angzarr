@@ -19,6 +19,7 @@ use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
+use crate::orchestration::FactExecutor;
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
@@ -33,6 +34,7 @@ pub struct ProcessManagerEventHandler {
     context_factory: Arc<dyn PMContextFactory>,
     destination_fetcher: Arc<dyn DestinationFetcher>,
     command_executor: Arc<dyn CommandExecutor>,
+    fact_executor: Option<Arc<dyn FactExecutor>>,
     /// Target filter — only handle events matching these targets.
     /// Empty means handle all events (distributed mode uses bus-level filtering).
     targets: Vec<Target>,
@@ -50,9 +52,16 @@ impl ProcessManagerEventHandler {
             context_factory,
             destination_fetcher,
             command_executor,
+            fact_executor: None,
             targets: Vec::new(),
             backoff: saga_backoff(),
         }
+    }
+
+    /// Set fact executor for fact injection.
+    pub fn with_fact_executor(mut self, fact_executor: Option<Arc<dyn FactExecutor>>) -> Self {
+        self.fact_executor = fact_executor;
+        self
     }
 
     /// Set target filter for handler-level event filtering.
@@ -90,6 +99,7 @@ impl ProcessManagerEventHandler {
             context_factory: factory,
             destination_fetcher,
             command_executor,
+            fact_executor: None,
             targets: Vec::new(),
             backoff: saga_backoff(),
         }
@@ -111,6 +121,7 @@ impl EventHandler for ProcessManagerEventHandler {
         let factory = self.context_factory.clone();
         let destination_fetcher = self.destination_fetcher.clone();
         let command_executor = self.command_executor.clone();
+        let fact_executor = self.fact_executor.clone();
         let backoff = self.backoff;
 
         Box::pin(
@@ -130,11 +141,13 @@ impl EventHandler for ProcessManagerEventHandler {
                 }
 
                 let ctx = factory.create();
+                let fact_executor_ref: Option<&dyn FactExecutor> = fact_executor.as_deref();
 
                 if let Err(e) = orchestrate_pm(
                     ctx.as_ref(),
                     destination_fetcher.as_ref(),
                     command_executor.as_ref(),
+                    fact_executor_ref,
                     &book_owned,
                     &pm_name,
                     &pm_domain,

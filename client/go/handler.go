@@ -690,7 +690,7 @@ type OOSaga interface {
 	InputDomain() string
 	OutputDomain() string
 	PrepareDestinations(source *pb.EventBook) []*pb.Cover
-	Execute(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error)
+	Execute(source *pb.EventBook, destinations []*pb.EventBook) (*SagaHandlerResponse, error)
 }
 
 // OOSagaHandler wraps an OO-style saga for the gRPC Saga service.
@@ -712,7 +712,7 @@ func (h *OOSagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest)
 
 // Execute processes events and returns commands for other aggregates.
 func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
-	commands, err := h.saga.Execute(req.Source, req.Destinations)
+	response, err := h.saga.Execute(req.Source, req.Destinations)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {
@@ -720,7 +720,10 @@ func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest)
 		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &pb.SagaResponse{Commands: commands}, nil
+	if response == nil {
+		response = &SagaHandlerResponse{}
+	}
+	return &pb.SagaResponse{Commands: response.Commands, Events: response.Events}, nil
 }
 
 // RegisterOOSagaHandler returns a ServiceRegistrar that registers an OO saga handler.

@@ -75,7 +75,7 @@ def make_event_book(domain: str, root: bytes, events: list) -> types.EventBook:
     for i, event_any in enumerate(events):
         pages.append(
             types.EventPage(
-                num=i,
+                sequence=i,
                 event=event_any,
                 created_at=make_timestamp(),
             )

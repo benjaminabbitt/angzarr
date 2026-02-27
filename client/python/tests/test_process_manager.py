@@ -399,11 +399,11 @@ class TestProcessManagerHandle:
         )
         process_state = types.EventBook()
 
-        commands, new_events = OrderWorkflowPM.handle(trigger, process_state)
+        response = OrderWorkflowPM.handle(trigger, process_state)
 
-        assert len(commands) == 1
-        assert commands[0].cover.domain == "inventory"
-        assert commands[0].cover.correlation_id == "corr-abc"
+        assert len(response.commands) == 1
+        assert response.commands[0].cover.domain == "inventory"
+        assert response.commands[0].cover.correlation_id == "corr-abc"
 
 
 # =============================================================================
@@ -491,3 +491,72 @@ class TestPatternEquivalence:
             == router_commands[0].cover.correlation_id
             == "corr-eq"
         )
+
+
+# =============================================================================
+# Tests for ProcessManager fact output
+# =============================================================================
+
+
+class PMWithFacts(ProcessManager[OrderWorkflowState]):
+    """Process manager that emits facts."""
+
+    name = "pm-with-facts"
+
+    def _create_empty_state(self) -> OrderWorkflowState:
+        return OrderWorkflowState()
+
+    def _apply_event(self, state: OrderWorkflowState, event_any: any_pb2.Any) -> None:
+        pass
+
+    @handles(OrderCreated, input_domain="order", output_domain="inventory")
+    def on_order_created(self, event: OrderCreated) -> ReserveStock:
+        # Emit a fact to another aggregate
+        self.emit_fact(
+            types.EventBook(
+                cover=types.Cover(domain="analytics", correlation_id="test"),
+                pages=[
+                    types.EventPage(event=any_pb2.Any(type_url="test/OrderAnalytics"))
+                ],
+            )
+        )
+        return ReserveStock(order_id=event.order_id, sku="default", quantity=1)
+
+
+class TestProcessManagerFactOutput:
+    def test_emit_fact_accumulates_facts(self):
+        pm = PMWithFacts()
+        event = OrderCreated(order_id="order-123")
+        event_any = any_pb2.Any()
+        event_any.Pack(event)
+
+        pm.dispatch(event_any, b"\x01\x02", "corr-1")
+
+        assert len(pm._facts) == 1
+        assert pm._facts[0].cover.domain == "analytics"
+
+    def test_handle_returns_facts_in_response(self):
+        event = OrderCreated(order_id="order-123")
+        event_any = any_pb2.Any()
+        event_any.Pack(event)
+
+        trigger = types.EventBook(
+            cover=types.Cover(domain="order", correlation_id="corr-abc"),
+            pages=[types.EventPage(event=event_any)],
+        )
+        process_state = types.EventBook()
+
+        response = PMWithFacts.handle(trigger, process_state)
+
+        assert len(response.commands) == 1
+        assert len(response.facts) == 1
+        assert response.facts[0].cover.domain == "analytics"
+
+    def test_pm_init_resets_facts(self):
+        # Each PM instance should start with empty facts
+        pm1 = PMWithFacts()
+        pm1.emit_fact(types.EventBook(cover=types.Cover(domain="test")))
+        assert len(pm1._facts) == 1
+
+        pm2 = PMWithFacts()
+        assert len(pm2._facts) == 0

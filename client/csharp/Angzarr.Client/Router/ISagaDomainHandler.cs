@@ -24,14 +24,14 @@ namespace Angzarr.Client.Router;
 ///         return new List&lt;Angzarr.Cover&gt;();
 ///     }
 ///
-///     public IReadOnlyList&lt;Angzarr.CommandBook&gt; Execute(
+///     public SagaHandlerResponse Execute(
 ///         Angzarr.EventBook source,
 ///         Any eventPayload,
 ///         IReadOnlyList&lt;Angzarr.EventBook&gt; destinations)
 ///     {
 ///         if (eventPayload.TypeUrl.EndsWith("OrderCompleted"))
 ///             return HandleOrderCompleted(source, eventPayload, destinations);
-///         return new List&lt;Angzarr.CommandBook&gt;();
+///         return SagaHandlerResponse.Empty();
 ///     }
 /// }
 /// </code>
@@ -54,16 +54,31 @@ public interface ISagaDomainHandler
     IReadOnlyList<Angzarr.Cover> Prepare(Angzarr.EventBook source, Any eventPayload);
 
     /// <summary>
-    /// Execute phase - produce commands.
+    /// Execute phase - produce commands and/or events.
     /// Called with source event and fetched destination state.
     /// </summary>
     /// <param name="source">Source event book.</param>
     /// <param name="eventPayload">The event payload as Any.</param>
     /// <param name="destinations">Fetched destination aggregate states.</param>
-    /// <returns>Commands to send to other aggregates.</returns>
-    IReadOnlyList<Angzarr.CommandBook> Execute(
+    /// <returns>Response containing commands and events.</returns>
+    SagaHandlerResponse Execute(
         Angzarr.EventBook source,
         Any eventPayload,
         IReadOnlyList<Angzarr.EventBook> destinations
     );
+
+    /// <summary>
+    /// Handle a rejection notification.
+    /// Called when a saga-issued command was rejected.
+    /// Default implementation returns an empty response.
+    /// </summary>
+    /// <param name="notification">The rejection notification.</param>
+    /// <param name="targetDomain">The domain the rejected command targeted.</param>
+    /// <param name="targetCommand">The rejected command type suffix.</param>
+    /// <returns>The rejection handler response.</returns>
+    RejectionHandlerResponse OnRejected(
+        Angzarr.Notification notification,
+        string targetDomain,
+        string targetCommand
+    ) => new();
 }

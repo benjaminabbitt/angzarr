@@ -48,12 +48,13 @@ use backon::ExponentialBuilder;
 use tracing::{debug, error, warn};
 
 use crate::bus::BusError;
-use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin};
+use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, SagaResponse};
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::{run_with_retry, RetryOutcome, RetryableOperation};
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
+use super::FactExecutor;
 
 /// Validator for saga output domain routing.
 pub type OutputDomainValidator = dyn Fn(&CommandBook) -> Result<(), String> + Send + Sync;
@@ -88,11 +89,11 @@ pub trait SagaRetryContext: Send + Sync {
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Re-invoke the saga's execute phase with fresh destination state.
-    /// Returns new commands to execute.
+    /// Returns commands to execute and events (facts) to inject.
     async fn re_execute_saga(
         &self,
         destinations: Vec<EventBook>,
-    ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Handle a permanently rejected command (compensation, logging, etc.)
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str);
@@ -133,6 +134,9 @@ struct SagaOperation<'a> {
     saga_name: &'a str,
     correlation_id: &'a str,
     commands: Vec<CommandBook>,
+    /// Events (facts) to inject after all commands succeed.
+    /// Updated by prepare_for_retry alongside commands.
+    events: Vec<EventBook>,
     /// Domains that had sequence conflicts on the last attempt.
     /// Cleared at the start of each try_execute, populated during execution.
     /// Used by prepare_for_retry to decide which destinations need fresh fetches.
@@ -251,11 +255,14 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         // The saga handler is responsible for setting command.pages[0].sequence
         // from destination.next_sequence(). This is NOT auto-stamped by the framework
         // to force saga authors to engage with destination state.
-        self.commands = self
+        let response = self
             .context
             .re_execute_saga(destinations)
             .await
             .map_err(|e| e.to_string())?;
+
+        self.commands = response.commands;
+        self.events = response.events;
 
         Ok(())
     }
@@ -269,6 +276,7 @@ struct SagaRetryBuilder<'a> {
     correlation_id: &'a str,
     fetcher: Option<&'a dyn DestinationFetcher>,
     commands: Vec<CommandBook>,
+    events: Vec<EventBook>,
     destinations: Vec<EventBook>,
     backoff: ExponentialBuilder,
 }
@@ -287,6 +295,7 @@ impl<'a> SagaRetryBuilder<'a> {
             correlation_id,
             fetcher: None,
             commands: Vec::new(),
+            events: Vec::new(),
             destinations: Vec::new(),
             backoff: ExponentialBuilder::default(),
         }
@@ -299,6 +308,11 @@ impl<'a> SagaRetryBuilder<'a> {
 
     fn commands(mut self, commands: Vec<CommandBook>) -> Self {
         self.commands = commands;
+        self
+    }
+
+    fn events(mut self, events: Vec<EventBook>) -> Self {
+        self.events = events;
         self
     }
 
@@ -326,6 +340,7 @@ impl<'a> SagaRetryBuilder<'a> {
             saga_name: self.saga_name,
             correlation_id: self.correlation_id,
             commands: self.commands,
+            events: self.events,
             failed_domains: HashSet::new(),
             cached_destinations: self
                 .destinations
@@ -347,11 +362,13 @@ impl<'a> SagaRetryBuilder<'a> {
 /// 3. Execute saga with source + destinations
 /// 4. Validate output domains (if validator provided)
 /// 5. Execute commands with retry
+/// 6. Inject facts into target aggregates
 #[tracing::instrument(name = "saga.orchestrate", skip_all, fields(%saga_name, %correlation_id))]
 pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
     fetcher: Option<&dyn DestinationFetcher>,
+    fact_executor: Option<&dyn FactExecutor>,
     saga_name: &str,
     correlation_id: &str,
     output_domain_validator: Option<&OutputDomainValidator>,
@@ -377,10 +394,13 @@ pub async fn orchestrate_saga(
 
     // Phase 3: Execute saga with source + destinations
     // Saga handler must set correct sequences on commands from destination.next_sequence()
-    let mut commands = ctx
+    let saga_response = ctx
         .re_execute_saga(destinations.clone())
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
+
+    let mut commands = saga_response.commands;
+    let events = saga_response.events;
 
     // Stamp saga_origin on commands for two purposes:
     //
@@ -425,10 +445,39 @@ pub async fn orchestrate_saga(
     SagaRetryBuilder::new(ctx, executor, saga_name, correlation_id)
         .fetcher(fetcher)
         .commands(commands)
+        .events(events.clone())
         .destinations(destinations)
         .backoff(backoff)
         .execute()
         .await;
+
+    // Phase 6: Inject facts into target aggregates
+    //
+    // Facts are events emitted by the saga that are injected directly into target
+    // aggregates without command handling. The coordinator stamps sequence numbers
+    // on receipt based on the aggregate's current state.
+    //
+    // Facts must have `external_id` set in their Cover for idempotent handling.
+    // Fact injection failure fails the entire saga operation — facts are not
+    // best-effort, they're part of the transaction.
+    if let Some(fact_exec) = fact_executor {
+        for fact in events {
+            let domain = fact
+                .cover
+                .as_ref()
+                .map(|c| c.domain.as_str())
+                .unwrap_or("unknown");
+            debug!(%domain, "Injecting fact from saga");
+
+            fact_exec
+                .inject(fact)
+                .await
+                .map_err(|e| BusError::SagaFailed {
+                    name: saga_name.to_string(),
+                    message: format!("Fact injection failed: {e}"),
+                })?;
+        }
+    }
 
     Ok(())
 }

@@ -290,19 +290,29 @@ func (h *MockSagaHandler) Execute(
 	source *pb.EventBook,
 	event *anypb.Any,
 	destinations []*pb.EventBook,
-) ([]*pb.CommandBook, error) {
+) (*SagaHandlerResponse, error) {
 	h.executeCalls++
-	return []*pb.CommandBook{
-		{
-			Cover: &pb.Cover{Domain: "destination"},
-			Pages: []*pb.CommandPage{
-				{
-					Sequence: 0,
-					Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.TestCommand"}},
+	return &SagaHandlerResponse{
+		Commands: []*pb.CommandBook{
+			{
+				Cover: &pb.Cover{Domain: "destination"},
+				Pages: []*pb.CommandPage{
+					{
+						Sequence: 0,
+						Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.TestCommand"}},
+					},
 				},
 			},
 		},
 	}, nil
+}
+
+func (h *MockSagaHandler) OnRejected(
+	notification *pb.Notification,
+	targetDomain string,
+	targetCommand string,
+) (*RejectionHandlerResponse, error) {
+	return &RejectionHandlerResponse{}, nil
 }
 
 // MockPMHandler implements ProcessManagerDomainHandler for testing.

@@ -156,13 +156,16 @@ class TestSagaHandlerCustomMode:
         router = build_test_router()
 
         def custom_execute(source, destinations):
-            return [
-                types.CommandBook(
-                    cover=types.Cover(
-                        domain="custom", correlation_id=source.cover.correlation_id
+            # Now returns SagaResponse (proto-generated type)
+            return saga.SagaResponse(
+                commands=[
+                    types.CommandBook(
+                        cover=types.Cover(
+                            domain="custom", correlation_id=source.cover.correlation_id
+                        ),
                     ),
-                ),
-            ]
+                ]
+            )
 
         handler = SagaHandler(router).with_execute(custom_execute)
         context = MagicMock(spec=grpc.ServicerContext)

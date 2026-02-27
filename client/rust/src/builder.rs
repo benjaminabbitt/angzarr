@@ -302,6 +302,7 @@ mod tests {
                 value: u.as_bytes().to_vec(),
             }),
             edition: None,
+            external_id: String::new(),
         }
     }
 
@@ -569,6 +570,7 @@ mod tests {
                 value: vec![1, 2, 3], // invalid - not 16 bytes
             }),
             edition: None,
+            external_id: String::new(),
         };
         assert_eq!(root_from_cover(&cover), None);
     }
@@ -603,7 +605,7 @@ mod tests {
 
     #[test]
     fn test_decode_event_success() {
-        use crate::proto::event_page::Payload;
+        use crate::proto::event_page::{Payload, SequenceType};
 
         // Use prost_types::Duration which implements Message + Default
         let msg = prost_types::Duration {
@@ -611,7 +613,7 @@ mod tests {
             nanos: 0,
         };
         let event = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -626,14 +628,14 @@ mod tests {
 
     #[test]
     fn test_decode_event_type_mismatch() {
-        use crate::proto::event_page::Payload;
+        use crate::proto::event_page::{Payload, SequenceType};
 
         let msg = prost_types::Duration {
             seconds: 42,
             nanos: 0,
         };
         let event = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -647,8 +649,10 @@ mod tests {
 
     #[test]
     fn test_decode_event_nil_event() {
+        use crate::proto::event_page::SequenceType;
+
         let event = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: None,
         };
@@ -659,10 +663,10 @@ mod tests {
 
     #[test]
     fn test_decode_event_invalid_payload() {
-        use crate::proto::event_page::Payload;
+        use crate::proto::event_page::{Payload, SequenceType};
 
         let event = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),

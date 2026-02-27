@@ -879,14 +879,56 @@ func (r *SagaRouter) Dispatch(source *pb.EventBook, destinations []*pb.EventBook
 		return nil, status.Error(codes.InvalidArgument, "missing event payload")
 	}
 
-	commands, err := r.handler.Execute(source, eventAny, destinations)
+	// Check for Notification (rejection/compensation)
+	if strings.HasSuffix(eventAny.TypeUrl, "Notification") {
+		return r.dispatchSagaNotification(eventAny)
+	}
+
+	response, err := r.handler.Execute(source, eventAny, destinations)
 	if err != nil {
 		return nil, err
 	}
 
+	if response == nil {
+		response = &SagaHandlerResponse{}
+	}
+
 	return &pb.SagaResponse{
-		Commands: commands,
-		Events:   []*pb.EventBook{},
+		Commands: response.Commands,
+		Events:   response.Events,
+	}, nil
+}
+
+// dispatchSagaNotification routes a Notification to the saga's rejection handler.
+func (r *SagaRouter) dispatchSagaNotification(eventAny *anypb.Any) (*pb.SagaResponse, error) {
+	notification := &pb.Notification{}
+	if err := proto.Unmarshal(eventAny.Value, notification); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to decode Notification: %v", err)
+	}
+
+	rejection := &pb.RejectionNotification{}
+	if notification.Payload != nil {
+		if err := proto.Unmarshal(notification.Payload.Value, rejection); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to decode RejectionNotification: %v", err)
+		}
+	}
+
+	domain, cmdSuffix := extractRejectionKey(rejection)
+
+	response, err := r.handler.OnRejected(notification, domain, cmdSuffix)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sagas can only return events for compensation (no commands on rejection)
+	var events []*pb.EventBook
+	if response != nil && response.Events != nil {
+		events = []*pb.EventBook{response.Events}
+	}
+
+	return &pb.SagaResponse{
+		Commands: nil,
+		Events:   events,
 	}, nil
 }
 
@@ -1025,6 +1067,8 @@ func (r *ProcessManagerRouter[S]) Dispatch(
 	return &pb.ProcessManagerHandleResponse{
 		Commands:      response.Commands,
 		ProcessEvents: response.ProcessEvents,
+		// TODO: Add response.Facts once Go proto is regenerated
+		// Facts:         response.Facts,
 	}, nil
 }
 

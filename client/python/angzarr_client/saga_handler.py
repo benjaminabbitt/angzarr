@@ -30,9 +30,8 @@ if TYPE_CHECKING:
     import structlog
 
 PrepareFunc = Callable[[types.EventBook], list[types.Cover]]
-ExecuteFunc = Callable[
-    [types.EventBook, list[types.EventBook]], list[types.CommandBook]
-]
+# ExecuteFunc returns SagaResponse (proto-generated type)
+ExecuteFunc = Callable[[types.EventBook, list[types.EventBook]], saga.SagaResponse]
 
 
 class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
@@ -104,29 +103,28 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
         request: saga.SagaExecuteRequest,
         context: grpc.ServicerContext,
     ) -> saga.SagaResponse:
-        """Phase 2: Produce commands given source + destination state."""
-        commands = self._execute_commands(request.source, list(request.destinations))
-        return saga.SagaResponse(commands=commands)
+        """Phase 2: Produce commands and events given source + destination state."""
+        return self._execute_saga(request.source, list(request.destinations))
 
-    def _execute_commands(
+    def _execute_saga(
         self,
         source: types.EventBook,
         destinations: list[types.EventBook],
-    ) -> list[types.CommandBook]:
+    ) -> saga.SagaResponse:
         """Dispatch through custom execute, Saga class, or SingleFluentRouter."""
         # Custom execute takes precedence
         if self._execute is not None:
             return self._execute(source, destinations)
 
-        # OO pattern: use Saga class's execute
+        # OO pattern: use Saga class's execute (returns SagaResponse)
         if self._saga_class is not None:
             return self._saga_class.execute(source, destinations)
 
-        # Fluent pattern: use SingleFluentRouter's dispatch (returns list[CommandBook])
+        # Fluent pattern: use SingleFluentRouter's dispatch (returns SagaResponse)
         if self._event_router is not None:
             return self._event_router.dispatch(source, destinations)
 
-        return []
+        return saga.SagaResponse()
 
 
 def run_saga_server(

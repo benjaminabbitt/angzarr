@@ -37,13 +37,8 @@ message LeaveTable {
   bytes player_root = 1;
 }
 
-message SitOut {
-  bytes player_root = 1;
-}
-
-message SitIn {
-  bytes player_root = 1;
-}
+// Note: SitOut/SitIn commands moved to player domain (player owns intent)
+// Table receives PlayerSatOut/PlayerSatIn as facts via saga
 
 message StartHand {
   // No parameters - uses current table state

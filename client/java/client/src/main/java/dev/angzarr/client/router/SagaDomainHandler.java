@@ -4,6 +4,8 @@ import com.google.protobuf.Any;
 import dev.angzarr.CommandBook;
 import dev.angzarr.Cover;
 import dev.angzarr.EventBook;
+import dev.angzarr.Notification;
+import dev.angzarr.client.compensation.RejectionHandlerResponse;
 
 import java.util.List;
 
@@ -70,17 +72,38 @@ public interface SagaDomainHandler {
     List<Cover> prepare(EventBook source, Any event);
 
     /**
-     * Execute phase - produce commands.
+     * Execute phase - produce commands and/or events.
      *
      * <p>Called with source event and fetched destination state.
-     * Returns commands to send to other aggregates.
+     * Returns commands to send to other aggregates and events to inject.
      *
      * @param source The source event book
      * @param event The triggering event as an Any
      * @param destinations The fetched destination event books
-     * @return List of commands to send
+     * @return Response containing commands and events
      * @throws CommandRejectedError if the event cannot be processed
      */
-    List<CommandBook> execute(EventBook source, Any event, List<EventBook> destinations)
+    SagaHandlerResponse execute(EventBook source, Any event, List<EventBook> destinations)
             throws CommandRejectedError;
+
+    /**
+     * Handle a rejection notification.
+     *
+     * <p>Called when a saga-issued command was rejected. Override to provide
+     * custom compensation logic.
+     *
+     * <p>Default implementation returns an empty response.
+     *
+     * @param notification The rejection notification
+     * @param targetDomain The domain the rejected command targeted
+     * @param targetCommand The rejected command type suffix
+     * @return The rejection handler response
+     * @throws CommandRejectedError if the rejection cannot be handled
+     */
+    default RejectionHandlerResponse onRejected(
+            Notification notification,
+            String targetDomain,
+            String targetCommand) throws CommandRejectedError {
+        return RejectionHandlerResponse.empty();
+    }
 }

@@ -12,7 +12,7 @@ namespace Angzarr.Client.Tests;
 /// Tests for the unified router implementations that match Rust patterns.
 ///
 /// Verifies:
-/// - AggregateRouter (single domain, commands -> events)
+/// - CommandHandlerRouter (single domain, commands -> events)
 /// - SagaRouter (single domain, events -> commands, stateless)
 /// - ProcessManagerRouter (multi-domain, events -> commands + PM events)
 /// - ProjectorRouter (multi-domain, events -> external output)
@@ -30,7 +30,7 @@ public class UnifiedRouterTests
         public int Bankroll { get; set; }
     }
 
-    private class PlayerHandler : IAggregateDomainHandler<PlayerState>
+    private class PlayerHandler : ICommandHandlerDomainHandler<PlayerState>
     {
         private readonly StateRouter<PlayerState> _stateRouter;
 
@@ -89,7 +89,7 @@ public class UnifiedRouterTests
             return Array.Empty<Cover>();
         }
 
-        public IReadOnlyList<CommandBook> Execute(
+        public SagaHandlerResponse Execute(
             EventBook source,
             Any eventPayload,
             IReadOnlyList<EventBook> destinations
@@ -113,9 +113,9 @@ public class UnifiedRouterTests
                         Command = Any.Pack(new Empty(), "type.googleapis.com/CreateFulfillment"),
                     }
                 );
-                return new[] { cmd };
+                return SagaHandlerResponse.WithCommands(new[] { cmd });
             }
-            return Array.Empty<CommandBook>();
+            return SagaHandlerResponse.Empty();
         }
     }
 
@@ -209,24 +209,32 @@ public class UnifiedRouterTests
     }
 
     // =========================================================================
-    // AggregateRouter Tests
+    // CommandHandlerRouter Tests
     // =========================================================================
 
     [Fact]
-    public void AggregateRouter_Creation_SetsNameAndDomain()
+    public void CommandHandlerRouter_Creation_SetsNameAndDomain()
     {
         var handler = new PlayerHandler();
-        var router = new AggregateRouter<PlayerState, PlayerHandler>("player", "player", handler);
+        var router = new CommandHandlerRouter<PlayerState, PlayerHandler>(
+            "player",
+            "player",
+            handler
+        );
 
         router.Name.Should().Be("player");
         router.Domain.Should().Be("player");
     }
 
     [Fact]
-    public void AggregateRouter_CommandTypes_ReturnsHandlerTypes()
+    public void CommandHandlerRouter_CommandTypes_ReturnsHandlerTypes()
     {
         var handler = new PlayerHandler();
-        var router = new AggregateRouter<PlayerState, PlayerHandler>("player", "player", handler);
+        var router = new CommandHandlerRouter<PlayerState, PlayerHandler>(
+            "player",
+            "player",
+            handler
+        );
 
         var types = router.CommandTypes();
 
@@ -235,10 +243,14 @@ public class UnifiedRouterTests
     }
 
     [Fact]
-    public void AggregateRouter_Subscriptions_ReturnsDomainWithTypes()
+    public void CommandHandlerRouter_Subscriptions_ReturnsDomainWithTypes()
     {
         var handler = new PlayerHandler();
-        var router = new AggregateRouter<PlayerState, PlayerHandler>("player", "player", handler);
+        var router = new CommandHandlerRouter<PlayerState, PlayerHandler>(
+            "player",
+            "player",
+            handler
+        );
 
         var subs = router.Subscriptions();
 
@@ -248,10 +260,14 @@ public class UnifiedRouterTests
     }
 
     [Fact]
-    public void AggregateRouter_RebuildState_UsesHandler()
+    public void CommandHandlerRouter_RebuildState_UsesHandler()
     {
         var handler = new PlayerHandler();
-        var router = new AggregateRouter<PlayerState, PlayerHandler>("player", "player", handler);
+        var router = new CommandHandlerRouter<PlayerState, PlayerHandler>(
+            "player",
+            "player",
+            handler
+        );
 
         // Create an event book with one event
         var eventBook = new EventBook();
@@ -264,10 +280,14 @@ public class UnifiedRouterTests
     }
 
     [Fact]
-    public void AggregateRouter_Dispatch_ReturnsEvents()
+    public void CommandHandlerRouter_Dispatch_ReturnsEvents()
     {
         var handler = new PlayerHandler();
-        var router = new AggregateRouter<PlayerState, PlayerHandler>("player", "player", handler);
+        var router = new CommandHandlerRouter<PlayerState, PlayerHandler>(
+            "player",
+            "player",
+            handler
+        );
 
         var cmd = CreateContextualCommand("player", "RegisterPlayer");
 
@@ -278,10 +298,14 @@ public class UnifiedRouterTests
     }
 
     [Fact]
-    public void AggregateRouter_Dispatch_Notification_ReturnsRevocation()
+    public void CommandHandlerRouter_Dispatch_Notification_ReturnsRevocation()
     {
         var handler = new PlayerHandler();
-        var router = new AggregateRouter<PlayerState, PlayerHandler>("player", "player", handler);
+        var router = new CommandHandlerRouter<PlayerState, PlayerHandler>(
+            "player",
+            "player",
+            handler
+        );
 
         var notification = CreateNotification("inventory", "ReserveStock", "out of stock");
         var cmd = CreateContextualCommandWithNotification(notification);

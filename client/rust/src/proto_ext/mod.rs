@@ -37,7 +37,8 @@ pub use uuid::{ProtoUuidExt, UuidExt};
 mod tests {
     use super::*;
     use crate::proto::{
-        CommandBook, Cover, Edition, EventBook, MergeStrategy, SnapshotRetention, Uuid as ProtoUuid,
+        event_page::SequenceType, CommandBook, Cover, Edition, EventBook, MergeStrategy,
+        SnapshotRetention, Uuid as ProtoUuid,
     };
 
     fn make_cover(domain: &str, correlation_id: &str, root: Option<::uuid::Uuid>) -> Cover {
@@ -48,6 +49,7 @@ mod tests {
                 value: u.as_bytes().to_vec(),
             }),
             edition: None,
+            external_id: String::new(),
         }
     }
 
@@ -146,7 +148,7 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: 42,
+            sequence_type: Some(SequenceType::Sequence(42)),
             created_at: None,
             payload: None,
         };
@@ -159,7 +161,7 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/test.Event".to_string(),
@@ -174,7 +176,7 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: 0,
+            sequence_type: Some(SequenceType::Sequence(0)),
             created_at: None,
             payload: None,
         };
@@ -187,7 +189,7 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "test".to_string(),
@@ -202,7 +204,7 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: 0,
+            sequence_type: Some(SequenceType::Sequence(0)),
             created_at: None,
             payload: None,
         };
@@ -220,7 +222,7 @@ mod tests {
             nanos: 0,
         };
         let page = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -243,7 +245,7 @@ mod tests {
             nanos: 0,
         };
         let page = EventPage {
-            sequence: 1,
+            sequence_type: Some(SequenceType::Sequence(1)),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -378,12 +380,12 @@ mod tests {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence: 1,
+                    sequence_type: Some(SequenceType::Sequence(1)),
                     payload: None,
                     created_at: None,
                 },
                 EventPage {
-                    sequence: 2,
+                    sequence_type: Some(SequenceType::Sequence(2)),
                     payload: None,
                     created_at: None,
                 },
@@ -403,12 +405,12 @@ mod tests {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence: 1,
+                    sequence_type: Some(SequenceType::Sequence(1)),
                     payload: None,
                     created_at: None,
                 },
                 EventPage {
-                    sequence: 2,
+                    sequence_type: Some(SequenceType::Sequence(2)),
                     payload: None,
                     created_at: None,
                 },
@@ -427,12 +429,12 @@ mod tests {
 
         let pages = vec![
             EventPage {
-                sequence: 5,
+                sequence_type: Some(SequenceType::Sequence(5)),
                 payload: None,
                 created_at: None,
             },
             EventPage {
-                sequence: 6,
+                sequence_type: Some(SequenceType::Sequence(6)),
                 payload: None,
                 created_at: None,
             },
@@ -466,7 +468,7 @@ mod tests {
         let mut book = EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence: 10,
+                sequence_type: Some(SequenceType::Sequence(10)),
                 payload: None,
                 created_at: None,
             }],

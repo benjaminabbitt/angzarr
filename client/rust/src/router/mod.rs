@@ -54,7 +54,7 @@ pub use state::{EventApplier, StateFactory, StateRouter};
 pub use traits::{
     AggregateDomainHandler, CommandRejectedError, CommandResult, ProcessManagerDomainHandler,
     ProcessManagerResponse, ProjectorDomainHandler, RejectionHandlerResponse, SagaDomainHandler,
-    UnpackAny,
+    SagaHandlerResponse, UnpackAny,
 };
 
 // Re-export macros (defined in dispatch module via #[macro_export])
@@ -312,13 +312,49 @@ impl<H: SagaDomainHandler> SagaRouter<H> {
             _ => return Err(Status::invalid_argument("Missing event payload")),
         };
 
-        let commands = self.handler.execute(source, event_any, destinations)?;
+        // Check for Notification (rejection/compensation)
+        if event_any.type_url.ends_with("Notification") {
+            return dispatch_saga_notification(&self.handler, event_any);
+        }
+
+        let response = self.handler.execute(source, event_any, destinations)?;
 
         Ok(SagaResponse {
-            commands,
-            events: vec![],
+            commands: response.commands,
+            events: response.events,
         })
     }
+}
+
+/// Dispatch a Notification to the saga's rejection handler.
+fn dispatch_saga_notification<H: SagaDomainHandler>(
+    handler: &H,
+    event_any: &Any,
+) -> Result<SagaResponse, Status> {
+    use prost::Message;
+
+    let notification = Notification::decode(event_any.value.as_slice())
+        .map_err(|e| Status::invalid_argument(format!("Failed to decode Notification: {}", e)))?;
+
+    let rejection = notification
+        .payload
+        .as_ref()
+        .map(|p| RejectionNotification::decode(p.value.as_slice()))
+        .transpose()
+        .map_err(|e| {
+            Status::invalid_argument(format!("Failed to decode RejectionNotification: {}", e))
+        })?
+        .unwrap_or_default();
+
+    let (domain, cmd_suffix) = extract_rejection_key(&rejection);
+
+    let response = handler.on_rejected(&notification, &domain, &cmd_suffix)?;
+
+    // Sagas can only return events for compensation (no commands on rejection)
+    Ok(SagaResponse {
+        commands: vec![],
+        events: response.events.into_iter().collect(),
+    })
 }
 
 /// Extract domain and command suffix from a RejectionNotification.
@@ -494,6 +530,7 @@ impl<S: Default + Send + Sync + 'static> ProcessManagerRouter<S> {
         Ok(ProcessManagerHandleResponse {
             commands: response.commands,
             process_events: response.process_events,
+            facts: response.facts,
         })
     }
 }
@@ -526,6 +563,7 @@ fn dispatch_pm_notification<S: Default>(
     Ok(ProcessManagerHandleResponse {
         commands: vec![],
         process_events: response.events,
+        facts: vec![],
     })
 }
 

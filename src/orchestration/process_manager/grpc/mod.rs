@@ -115,6 +115,7 @@ impl ProcessManagerContext for GrpcPMContext {
         Ok(PmHandleResponse {
             commands,
             process_events: response.process_events,
+            facts: response.facts,
         })
     }
 
