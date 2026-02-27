@@ -163,7 +163,7 @@ jobs:
             -n angzarr \
             -f examples/rust/values.yaml \
             --set amqp.enabled=true \
-            --set amqp.url="amqp://guest:guest@angzarr-mq-rabbitmq:5672" \
+            --set amqp.url="amqp://angzarr:angzarr@angzarr-mq-rabbitmq:5672" \
             --set storage.type=sqlite \
             --set images.aggregate.repository=${{ env.IMAGE_PREFIX }}/angzarr-aggregate \
             --set images.aggregate.tag=latest \
