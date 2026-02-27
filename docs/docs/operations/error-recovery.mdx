@@ -71,10 +71,16 @@ Transient failures (network issues, temporary unavailability) are automatically 
 1. Command fails with FAILED_PRECONDITION
 2. Error details contain current EventBook
 3. Client extracts EventBook from error
-4. Client rebuilds command with correct sequence
-5. Client resubmits
-6. Repeat until success or max attempts
+4. Client rebuilds state from fresh EventBook
+5. Client re-evaluates business logic with fresh state
+6. Client builds new command with correct sequence
+7. Client resubmits
+8. Repeat until success or max attempts
 ```
+
+:::warning Rebuild, Don't Just Re-sequence
+Simply updating the sequence number is insufficient. The command's payload may depend on state that changed. You must rebuild the command by re-running your business logic against the fresh state.
+:::
 
 <Tabs groupId="language">
 <TabItem value="rust" label="Rust" default>
@@ -83,7 +89,6 @@ Transient failures (network issues, temporary unavailability) are automatically 
 // Extract fresh state from sequence mismatch error
 fn handle_sequence_error(status: &Status) -> Option<EventBook> {
     if status.code() == Code::FailedPrecondition {
-        // EventBook is serialized in status details
         let details = status.details();
         if !details.is_empty() {
             return EventBook::decode(details).ok();
@@ -92,29 +97,43 @@ fn handle_sequence_error(status: &Status) -> Option<EventBook> {
     None
 }
 
-// Retry loop with backoff
-async fn execute_with_retry(
-    mut command: CommandBook,
+// Retry loop with backoff - rebuilds command from fresh state
+async fn execute_with_retry<F>(
+    intent: &CommandIntent,       // Original intent (what user wanted)
+    build_command: F,             // Function to build command from state
     client: &mut AggregateClient,
-) -> Result<EventBook, Status> {
+) -> Result<EventBook, Status>
+where
+    F: Fn(&CommandIntent, &EventBook) -> Result<CommandBook, CommandRejectedError>,
+{
     let backoff = saga_backoff();
     let mut delays = backoff.build();
+    let mut current_state: Option<EventBook> = None;
 
     loop {
-        match client.execute(command.clone()).await {
+        // Build command from current state (or fetch if first attempt)
+        let state = match &current_state {
+            Some(s) => s.clone(),
+            None => client.get_state(intent.root_id()).await?,
+        };
+
+        let command = match build_command(intent, &state) {
+            Ok(cmd) => cmd,
+            Err(e) => return Err(e.into()), // Business logic rejected
+        };
+
+        match client.execute(command).await {
             Ok(events) => return Ok(events),
             Err(status) if status.code() == Code::FailedPrecondition => {
                 if let Some(delay) = delays.next() {
-                    // Extract fresh state and rebuild command
-                    if let Some(current) = handle_sequence_error(&status) {
-                        command.pages[0].sequence = current.next_sequence;
-                    }
+                    // Extract fresh state for next iteration
+                    current_state = handle_sequence_error(&status);
                     tokio::time::sleep(delay).await;
                 } else {
-                    return Err(status); // Max retries exceeded
+                    return Err(status);
                 }
             }
-            Err(status) => return Err(status), // Non-retryable
+            Err(status) => return Err(status),
         }
     }
 }
@@ -137,26 +156,36 @@ def handle_sequence_error(error: grpc.RpcError) -> EventBook | None:
     return None
 
 async def execute_with_retry(
-    command: CommandBook,
+    intent: CommandIntent,            # What the user wanted
+    build_command: Callable,          # Function: (intent, state) -> CommandBook
     client: AggregateClient,
     max_attempts: int = 10,
 ) -> EventBook:
-    """Execute command with exponential backoff retry."""
-    delay = 0.01  # Start at 10ms
+    """Execute command with retry, rebuilding from fresh state each attempt."""
+    delay = 0.01
+    current_state = None
 
     for attempt in range(max_attempts):
+        # Get state if first attempt, otherwise use state from error
+        if current_state is None:
+            current_state = await client.get_state(intent.root_id)
+
+        # Rebuild command from current state
+        try:
+            command = build_command(intent, current_state)
+        except CommandRejectedError:
+            raise  # Business logic rejected with fresh state
+
         try:
             return await client.execute(command)
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.FAILED_PRECONDITION:
-                # Extract fresh state and rebuild
-                if current := handle_sequence_error(e):
-                    command.pages[0].sequence = current.next_sequence
-
+                # Extract fresh state for next attempt
+                current_state = handle_sequence_error(e)
                 await asyncio.sleep(delay)
-                delay = min(delay * 2, 2.0)  # Cap at 2s
+                delay = min(delay * 2, 2.0)
             else:
-                raise  # Non-retryable
+                raise
 
     raise RuntimeError("Max retry attempts exceeded")
 ```
@@ -165,39 +194,43 @@ async def execute_with_retry(
 <TabItem value="go" label="Go">
 
 ```go
-import (
-    "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
-    pb "github.com/angzarr/angzarr/proto/angzarr"
-)
-
-// handleSequenceError extracts fresh state from error details
-func handleSequenceError(err error) *pb.EventBook {
-    st, ok := status.FromError(err)
-    if !ok || st.Code() != codes.FailedPrecondition {
-        return nil
-    }
-
-    details := st.Details()
-    for _, detail := range details {
-        if eb, ok := detail.(*pb.EventBook); ok {
-            return eb
-        }
-    }
-    return nil
+// CommandIntent captures what the user wanted to do
+type CommandIntent struct {
+    RootID uuid.UUID
+    // ... other fields capturing user intent
 }
 
-// executeWithRetry retries with exponential backoff
+// CommandBuilder rebuilds command from intent and current state
+type CommandBuilder func(intent *CommandIntent, state *pb.EventBook) (*pb.CommandBook, error)
+
+// executeWithRetry rebuilds command from fresh state on each retry
 func executeWithRetry(
     ctx context.Context,
-    command *pb.CommandBook,
+    intent *CommandIntent,
+    buildCommand CommandBuilder,
     client pb.AggregateClient,
 ) (*pb.EventBook, error) {
     delay := 10 * time.Millisecond
     maxDelay := 2 * time.Second
     maxAttempts := 10
+    var currentState *pb.EventBook
 
     for attempt := 0; attempt < maxAttempts; attempt++ {
+        // Get state if first attempt
+        if currentState == nil {
+            var err error
+            currentState, err = client.GetState(ctx, intent.RootID)
+            if err != nil {
+                return nil, err
+            }
+        }
+
+        // Rebuild command from current state
+        command, err := buildCommand(intent, currentState)
+        if err != nil {
+            return nil, err // Business logic rejected
+        }
+
         events, err := client.Execute(ctx, command)
         if err == nil {
             return events, nil
@@ -205,19 +238,153 @@ func executeWithRetry(
 
         st, _ := status.FromError(err)
         if st.Code() == codes.FailedPrecondition {
-            // Extract fresh state and rebuild
-            if current := handleSequenceError(err); current != nil {
-                command.Pages[0].Sequence = current.NextSequence
-            }
-
+            // Extract fresh state for next attempt
+            currentState = handleSequenceError(err)
             time.Sleep(delay)
             delay = min(delay*2, maxDelay)
         } else {
-            return nil, err // Non-retryable
+            return nil, err
         }
     }
 
     return nil, fmt.Errorf("max retry attempts exceeded")
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// CommandIntent captures what the user wanted to do
+public record CommandIntent(UUID rootId /* ... other fields */) {}
+
+// Functional interface for building commands from intent and state
+@FunctionalInterface
+public interface CommandBuilder {
+    CommandBook build(CommandIntent intent, EventBook state)
+        throws CommandRejectedError;
+}
+
+// Execute with retry, rebuilding command from fresh state each attempt
+public EventBook executeWithRetry(
+        CommandIntent intent,
+        CommandBuilder buildCommand,
+        AggregateClient client) throws StatusException {
+
+    Duration delay = Duration.ofMillis(10);
+    Duration maxDelay = Duration.ofSeconds(2);
+    int maxAttempts = 10;
+    EventBook currentState = null;
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+        // Get state if first attempt
+        if (currentState == null) {
+            currentState = client.getState(intent.rootId());
+        }
+
+        // Rebuild command from current state
+        CommandBook command;
+        try {
+            command = buildCommand.build(intent, currentState);
+        } catch (CommandRejectedError e) {
+            throw e; // Business logic rejected with fresh state
+        }
+
+        try {
+            return client.execute(command);
+        } catch (StatusException e) {
+            if (e.getStatus().getCode() == Status.Code.FAILED_PRECONDITION) {
+                // Extract fresh state for next attempt
+                currentState = handleSequenceError(e);
+                Thread.sleep(delay.toMillis());
+                delay = delay.multipliedBy(2);
+                if (delay.compareTo(maxDelay) > 0) {
+                    delay = maxDelay;
+                }
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    throw new RuntimeException("Max retry attempts exceeded");
+}
+
+private EventBook handleSequenceError(StatusException e) {
+    // Extract fresh EventBook from error details
+    for (var detail : e.getTrailers()) {
+        if (detail.getKey().equals("grpc-status-details-bin")) {
+            return EventBook.parseFrom(detail.getValue());
+        }
+    }
+    return null;
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+// CommandIntent captures what the user wanted to do
+public record CommandIntent(Guid RootId /* ... other fields */);
+
+// Delegate for building commands from intent and state
+public delegate CommandBook CommandBuilder(CommandIntent intent, EventBook state);
+
+// Execute with retry, rebuilding command from fresh state each attempt
+public async Task<EventBook> ExecuteWithRetryAsync(
+    CommandIntent intent,
+    CommandBuilder buildCommand,
+    AggregateClient client,
+    int maxAttempts = 10)
+{
+    var delay = TimeSpan.FromMilliseconds(10);
+    var maxDelay = TimeSpan.FromSeconds(2);
+    EventBook? currentState = null;
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++)
+    {
+        // Get state if first attempt
+        currentState ??= await client.GetStateAsync(intent.RootId);
+
+        // Rebuild command from current state
+        CommandBook command;
+        try
+        {
+            command = buildCommand(intent, currentState);
+        }
+        catch (CommandRejectedError)
+        {
+            throw; // Business logic rejected with fresh state
+        }
+
+        try
+        {
+            return await client.ExecuteAsync(command);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.FailedPrecondition)
+        {
+            // Extract fresh state for next attempt
+            currentState = HandleSequenceError(ex);
+            await Task.Delay(delay);
+            delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, maxDelay.Ticks));
+        }
+    }
+
+    throw new InvalidOperationException("Max retry attempts exceeded");
+}
+
+private static EventBook? HandleSequenceError(RpcException ex)
+{
+    // Extract fresh EventBook from error details
+    var detailsEntry = ex.Trailers.FirstOrDefault(
+        t => t.Key == "grpc-status-details-bin");
+
+    if (detailsEntry != null)
+    {
+        return EventBook.Parser.ParseFrom(detailsEntry.ValueBytes);
+    }
+    return null;
 }
 ```
 
