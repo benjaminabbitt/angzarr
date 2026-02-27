@@ -37,8 +37,8 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
     echo "fn main() {}" > client/rust/tests/features.rs && \
-    mkdir -p tests/integration tests/interfaces && \
-    for f in acceptance container_integration mongodb_debug \
+    mkdir -p tests/integration tests/interfaces tests/acceptance/src && \
+    for f in container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
              storage_immudb storage_nats \
              bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
@@ -49,6 +49,8 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     for f in query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
+    echo '[package]\nname = "acceptance-tests"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\npath = "src/lib.rs"' > tests/acceptance/Cargo.toml && \
+    echo "pub fn stub() {}" > tests/acceptance/src/lib.rs && \
     mkdir -p migrations && touch migrations/.keep
 
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
@@ -116,8 +118,8 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
     echo "fn main() {}" > client/rust/tests/features.rs && \
-    mkdir -p tests/integration tests/interfaces && \
-    for f in acceptance container_integration mongodb_debug \
+    mkdir -p tests/integration tests/interfaces tests/acceptance/src && \
+    for f in container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
              storage_immudb storage_nats \
              bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
@@ -128,6 +130,8 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     for f in query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
+    echo '[package]\nname = "acceptance-tests"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\npath = "src/lib.rs"' > tests/acceptance/Cargo.toml && \
+    echo "pub fn stub() {}" > tests/acceptance/src/lib.rs && \
     mkdir -p migrations && touch migrations/.keep
 
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
