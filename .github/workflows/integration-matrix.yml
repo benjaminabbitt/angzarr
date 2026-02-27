@@ -159,14 +159,26 @@ jobs:
 
       # Deploy Rust services via Helm
       - name: Deploy Rust services via Helm
+        env:
+          TAG: ${{ steps.tags.outputs.example-hash }}
         run: |
           helm upgrade --install poker-rust deploy/k8s/helm/angzarr \
             -n angzarr \
             -f examples/rust/values.yaml \
-            --set global.imageTag=${{ steps.tags.outputs.example-hash }} \
             --set amqp.enabled=true \
             --set amqp.url="amqp://guest:guest@angzarr-mq-rabbitmq:5672" \
             --set storage.type=sqlite \
+            --set images.aggregate.repository=${{ env.IMAGE_PREFIX }}/angzarr-aggregate \
+            --set images.aggregate.tag=dev-latest \
+            --set images.projector.repository=${{ env.IMAGE_PREFIX }}/angzarr-projector \
+            --set images.projector.tag=dev-latest \
+            --set images.saga.repository=${{ env.IMAGE_PREFIX }}/angzarr-saga \
+            --set images.saga.tag=dev-latest \
+            --set images.process-manager.repository=${{ env.IMAGE_PREFIX }}/angzarr-process-manager \
+            --set images.process-manager.tag=dev-latest \
+            --set "applications.business[0].image.tag=${TAG}" \
+            --set "applications.business[1].image.tag=${TAG}" \
+            --set "applications.business[2].image.tag=${TAG}" \
             --wait --timeout 5m
 
       - name: Wait for pods to be ready
