@@ -84,13 +84,48 @@ jobs:
           echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
           echo "example-hash=$EXAMPLE_HASH" >> $GITHUB_OUTPUT
 
+      # Find CI workflow run ID for this commit
+      - name: Find CI workflow run
+        id: ci-run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.workflow_run.id }}" ]; then
+            # workflow_run trigger - use the triggering run
+            echo "run-id=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+            echo "Using workflow_run trigger ID: ${{ github.event.workflow_run.id }}"
+          else
+            # pull_request trigger - find the CI run for this commit
+            echo "Looking for CI workflow run for commit ${{ github.sha }}..."
+
+            # Wait for CI to complete (up to 10 minutes)
+            for i in {1..60}; do
+              RUN_ID=$(gh api repos/${{ github.repository }}/actions/runs \
+                --jq ".workflow_runs[] | select(.head_sha==\"${{ github.sha }}\" and .name==\"CI\" and .status==\"completed\") | .id" \
+                | head -1)
+
+              if [ -n "$RUN_ID" ]; then
+                echo "Found completed CI run: $RUN_ID"
+                echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+
+              echo "CI workflow not complete yet, waiting... ($i/60)"
+              sleep 10
+            done
+
+            echo "Warning: CI workflow did not complete in time"
+            echo "run-id=" >> $GITHUB_OUTPUT
+          fi
+
       # Download runtime image tags from CI workflow
       - name: Download runtime image tags
+        if: steps.ci-run.outputs.run-id != ''
         uses: actions/download-artifact@v4
         with:
           name: runtime-build-tags
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id || '' }}
+          run-id: ${{ steps.ci-run.outputs.run-id }}
         continue-on-error: true
 
       # Parse runtime image tags
