@@ -132,7 +132,7 @@ Architects should plan accordingly:
 - **Backup projections**: For critical read models, consider snapshotting the projection itself
 - **Cost modeling**: Estimate rebuild time and cost before assuming "we'll just rebuild"
 
-"Disposable" means you *can* rebuild, not that rebuilding is free.
+For large projections, it may be cheaper to maintain and migrate them than to rebuild from scratch. "Disposable" means you *can* rebuild, not that you *should*.
 
 ---
 
