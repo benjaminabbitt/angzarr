@@ -135,9 +135,9 @@ class ProcessManager(Generic[StateT], ABC):
     """
 
     name: str
-    _dispatch_table: dict[
-        str, tuple[str, type, str, str]
-    ] = {}  # suffix -> (method, type, input_domain, output_domain)
+    _dispatch_table: dict[str, tuple[str, type, str, str]] = (
+        {}
+    )  # suffix -> (method, type, input_domain, output_domain)
     _prepare_table: dict[str, tuple[str, type]] = {}  # suffix -> (method, type)
     _input_domains: dict[str, list[str]] = {}  # domain -> [event types]
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name

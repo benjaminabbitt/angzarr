@@ -117,7 +117,7 @@ Projections are disposable—in theory. Schema change? Bug fix? Rebuild:
 
 ```bash
 # Clear and rebuild from event history
-angzarr projection rebuild --projector=hand-history --from=0
+angzarr projection rebuild --projector=projector-hand-history --from=0
 ```
 
 The event store is immutable. The projection is derived. You can always reconstruct.
@@ -141,7 +141,7 @@ For large projections, it may be cheaper to maintain and migrate them than to re
 The framework tracks each projector's position in the event stream:
 
 ```
-Projector: hand-history
+Projector: projector-hand-history
 Domain: hand
 Last processed: sequence 45,832
 Status: caught up
@@ -154,8 +154,10 @@ On restart, the projector resumes from its last position. No events missed, no d
 ## Example: Hand History for Poker
 
 ```python
-@projector("hand-history")
-class HandHistoryProjector:
+@domain("hand")
+class HandHistoryProjector(Projector):
+    name = "projector-hand-history"
+
     def __init__(self, db: Database):
         self.db = db
 

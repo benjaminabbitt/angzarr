@@ -128,9 +128,9 @@ class Upcaster(ABC):
 
     name: str
     domain: str
-    _dispatch_table: dict[
-        str, tuple[str, type, type]
-    ] = {}  # suffix -> (method, from_type, to_type)
+    _dispatch_table: dict[str, tuple[str, type, type]] = (
+        {}
+    )  # suffix -> (method, from_type, to_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

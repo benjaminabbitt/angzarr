@@ -159,9 +159,9 @@ def step_then_result_is_strategy(context, strategy):
         "COMMUTATIVE": types.MERGE_COMMUTATIVE,
         "AGGREGATE_HANDLES": types.MERGE_AGGREGATE_HANDLES,
     }
-    assert context.extracted_strategy == strategy_map[strategy], (
-        f"Expected {strategy}, got {context.extracted_strategy}"
-    )
+    assert (
+        context.extracted_strategy == strategy_map[strategy]
+    ), f"Expected {strategy}, got {context.extracted_strategy}"
 
 
 @then(r"the effective merge_strategy is (?P<strategy>\w+)")
@@ -236,9 +236,9 @@ def step_then_command_fails_with_status(context, status):
 @then(r'the error message contains "(?P<text>[^"]+)"')
 def step_then_error_message_contains(context, text):
     """Verify error message content."""
-    assert text in context.error_message, (
-        f"Expected '{text}' in '{context.error_message}'"
-    )
+    assert (
+        text in context.error_message
+    ), f"Expected '{text}' in '{context.error_message}'"
 
 
 @then(r"no events are persisted")

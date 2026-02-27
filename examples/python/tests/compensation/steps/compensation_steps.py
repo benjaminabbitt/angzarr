@@ -667,18 +667,18 @@ def step_notification_created(context):
 def step_notification_has_issuer_name(context, expected):
     """Verify issuer_name field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert rejection.issuer_name == expected, (
-        f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
-    )
+    assert (
+        rejection.issuer_name == expected
+    ), f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
 
 
 @then(r"the notification has rejection_reason \"([^\"]+)\"")
 def step_notification_has_reason(context, expected):
     """Verify rejection_reason field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert rejection.rejection_reason == expected, (
-        f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
-    )
+    assert (
+        rejection.rejection_reason == expected
+    ), f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
 
 
 @then(r"the notification contains the rejected (\w+) command")
@@ -728,9 +728,9 @@ def step_order_receives_after(context):
 @then("the @rejected handler is invoked")
 def step_rejected_handler_invoked(context):
     """Verify rejection handler was called."""
-    assert hasattr(context.aggregate, "_rejection_handled"), (
-        "Rejection handler was not invoked"
-    )
+    assert hasattr(
+        context.aggregate, "_rejection_handled"
+    ), "Rejection handler was not invoked"
     assert context.aggregate._rejection_handled
 
 

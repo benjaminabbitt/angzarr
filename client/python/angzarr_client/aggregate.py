@@ -201,9 +201,9 @@ class CommandHandler(Generic[StateT], ABC):
     domain: str
     _dispatch_table: dict[str, tuple[str, type]] = {}
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
-    _applier_table: dict[
-        str, tuple[str, type]
-    ] = {}  # suffix -> (method_name, event_type)
+    _applier_table: dict[str, tuple[str, type]] = (
+        {}
+    )  # suffix -> (method_name, event_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
