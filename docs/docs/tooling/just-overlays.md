@@ -104,16 +104,29 @@ container-runtime := "docker"
 
 ## Example: Angzarr
 
-Angzarr uses overlays for container runtime differences:
+Angzarr uses overlays for devcontainer detection and cross-language formatting:
 
 ```just
-# justfile.container
-# Inside devcontainer, use different registry access
-registry := "ghcr.io/angzarr-io"
+# justfile (base) - runs formatters in containers
+_lang-container LANG +ARGS:
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        {{ARGS}}
+    else
+        podman run --rm -v "{{TOP}}:/workspace:Z" -w /workspace \
+            ghcr.io/angzarr-io/angzarr-{{LANG}}:latest {{ARGS}}
+    fi
 
-# justfile (base)
-registry := "ghcr.io/angzarr-io"
+fmt-python:
+    just _lang-container python black examples/python client/python
+
+fmt-csharp:
+    just _lang-container csharp csharpier format examples/csharp client/csharp
 ```
+
+The `DEVCONTAINER` environment variable (set inside devcontainers) triggers direct execution, avoiding nested containers. On host, formatters run inside language-specific CI images with the workspace mounted.
+
+See **[Container Overlay Pattern](/tooling/container-overlay)** for the full technique.
 
 ---
 

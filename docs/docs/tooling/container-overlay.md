@@ -260,9 +260,67 @@ The mount overlay pattern uses two files but presents a single interface. Detect
 
 ---
 
+## Real Example: Angzarr Formatting
+
+Angzarr uses this pattern for cross-language code formatting. The host justfile runs formatters inside language-specific containers with the workspace mounted:
+
+**Host justfile (`justfile`):**
+```just
+# Run command in language-specific CI image
+[private]
+_lang-container LANG +ARGS:
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        {{ARGS}}
+    else
+        podman run --rm --network=host \
+            -v "$(git rev-parse --show-toplevel):/workspace:Z" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-{{LANG}}:latest \
+            {{ARGS}}
+    fi
+
+# Format Python code (runs in angzarr-python container)
+fmt-python:
+    just _lang-container python black examples/python client/python scripts/
+    just _lang-container python ruff check --fix --select I examples/python client/python scripts/
+
+# Format Go code (runs in angzarr-go container)
+fmt-go:
+    just _lang-container go goimports -w examples/go client/go
+
+# Format C# code (runs in angzarr-csharp container)
+fmt-csharp:
+    just _lang-container csharp csharpier format examples/csharp client/csharp
+
+# Format Java code (runs in angzarr-java container)
+fmt-java:
+    just _lang-container java ./examples/java/gradlew -p examples/java spotlessApply
+```
+
+**How it works:**
+
+1. `_lang-container` mounts the repo at `/workspace`
+2. Formatters run inside the container against mounted files
+3. Changes persist to host filesystem via the volume mount
+4. `DEVCONTAINER` check skips container nesting when already inside a devcontainer
+
+**User experience:**
+```bash
+# On host - runs black inside angzarr-python container
+$ just fmt-python
+
+# Inside devcontainer - runs black directly (skips container)
+$ just fmt-python
+```
+
+Same command, same results, no local tool installation required.
+
+---
+
 ## Working Example
 
-A working example demonstrating this pattern:
+A minimal working example demonstrating this pattern:
 
 ```bash
 cd docs/examples/container-overlay
