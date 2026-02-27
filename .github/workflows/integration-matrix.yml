@@ -146,7 +146,14 @@ jobs:
             kind load docker-image "$IMG" --name angzarr || echo "Warning: Could not load $IMG"
           done
 
-      # Deploy infrastructure (RabbitMQ, PostgreSQL, Redis)
+      # Install RabbitMQ operator (required for RabbitmqCluster CRD)
+      - name: Install RabbitMQ operator
+        run: |
+          kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml
+          kubectl wait --for=condition=available deployment/rabbitmq-cluster-operator \
+            -n rabbitmq-system --timeout=120s
+
+      # Deploy infrastructure (RabbitMQ, Redis)
       - name: Deploy infrastructure
         run: just infra-ci
 
