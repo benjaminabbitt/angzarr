@@ -164,6 +164,10 @@ jobs:
             -n angzarr \
             -f examples/rust/values.yaml \
             --set global.imageTag=${{ steps.tags.outputs.example-hash }} \
+            --set amqp.enabled=true \
+            --set amqp.url="amqp://guest:guest@angzarr-mq-rabbitmq:5672" \
+            --set storage.postgres.enabled=false \
+            --set storage.sqlite.enabled=true \
             --wait --timeout 5m
 
       - name: Wait for pods to be ready
