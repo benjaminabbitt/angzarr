@@ -14,13 +14,26 @@ One event stream. Many projections. Each optimized for its purpose.
 
 A **projection** is a query-optimized view built from events. It's the "read side" of CQRS—derived data structured for fast retrieval, not for recording history.
 
-```
-Events (source of truth)     Projectors           Projections (query-optimized)
-┌────────────────────┐      ┌──────────┐         ┌─────────────────────────┐
-│ HandStarted        │      │          │         │ Redis: live table state │
-│ PlayerActed        │ ──▶  │ Handlers │  ──▶    │ Postgres: hand history  │
-│ PotAwarded         │      │          │         │ Elastic: player search  │
-│ ...                │      └──────────┘         └─────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph events["Events (source of truth)"]
+        e1[HandStarted]
+        e2[PlayerActed]
+        e3[PotAwarded]
+    end
+
+    subgraph projectors["Projectors"]
+        h[Handlers]
+    end
+
+    subgraph projections["Projections (query-optimized)"]
+        p1["Redis: live table state"]
+        p2["Postgres: hand history"]
+        p3["Elastic: player search"]
+    end
+
+    events --> projectors
+    projectors --> projections
 ```
 
 The event store is the source of truth. Projections are disposable views—rebuild any of them by replaying events.
