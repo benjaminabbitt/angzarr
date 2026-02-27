@@ -9,7 +9,7 @@ namespace Hand.Agg;
 /// <summary>
 /// Hand aggregate - OO style with decorator-based command dispatch.
 /// </summary>
-public class HandAggregate : Aggregate<HandState>
+public class HandAggregate : CommandHandler<HandState>
 {
     public const string Domain = "hand";
 

@@ -11,7 +11,7 @@ namespace Table.Agg;
 /// <summary>
 /// Table aggregate - OO style with decorator-based command dispatch.
 /// </summary>
-public class TableAggregate : Aggregate<TableState>
+public class TableAggregate : CommandHandler<TableState>
 {
     public const string Domain = "table";
 

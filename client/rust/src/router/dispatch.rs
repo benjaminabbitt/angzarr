@@ -67,14 +67,14 @@ macro_rules! dispatch_event {
 
 /// Helper macro for dispatching commands by type URL suffix.
 ///
-/// Similar to `dispatch_event!` but for aggregate command handlers.
+/// Similar to `dispatch_event!` but for command handler handlers.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// use angzarr_client::dispatch_command;
 ///
-/// impl AggregateDomainHandler for PlayerHandler {
+/// impl CommandHandlerDomainHandler for PlayerHandler {
 ///     fn handle(
 ///         &self,
 ///         cmd: &CommandBook,

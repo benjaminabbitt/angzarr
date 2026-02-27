@@ -127,9 +127,9 @@ class QueryClient {
 };
 
 /**
- * Client for sending commands to aggregates through the coordinator.
+ * Client for sending commands to command handlers through the coordinator.
  *
- * AggregateClient handles command routing, response parsing, and provides
+ * CommandHandlerClient handles command routing, response parsing, and provides
  * multiple execution modes:
  *
  * - Async (fire-and-forget): For high-throughput scenarios
@@ -137,24 +137,24 @@ class QueryClient {
  * - Speculative: What-if execution without persistence
  *
  * Example:
- *   auto client = AggregateClient::connect("localhost:1310");
+ *   auto client = CommandHandlerClient::connect("localhost:1310");
  *   CommandBook cmd;
  *   // ... build command ...
  *   auto response = client->handle(cmd);
  */
-class AggregateClient {
+class CommandHandlerClient {
    public:
     /**
-     * Connect to an aggregate coordinator at the given endpoint.
+     * Connect to a command handler coordinator at the given endpoint.
      *
      * @param endpoint Server endpoint (e.g., "localhost:1310")
-     * @return Unique pointer to AggregateClient
+     * @return Unique pointer to CommandHandlerClient
      * @throws ConnectionError if connection fails
      */
-    static std::unique_ptr<AggregateClient> connect(const std::string& endpoint) {
+    static std::unique_ptr<CommandHandlerClient> connect(const std::string& endpoint) {
         auto channel =
             grpc::CreateChannel(format_endpoint(endpoint), grpc::InsecureChannelCredentials());
-        return std::make_unique<AggregateClient>(channel);
+        return std::make_unique<CommandHandlerClient>(channel);
     }
 
     /**
@@ -162,10 +162,10 @@ class AggregateClient {
      *
      * @param env_var Environment variable name
      * @param default_endpoint Fallback endpoint if env var is not set
-     * @return Unique pointer to AggregateClient
+     * @return Unique pointer to CommandHandlerClient
      */
-    static std::unique_ptr<AggregateClient> from_env(const std::string& env_var,
-                                                     const std::string& default_endpoint) {
+    static std::unique_ptr<CommandHandlerClient> from_env(const std::string& env_var,
+                                                          const std::string& default_endpoint) {
         const char* endpoint = std::getenv(env_var.c_str());
         return connect(endpoint ? endpoint : default_endpoint);
     }
@@ -175,7 +175,7 @@ class AggregateClient {
      *
      * @param channel Shared gRPC channel
      */
-    explicit AggregateClient(std::shared_ptr<grpc::Channel> channel)
+    explicit CommandHandlerClient(std::shared_ptr<grpc::Channel> channel)
         : stub_(CommandHandlerCoordinatorService::NewStub(channel)) {}
 
     /**
@@ -260,9 +260,9 @@ class AggregateClient {
 };
 
 /**
- * Combined client for aggregate commands and event queries.
+ * Combined client for command handler commands and event queries.
  *
- * DomainClient combines QueryClient and AggregateClient into a single unified
+ * DomainClient combines QueryClient and CommandHandlerClient into a single unified
  * interface. This is the recommended entry point for most applications because:
  *
  * - Single connection: One endpoint, one channel, reduced resource usage
@@ -270,12 +270,12 @@ class AggregateClient {
  * - Simpler DI: Inject one client instead of two
  *
  * For advanced use cases (separate scaling, different endpoints), use
- * QueryClient and AggregateClient directly.
+ * QueryClient and CommandHandlerClient directly.
  *
  * Example:
  *   auto client = DomainClient::connect("localhost:1310");
  *   // Send a command
- *   auto response = client->aggregate()->handle(cmd);
+ *   auto response = client->command_handler()->handle(cmd);
  *   // Query events
  *   auto events = client->query()->get_event_book(query);
  */
@@ -313,13 +313,13 @@ class DomainClient {
      * @param channel Shared gRPC channel
      */
     explicit DomainClient(std::shared_ptr<grpc::Channel> channel)
-        : aggregate_(std::make_unique<AggregateClient>(channel)),
+        : command_handler_(std::make_unique<CommandHandlerClient>(channel)),
           query_(std::make_unique<QueryClient>(channel)) {}
 
     /**
-     * Get the aggregate client for command execution.
+     * Get the command handler client for command execution.
      */
-    AggregateClient* aggregate() { return aggregate_.get(); }
+    CommandHandlerClient* command_handler() { return command_handler_.get(); }
 
     /**
      * Get the query client for event retrieval.
@@ -327,12 +327,14 @@ class DomainClient {
     QueryClient* query() { return query_.get(); }
 
     /**
-     * Execute a command (convenience method delegating to aggregate).
+     * Execute a command (convenience method delegating to command handler).
      */
-    CommandResponse execute(const CommandBook& command) { return aggregate_->handle(command); }
+    CommandResponse execute(const CommandBook& command) {
+        return command_handler_->handle(command);
+    }
 
    private:
-    std::unique_ptr<AggregateClient> aggregate_;
+    std::unique_ptr<CommandHandlerClient> command_handler_;
     std::unique_ptr<QueryClient> query_;
 
     static std::string format_endpoint(const std::string& endpoint) {

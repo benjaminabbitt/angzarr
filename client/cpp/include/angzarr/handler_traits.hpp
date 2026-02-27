@@ -216,20 +216,20 @@ class StateRouter {
 };
 
 // ============================================================================
-// Aggregate Handler Trait
+// Command Handler Trait
 // ============================================================================
 
 /**
- * Handler for a single domain's aggregate commands.
+ * Handler for a single domain's command handler logic.
  *
- * Aggregates receive commands and emit events. They maintain state
+ * Command handlers receive commands and emit events. They maintain state
  * that is rebuilt from events using a `StateRouter`.
  *
  * @tparam S The state type
  *
  * Example:
  * @code
- *   class PlayerHandler : public AggregateDomainHandler<PlayerState> {
+ *   class PlayerHandler : public CommandHandlerDomainHandler<PlayerState> {
  *   public:
  *       std::vector<std::string> command_types() const override {
  *           return {"RegisterPlayer", "DepositFunds"};
@@ -252,11 +252,11 @@ class StateRouter {
  * @endcode
  */
 template <typename S>
-class AggregateDomainHandler {
+class CommandHandlerDomainHandler {
    public:
     using State = S;
 
-    virtual ~AggregateDomainHandler() = default;
+    virtual ~CommandHandlerDomainHandler() = default;
 
     /**
      * Command type suffixes this handler processes.

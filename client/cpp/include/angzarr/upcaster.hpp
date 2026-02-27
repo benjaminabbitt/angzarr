@@ -1,12 +1,14 @@
 #pragma once
 
 #include <google/protobuf/any.pb.h>
+#include <grpcpp/grpcpp.h>
 
 #include <functional>
 #include <string>
 #include <vector>
 
 #include "angzarr/types.pb.h"
+#include "angzarr/upcaster.grpc.pb.h"
 
 namespace angzarr {
 
@@ -122,5 +124,86 @@ class UpcasterRouter {
     std::string domain_;
     std::vector<std::pair<std::string, UpcasterHandler>> handlers_;
 };
+
+// ============================================================================
+// gRPC Handler
+// ============================================================================
+
+/**
+ * gRPC service handler for upcaster.
+ *
+ * Wraps an UpcasterRouter and implements the gRPC UpcasterService.
+ *
+ * Example:
+ * @code
+ * auto router = UpcasterRouter("player")
+ *     .on("PlayerRegisteredV1", transform_v1_to_v2);
+ *
+ * UpcasterGrpcHandler handler(std::move(router));
+ *
+ * grpc::ServerBuilder builder;
+ * builder.AddListeningPort(address, grpc::InsecureServerCredentials());
+ * builder.RegisterService(&handler);
+ * @endcode
+ */
+class UpcasterGrpcHandler final : public UpcasterService::Service {
+   public:
+    /**
+     * Create a new upcaster gRPC handler.
+     *
+     * @param router The upcaster router to use for transformations
+     */
+    explicit UpcasterGrpcHandler(UpcasterRouter router) : router_(std::move(router)) {}
+
+    /**
+     * Get the underlying router.
+     */
+    const UpcasterRouter& router() const { return router_; }
+
+    /**
+     * Get the domain this handler serves.
+     */
+    const std::string& domain() const { return router_.domain(); }
+
+    grpc::Status Upcast(grpc::ServerContext* context, const UpcastRequest* request,
+                        UpcastResponse* response) override {
+        (void)context;
+
+        std::vector<EventPage> events(request->events().begin(), request->events().end());
+        auto transformed = router_.upcast(events);
+
+        for (const auto& page : transformed) {
+            *response->add_events() = page;
+        }
+
+        return grpc::Status::OK;
+    }
+
+   private:
+    UpcasterRouter router_;
+};
+
+// ============================================================================
+// Server Function
+// ============================================================================
+
+/**
+ * Run an upcaster server.
+ *
+ * Upcasters transform old event versions to current versions during replay.
+ *
+ * @param name The upcaster name
+ * @param port The port to listen on
+ * @param router The upcaster router
+ *
+ * Example:
+ * @code
+ * auto router = UpcasterRouter("player")
+ *     .on("PlayerRegisteredV1", transform_v1_to_v2);
+ *
+ * run_upcaster_server("upcaster-player", 50401, std::move(router));
+ * @endcode
+ */
+void run_upcaster_server(const std::string& name, int port, UpcasterRouter router);
 
 }  // namespace angzarr

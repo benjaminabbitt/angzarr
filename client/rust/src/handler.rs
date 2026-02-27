@@ -17,7 +17,8 @@ use crate::proto::{
     SagaPrepareRequest, SagaPrepareResponse, SagaResponse, UpcastRequest, UpcastResponse,
 };
 use crate::router::{
-    AggregateDomainHandler, AggregateRouter, ProcessManagerRouter, SagaDomainHandler, SagaRouter,
+    CloudEventsRouter, CommandHandlerDomainHandler, CommandHandlerRouter, ProcessManagerRouter,
+    SagaDomainHandler, SagaRouter,
 };
 
 /// Function type for packing state into protobuf Any.
@@ -27,14 +28,14 @@ pub type StatePacker<S> = fn(&S) -> Result<Any, Status>;
 
 /// gRPC command handler service implementation.
 ///
-/// Wraps an `AggregateRouter` to handle aggregate commands.
+/// Wraps a `CommandHandlerRouter` to handle commands.
 /// Optionally supports Replay RPC for MERGE_COMMUTATIVE conflict detection.
 pub struct CommandHandlerGrpc<S, H>
 where
     S: Default + Send + Sync + 'static,
-    H: AggregateDomainHandler<State = S> + 'static,
+    H: CommandHandlerDomainHandler<State = S> + 'static,
 {
-    router: Arc<AggregateRouter<S, H>>,
+    router: Arc<CommandHandlerRouter<S, H>>,
     /// Optional state packer for Replay RPC support.
     state_packer: Option<StatePacker<S>>,
 }
@@ -42,10 +43,10 @@ where
 impl<S, H> CommandHandlerGrpc<S, H>
 where
     S: Default + Send + Sync + 'static,
-    H: AggregateDomainHandler<State = S> + 'static,
+    H: CommandHandlerDomainHandler<State = S> + 'static,
 {
     /// Create a new command handler from a router.
-    pub fn new(router: AggregateRouter<S, H>) -> Self {
+    pub fn new(router: CommandHandlerRouter<S, H>) -> Self {
         Self {
             router: Arc::new(router),
             state_packer: None,
@@ -59,7 +60,7 @@ where
     }
 
     /// Get the underlying router.
-    pub fn router(&self) -> &AggregateRouter<S, H> {
+    pub fn router(&self) -> &CommandHandlerRouter<S, H> {
         &self.router
     }
 }
@@ -68,7 +69,7 @@ where
 impl<S, H> CommandHandlerService for CommandHandlerGrpc<S, H>
 where
     S: Default + Send + Sync + 'static,
-    H: AggregateDomainHandler<State = S> + 'static,
+    H: CommandHandlerDomainHandler<State = S> + 'static,
 {
     async fn handle(
         &self,
@@ -368,5 +369,54 @@ impl UpcasterService for UpcasterGrpcHandler {
         };
 
         Ok(Response::new(UpcastResponse { events: result }))
+    }
+}
+
+/// gRPC CloudEvents projector service implementation.
+///
+/// Wraps a `CloudEventsRouter` to transform events into CloudEvents.
+/// Uses the standard ProjectorService protocol but returns CloudEventsResponse
+/// packed into Projection.projection.
+pub struct CloudEventsGrpcHandler {
+    router: Arc<CloudEventsRouter>,
+}
+
+impl CloudEventsGrpcHandler {
+    /// Create a new CloudEvents handler from a router.
+    pub fn new(router: CloudEventsRouter) -> Self {
+        Self {
+            router: Arc::new(router),
+        }
+    }
+
+    /// Get the underlying router.
+    pub fn router(&self) -> &CloudEventsRouter {
+        &self.router
+    }
+}
+
+#[tonic::async_trait]
+impl ProjectorService for CloudEventsGrpcHandler {
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
+        let event_book = request.into_inner();
+        let response = self.router.project(&event_book);
+
+        // Pack CloudEventsResponse into Projection.projection
+        let projection_any =
+            Any::from_msg(&response).map_err(|e| Status::internal(format!("Pack error: {}", e)))?;
+
+        Ok(Response::new(Projection {
+            cover: event_book.cover,
+            projector: self.router.name().to_string(),
+            sequence: event_book.next_sequence,
+            projection: Some(projection_any),
+        }))
+    }
+
+    async fn handle_speculative(
+        &self,
+        request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        self.handle(request).await
     }
 }

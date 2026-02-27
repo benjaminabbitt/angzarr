@@ -22,21 +22,21 @@
 namespace angzarr {
 
 // ============================================================================
-// Aggregate Router
+// CommandHandler Router
 // ============================================================================
 
 /**
- * Router for aggregate components (commands -> events, single domain).
+ * Router for command handler components (commands -> events, single domain).
  *
  * Domain is set at construction time. No `.domain()` method exists,
  * enforcing single-domain constraint at compile time.
  *
  * @tparam S The state type
- * @tparam H The handler type (must satisfy AggregateDomainHandler<S>)
+ * @tparam H The handler type (must satisfy CommandHandlerDomainHandler<S>)
  *
  * Example:
  * @code
- *   AggregateRouter<PlayerState, PlayerHandler> router("player", "player", PlayerHandler());
+ *   CommandHandlerRouter<PlayerState, PlayerHandler> router("player", "player", PlayerHandler());
  *
  *   // Get subscriptions for registration
  *   auto subs = router.subscriptions();
@@ -46,22 +46,22 @@ namespace angzarr {
  * @endcode
  */
 template <typename S, typename H>
-class AggregateRouter {
-    static_assert(std::is_base_of_v<AggregateDomainHandler<S>, H>,
-                  "H must derive from AggregateDomainHandler<S>");
+class CommandHandlerRouter {
+    static_assert(std::is_base_of_v<CommandHandlerDomainHandler<S>, H>,
+                  "H must derive from CommandHandlerDomainHandler<S>");
 
    public:
     using State = S;
     using Handler = H;
 
     /**
-     * Create a new aggregate router.
+     * Create a new command handler router.
      *
      * @param name The router name (e.g., "player")
      * @param domain The domain name (e.g., "player")
      * @param handler The handler instance
      */
-    AggregateRouter(std::string name, std::string domain, H handler)
+    CommandHandlerRouter(std::string name, std::string domain, H handler)
         : name_(std::move(name)), domain_(std::move(domain)), handler_(std::move(handler)) {}
 
     /**
@@ -80,7 +80,7 @@ class AggregateRouter {
     std::vector<std::string> command_types() const { return handler_.command_types(); }
 
     /**
-     * Get subscriptions for this aggregate.
+     * Get subscriptions for this command handler.
      *
      * @return Vector of (domain, types) pairs
      */
@@ -680,18 +680,19 @@ class ProjectorRouter {
 // ============================================================================
 
 /**
- * Create an aggregate router.
+ * Create a command handler router.
  *
  * @tparam S The state type
  * @tparam H The handler type
  * @param name The router name
  * @param domain The domain name
  * @param handler The handler instance
- * @return AggregateRouter instance
+ * @return CommandHandlerRouter instance
  */
 template <typename S, typename H>
-AggregateRouter<S, H> make_aggregate_router(std::string name, std::string domain, H handler) {
-    return AggregateRouter<S, H>(std::move(name), std::move(domain), std::move(handler));
+CommandHandlerRouter<S, H> make_command_handler_router(std::string name, std::string domain,
+                                                       H handler) {
+    return CommandHandlerRouter<S, H>(std::move(name), std::move(domain), std::move(handler));
 }
 
 /**

@@ -7,21 +7,22 @@ description: Auto-generated documentation for Angzarr protobuf definitions
 
 ## Table of Contents {#top}
 
-- [angzarr/aggregate.proto](#angzarr_aggregate-proto)
-    - [BusinessResponse](#angzarr-BusinessResponse)
-    - [CommandResponse](#angzarr-CommandResponse)
-    - [ReplayRequest](#angzarr-ReplayRequest)
-    - [ReplayResponse](#angzarr-ReplayResponse)
-    - [RevocationResponse](#angzarr-RevocationResponse)
-    - [SpeculateAggregateRequest](#angzarr-SpeculateAggregateRequest)
-
-    - [CommandHandlerCoordinatorService](#angzarr-CommandHandlerCoordinatorService)
-    - [CommandHandlerService](#angzarr-CommandHandlerService)
-  
 - [angzarr/cloudevents.proto](#angzarr_cloudevents-proto)
     - [CloudEvent](#angzarr-CloudEvent)
     - [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry)
     - [CloudEventsResponse](#angzarr-CloudEventsResponse)
+  
+- [angzarr/command_handler.proto](#angzarr_command_handler-proto)
+    - [BusinessResponse](#angzarr-BusinessResponse)
+    - [CommandResponse](#angzarr-CommandResponse)
+    - [FactInjectionResponse](#angzarr-FactInjectionResponse)
+    - [ReplayRequest](#angzarr-ReplayRequest)
+    - [ReplayResponse](#angzarr-ReplayResponse)
+    - [RevocationResponse](#angzarr-RevocationResponse)
+    - [SpeculateCommandHandlerRequest](#angzarr-SpeculateCommandHandlerRequest)
+  
+    - [CommandHandlerCoordinatorService](#angzarr-CommandHandlerCoordinatorService)
+    - [CommandHandlerService](#angzarr-CommandHandlerService)
   
 - [angzarr/meta.proto](#angzarr_meta-proto)
     - [DeleteEditionEvents](#angzarr-DeleteEditionEvents)
@@ -67,15 +68,19 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [AngzarrDeadLetter.MetadataEntry](#angzarr-AngzarrDeadLetter-MetadataEntry)
     - [CommandBook](#angzarr-CommandBook)
     - [CommandPage](#angzarr-CommandPage)
+    - [CommandRequest](#angzarr-CommandRequest)
     - [ComponentDescriptor](#angzarr-ComponentDescriptor)
     - [ContextualCommand](#angzarr-ContextualCommand)
+    - [ContextualCommandRequest](#angzarr-ContextualCommandRequest)
     - [Cover](#angzarr-Cover)
     - [DomainDivergence](#angzarr-DomainDivergence)
     - [Edition](#angzarr-Edition)
     - [EventBook](#angzarr-EventBook)
     - [EventPage](#angzarr-EventPage)
     - [EventProcessingFailedDetails](#angzarr-EventProcessingFailedDetails)
+    - [EventRequest](#angzarr-EventRequest)
     - [EventStreamFilter](#angzarr-EventStreamFilter)
+    - [FactSequence](#angzarr-FactSequence)
     - [GetDescriptorRequest](#angzarr-GetDescriptorRequest)
     - [Notification](#angzarr-Notification)
     - [Notification.MetadataEntry](#angzarr-Notification-MetadataEntry)
@@ -89,9 +94,6 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [SequenceRange](#angzarr-SequenceRange)
     - [SequenceSet](#angzarr-SequenceSet)
     - [Snapshot](#angzarr-Snapshot)
-    - [SyncCommandBook](#angzarr-SyncCommandBook)
-    - [SyncContextualCommand](#angzarr-SyncContextualCommand)
-    - [SyncEventBook](#angzarr-SyncEventBook)
     - [Target](#angzarr-Target)
     - [TemporalQuery](#angzarr-TemporalQuery)
     - [UUID](#angzarr-UUID)
@@ -156,12 +158,16 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [FundsTransferred](#examples-FundsTransferred)
     - [FundsWithdrawn](#examples-FundsWithdrawn)
     - [PlayerRegistered](#examples-PlayerRegistered)
+    - [PlayerReturningToPlay](#examples-PlayerReturningToPlay)
+    - [PlayerSittingOut](#examples-PlayerSittingOut)
     - [PlayerState](#examples-PlayerState)
     - [PlayerState.TableReservationsEntry](#examples-PlayerState-TableReservationsEntry)
     - [RegisterPlayer](#examples-RegisterPlayer)
     - [ReleaseFunds](#examples-ReleaseFunds)
     - [RequestAction](#examples-RequestAction)
     - [ReserveFunds](#examples-ReserveFunds)
+    - [SitIn](#examples-SitIn)
+    - [SitOut](#examples-SitOut)
     - [TransferFunds](#examples-TransferFunds)
     - [WithdrawFunds](#examples-WithdrawFunds)
   
@@ -196,11 +202,17 @@ description: Auto-generated documentation for Angzarr protobuf definitions
     - [PlayerSatOut](#examples-PlayerSatOut)
     - [PotResult](#examples-PotResult)
     - [SeatSnapshot](#examples-SeatSnapshot)
-    - [SitIn](#examples-SitIn)
-    - [SitOut](#examples-SitOut)
     - [StartHand](#examples-StartHand)
     - [TableCreated](#examples-TableCreated)
     - [TableState](#examples-TableState)
+  
+- [google/api/annotations.proto](#google_api_annotations-proto)
+    - [File-level Extensions](#google_api_annotations-proto-extensions)
+  
+- [google/api/http.proto](#google_api_http-proto)
+    - [CustomHttpPattern](#google-api-CustomHttpPattern)
+    - [Http](#google-api-Http)
+    - [HttpRule](#google-api-HttpRule)
   
 - [io/cloudevents/v1/cloudevents.proto](#io_cloudevents_v1_cloudevents-proto)
     - [CloudEvent](#io-cloudevents-v1-CloudEvent)
@@ -214,7 +226,87 @@ description: Auto-generated documentation for Angzarr protobuf definitions
 
 <p align="right"><a href="#top">Top</a></p>
 
-## angzarr/aggregate.proto {#angzarr_aggregate-proto}
+## angzarr/cloudevents.proto {#angzarr_cloudevents-proto}
+
+
+
+
+### CloudEvent {#angzarr-CloudEvent}
+docs:start:cloud_event
+CloudEvent represents a single event for external consumption.
+
+Client projectors create these by filtering/transforming internal events.
+Framework fills envelope fields (id, source, time) from Cover/EventPage
+if not explicitly set by the client.
+
+The `data` field is a protobuf Any that framework converts to JSON via
+prost-reflect using the descriptor pool. Clients should pack a &#34;public&#34;
+proto message that omits sensitive fields.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | string |  | Event type (e.g., &#34;com.example.order.created&#34;). Default: proto type_url suffix from original event. |
+| data | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  | Event payload as proto Any. Framework converts to JSON for CloudEvents output. Client should filter sensitive fields before packing. |
+| extensions | [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry) | repeated | Custom extension attributes. Keys should follow CloudEvents naming (lowercase, no dots). Framework adds correlationid automatically if present in Cover. |
+| id | string | optional | Optional overrides. Framework uses Cover/EventPage values if not set.
+
+Default: \{domain\}:\{root_id\}:\{sequence\} |
+| source | string | optional | Default: angzarr/\{domain\} |
+| subject | string | optional | Default: aggregate root ID |
+
+
+
+
+
+
+
+### CloudEvent.ExtensionsEntry {#angzarr-CloudEvent-ExtensionsEntry}
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | string |  |  |
+| value | string |  |  |
+
+
+
+
+
+
+
+### CloudEventsResponse {#angzarr-CloudEventsResponse}
+CloudEventsResponse is returned by client projectors in Projection.projection.
+
+Framework detects this type by checking projection.type_url and routes
+the events to configured sinks (HTTP webhook, Kafka).
+
+Client may return 0 events (skip), 1 event (typical), or N events
+(fan-out scenarios like multi-tenant notifications).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [CloudEvent](#angzarr-CloudEvent) | repeated |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+
+
+<p align="right"><a href="#top">Top</a></p>
+
+## angzarr/command_handler.proto {#angzarr_command_handler-proto}
 
 
 
@@ -243,6 +335,33 @@ Response from entity - aggregate events &#43; sync projector results
 | ----- | ---- | ----- | ----------- |
 | events | [EventBook](#angzarr-EventBook) |  | Events from the target aggregate |
 | projections | [Projection](#angzarr-Projection) | repeated | Synchronous projector results |
+
+
+
+
+
+
+
+### FactInjectionResponse {#angzarr-FactInjectionResponse}
+docs:start:fact_injection
+Response from fact injection.
+Indicates whether facts were newly persisted or already existed (idempotent).
+
+Request uses EventRequest with:
+- events: EventBook containing fact events (with FactSequence markers)
+- sync_mode: Controls sync processing (default: async)
+- route_to_handler: Whether to invoke command handler&#39;s handle_fact (default: true)
+
+IMPORTANT: Set Cover.external_id for idempotency. The coordinator uses this
+to deduplicate fact injections - subsequent requests with the same external_id
+return the original events without re-persisting.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [EventBook](#angzarr-EventBook) |  | Persisted events with real sequence numbers |
+| already_processed | bool |  | True if external_id was already seen (idempotent response) |
+| projections | [Projection](#angzarr-Projection) | repeated | Synchronous projector results (if any) |
 
 
 
@@ -297,7 +416,7 @@ client logic requests framework to handle revocation
 
 
 
-### SpeculateAggregateRequest {#angzarr-SpeculateAggregateRequest}
+### SpeculateCommandHandlerRequest {#angzarr-SpeculateCommandHandlerRequest}
 Request for speculative command execution against temporal state.
 
 
@@ -319,105 +438,26 @@ Request for speculative command execution against temporal state.
 
 
 ### CommandHandlerCoordinatorService {#angzarr-CommandHandlerCoordinatorService}
-CommandHandlerCoordinatorService: orchestrates command processing for aggregates
+CommandHandlerCoordinatorService: orchestrates command processing for domain aggregates
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| Handle | [CommandBook](#angzarr-CommandBook) | [CommandResponse](#angzarr-CommandResponse) | Async processing - fire and forget |
-| HandleSync | [SyncCommandBook](#angzarr-SyncCommandBook) | [CommandResponse](#angzarr-CommandResponse) | Sync processing - waits for completion based on sync_mode |
-| HandleSyncSpeculative | [SpeculateAggregateRequest](#angzarr-SpeculateAggregateRequest) | [CommandResponse](#angzarr-CommandResponse) | Speculative execution - execute against temporal state without persisting |
-| HandleCompensation | [CommandBook](#angzarr-CommandBook) | [BusinessResponse](#angzarr-BusinessResponse) | Compensation flow - returns BusinessResponse for saga compensation handling. If business returns events, persists them. Caller handles revocation flags. |
+| HandleCommand | [CommandRequest](#angzarr-CommandRequest) | [CommandResponse](#angzarr-CommandResponse) | Process command with optional sync mode (default: async fire-and-forget) |
+| HandleEvent | [EventRequest](#angzarr-EventRequest) | [FactInjectionResponse](#angzarr-FactInjectionResponse) | Inject fact events - external realities that cannot be rejected. Idempotent: subsequent requests with same external_id return original events. Use EventRequest.route_to_handler to control command handler invocation. |
+| HandleSyncSpeculative | [SpeculateCommandHandlerRequest](#angzarr-SpeculateCommandHandlerRequest) | [CommandResponse](#angzarr-CommandResponse) | Speculative execution - execute against temporal state without persisting |
+| HandleCompensation | [CommandRequest](#angzarr-CommandRequest) | [BusinessResponse](#angzarr-BusinessResponse) | Compensation flow - returns BusinessResponse for saga compensation handling. If business returns events, persists them. Caller handles revocation flags. |
 
 
 
 ### CommandHandlerService {#angzarr-CommandHandlerService}
 CommandHandlerService: client logic that processes commands and emits events
+Business logic layer that implements command handling for a domain aggregate
 client logic doesn&#39;t care about sync - coordinator decides
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | Handle | [ContextualCommand](#angzarr-ContextualCommand) | [BusinessResponse](#angzarr-BusinessResponse) | Process command and return business response (events or revocation request) |
 | Replay | [ReplayRequest](#angzarr-ReplayRequest) | [ReplayResponse](#angzarr-ReplayResponse) | Replay events to compute state (for conflict detection) Optional: only needed if aggregate supports MERGE_COMMUTATIVE |
-
- 
-
-
-
-<p align="right"><a href="#top">Top</a></p>
-
-## angzarr/cloudevents.proto {#angzarr_cloudevents-proto}
-
-
-
-
-### CloudEvent {#angzarr-CloudEvent}
-docs:start:cloud_event
-CloudEvent represents a single event for external consumption.
-
-Client projectors create these by filtering/transforming internal events.
-Framework fills envelope fields (id, source, time) from Cover/EventPage
-if not explicitly set by the client.
-
-The `data` field is a protobuf Any that framework converts to JSON via
-prost-reflect using the descriptor pool. Clients should pack a &#34;public&#34;
-proto message that omits sensitive fields.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | string |  | Event type (e.g., &#34;com.example.order.created&#34;). Default: proto type_url suffix from original event. |
-| data | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  | Event payload as proto Any. Framework converts to JSON for CloudEvents output. Client should filter sensitive fields before packing. |
-| extensions | [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry) | repeated | Custom extension attributes. Keys should follow CloudEvents naming (lowercase, no dots). Framework adds correlationid automatically if present in Cover. |
-| id | string | optional | Optional overrides. Framework uses Cover/EventPage values if not set.
-
-Default: `\{domain\}`:`\{root_id\}`:`\{sequence\}` |
-| source | string | optional | Default: angzarr/`\{domain\}` |
-| subject | string | optional | Default: aggregate root ID |
-
-
-
-
-
-
-
-### CloudEvent.ExtensionsEntry {#angzarr-CloudEvent-ExtensionsEntry}
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | string |  |  |
-| value | string |  |  |
-
-
-
-
-
-
-
-### CloudEventsResponse {#angzarr-CloudEventsResponse}
-CloudEventsResponse is returned by client projectors in Projection.projection.
-
-Framework detects this type by checking projection.type_url and routes
-the events to configured sinks (HTTP webhook, Kafka).
-
-Client may return 0 events (skip), 1 event (typical), or N events
-(fan-out scenarios like multi-tenant notifications).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| events | [CloudEvent](#angzarr-CloudEvent) | repeated |  |
-
-
-
-
-
- 
-
- 
-
- 
 
  
 
@@ -495,13 +535,15 @@ Phase 2 request: full context for PM decision.
 
 
 ### ProcessManagerHandleResponse {#angzarr-ProcessManagerHandleResponse}
-Phase 2 response: commands and PM events.
+Phase 2 response: local events, then remote commands and facts.
+Execution order: process_events persisted first, then commands sent, then facts injected.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| commands | [CommandBook](#angzarr-CommandBook) | repeated | Commands to issue to other aggregates. |
-| process_events | [EventBook](#angzarr-EventBook) |  | Events for the process manager&#39;s own domain (non-duplicative workflow state). These are persisted via CommandHandlerCoordinator to the PM&#39;s domain. |
+| process_events | [EventBook](#angzarr-EventBook) |  | Local: Events for the process manager&#39;s own domain (non-duplicative workflow state). These are persisted via AggregateCoordinator to the PM&#39;s domain. |
+| commands | [CommandBook](#angzarr-CommandBook) | repeated | Remote: Commands to issue to other aggregates. |
+| facts | [EventBook](#angzarr-EventBook) | repeated | Remote: Facts to inject to other aggregates. Each EventBook targets a specific aggregate via its Cover. |
 
 
 
@@ -539,13 +581,12 @@ Phase 1 response: destinations to fetch before Handle.
 
 
 ### SpeculatePmRequest {#angzarr-SpeculatePmRequest}
-Request for speculative PM execution at a point in time.
+Request for speculative PM execution.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | request | [ProcessManagerHandleRequest](#angzarr-ProcessManagerHandleRequest) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
 
 
 
@@ -583,7 +624,7 @@ Process Manager is warranted when:
 - You must react to events from MULTIPLE domains (saga recommends single domain)
 
 Process Manager IS an aggregate with its own domain, events, and state.
-It reuses all aggregate infrastructure (EventStore, SnapshotStore, CommandHandlerCoordinator).
+It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -602,13 +643,12 @@ It reuses all aggregate infrastructure (EventStore, SnapshotStore, CommandHandle
 
 
 ### SpeculateProjectorRequest {#angzarr-SpeculateProjectorRequest}
-Request for speculative projector execution at a point in time.
+Request for speculative projector execution.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | events | [EventBook](#angzarr-EventBook) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
 
 
 
@@ -627,7 +667,7 @@ ProjectorCoordinatorService: orchestrates projection processing
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| HandleSync | [SyncEventBook](#angzarr-SyncEventBook) | [Projection](#angzarr-Projection) | Sync processing - returns projection based on sync_mode |
+| HandleSync | [EventRequest](#angzarr-EventRequest) | [Projection](#angzarr-Projection) | Sync processing - returns projection based on sync_mode |
 | Handle | [EventBook](#angzarr-EventBook) | [.google.protobuf.Empty](https://protobuf.dev/reference/protobuf/google.protobuf/#empty) | Async processing - fire and forget |
 | HandleSpeculative | [SpeculateProjectorRequest](#angzarr-SpeculateProjectorRequest) | [Projection](#angzarr-Projection) | Speculative processing - returns projection without side effects |
 
@@ -665,9 +705,9 @@ EventQueryService: query interface for retrieving events
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | GetEventBook | [Query](#angzarr-Query) | [EventBook](#angzarr-EventBook) | Get a single EventBook (unary) - use for explicit queries with gRPC tooling |
-| GetEvents | [Query](#angzarr-Query) | [EventBook](#angzarr-EventBook) stream | Stream EventBooks matching query - use for bulk retrieval |
-| Synchronize | [Query](#angzarr-Query) stream | [EventBook](#angzarr-EventBook) stream |  |
-| GetAggregateRoots | [.google.protobuf.Empty](https://protobuf.dev/reference/protobuf/google.protobuf/#empty) | [AggregateRoot](#angzarr-AggregateRoot) stream |  |
+| GetEvents | [Query](#angzarr-Query) | [EventBook](#angzarr-EventBook) stream | Stream EventBooks matching query - use for bulk retrieval (SSE) |
+| Synchronize | [Query](#angzarr-Query) stream | [EventBook](#angzarr-EventBook) stream | Bidirectional sync - not exposed via REST (use gRPC directly) |
+| GetAggregateRoots | [.google.protobuf.Empty](https://protobuf.dev/reference/protobuf/google.protobuf/#empty) | [AggregateRoot](#angzarr-AggregateRoot) stream | List all aggregate roots (SSE) |
 
  
 
@@ -777,13 +817,12 @@ Response from saga - commands for other aggregates
 
 
 ### SpeculateSagaRequest {#angzarr-SpeculateSagaRequest}
-Request for speculative saga execution at a point in time.
+Request for speculative saga execution.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | request | [SagaExecuteRequest](#angzarr-SagaExecuteRequest) |  |  |
-| point_in_time | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
 
 
 
@@ -839,7 +878,7 @@ EventStreamService: streams events to registered subscribers
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| Subscribe | [EventStreamFilter](#angzarr-EventStreamFilter) | [EventBook](#angzarr-EventBook) stream | Subscribe to events matching correlation ID (required) Returns INVALID_ARGUMENT if correlation_id is empty |
+| Subscribe | [EventStreamFilter](#angzarr-EventStreamFilter) | [EventBook](#angzarr-EventBook) stream | Subscribe to events matching correlation ID (required) Returns INVALID_ARGUMENT if correlation_id is empty REST: Server-Sent Events (SSE) stream |
 
  
 
@@ -870,7 +909,7 @@ EventStreamService: streams events to registered subscribers
 ### AngzarrDeadLetter {#angzarr-AngzarrDeadLetter}
 docs:start:dead_letter
 Dead letter queue entry for failed messages requiring manual intervention.
-Per-domain topics: angzarr.dlq.`{domain}`
+Per-domain topics: angzarr.dlq.\{domain\}
 
 
 | Field | Type | Label | Description |
@@ -943,6 +982,22 @@ Tracks origin for compensation flow |
 
 
 
+### CommandRequest {#angzarr-CommandRequest}
+Request wrapper for command operations.
+Adds execution metadata (sync_mode) to CommandBook.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| command | [CommandBook](#angzarr-CommandBook) |  |  |
+| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
+
+
+
+
+
+
+
 ### ComponentDescriptor {#angzarr-ComponentDescriptor}
 Component self-description.
 
@@ -974,6 +1029,22 @@ Component self-description.
 
 
 
+### ContextualCommandRequest {#angzarr-ContextualCommandRequest}
+Request wrapper for contextual command operations (internal use).
+Adds execution metadata (sync_mode) to ContextualCommand.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| command | [ContextualCommand](#angzarr-ContextualCommand) |  |  |
+| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
+
+
+
+
+
+
+
 ### Cover {#angzarr-Cover}
 docs:start:cover
 
@@ -984,6 +1055,7 @@ docs:start:cover
 | root | [UUID](#angzarr-UUID) |  |  |
 | correlation_id | string |  | Workflow correlation - flows through all commands/events |
 | edition | [Edition](#angzarr-Edition) |  | Edition for diverged timelines; empty name = main timeline |
+| external_id | string |  | Idempotency key for fact events (e.g., Stripe payment ID, tracking number) |
 
 
 
@@ -1053,7 +1125,8 @@ docs:start:event_page
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| sequence | uint32 |  |  |
+| sequence | uint32 |  | Normal: explicit position in event stream |
+| fact | [FactSequence](#angzarr-FactSequence) |  | Fact: coordinator assigns next sequence |
 | created_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
 | event | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  |  |
 | external | [PayloadReference](#angzarr-PayloadReference) |  | Claim check: payload stored externally |
@@ -1081,6 +1154,23 @@ Contains information about why a saga/projector failed to process events.
 
 
 
+### EventRequest {#angzarr-EventRequest}
+Request wrapper for event operations (fact injection).
+Adds execution metadata (sync_mode, route_to_handler) to EventBook.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [EventBook](#angzarr-EventBook) |  |  |
+| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
+| route_to_handler | bool |  | For fact injection: when true (default), invokes command handler&#39;s handle_fact for validation/error checking before persistence. Facts cannot be rejected, but the handler can validate data integrity and log warnings. When false, facts are persisted directly without handler involvement. |
+
+
+
+
+
+
+
 ### EventStreamFilter {#angzarr-EventStreamFilter}
 docs:start:event_stream_filter
 Subscription filter for event streaming
@@ -1089,6 +1179,28 @@ Subscription filter for event streaming
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | correlation_id | string |  |  |
+
+
+
+
+
+
+
+### FactSequence {#angzarr-FactSequence}
+docs:start:fact_sequence
+Marker for fact events - external realities that must be recorded.
+Facts are events that already happened in the external world and cannot be rejected.
+The coordinator assigns the actual sequence number on receipt.
+
+IMPORTANT: When using FactSequence, set Cover.external_id for idempotency.
+The coordinator uses Cover.external_id to deduplicate fact events.
+Cover.external_id propagates through the entire system for tracing.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| source | string |  | Origin system identifier (e.g., &#34;stripe&#34;, &#34;fedex&#34;, &#34;scheduler&#34;) |
+| description | string |  | Human-readable description of why this is a fact (optional) |
 
 
 
@@ -1148,7 +1260,7 @@ Used when event/command payloads exceed message bus size limits.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | storage_type | [PayloadStorageType](#angzarr-PayloadStorageType) |  |  |
-| uri | string |  | Location URI: - file:///var/angzarr/payloads/`{hash}`.bin - gs://bucket/prefix/`{hash}`.bin - s3://bucket/prefix/`{hash}`.bin |
+| uri | string |  | Location URI: - file:///var/angzarr/payloads/\{hash\}.bin - gs://bucket/prefix/\{hash\}.bin - s3://bucket/prefix/\{hash\}.bin |
 | content_hash | bytes |  | Content hash for integrity verification and deduplication (SHA-256) |
 | original_size | uint64 |  | Original serialized payload size in bytes |
 | stored_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  | Timestamp when payload was stored (for TTL cleanup) |
@@ -1201,7 +1313,7 @@ Contains information about why an externally stored payload couldn&#39;t be retr
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| cover | [Cover](#angzarr-Cover) |  | Cover identifies the aggregate: domain &#43; (root | correlation_id | both) Query by root: Cover `{ domain, root }` Query by correlation: Cover `{ domain, correlation_id }` |
+| cover | [Cover](#angzarr-Cover) |  | Cover identifies the aggregate: domain &#43; (root | correlation_id | both) Query by root: Cover \{ domain, root \} Query by correlation: Cover \{ domain, correlation_id \} |
 | range | [SequenceRange](#angzarr-SequenceRange) |  |  |
 | sequences | [SequenceSet](#angzarr-SequenceSet) |  |  |
 | temporal | [TemporalQuery](#angzarr-TemporalQuery) |  |  |
@@ -1307,51 +1419,6 @@ State must be a protobuf Message to serialize into Any.
 | sequence | uint32 |  |  |
 | state | [google.protobuf.Any](https://protobuf.dev/reference/protobuf/google.protobuf/#any) |  |  |
 | retention | [SnapshotRetention](#angzarr-SnapshotRetention) |  | Controls cleanup behavior |
-
-
-
-
-
-
-
-### SyncCommandBook {#angzarr-SyncCommandBook}
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| command | [CommandBook](#angzarr-CommandBook) |  |  |
-| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
-
-
-
-
-
-
-
-### SyncContextualCommand {#angzarr-SyncContextualCommand}
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| command | [ContextualCommand](#angzarr-ContextualCommand) |  |  |
-| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
-
-
-
-
-
-
-
-### SyncEventBook {#angzarr-SyncEventBook}
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| events | [EventBook](#angzarr-EventBook) |  |  |
-| sync_mode | [SyncMode](#angzarr-SyncMode) |  |  |
 
 
 
@@ -1510,7 +1577,7 @@ Controls synchronous processing behavior
 
 ### UpcasterService {#angzarr-UpcasterService}
 UpcasterService: transforms old event versions to current versions
-Implemented by the client alongside CommandHandlerService on the same gRPC server.
+Implemented by the client alongside AggregateService on the same gRPC server.
 Optionally can be deployed as a separate binary for testing or complex migrations.
 
 | Method Name | Request Type | Response Type | Description |
@@ -2309,6 +2376,36 @@ Emitted when action is needed - AI players respond via sidecar
 
 
 
+### PlayerReturningToPlay {#examples-PlayerReturningToPlay}
+Player has chosen to return to play at a table
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+| sat_in_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
+### PlayerSittingOut {#examples-PlayerSittingOut}
+Player has chosen to sit out at a table
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+| sat_out_at | [google.protobuf.Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp) |  |  |
+
+
+
+
+
+
+
 ### PlayerState {#examples-PlayerState}
 State (for snapshots)
 
@@ -2408,6 +2505,34 @@ Reserve funds when joining a table (buy-in)
 | ----- | ---- | ----- | ----------- |
 | amount | [Currency](#examples-Currency) |  |  |
 | table_root | bytes |  | Which table the funds are reserved for |
+
+
+
+
+
+
+
+### SitIn {#examples-SitIn}
+Player decides to return to play at a table
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
+
+
+
+
+
+
+
+### SitOut {#examples-SitOut}
+Player decides to sit out at a table (stop receiving hands)
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_root | bytes |  |  |
 
 
 
@@ -2922,34 +3047,6 @@ Player type - abstraction for human vs AI
 
 
 
-### SitIn {#examples-SitIn}
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | bytes |  |  |
-
-
-
-
-
-
-
-### SitOut {#examples-SitOut}
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| player_root | bytes |  |  |
-
-
-
-
-
-
-
 ### StartHand {#examples-StartHand}
 No parameters - uses current table state
 Dealer button advances automatically
@@ -3002,6 +3099,371 @@ State (for snapshots)
 | hand_count | int64 |  |  |
 | current_hand_root | bytes |  |  |
 | status | string |  | &#34;waiting&#34;, &#34;in_hand&#34;, &#34;paused&#34; |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+
+
+<p align="right"><a href="#top">Top</a></p>
+
+## google/api/annotations.proto {#google_api_annotations-proto}
+
+
+ 
+
+ 
+
+
+
+### File-level Extensions {#google_api_annotations-proto-extensions}
+| Extension | Type | Base | Number | Description |
+| --------- | ---- | ---- | ------ | ----------- |
+| http | HttpRule | .google.protobuf.MethodOptions | 72295728 | See `HttpRule`. |
+
+ 
+
+ 
+
+
+
+<p align="right"><a href="#top">Top</a></p>
+
+## google/api/http.proto {#google_api_http-proto}
+
+
+
+
+### CustomHttpPattern {#google-api-CustomHttpPattern}
+A custom pattern is used for defining custom HTTP verb.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | string |  | The name of this custom HTTP verb. |
+| path | string |  | The path matched by this custom verb. |
+
+
+
+
+
+
+
+### Http {#google-api-Http}
+Defines the HTTP configuration for an API service. It contains a list of
+[HttpRule][google.api.HttpRule], each specifying the mapping of an RPC method
+to one or more HTTP REST API methods.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rules | [HttpRule](#google-api-HttpRule) | repeated | A list of HTTP configuration rules that apply to individual API methods.
+
+**NOTE:** All service configuration rules follow &#34;last one wins&#34; order. |
+| fully_decode_reserved_expansion | bool |  | When set to true, URL path parameters will be fully URI-decoded except in cases of single segment matches in reserved expansion, where &#34;%2F&#34; will be left encoded.
+
+The default behavior is to not decode RFC 6570 reserved characters in multi segment matches. |
+
+
+
+
+
+
+
+### HttpRule {#google-api-HttpRule}
+gRPC Transcoding
+
+gRPC Transcoding is a feature for mapping between a gRPC method and one or
+more HTTP REST endpoints. It allows developers to build a single API service
+that supports both gRPC APIs and REST APIs. Many systems, including [Google
+APIs](https://github.com/googleapis/googleapis),
+[Cloud Endpoints](https://cloud.google.com/endpoints), [gRPC
+Gateway](https://github.com/grpc-ecosystem/grpc-gateway),
+and [Envoy](https://github.com/envoyproxy/envoy) proxy support this feature
+and use it for large scale production services.
+
+`HttpRule` defines the schema of the gRPC/REST mapping. The mapping specifies
+how different portions of the gRPC request message are mapped to the URL
+path, URL query parameters, and HTTP request body. It also controls how the
+gRPC response message is mapped to the HTTP response body. `HttpRule` is
+typically specified as an `google.api.http` annotation on the gRPC method.
+
+Each mapping specifies a URL path template and an HTTP method. The path
+template may refer to one or more fields in the gRPC request message, as long
+as each field is a non-repeated field with a primitive (non-message) type.
+The path template controls how fields of the request message are mapped to
+the URL path.
+
+Example:
+
+    service Messaging \{
+      rpc GetMessage(GetMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+            get: &#34;/v1/\{name=messages/*\}&#34;
+        \};
+      \}
+    \}
+    message GetMessageRequest \{
+      string name = 1; // Mapped to URL path.
+    \}
+    message Message \{
+      string text = 1; // The resource content.
+    \}
+
+This enables an HTTP REST to gRPC mapping as below:
+
+- HTTP: `GET /v1/messages/123456`
+- gRPC: `GetMessage(name: &#34;messages/123456&#34;)`
+
+Any fields in the request message which are not bound by the path template
+automatically become HTTP query parameters if there is no HTTP request body.
+For example:
+
+    service Messaging \{
+      rpc GetMessage(GetMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+            get:&#34;/v1/messages/\{message_id\}&#34;
+        \};
+      \}
+    \}
+    message GetMessageRequest \{
+      message SubMessage \{
+        string subfield = 1;
+      \}
+      string message_id = 1; // Mapped to URL path.
+      int64 revision = 2;    // Mapped to URL query parameter `revision`.
+      SubMessage sub = 3;    // Mapped to URL query parameter `sub.subfield`.
+    \}
+
+This enables a HTTP JSON to RPC mapping as below:
+
+- HTTP: `GET /v1/messages/123456?revision=2&amp;sub.subfield=foo`
+- gRPC: `GetMessage(message_id: &#34;123456&#34; revision: 2 sub:
+SubMessage(subfield: &#34;foo&#34;))`
+
+Note that fields which are mapped to URL query parameters must have a
+primitive type or a repeated primitive type or a non-repeated message type.
+In the case of a repeated type, the parameter can be repeated in the URL
+as `...?param=A&amp;param=B`. In the case of a message type, each field of the
+message is mapped to a separate parameter, such as
+`...?foo.a=A&amp;foo.b=B&amp;foo.c=C`.
+
+For HTTP methods that allow a request body, the `body` field
+specifies the mapping. Consider a REST update method on the
+message resource collection:
+
+    service Messaging \{
+      rpc UpdateMessage(UpdateMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+          patch: &#34;/v1/messages/\{message_id\}&#34;
+          body: &#34;message&#34;
+        \};
+      \}
+    \}
+    message UpdateMessageRequest \{
+      string message_id = 1; // mapped to the URL
+      Message message = 2;   // mapped to the body
+    \}
+
+The following HTTP JSON to RPC mapping is enabled, where the
+representation of the JSON in the request body is determined by
+protos JSON encoding:
+
+- HTTP: `PATCH /v1/messages/123456 \{ &#34;text&#34;: &#34;Hi!&#34; \}`
+- gRPC: `UpdateMessage(message_id: &#34;123456&#34; message \{ text: &#34;Hi!&#34; \})`
+
+The special name `*` can be used in the body mapping to define that
+every field not bound by the path template should be mapped to the
+request body.  This enables the following alternative definition of
+the update method:
+
+    service Messaging \{
+      rpc UpdateMessage(Message) returns (Message) \{
+        option (google.api.http) = \{
+          patch: &#34;/v1/messages/\{message_id\}&#34;
+          body: &#34;*&#34;
+        \};
+      \}
+    \}
+    message Message \{
+      string message_id = 1;
+      string text = 2;
+    \}
+
+
+The following HTTP JSON to RPC mapping is enabled:
+
+- HTTP: `PATCH /v1/messages/123456 \{ &#34;text&#34;: &#34;Hi!&#34; \}`
+- gRPC: `UpdateMessage(message_id: &#34;123456&#34; text: &#34;Hi!&#34;)`
+
+Note that when using `*` in the body mapping, it is not possible to
+have HTTP parameters, as all fields not bound by the path end in
+the body. This makes this option more rarely used in practice when
+defining REST APIs. The common usage of `*` is in custom methods
+which don&#39;t use the URL at all for transferring data.
+
+It is possible to define multiple HTTP methods for one RPC by using
+the `additional_bindings` option. Example:
+
+    service Messaging \{
+      rpc GetMessage(GetMessageRequest) returns (Message) \{
+        option (google.api.http) = \{
+          get: &#34;/v1/messages/\{message_id\}&#34;
+          additional_bindings \{
+            get: &#34;/v1/users/\{user_id\}/messages/\{message_id\}&#34;
+          \}
+        \};
+      \}
+    \}
+    message GetMessageRequest \{
+      string message_id = 1;
+      string user_id = 2;
+    \}
+
+This enables the following two alternative HTTP JSON to RPC mappings:
+
+- HTTP: `GET /v1/messages/123456`
+- gRPC: `GetMessage(message_id: &#34;123456&#34;)`
+
+- HTTP: `GET /v1/users/me/messages/123456`
+- gRPC: `GetMessage(user_id: &#34;me&#34; message_id: &#34;123456&#34;)`
+
+Rules for HTTP mapping
+
+1. Leaf request fields (recursive expansion nested messages in the request
+   message) are classified into three categories:
+   - Fields referred by the path template. They are passed via the URL path.
+   - Fields referred by the [HttpRule.body][google.api.HttpRule.body]. They
+   are passed via the HTTP
+     request body.
+   - All other fields are passed via the URL query parameters, and the
+     parameter name is the field path in the request message. A repeated
+     field can be represented as multiple query parameters under the same
+     name.
+ 2. If [HttpRule.body][google.api.HttpRule.body] is &#34;*&#34;, there is no URL
+ query parameter, all fields
+    are passed via URL path and HTTP request body.
+ 3. If [HttpRule.body][google.api.HttpRule.body] is omitted, there is no HTTP
+ request body, all
+    fields are passed via URL path and URL query parameters.
+
+Path template syntax
+
+    Template = &#34;/&#34; Segments [ Verb ] ;
+    Segments = Segment \{ &#34;/&#34; Segment \} ;
+    Segment  = &#34;*&#34; | &#34;**&#34; | LITERAL | Variable ;
+    Variable = &#34;\{&#34; FieldPath [ &#34;=&#34; Segments ] &#34;\}&#34; ;
+    FieldPath = IDENT \{ &#34;.&#34; IDENT \} ;
+    Verb     = &#34;:&#34; LITERAL ;
+
+The syntax `*` matches a single URL path segment. The syntax `**` matches
+zero or more URL path segments, which must be the last part of the URL path
+except the `Verb`.
+
+The syntax `Variable` matches part of the URL path as specified by its
+template. A variable template must not contain other variables. If a variable
+matches a single path segment, its template may be omitted, e.g. `\{var\}`
+is equivalent to `\{var=*\}`.
+
+The syntax `LITERAL` matches literal text in the URL path. If the `LITERAL`
+contains any reserved character, such characters should be percent-encoded
+before the matching.
+
+If a variable contains exactly one path segment, such as `&#34;\{var\}&#34;` or
+`&#34;\{var=*\}&#34;`, when such a variable is expanded into a URL path on the client
+side, all characters except `[-_.~0-9a-zA-Z]` are percent-encoded. The
+server side does the reverse decoding. Such variables show up in the
+[Discovery
+Document](https://developers.google.com/discovery/v1/reference/apis) as
+`\{var\}`.
+
+If a variable contains multiple path segments, such as `&#34;\{var=foo/*\}&#34;`
+or `&#34;\{var=**\}&#34;`, when such a variable is expanded into a URL path on the
+client side, all characters except `[-_.~/0-9a-zA-Z]` are percent-encoded.
+The server side does the reverse decoding, except &#34;%2F&#34; and &#34;%2f&#34; are left
+unchanged. Such variables show up in the
+[Discovery
+Document](https://developers.google.com/discovery/v1/reference/apis) as
+`\{&#43;var\}`.
+
+Using gRPC API Service Configuration
+
+gRPC API Service Configuration (service config) is a configuration language
+for configuring a gRPC service to become a user-facing product. The
+service config is simply the YAML representation of the `google.api.Service`
+proto message.
+
+As an alternative to annotating your proto file, you can configure gRPC
+transcoding in your service config YAML files. You do this by specifying a
+`HttpRule` that maps the gRPC method to a REST endpoint, achieving the same
+effect as the proto annotation. This can be particularly useful if you
+have a proto that is reused in multiple services. Note that any transcoding
+specified in the service config will override any matching transcoding
+configuration in the proto.
+
+The following example selects a gRPC method and applies an `HttpRule` to it:
+
+    http:
+      rules:
+        - selector: example.v1.Messaging.GetMessage
+          get: /v1/messages/\{message_id\}/\{sub.subfield\}
+
+Special notes
+
+When gRPC Transcoding is used to map a gRPC to JSON REST endpoints, the
+proto to JSON conversion must follow the [proto3
+specification](https://developers.google.com/protocol-buffers/docs/proto3#json).
+
+While the single segment variable follows the semantics of
+[RFC 6570](https://tools.ietf.org/html/rfc6570) Section 3.2.2 Simple String
+Expansion, the multi segment variable **does not** follow RFC 6570 Section
+3.2.3 Reserved Expansion. The reason is that the Reserved Expansion
+does not expand special characters like `?` and `#`, which would lead
+to invalid URLs. As the result, gRPC Transcoding uses a custom encoding
+for multi segment variables.
+
+The path variables **must not** refer to any repeated or mapped field,
+because client libraries are not capable of handling such variable expansion.
+
+The path variables **must not** capture the leading &#34;/&#34; character. The reason
+is that the most common use case &#34;\{var\}&#34; does not capture the leading &#34;/&#34;
+character. For consistency, all path variables must share the same behavior.
+
+Repeated message fields must not be mapped to URL query parameters, because
+no client library can support such complicated mapping.
+
+If an API needs to use a JSON array for request or response body, it can map
+the request or response body to a repeated field. However, some gRPC
+Transcoding implementations may not support this feature.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| selector | string |  | Selects a method to which this rule applies.
+
+Refer to [selector][google.api.DocumentationRule.selector] for syntax details. |
+| get | string |  | Maps to HTTP GET. Used for listing and getting information about resources. |
+| put | string |  | Maps to HTTP PUT. Used for replacing a resource. |
+| post | string |  | Maps to HTTP POST. Used for creating a resource or performing an action. |
+| delete | string |  | Maps to HTTP DELETE. Used for deleting a resource. |
+| patch | string |  | Maps to HTTP PATCH. Used for updating a resource. |
+| custom | [CustomHttpPattern](#google-api-CustomHttpPattern) |  | The custom pattern is used for specifying an HTTP method that is not included in the `pattern` field, such as HEAD, or &#34;*&#34; to leave the HTTP method unspecified for this rule. The wild-card rule is useful for services that provide content to Web (HTML) clients. |
+| body | string |  | The name of the request field whose value is mapped to the HTTP request body, or `*` for mapping all request fields not captured by the path pattern to the HTTP body, or omitted for not having any HTTP request body.
+
+NOTE: the referred field must be present at the top-level of the request message type. |
+| response_body | string |  | Optional. The name of the response field whose value is mapped to the HTTP response body. When omitted, the entire response message will be used as the HTTP response body.
+
+NOTE: The referred field must be present at the top-level of the response message type. |
+| additional_bindings | [HttpRule](#google-api-HttpRule) | repeated | Additional HTTP bindings for the selector. Nested bindings must not contain an `additional_bindings` field themselves (that is, the nesting may only be one level deep). |
 
 
 

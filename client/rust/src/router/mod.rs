@@ -30,6 +30,7 @@
 //!     .domain("hand", HandProjectorHandler::new());
 //! ```
 
+mod cloudevents;
 mod dispatch;
 mod helpers;
 mod saga_context;
@@ -55,11 +56,14 @@ pub use helpers::{event_book_from, event_page, new_event_book, new_event_book_mu
 pub use saga_context::SagaContext;
 pub use state::{EventApplier, StateFactory, StateRouter};
 pub use traits::{
-    AggregateDomainHandler, CommandRejectedError, CommandResult, ProcessManagerDomainHandler,
+    CommandHandlerDomainHandler, CommandRejectedError, CommandResult, ProcessManagerDomainHandler,
     ProcessManagerResponse, ProjectorDomainHandler, RejectionHandlerResponse, SagaDomainHandler,
     SagaHandlerResponse, UnpackAny,
 };
 pub use upcaster::{BoxedUpcasterHandler, UpcasterHandler, UpcasterMode, UpcasterRouter};
+
+// CloudEvents
+pub use cloudevents::{CloudEventsHandler, CloudEventsProjector, CloudEventsRouter};
 
 // Re-export macros (defined in dispatch module via #[macro_export])
 pub use crate::dispatch_command;
@@ -69,8 +73,8 @@ pub use crate::dispatch_event;
 // Mode Markers
 // ============================================================================
 
-/// Mode marker for aggregate routers (commands → events).
-pub struct AggregateMode;
+/// Mode marker for command handler routers (commands → events).
+pub struct CommandHandlerMode;
 
 /// Mode marker for saga routers (events → commands, stateless).
 pub struct SagaMode;
@@ -82,16 +86,16 @@ pub struct ProcessManagerMode;
 pub struct ProjectorMode;
 
 // ============================================================================
-// SingleDomainRouter — Aggregate Mode
+// SingleDomainRouter — CommandHandler Mode
 // ============================================================================
 
-/// Router for aggregate components (commands → events, single domain).
+/// Router for command handler components (commands → events, single domain).
 ///
 /// Domain is set at construction time. No `.domain()` method exists,
 /// enforcing single-domain constraint at compile time.
-pub struct AggregateRouter<S, H>
+pub struct CommandHandlerRouter<S, H>
 where
-    H: AggregateDomainHandler<State = S>,
+    H: CommandHandlerDomainHandler<State = S>,
 {
     name: String,
     domain: String,
@@ -99,12 +103,12 @@ where
     _state: PhantomData<S>,
 }
 
-impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
-    AggregateRouter<S, H>
+impl<S: Default + Send + Sync + 'static, H: CommandHandlerDomainHandler<State = S>>
+    CommandHandlerRouter<S, H>
 {
-    /// Create a new aggregate router.
+    /// Create a new command handler router.
     ///
-    /// Aggregates handle commands and emit events. Single domain enforced at construction.
+    /// Command handlers accept commands and emit events. Single domain enforced at construction.
     pub fn new(name: impl Into<String>, domain: impl Into<String>, handler: H) -> Self {
         Self {
             name: name.into(),
@@ -129,7 +133,7 @@ impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
         self.handler.command_types()
     }
 
-    /// Get subscriptions for this aggregate.
+    /// Get subscriptions for this command handler.
     pub fn subscriptions(&self) -> Vec<(String, Vec<String>)> {
         vec![(self.domain.clone(), self.command_types())]
     }
@@ -169,7 +173,7 @@ impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
 
         // Check for Notification (rejection/compensation)
         if type_url.ends_with("Notification") {
-            return dispatch_aggregate_notification(&self.handler, command_any, &state);
+            return dispatch_command_handler_notification(&self.handler, command_any, &state);
         }
 
         // Execute handler
@@ -183,9 +187,9 @@ impl<S: Default + Send + Sync + 'static, H: AggregateDomainHandler<State = S>>
     }
 }
 
-/// Dispatch a Notification to the aggregate's rejection handler.
-fn dispatch_aggregate_notification<S: Default + 'static>(
-    handler: &dyn AggregateDomainHandler<State = S>,
+/// Dispatch a Notification to the command handler's rejection handler.
+fn dispatch_command_handler_notification<S: Default + 'static>(
+    handler: &dyn CommandHandlerDomainHandler<State = S>,
     command_any: &Any,
     state: &S,
 ) -> Result<BusinessResponse, Status> {
@@ -648,7 +652,7 @@ mod tests {
     // Test mode markers exist
     #[test]
     fn mode_markers_are_zero_sized() {
-        assert_eq!(std::mem::size_of::<AggregateMode>(), 0);
+        assert_eq!(std::mem::size_of::<CommandHandlerMode>(), 0);
         assert_eq!(std::mem::size_of::<SagaMode>(), 0);
         assert_eq!(std::mem::size_of::<ProcessManagerMode>(), 0);
         assert_eq!(std::mem::size_of::<ProjectorMode>(), 0);

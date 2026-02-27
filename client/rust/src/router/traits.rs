@@ -93,12 +93,12 @@ impl UnpackAny for Any {
 }
 
 // ============================================================================
-// Aggregate Handler
+// Command Handler
 // ============================================================================
 
-/// Handler for a single domain's aggregate commands.
+/// Handler for a single domain's command handler logic.
 ///
-/// Aggregates receive commands and emit events. They maintain state
+/// Command handlers receive commands and emit events. They maintain state
 /// that is rebuilt from events using a `StateRouter`.
 ///
 /// # Example
@@ -108,7 +108,7 @@ impl UnpackAny for Any {
 ///     state_router: StateRouter<PlayerState>,
 /// }
 ///
-/// impl AggregateDomainHandler for PlayerHandler {
+/// impl CommandHandlerDomainHandler for PlayerHandler {
 ///     type State = PlayerState;
 ///
 ///     fn command_types(&self) -> Vec<String> {
@@ -133,7 +133,7 @@ impl UnpackAny for Any {
 ///     }
 /// }
 /// ```
-pub trait AggregateDomainHandler: Send + Sync {
+pub trait CommandHandlerDomainHandler: Send + Sync {
     /// The state type for this aggregate.
     type State: Default + 'static;
 

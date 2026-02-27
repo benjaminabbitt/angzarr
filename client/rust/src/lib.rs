@@ -96,14 +96,18 @@ pub use router::{
     new_event_book,
     new_event_book_multi,
     pack_event,
-    // Handler traits
-    AggregateDomainHandler,
-    // Mode markers
-    AggregateMode,
-    // Router types
-    AggregateRouter,
     // Upcaster types
     BoxedUpcasterHandler,
+    // CloudEvents types
+    CloudEventsHandler,
+    CloudEventsProjector,
+    CloudEventsRouter,
+    // Handler traits
+    CommandHandlerDomainHandler,
+    // Mode markers
+    CommandHandlerMode,
+    // Router types
+    CommandHandlerRouter,
     // Error types
     CommandRejectedError,
     CommandResult,
@@ -136,14 +140,14 @@ pub use router::{
 
 // Re-export handler types
 pub use handler::{
-    CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler, StatePacker,
-    UpcasterGrpcHandler, UpcasterHandleClosureFn, UpcasterHandleFn,
+    CloudEventsGrpcHandler, CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler,
+    SagaHandler, StatePacker, UpcasterGrpcHandler, UpcasterHandleClosureFn, UpcasterHandleFn,
 };
 
 // Re-export server utilities
 pub use server::{
-    run_command_handler_server, run_process_manager_server, run_projector_server, run_saga_server,
-    run_upcaster_server, ServerConfig,
+    run_cloudevents_projector, run_command_handler_server, run_process_manager_server,
+    run_projector_server, run_saga_server, run_upcaster_server, ServerConfig,
 };
 
 // Re-export validation helpers

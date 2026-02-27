@@ -17,12 +17,12 @@
 namespace angzarr {
 
 /**
- * Base class for aggregates using macro-based handler registration.
+ * Base class for command handlers using macro-based handler registration.
  *
  * Usage:
- *   class Player : public Aggregate<PlayerState> {
+ *   class Player : public CommandHandler<PlayerState> {
  *   public:
- *       ANGZARR_AGGREGATE("player")
+ *       ANGZARR_COMMAND_HANDLER("player")
  *
  *       ANGZARR_HANDLES(RegisterPlayer)
  *       PlayerRegistered handle_RegisterPlayer(const RegisterPlayer& cmd) {
@@ -40,18 +40,20 @@ namespace angzarr {
  *   };
  */
 template <typename StateT>
-class Aggregate {
+class CommandHandler {
    public:
     using State = StateT;
     using CommandDispatcher =
-        std::function<EventBook(Aggregate*, const google::protobuf::Any&, int)>;
-    using EventApplier = std::function<void(Aggregate*, StateT&, const google::protobuf::Any&)>;
-    using RejectionHandler = std::function<EventBook(Aggregate*, const Notification&, StateT&)>;
+        std::function<EventBook(CommandHandler*, const google::protobuf::Any&, int)>;
+    using EventApplier =
+        std::function<void(CommandHandler*, StateT&, const google::protobuf::Any&)>;
+    using RejectionHandler =
+        std::function<EventBook(CommandHandler*, const Notification&, StateT&)>;
 
-    virtual ~Aggregate() = default;
+    virtual ~CommandHandler() = default;
 
     /**
-     * Get the domain name for this aggregate.
+     * Get the domain name for this command handler.
      */
     virtual std::string domain() const = 0;
 
@@ -97,7 +99,7 @@ class Aggregate {
     }
 
     /**
-     * Build a component descriptor for this aggregate.
+     * Build a component descriptor for this command handler.
      */
     Descriptor descriptor() const {
         std::vector<std::string> types;
@@ -108,7 +110,7 @@ class Aggregate {
     }
 
     /**
-     * Check if the aggregate exists (has prior events).
+     * Check if the command handler has prior events.
      */
     bool exists() const { return exists_; }
 
@@ -201,8 +203,8 @@ class Aggregate {
         BusinessResponse response;
         auto* revocation = response.mutable_revocation();
         revocation->set_emit_system_revocation(true);
-        revocation->set_reason("Aggregate " + this->domain() + " has no custom compensation for " +
-                               key);
+        revocation->set_reason("CommandHandler " + this->domain() +
+                               " has no custom compensation for " + key);
         return response;
     }
 
