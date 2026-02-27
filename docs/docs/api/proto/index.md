@@ -370,8 +370,8 @@ proto message that omits sensitive fields.
 | extensions | [CloudEvent.ExtensionsEntry](#angzarr-CloudEvent-ExtensionsEntry) | repeated | Custom extension attributes. Keys should follow CloudEvents naming (lowercase, no dots). Framework adds correlationid automatically if present in Cover. |
 | id | string | optional | Optional overrides. Framework uses Cover/EventPage values if not set.
 
-Default: `{domain}`:`{root_id}`:`{sequence}` |
-| source | string | optional | Default: angzarr/`{domain}` |
+Default: `\{domain\}`:`\{root_id\}`:`\{sequence\}` |
+| source | string | optional | Default: angzarr/`\{domain\}` |
 | subject | string | optional | Default: aggregate root ID |
 
 
