@@ -13,8 +13,8 @@ namespace Angzarr.Client;
 /// Example:
 /// <code>
 /// var playerRouter = new StateRouter&lt;PlayerState&gt;()
-///     .On&lt;PlayerRegistered&gt;((state, evt) =&gt; state.PlayerId = evt.PlayerId)
-///     .On&lt;FundsDeposited&gt;((state, evt) =&gt; state.Bankroll += evt.Amount);
+///     .On&lt;PlayerRegistered&gt;(PlayerState.ApplyRegistered)
+///     .On&lt;FundsDeposited&gt;(PlayerState.ApplyDeposited);
 ///
 /// // Use per rebuild
 /// var state = playerRouter.WithEventBook(eventBook);
@@ -23,8 +23,7 @@ namespace Angzarr.Client;
 public class StateRouter<TState>
     where TState : new()
 {
-    private readonly Dictionary<string, (Type EventType, Action<TState, Any> Applier)> _appliers =
-        new();
+    private readonly Dictionary<string, IEventApplier<TState>> _appliers = new();
     private readonly Func<TState>? _factory;
 
     /// <summary>
@@ -41,10 +40,7 @@ public class StateRouter<TState>
     ///
     /// Example:
     /// <code>
-    /// var router = new StateRouter&lt;HandState&gt;(() =&gt; new HandState
-    /// {
-    ///     Pots = new List&lt;PotInfo&gt; { new PotInfo { PotType = "main" } }
-    /// });
+    /// var router = new StateRouter&lt;HandState&gt;(HandState.CreateInitial);
     /// </code>
     /// </summary>
     /// <param name="factory">Factory function to create initial state.</param>
@@ -59,10 +55,7 @@ public class StateRouter<TState>
     ///
     /// Example:
     /// <code>
-    /// var router = StateRouter&lt;HandState&gt;.WithFactory(() =&gt; new HandState
-    /// {
-    ///     Pots = new List&lt;PotState&gt; { new PotState { PotType = "main" } }
-    /// });
+    /// var router = StateRouter&lt;HandState&gt;.WithFactory(HandState.CreateInitial);
     /// </code>
     /// </summary>
     /// <param name="factory">Factory function to create initial state.</param>
@@ -74,25 +67,42 @@ public class StateRouter<TState>
 
     private TState CreateState()
     {
-        return _factory != null ? _factory() : new TState();
+        if (_factory != null)
+            return _factory();
+        return new TState();
     }
 
     /// <summary>
-    /// Register an event applier.
+    /// Register an event applier using a method reference.
     /// </summary>
     public StateRouter<TState> On<TEvent>(Action<TState, TEvent> applier)
         where TEvent : IMessage, new()
     {
         var suffix = typeof(TEvent).Name;
-        _appliers[suffix] = (
-            typeof(TEvent),
-            (state, any) =>
-            {
-                var evt = any.Unpack<TEvent>();
-                applier(state, evt);
-            }
-        );
+        _appliers[suffix] = new EventApplier<TEvent>(applier);
         return this;
+    }
+
+    private interface IEventApplier<in T>
+    {
+        void Apply(T state, Any eventAny);
+    }
+
+    private sealed class EventApplier<TEvent> : IEventApplier<TState>
+        where TEvent : IMessage, new()
+    {
+        private readonly Action<TState, TEvent> _applier;
+
+        public EventApplier(Action<TState, TEvent> applier)
+        {
+            _applier = applier;
+        }
+
+        public void Apply(TState state, Any eventAny)
+        {
+            var evt = eventAny.Unpack<TEvent>();
+            _applier(state, evt);
+        }
     }
 
     /// <summary>
@@ -124,11 +134,11 @@ public class StateRouter<TState>
 
     private void ApplyEvent(TState state, Any eventAny)
     {
-        foreach (var (suffix, (_, applier)) in _appliers)
+        foreach (var (suffix, applier) in _appliers)
         {
             if (eventAny.TypeUrl.EndsWith(suffix))
             {
-                applier(state, eventAny);
+                applier.Apply(state, eventAny);
                 return;
             }
         }

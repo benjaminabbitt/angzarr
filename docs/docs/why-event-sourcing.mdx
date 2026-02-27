@@ -19,30 +19,23 @@ You check the database. It shows the current balance. But *how* did it get there
 
 Traditional databases store current state:
 
-```mermaid
-block-beta
-    columns 1
-    block:table["accounts table"]:1
-        columns 1
-        id["id: account-456"]
-        balance["balance: $1,500"]
-        updated["updated_at: 2024-01-15 10:30"]
-    end
-```
+| accounts |  |
+|----------|--|
+| id | `account-456` |
+| balance | `$1,500` |
+| updated_at | `2024-01-15 10:30` |
 
 This tells you nothing. Was there a deposit of $2,000 followed by a $500 withdrawal? A refund? A correction? The current state *overwrote* the history that explains it.
 
 Now imagine you stored the story instead:
 
 ```mermaid
-timeline
-    title Account Event History
-    section Events
-        seq 0 : AccountOpened : initial_balance: $0
-        seq 1 : FundsDeposited : amount: $1,000
-        seq 2 : FundsReserved : amount: $500, reason: purchase
-        seq 3 : ReservationReleased : amount: $500
-        seq 4 : FundsDeposited : amount: $500
+flowchart LR
+    E0["AccountOpened<br/>$0"] --> E1["FundsDeposited<br/>+$1,000"]
+    E1 --> E2["FundsReserved<br/>-$500"]
+    E2 --> E3["ReservationReleased<br/>+$500"]
+    E3 --> E4["FundsDeposited<br/>+$500"]
+    E4 --> State["Balance: $1,500"]
 ```
 
 Current state becomes a *derivation*: replay events 0-4 → balance = $1,500.
