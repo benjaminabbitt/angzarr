@@ -666,7 +666,7 @@ TEST_F(ProcessManagerRouterTest, RebuildState_ShouldUseRebuildFunction) {
     // Given a ProcessManagerRouter with custom rebuild
     bool rebuild_called = false;
     ProcessManagerRouter<TestState> router("pmg-order-flow", "order-flow",
-                                           [&rebuild_called](const EventBook* events) {
+                                           [&rebuild_called](const EventBook& events) {
                                                rebuild_called = true;
                                                return TestState{.counter = 42};
                                            });

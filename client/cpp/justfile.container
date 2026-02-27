@@ -17,7 +17,7 @@ configure:
     cmake -B build -DCMAKE_BUILD_TYPE=Release
 
 build:
-    cmake -B build && cmake --build build
+    cmake -B build && cmake --build build --target angzarr-client
 
 test:
     cmake -B build && cmake --build build && ctest --test-dir build --output-on-failure

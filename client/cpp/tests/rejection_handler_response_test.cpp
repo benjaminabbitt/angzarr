@@ -104,11 +104,9 @@ struct TestState {
 
 class CommandRouterRejectionTest : public ::testing::Test {
    protected:
-    TestState rebuildState(const EventBook* events) {
+    TestState rebuildState(const EventBook& events) {
         TestState state;
-        if (events) {
-            state.value = events->pages_size();
-        }
+        state.value = events.pages_size();
         return state;
     }
 
@@ -139,7 +137,7 @@ class CommandRouterRejectionTest : public ::testing::Test {
 
 TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsEvents) {
     CommandRouter<TestState> router(
-        "test", [this](const EventBook* events) { return rebuildState(events); });
+        "test", [this](const EventBook& events) { return rebuildState(events); });
 
     router.on_rejected(
         "inventory", "ReserveStock", [](const Notification& notification, TestState& state) {
@@ -162,7 +160,7 @@ TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsEvents) {
 
 TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsNotification) {
     CommandRouter<TestState> router(
-        "test", [this](const EventBook* events) { return rebuildState(events); });
+        "test", [this](const EventBook& events) { return rebuildState(events); });
 
     router.on_rejected("payment", "Charge", [](const Notification& notification, TestState& state) {
         RejectionHandlerResponse response;
@@ -180,7 +178,7 @@ TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsNotification) {
 
 TEST_F(CommandRouterRejectionTest, OnRejected_NoHandler_DelegatesToFramework) {
     CommandRouter<TestState> router(
-        "test", [this](const EventBook* events) { return rebuildState(events); });
+        "test", [this](const EventBook& events) { return rebuildState(events); });
     // No rejection handler registered
 
     Notification notification = makeNotification("unknown", "UnknownCommand", "reason");

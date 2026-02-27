@@ -84,7 +84,7 @@ add_library(angzarr-client
     src/helpers.cpp
     src/validation.cpp
     src/router.cpp
-    src/aggregate.cpp
+    src/command_handler.cpp
     src/saga_context.cpp
     src/cloudevents.cpp
     src/upcaster.cpp
