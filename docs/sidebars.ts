@@ -3,6 +3,27 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   docsSidebar: [
     'why-event-sourcing',
+    {
+      type: 'category',
+      label: 'Features',
+      link: {
+        type: 'doc',
+        id: 'features',
+      },
+      items: [
+        'features/small-footprint',
+        'features/facts',
+        'features/compensation',
+        'features/editions',
+        'features/ml-training',
+        'features/upcasting',
+        'features/projections',
+        'features/cloudevents',
+        'features/polyglot',
+        'features/performance',
+        'features/observability',
+      ],
+    },
     'patterns-explained',
     'intro',
     'getting-started',

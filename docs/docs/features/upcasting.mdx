@@ -1,0 +1,205 @@
+---
+sidebar_position: 6
+---
+
+# Schema Evolution with Upcasting
+
+Your event from 2019 still works in 2025. No migration scripts. No downtime.
+
+---
+
+## The Problem
+
+Events are immutable. Once persisted, they cannot change. But schemas evolve: fields are added, types change, structures are reorganized.
+
+Traditional migrations modify data in place—possible for current state, impossible for immutable history.
+
+---
+
+## The Solution: Transform at Read Time
+
+Upcasters transform old events into new shapes when they're read, not when they're stored:
+
+```
+Stored Event (v1)          Upcaster            Aggregate Sees (v3)
+┌──────────────────┐      ┌─────────┐         ┌──────────────────┐
+│ PlayerRegistered │ ──▶  │ v1 → v2 │  ──▶    │ PlayerRegistered │
+│   username: "a"  │      │ v2 → v3 │         │   username: "a"  │
+│                  │      └─────────┘         │   email: null    │
+│                  │                          │   tier: "basic"  │
+└──────────────────┘                          └──────────────────┘
+```
+
+The original bytes remain untouched. The audit trail is immutable. But your aggregates always see the current schema.
+
+---
+
+## How It Works
+
+Register upcasters that transform events from one version to the next:
+
+```python
+@upcaster("PlayerRegistered", from_version=1, to_version=2)
+def upcast_player_registered_v1_to_v2(event: dict) -> dict:
+    # v2 added email field
+    event["email"] = None
+    return event
+
+@upcaster("PlayerRegistered", from_version=2, to_version=3)
+def upcast_player_registered_v2_to_v3(event: dict) -> dict:
+    # v3 added tier field with default
+    event["tier"] = "basic"
+    return event
+```
+
+The framework chains upcasters automatically: a v1 event passes through v1→v2, then v2→v3, arriving at your aggregate as v3.
+
+---
+
+## Version Detection
+
+Events carry version metadata. Common patterns:
+
+### Type URL Versioning
+
+```protobuf
+// v1: type.googleapis.com/myapp.PlayerRegistered
+// v2: type.googleapis.com/myapp.v2.PlayerRegistered
+```
+
+### Field-Based Detection
+
+```python
+@upcaster("PlayerRegistered")
+def upcast(event: dict) -> dict:
+    if "email" not in event:
+        # v1 → v2
+        event["email"] = None
+    if "tier" not in event:
+        # v2 → v3
+        event["tier"] = "basic"
+    return event
+```
+
+---
+
+## Examples Across Languages
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+@upcaster("FundsDeposited", from_version=1, to_version=2)
+def upcast_funds_deposited(event: dict) -> dict:
+    # v1 had amount as int, v2 uses Currency message
+    if isinstance(event.get("amount"), int):
+        event["amount"] = {
+            "amount": event["amount"],
+            "currency_code": "USD",  # Default assumption
+        }
+    return event
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+fn upcast_funds_deposited_v1_to_v2(event: &mut serde_json::Value) {
+    if let Some(amount) = event.get("amount").and_then(|v| v.as_i64()) {
+        event["amount"] = json!({
+            "amount": amount,
+            "currency_code": "USD",
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+func UpcastFundsDepositedV1ToV2(event map[string]interface{}) {
+    if amount, ok := event["amount"].(float64); ok {
+        event["amount"] = map[string]interface{}{
+            "amount":        int64(amount),
+            "currency_code": "USD",
+        }
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Guidelines
+
+### Keep Upcasters Pure
+
+Upcasters should be pure functions: same input, same output. No database lookups, no external calls.
+
+```python
+# Good: pure transformation
+def upcast(event):
+    event["new_field"] = derive_from_existing(event["old_field"])
+    return event
+
+# Bad: external dependency
+def upcast(event):
+    event["user_name"] = db.lookup_user(event["user_id"])  # Don't do this
+    return event
+```
+
+### Chain, Don't Skip
+
+Always upcast to the next version, not directly to latest:
+
+```python
+# Good: v1 → v2 → v3
+@upcaster("Event", from_version=1, to_version=2)
+def v1_to_v2(e): ...
+
+@upcaster("Event", from_version=2, to_version=3)
+def v2_to_v3(e): ...
+
+# Bad: skip versions
+@upcaster("Event", from_version=1, to_version=3)
+def v1_to_v3(e): ...  # What about v2 events?
+```
+
+### Test with Real History
+
+Your test suite should include events from every historical version:
+
+```python
+def test_upcast_chain():
+    v1_event = load_fixture("player_registered_v1.json")
+    v3_event = upcast_chain(v1_event)
+
+    assert v3_event["email"] is None
+    assert v3_event["tier"] == "basic"
+```
+
+---
+
+## Deployment
+
+Upcasters deploy with your application code. When you release a new version:
+
+1. Add upcaster for old → new transformation
+2. Deploy new code
+3. Old events transform on read
+4. New events persist in new format
+
+No migration window. No downtime. Old and new events coexist seamlessly.
+
+---
+
+## See Also
+
+- [SDK: Upcasters](../sdks) — Language-specific implementation details
+- [Performance](./performance) — Snapshots reduce upcasting overhead
