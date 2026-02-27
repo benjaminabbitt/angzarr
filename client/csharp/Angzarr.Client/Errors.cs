@@ -38,10 +38,47 @@ public class ClientError : Exception
 /// </summary>
 public class CommandRejectedError : ClientError
 {
-    public CommandRejectedError(string message)
-        : base(message) { }
+    public string Code { get; }
 
-    public override bool IsPreconditionFailed() => true;
+    public CommandRejectedError(string message)
+        : base(message)
+    {
+        Code = "PRECONDITION_FAILED";
+    }
+
+    public CommandRejectedError(string message, string code)
+        : base(message)
+    {
+        Code = code;
+    }
+
+    public override bool IsPreconditionFailed() => Code == "PRECONDITION_FAILED";
+
+    public override bool IsInvalidArgument() => Code == "INVALID_ARGUMENT";
+
+    /// <summary>
+    /// Create a precondition failed error.
+    /// </summary>
+    public static CommandRejectedError PreconditionFailed(string message)
+    {
+        return new CommandRejectedError(message, "PRECONDITION_FAILED");
+    }
+
+    /// <summary>
+    /// Create an invalid argument error.
+    /// </summary>
+    public static CommandRejectedError InvalidArgument(string message)
+    {
+        return new CommandRejectedError(message, "INVALID_ARGUMENT");
+    }
+
+    /// <summary>
+    /// Create a not found error.
+    /// </summary>
+    public static CommandRejectedError NotFound(string message)
+    {
+        return new CommandRejectedError(message, "NOT_FOUND");
+    }
 }
 
 /// <summary>

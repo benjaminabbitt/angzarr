@@ -9,7 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../../Angzarr.Proto/Angzarr.Proto.csproj" />
-        <ProjectReference Include="../../Angzarr.Client/Angzarr.Client.csproj" />
+        <ProjectReference Include="../../../../client/csharp/Angzarr.Client/Angzarr.Client.csproj" />
     </ItemGroup>
 
     <ItemGroup>

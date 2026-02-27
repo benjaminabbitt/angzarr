@@ -32,6 +32,7 @@
 
 mod dispatch;
 mod helpers;
+mod saga_context;
 mod state;
 mod traits;
 mod upcaster;
@@ -51,6 +52,7 @@ use crate::proto::{
 
 // Re-export public types
 pub use helpers::{event_book_from, event_page, new_event_book, new_event_book_multi, pack_event};
+pub use saga_context::SagaContext;
 pub use state::{EventApplier, StateFactory, StateRouter};
 pub use traits::{
     AggregateDomainHandler, CommandRejectedError, CommandResult, ProcessManagerDomainHandler,

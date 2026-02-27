@@ -117,6 +117,8 @@ pub use router::{
     ProjectorMode,
     ProjectorRouter,
     RejectionHandlerResponse,
+    // Saga types
+    SagaContext,
     SagaDomainHandler,
     SagaHandlerResponse,
     SagaMode,

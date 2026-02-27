@@ -73,6 +73,17 @@ public class CompensationContext
     /// <returns>A new CompensationContext</returns>
     public static CompensationContext FromNotification(Angzarr.Notification notification)
     {
+        return From(notification);
+    }
+
+    /// <summary>
+    /// Extract compensation context from a Notification.
+    /// Alias for FromNotification for compatibility.
+    /// </summary>
+    /// <param name="notification">The notification containing rejection details</param>
+    /// <returns>A new CompensationContext</returns>
+    public static CompensationContext From(Angzarr.Notification notification)
+    {
         var rejection = new Angzarr.RejectionNotification();
 
         if (notification.Payload != null)

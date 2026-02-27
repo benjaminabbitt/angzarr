@@ -105,8 +105,8 @@ public abstract class Aggregate<TState>
     /// </summary>
     public IMessage? HandleRejection(Notification notification)
     {
-        var context = CompensationContext.From(notification);
-        var key = (context.Domain, context.CommandType);
+        var context = CompensationContext.FromNotification(notification);
+        var key = (context.RejectedCommand?.Cover?.Domain ?? "", context.RejectedCommandType ?? "");
 
         if (_rejectionHandlers.TryGetValue(key, out var handler))
         {

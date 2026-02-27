@@ -84,6 +84,7 @@ add_library(angzarr-client
     src/validation.cpp
     src/router.cpp
     src/aggregate.cpp
+    src/saga_context.cpp
     ${PROTO_SRCS}
     ${GRPC_SRCS}
 )

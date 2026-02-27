@@ -131,39 +131,8 @@ public class TableAggregate : Aggregate<TableState>
         };
     }
 
-    [Handles(typeof(SitOut))]
-    public PlayerSatOut HandleSitOut(SitOut cmd)
-    {
-        if (!Exists)
-            throw CommandRejectedError.PreconditionFailed("Table does not exist");
-
-        var seat = State.FindPlayerSeat(cmd.PlayerRoot);
-        if (seat == null)
-            throw CommandRejectedError.PreconditionFailed("Player is not seated at table");
-
-        return new PlayerSatOut
-        {
-            PlayerRoot = cmd.PlayerRoot,
-            SatOutAt = Timestamp.FromDateTime(DateTime.UtcNow),
-        };
-    }
-
-    [Handles(typeof(SitIn))]
-    public PlayerSatIn HandleSitIn(SitIn cmd)
-    {
-        if (!Exists)
-            throw CommandRejectedError.PreconditionFailed("Table does not exist");
-
-        var seat = State.FindPlayerSeat(cmd.PlayerRoot);
-        if (seat == null)
-            throw CommandRejectedError.PreconditionFailed("Player is not seated at table");
-
-        return new PlayerSatIn
-        {
-            PlayerRoot = cmd.PlayerRoot,
-            SatInAt = Timestamp.FromDateTime(DateTime.UtcNow),
-        };
-    }
+    // Note: SitOut/SitIn commands are in the Player domain.
+    // Table receives PlayerSatOut/PlayerSatIn as facts via saga.
 
     [Handles(typeof(StartHand))]
     public HandStarted HandleStartHand(StartHand cmd)

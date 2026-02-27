@@ -128,6 +128,25 @@ public abstract class Saga
     }
 
     /// <summary>
+    /// Get the next sequence number from a destination EventBook.
+    /// Returns 1 if the destination is null or has no pages.
+    /// </summary>
+    protected static uint NextSequence(Angzarr.EventBook? destination)
+    {
+        if (destination == null || destination.Pages.Count == 0)
+            return 1;
+        return destination.Pages[^1].Sequence + 1;
+    }
+
+    /// <summary>
+    /// Pack a command message into an Any.
+    /// </summary>
+    protected static Any PackCommand(IMessage command)
+    {
+        return Any.Pack(command, "type.googleapis.com/");
+    }
+
+    /// <summary>
     /// Clear accumulated events. Called before each dispatch.
     /// </summary>
     protected void ClearEvents()

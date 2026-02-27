@@ -1,6 +1,6 @@
 using Google.Protobuf.WellKnownTypes;
 
-namespace Angzarr.Client.Router;
+namespace Angzarr.Client;
 
 /// <summary>
 /// Event version transformer.
