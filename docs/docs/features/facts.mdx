@@ -8,6 +8,16 @@ Not everything is a request. Some things are reality.
 
 ---
 
+## The Poker Floor Example
+
+Mid-hand, the dealer accidentally exposes a card. The floor manager is called. She rules: dead hand, return all bets.
+
+Your hand aggregate doesn't get to vote on this. The ruling happened. The cards were exposed. The decision was made by a human with authority your software doesn't have. Your system records the fact and moves on.
+
+This pattern appears everywhere external authority exists—payment processors, regulatory systems, IoT sensors, human overrides. The [External Rulings example](#external-rulings) shows the implementation.
+
+---
+
 ## The Distinction
 
 A **command** is a request that can be rejected. "Please reserve this inventory." The aggregate validates the request against business rules and either produces events or rejects.
@@ -43,13 +53,37 @@ Facts from external systems often arrive multiple times (webhook retries, networ
 
 ## How It Works
 
-Facts use a special marker instead of a sequence number:
+Facts need two things that regular commands don't:
+
+1. **An idempotency key** — Stripe might retry that webhook five times. You need to record the payment exactly once.
+2. **A marker saying "I'm a fact"** — So the coordinator knows to assign a sequence number rather than expect one.
+
+These concerns live in different places, and understanding why matters.
+
+### The Cover: Permanent Identity
+
+Every event has a **Cover** — metadata that travels with the event forever. For facts, the Cover carries an `external_id`: the identifier from the external system (Stripe's payment intent ID, the sensor's reading ID, the ruling number).
+
+```protobuf
+message Cover {
+  string domain = 2;
+  UUID root = 1;
+  string correlation_id = 3;
+  string external_id = 5;     // Idempotency key - PRESERVED forever
+}
+```
+
+The `external_id` is your permanent link back to reality. When the same webhook arrives again, the coordinator checks: "Have I seen this `external_id` before?" If yes, it silently ignores the duplicate. The Cover—and its `external_id`—survives the entire event lifecycle.
+
+### The FactSequence: Transient Marker
+
+The `FactSequence` marker tells the coordinator: "This event doesn't have a sequence number yet. Assign one."
 
 ```protobuf
 message EventPage {
   oneof sequence_type {
     uint32 sequence = 1;      // Normal: position in stream
-    FactSequence fact = 5;    // Fact: coordinator assigns sequence
+    FactSequence fact = 5;    // Fact marker - REPLACED after processing
   }
 }
 
@@ -59,34 +93,48 @@ message FactSequence {
 }
 ```
 
-The coordinator:
-1. Checks idempotency via `external_id`
+Unlike the Cover, the `FactSequence` is **transient**. After processing, it's replaced with a real sequence number. The event then looks like any other sequenced event—but the `external_id` on the Cover remains, providing that permanent link to the external system.
+
+### Processing Flow
+
+The coordinator handles facts in five steps:
+
+1. Checks idempotency via `external_id` on the Cover
 2. Routes to aggregate for state update (if configured)
-3. Assigns a real sequence number
-4. Persists the event
+3. **Replaces** the FactSequence marker with a real sequence number
+4. Persists the event (Cover preserved, including `external_id`)
 5. Publishes to downstream consumers
 
 ---
 
-## Idempotency
+## Idempotency in Practice
 
-Facts carry an `external_id` on their Cover for idempotency:
+Here's how you emit a fact with proper idempotency:
 
 ```python
 cover = Cover(
     domain="payments",
     root=payment_id,
-    external_id="stripe_pi_abc123",  # Idempotency key
+    external_id="stripe_pi_abc123",  # Permanent link to Stripe
 )
 
-fact = PaymentConfirmed(
-    amount=Money(amount=5000, currency="USD"),
-    provider="stripe",
-    provider_reference="pi_abc123",
+fact_event = EventPage(
+    fact=FactSequence(
+        source="stripe",
+        description="Payment intent succeeded",
+    ),
+    event=Any.pack(PaymentConfirmed(
+        amount=Money(amount=5000, currency="USD"),
+        provider="stripe",
+    )),
 )
 ```
 
-If the same `external_id` arrives twice, the second is silently ignored. No duplicate events.
+After processing:
+- `cover.external_id = "stripe_pi_abc123"` (preserved forever)
+- `sequence = 42` (assigned, replacing FactSequence)
+
+Webhook retries? Network hiccups? Duplicate deliveries? The coordinator checks `external_id`, finds it already exists, and silently ignores the duplicate.
 
 ---
 
