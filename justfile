@@ -206,8 +206,8 @@ buf-docs:
         --proto_path=/protos \
         --doc_opt=markdown,index.md \
         $PROTOS
-    # Escape curly braces for MDX compatibility (wrap in backticks)
-    sed -i 's/{\([^}]*\)}/`{\1}`/g' "{{TOP}}/docs/docs/api/proto/index.md"
+    # Escape curly braces for MDX compatibility (handles google.api.http examples)
+    python3 "{{TOP}}/build/proto/escape_mdx.py" "{{TOP}}/docs/docs/api/proto/index.md"
     # Fix anchors for Docusaurus compatibility (convert <a name=""> to heading IDs)
     python3 "{{TOP}}/build/proto/fix_anchors.py" "{{TOP}}/docs/docs/api/proto/index.md"
     # Add frontmatter for Docusaurus
