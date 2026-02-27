@@ -154,8 +154,15 @@ jobs:
             -n rabbitmq-system --timeout=120s
 
       # Deploy infrastructure (RabbitMQ, Redis)
+      # Note: We set name=angzarr-mq-rabbitmq so the service name matches what
+      # the Helm deployment templates expect in their init containers
       - name: Deploy infrastructure
-        run: just infra-ci
+        run: |
+          kubectl create namespace angzarr --dry-run=client -o yaml | kubectl apply -f -
+          helm upgrade --install angzarr-redis deploy/k8s/helm/redis \
+              -n angzarr --set auth.password=angzarr --wait --timeout 2m
+          helm upgrade --install angzarr-mq deploy/k8s/helm/rabbitmq \
+              -n angzarr --set auth.password=angzarr --set name=angzarr-mq-rabbitmq --wait --timeout 2m
 
       # Deploy Rust services via Helm
       - name: Deploy Rust services via Helm
