@@ -44,6 +44,7 @@ spec:
     # Additional configuration
     additionalConfig: |
       default_user = {{ .Values.auth.username }}
+      default_pass = {{ .Values.auth.password }}
       {{- .Values.rabbitmq.additionalConfig | nindent 6 }}
 
   # Service configuration
