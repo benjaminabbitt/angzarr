@@ -341,7 +341,7 @@ jobs:
             -w /workspace/client/${{ matrix.lang }} \
             -e DEVCONTAINER=true \
             ${{ steps.image.outputs.tag }} \
-            bash -c "git config --global --add safe.directory /workspace && just build"
+            bash -c "git config --global --add safe.directory /workspace && ls -la include/angzarr/*.hpp 2>/dev/null | head -5 && just build"
 
   # Build example business logic images using matrix
   # All languages with Containerfiles: rust, go, python, csharp, cpp, java
