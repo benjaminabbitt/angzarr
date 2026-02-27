@@ -96,12 +96,14 @@ jobs:
             echo "Using workflow_run trigger ID: ${{ github.event.workflow_run.id }}"
           else
             # pull_request trigger - find the CI run for this commit
-            echo "Looking for CI workflow run for commit ${{ github.sha }}..."
+            # Use PR head SHA, not github.sha (which is the merge commit SHA for PRs)
+            COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+            echo "Looking for CI workflow run for commit $COMMIT_SHA..."
 
             # Wait for CI to complete (up to 10 minutes)
             for i in {1..60}; do
               RUN_ID=$(gh api repos/${{ github.repository }}/actions/runs \
-                --jq ".workflow_runs[] | select(.head_sha==\"${{ github.sha }}\" and .name==\"CI\" and .status==\"completed\") | .id" \
+                --jq ".workflow_runs[] | select(.head_sha==\"$COMMIT_SHA\" and .name==\"CI\" and .status==\"completed\") | .id" \
                 | head -1)
 
               if [ -n "$RUN_ID" ]; then
