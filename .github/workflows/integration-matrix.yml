@@ -136,6 +136,7 @@ jobs:
         run: |
           if [ -f runtime-build.json ]; then
             # Extract full image references from skaffold build output
+            # Format: ghcr.io/angzarr-io/angzarr-aggregate:TAG@sha256:DIGEST
             AGG_FULL=$(jq -r '.builds[] | select(.imageName | contains("aggregate")) | .tag' runtime-build.json)
             PRJ_FULL=$(jq -r '.builds[] | select(.imageName | contains("projector")) | .tag' runtime-build.json)
             SAG_FULL=$(jq -r '.builds[] | select(.imageName | contains("saga")) | .tag' runtime-build.json)
@@ -147,11 +148,21 @@ jobs:
             echo "saga=$SAG_FULL" >> $GITHUB_OUTPUT
             echo "process-manager=$PMG_FULL" >> $GITHUB_OUTPUT
 
-            # Extract just the tag part (after the last colon) for Helm
-            echo "aggregate-tag=${AGG_FULL##*:}" >> $GITHUB_OUTPUT
-            echo "projector-tag=${PRJ_FULL##*:}" >> $GITHUB_OUTPUT
-            echo "saga-tag=${SAG_FULL##*:}" >> $GITHUB_OUTPUT
-            echo "process-manager-tag=${PMG_FULL##*:}" >> $GITHUB_OUTPUT
+            # Extract just the tag part for Helm
+            # First remove the @sha256:... digest, then get the tag after the last colon
+            # E.g., ghcr.io/repo/image:abc123@sha256:def456 -> abc123
+            extract_tag() {
+              local full_ref="$1"
+              # Remove @sha256:... suffix if present
+              local without_digest="${full_ref%@sha256:*}"
+              # Get the tag (everything after last colon)
+              echo "${without_digest##*:}"
+            }
+
+            echo "aggregate-tag=$(extract_tag "$AGG_FULL")" >> $GITHUB_OUTPUT
+            echo "projector-tag=$(extract_tag "$PRJ_FULL")" >> $GITHUB_OUTPUT
+            echo "saga-tag=$(extract_tag "$SAG_FULL")" >> $GITHUB_OUTPUT
+            echo "process-manager-tag=$(extract_tag "$PMG_FULL")" >> $GITHUB_OUTPUT
 
             echo "Found runtime image tags from CI workflow"
           else
@@ -209,19 +220,33 @@ jobs:
           kubectl cluster-info
 
       # Load images into Kind
+      # We need to re-tag images to use just the tag (without @sha256:digest suffix)
+      # so that Kubernetes can find them by the tag Helm specifies
       - name: Load runtime images into Kind
         run: |
-          echo "Loading aggregate: ${{ steps.runtime.outputs.aggregate }}"
-          kind load docker-image "${{ steps.runtime.outputs.aggregate }}" --name angzarr
+          # Re-tag and load each runtime image
+          # Helm requests images with just the tag, not the full digest reference
 
-          echo "Loading projector: ${{ steps.runtime.outputs.projector }}"
-          kind load docker-image "${{ steps.runtime.outputs.projector }}" --name angzarr
+          AGG_TAG="${{ steps.runtime.outputs.aggregate-tag }}"
+          PRJ_TAG="${{ steps.runtime.outputs.projector-tag }}"
+          SAG_TAG="${{ steps.runtime.outputs.saga-tag }}"
+          PMG_TAG="${{ steps.runtime.outputs.process-manager-tag }}"
 
-          echo "Loading saga: ${{ steps.runtime.outputs.saga }}"
-          kind load docker-image "${{ steps.runtime.outputs.saga }}" --name angzarr
+          echo "Re-tagging and loading aggregate with tag: $AGG_TAG"
+          docker tag "${{ steps.runtime.outputs.aggregate }}" "${{ env.IMAGE_PREFIX }}/angzarr-aggregate:$AGG_TAG"
+          kind load docker-image "${{ env.IMAGE_PREFIX }}/angzarr-aggregate:$AGG_TAG" --name angzarr
 
-          echo "Loading process-manager: ${{ steps.runtime.outputs.process-manager }}"
-          kind load docker-image "${{ steps.runtime.outputs.process-manager }}" --name angzarr
+          echo "Re-tagging and loading projector with tag: $PRJ_TAG"
+          docker tag "${{ steps.runtime.outputs.projector }}" "${{ env.IMAGE_PREFIX }}/angzarr-projector:$PRJ_TAG"
+          kind load docker-image "${{ env.IMAGE_PREFIX }}/angzarr-projector:$PRJ_TAG" --name angzarr
+
+          echo "Re-tagging and loading saga with tag: $SAG_TAG"
+          docker tag "${{ steps.runtime.outputs.saga }}" "${{ env.IMAGE_PREFIX }}/angzarr-saga:$SAG_TAG"
+          kind load docker-image "${{ env.IMAGE_PREFIX }}/angzarr-saga:$SAG_TAG" --name angzarr
+
+          echo "Re-tagging and loading process-manager with tag: $PMG_TAG"
+          docker tag "${{ steps.runtime.outputs.process-manager }}" "${{ env.IMAGE_PREFIX }}/angzarr-process-manager:$PMG_TAG"
+          kind load docker-image "${{ env.IMAGE_PREFIX }}/angzarr-process-manager:$PMG_TAG" --name angzarr
 
       - name: Load Rust example images into Kind
         run: |
