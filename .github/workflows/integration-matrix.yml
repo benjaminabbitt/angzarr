@@ -71,6 +71,12 @@ jobs:
         if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        if: matrix.language == 'rust'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+
       # Calculate image tags to match ci.yml's content-hash scheme
       - name: Calculate image tags
         id: tags
