@@ -240,7 +240,7 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
                     #(#state_router_on_calls)*
             });
 
-        /// Auto-generated handler wrapper implementing AggregateDomainHandler.
+        /// Auto-generated handler wrapper implementing CommandHandlerDomainHandler.
         pub struct #handler_name {
             inner: #self_ty,
         }
@@ -251,7 +251,7 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
             }
         }
 
-        impl angzarr_client::AggregateDomainHandler for #handler_name {
+        impl angzarr_client::CommandHandlerDomainHandler for #handler_name {
             type State = #state_ty;
 
             fn command_types(&self) -> Vec<String> {
@@ -286,12 +286,12 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
         }
 
         impl #self_ty {
-            /// Creates an AggregateRouter from this aggregate's annotated methods.
-            pub fn into_router(self) -> angzarr_client::AggregateRouter<#state_ty, #handler_name>
+            /// Creates an CommandHandlerRouter from this aggregate's annotated methods.
+            pub fn into_router(self) -> angzarr_client::CommandHandlerRouter<#state_ty, #handler_name>
             where
                 Self: Send + Sync + 'static,
             {
-                angzarr_client::AggregateRouter::new(#domain, #domain, #handler_name::new(self))
+                angzarr_client::CommandHandlerRouter::new(#domain, #domain, #handler_name::new(self))
             }
         }
     }

@@ -4,8 +4,8 @@
 
 use angzarr_client::proto::{event_page, CommandBook, CommandPage, Cover, EventBook, EventPage};
 use angzarr_client::{
-    type_url, AggregateDomainHandler, AggregateRouter, CommandRejectedError, CommandResult,
-    ProcessManagerDomainHandler, ProcessManagerResponse, ProcessManagerRouter,
+    type_url, CommandHandlerDomainHandler, CommandHandlerRouter, CommandRejectedError,
+    CommandResult, ProcessManagerDomainHandler, ProcessManagerResponse, ProcessManagerRouter,
     ProjectorDomainHandler, ProjectorRouter, SagaDomainHandler, SagaHandlerResponse, SagaRouter,
     StateRouter,
 };
@@ -124,7 +124,7 @@ impl TestAggregateHandler {
     }
 }
 
-impl AggregateDomainHandler for TestAggregateHandler {
+impl CommandHandlerDomainHandler for TestAggregateHandler {
     type State = TestState;
 
     fn command_types(&self) -> Vec<String> {
@@ -339,7 +339,7 @@ impl ProcessManagerDomainHandler<TestPMState> for TestPMHandler {
 #[derive(World)]
 #[world(init = Self::new)]
 pub struct RouterWorld {
-    aggregate_router: Option<AggregateRouter<TestState, TestAggregateHandler>>,
+    command_handler_router: Option<CommandHandlerRouter<TestState, TestAggregateHandler>>,
     saga_router: Option<SagaRouter<TestSagaHandler>>,
     projector_router: Option<ProjectorRouter>,
     pm_router: Option<ProcessManagerRouter<TestPMState>>,
@@ -363,7 +363,7 @@ impl std::fmt::Debug for RouterWorld {
 impl RouterWorld {
     fn new() -> Self {
         Self {
-            aggregate_router: None,
+            command_handler_router: None,
             saga_router: None,
             projector_router: None,
             pm_router: None,
@@ -382,7 +382,7 @@ impl RouterWorld {
 // ============================================================================
 
 #[given(expr = "an aggregate router with handlers for {string} and {string}")]
-async fn given_aggregate_router_two_handlers(
+async fn given_command_handler_router_two_handlers(
     world: &mut RouterWorld,
     handler1: String,
     handler2: String,
@@ -393,18 +393,18 @@ async fn given_aggregate_router_two_handlers(
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("orders", "orders", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("orders", "orders", handler));
 }
 
 #[given("an aggregate router")]
-async fn given_aggregate_router(world: &mut RouterWorld) {
+async fn given_command_handler_router(world: &mut RouterWorld) {
     let handler = TestAggregateHandler::new(
         "TestCommand",
         "OtherCommand",
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("orders", "orders", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("orders", "orders", handler));
 }
 
 #[given("an aggregate with existing events")]
@@ -445,14 +445,14 @@ async fn given_aggregate_at_sequence(world: &mut RouterWorld, seq: u32) {
 }
 
 #[given(expr = "an aggregate router with handlers for {string}")]
-async fn given_aggregate_router_one_handler(world: &mut RouterWorld, handler1: String) {
+async fn given_command_handler_router_one_handler(world: &mut RouterWorld, handler1: String) {
     let handler = TestAggregateHandler::new(
         &handler1,
         "unused",
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("orders", "orders", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("orders", "orders", handler));
 }
 
 #[given(expr = "a saga router with handlers for {string} and {string}")]
@@ -543,7 +543,7 @@ async fn given_router(world: &mut RouterWorld) {
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("test", "test", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("test", "test", handler));
 }
 
 #[given("a router with handler for protobuf message type")]
@@ -554,7 +554,7 @@ async fn given_router_with_protobuf(world: &mut RouterWorld) {
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("test", "test", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("test", "test", handler));
 }
 
 #[given("an aggregate with guard checking aggregate exists")]
@@ -565,7 +565,7 @@ async fn given_aggregate_with_guard(world: &mut RouterWorld) {
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("orders", "orders", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("orders", "orders", handler));
 }
 
 #[given("an aggregate handler with validation")]
@@ -576,7 +576,7 @@ async fn given_aggregate_with_validation(world: &mut RouterWorld) {
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("orders", "orders", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("orders", "orders", handler));
 }
 
 #[given("an aggregate handler")]
@@ -587,7 +587,7 @@ async fn given_aggregate_handler(world: &mut RouterWorld) {
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("orders", "orders", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("orders", "orders", handler));
 }
 
 #[given(expr = "events: {word}, {word}, {word}")]
@@ -785,7 +785,7 @@ async fn when_register_handler(world: &mut RouterWorld, handler_type: String) {
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("test", "test", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("test", "test", handler));
 }
 
 #[when(expr = "I register handlers for {string}, {string}, and {string}")]
@@ -802,7 +802,7 @@ async fn when_register_three_handlers(
         world.handler_invoked.clone(),
         world.other_handler_invoked.clone(),
     );
-    world.aggregate_router = Some(AggregateRouter::new("test", "test", handler));
+    world.command_handler_router = Some(CommandHandlerRouter::new("test", "test", handler));
 }
 
 #[when("I receive an event with that type")]
@@ -1040,7 +1040,7 @@ async fn then_preserve_correlation(_world: &mut RouterWorld) {
 async fn then_events_match(world: &mut RouterWorld, suffix: String) {
     // Verify by checking that the handler was set up for this type
     // The router was created with handler1_type matching the suffix
-    assert!(world.aggregate_router.is_some());
+    assert!(world.command_handler_router.is_some());
     // Type registration is implicit in handler creation
     assert!(suffix.len() > 0);
 }
@@ -1048,7 +1048,7 @@ async fn then_events_match(world: &mut RouterWorld, suffix: String) {
 #[then(expr = "events ending with {string} should NOT match")]
 async fn then_events_not_match(world: &mut RouterWorld, suffix: String) {
     // Verify by checking that the handler was NOT set up for this type
-    assert!(world.aggregate_router.is_some());
+    assert!(world.command_handler_router.is_some());
     // The handler was created with specific types, not this one
     assert!(suffix.len() > 0);
 }

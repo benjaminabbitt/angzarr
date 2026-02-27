@@ -1,7 +1,7 @@
 //! Hand bounded context gRPC server.
 
 use agg_hand::HandHandler;
-use angzarr_client::{run_command_handler_server, AggregateRouter};
+use angzarr_client::{run_command_handler_server, CommandHandlerRouter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -12,7 +12,7 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let router = AggregateRouter::new("hand", "hand", HandHandler::new());
+    let router = CommandHandlerRouter::new("hand", "hand", HandHandler::new());
 
     run_command_handler_server("hand", 50003, router)
         .await
