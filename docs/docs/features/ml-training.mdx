@@ -223,6 +223,8 @@ Direct event access works well for many workloads. But if your training jobs are
 
 The proto schema travels with the data. Your training code still sees the same messages—just from a different backing store.
 
+This lets you start simple—training directly against the event store—and migrate to isolated infrastructure only when load demands it. No upfront complexity tax.
+
 ### Replay from External Sources
 
 Events stored in your data warehouse can flow back through Angzarr. Replay them through the same domains to rebuild state, or route them through entirely different domains to test new aggregate logic, run backtests, or generate derived datasets.
