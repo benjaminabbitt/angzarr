@@ -1,8 +1,8 @@
-//! Player command handler implementing AggregateDomainHandler.
+//! Player command handler implementing CommandHandlerDomainHandler.
 
 use angzarr_client::proto::{CommandBook, EventBook, Notification};
 use angzarr_client::{
-    dispatch_command, AggregateDomainHandler, CommandResult, RejectionHandlerResponse, StateRouter,
+    dispatch_command, CommandHandlerDomainHandler, CommandResult, RejectionHandlerResponse, StateRouter,
 };
 use prost_types::Any;
 
@@ -24,7 +24,7 @@ impl Default for PlayerHandler {
     }
 }
 
-impl AggregateDomainHandler for PlayerHandler {
+impl CommandHandlerDomainHandler for PlayerHandler {
     type State = PlayerState;
 
     fn command_types(&self) -> Vec<String> {

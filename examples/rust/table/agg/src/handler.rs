@@ -1,8 +1,8 @@
-//! Table command handler implementing AggregateDomainHandler.
+//! Table command handler implementing CommandHandlerDomainHandler.
 
 use angzarr_client::proto::{CommandBook, EventBook, Notification};
 use angzarr_client::{
-    dispatch_command, AggregateDomainHandler, CommandResult, RejectionHandlerResponse, StateRouter,
+    dispatch_command, CommandHandlerDomainHandler, CommandResult, RejectionHandlerResponse, StateRouter,
 };
 use prost_types::Any;
 
@@ -24,7 +24,7 @@ impl Default for TableHandler {
     }
 }
 
-impl AggregateDomainHandler for TableHandler {
+impl CommandHandlerDomainHandler for TableHandler {
     type State = TableState;
 
     fn command_types(&self) -> Vec<String> {

@@ -41,14 +41,19 @@ COPY client/csharp ./client/csharp
 COPY examples/csharp/Angzarr.Examples.sln ./examples/csharp/
 COPY examples/csharp/Angzarr.Proto/Angzarr.Proto.csproj ./examples/csharp/Angzarr.Proto/
 COPY examples/csharp/Player/Agg/Player.Agg.csproj ./examples/csharp/Player/Agg/
+COPY examples/csharp/Player/Upc/Player.Upc.csproj ./examples/csharp/Player/Upc/
+COPY examples/csharp/Player/SagaTable/Player.SagaTable.csproj ./examples/csharp/Player/SagaTable/
 COPY examples/csharp/Table/Agg/Table.Agg.csproj ./examples/csharp/Table/Agg/
 COPY examples/csharp/Hand/Agg/Hand.Agg.csproj ./examples/csharp/Hand/Agg/
 COPY examples/csharp/Table/SagaHand/Table.SagaHand.csproj ./examples/csharp/Table/SagaHand/
+COPY examples/csharp/Table/SagaHandOO/Table.SagaHandOO.csproj ./examples/csharp/Table/SagaHandOO/
 COPY examples/csharp/Table/SagaPlayer/Table.SagaPlayer.csproj ./examples/csharp/Table/SagaPlayer/
 COPY examples/csharp/Hand/SagaTable/Hand.SagaTable.csproj ./examples/csharp/Hand/SagaTable/
 COPY examples/csharp/Hand/SagaPlayer/Hand.SagaPlayer.csproj ./examples/csharp/Hand/SagaPlayer/
 COPY examples/csharp/HandFlow/HandFlow.csproj ./examples/csharp/HandFlow/
 COPY examples/csharp/PrjOutput/PrjOutput.csproj ./examples/csharp/PrjOutput/
+COPY examples/csharp/PrjOutputOO/PrjOutputOO.csproj ./examples/csharp/PrjOutputOO/
+COPY examples/csharp/PrjCloudEvents/PrjCloudEvents.csproj ./examples/csharp/PrjCloudEvents/
 COPY examples/csharp/Tests/Tests.csproj ./examples/csharp/Tests/
 COPY examples/csharp/HandFlowOO/HandFlowOO.csproj ./examples/csharp/HandFlowOO/
 
