@@ -364,6 +364,7 @@ impl<'a> SagaRetryBuilder<'a> {
 /// 5. Execute commands with retry
 /// 6. Inject facts into target aggregates
 #[tracing::instrument(name = "saga.orchestrate", skip_all, fields(%saga_name, %correlation_id))]
+#[allow(clippy::too_many_arguments)]
 pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,

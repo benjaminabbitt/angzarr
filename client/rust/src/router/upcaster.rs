@@ -171,7 +171,7 @@ impl UpcasterRouter {
                             EventPage {
                                 payload: Some(event_page::Payload::Event(new_event)),
                                 sequence_type: page.sequence_type.clone(),
-                                created_at: page.created_at.clone(),
+                                created_at: page.created_at,
                             }
                         } else {
                             page.clone()
