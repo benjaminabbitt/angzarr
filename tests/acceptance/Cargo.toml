@@ -1,0 +1,45 @@
+[package]
+name = "acceptance-tests"
+version = "0.1.0"
+edition = "2021"
+description = "Acceptance tests for angzarr deployed services - used across all language implementations"
+publish = false
+
+# NOTE: This test framework is used to validate ALL language implementations
+# (Rust, Go, Python, Java, C#, C++) when deployed to Kind/k3s/k8s clusters.
+# It connects via gRPC to the deployed aggregate coordinators.
+#
+# Location: tests/acceptance/
+# Run: cargo test --package acceptance-tests -- --tags @container
+#
+# Environment variables:
+#   PLAYER_ENDPOINT: Player aggregate coordinator (default: http://localhost:1310)
+#   TABLE_ENDPOINT: Table aggregate coordinator (default: http://localhost:1311)
+#   HAND_ENDPOINT: Hand aggregate coordinator (default: http://localhost:1312)
+
+[dependencies]
+# Angzarr client library
+angzarr-client = { path = "../../client/rust" }
+
+# BDD testing
+cucumber = "0.21"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Proto/gRPC
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "v5"] }
+chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[test]]
+name = "acceptance"
+harness = false

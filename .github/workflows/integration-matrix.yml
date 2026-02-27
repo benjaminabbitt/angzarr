@@ -304,15 +304,60 @@ jobs:
           echo "Final pod status:"
           kubectl get pods -n angzarr
 
-      # Run acceptance tests
+      # Port-forward aggregate services for acceptance tests
+      - name: Port-forward services
+        run: |
+          echo "Setting up port-forwards to aggregate services..."
+          kubectl port-forward -n angzarr svc/player-aggregate 1310:1310 &
+          echo $! > /tmp/pf-player.pid
+          kubectl port-forward -n angzarr svc/table-aggregate 1311:1310 &
+          echo $! > /tmp/pf-table.pid
+          kubectl port-forward -n angzarr svc/hand-aggregate 1312:1310 &
+          echo $! > /tmp/pf-hand.pid
+          sleep 5
+          echo "Port-forwards established"
+
+      # Install grpcurl for health checks
+      - name: Install grpcurl
+        run: |
+          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.8.9/grpcurl_1.8.9_linux_x86_64.tar.gz | tar xz
+          sudo mv grpcurl /usr/local/bin/
+
+      # Health check deployed services
+      - name: Health check services
+        run: |
+          echo "Checking gRPC health endpoints..."
+          for port in 1310 1311 1312; do
+            echo "Checking localhost:$port..."
+            grpcurl -plaintext -connect-timeout 10 \
+              -import-path proto \
+              -proto health/v1/health.proto \
+              -d '{"service": ""}' \
+              localhost:$port grpc.health.v1.Health/Check || {
+                echo "Health check failed for port $port"
+                exit 1
+              }
+          done
+          echo "All services healthy!"
+
+      # Run Rust acceptance tests against deployed services
+      # NOTE: These tests validate ANY language implementation via gRPC
+      # See: tests/acceptance/README.md
       - name: Run acceptance tests
         run: |
-          cd examples/rust
-          just test-acceptance
+          cargo test --package acceptance-tests --test acceptance -- --tags @container
         env:
-          DEVCONTAINER: "true"
-          ANGZARR_TEST_MODE: direct
-          ANGZARR_ENDPOINT: "localhost:9084"
+          PLAYER_ENDPOINT: "http://localhost:1310"
+          TABLE_ENDPOINT: "http://localhost:1311"
+          HAND_ENDPOINT: "http://localhost:1312"
+
+      # Cleanup port-forwards
+      - name: Cleanup port-forwards
+        if: always()
+        run: |
+          for f in /tmp/pf-*.pid; do
+            [ -f "$f" ] && kill $(cat "$f") 2>/dev/null || true
+          done
 
       # Collect logs on failure
       - name: Collect logs on failure
