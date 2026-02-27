@@ -70,18 +70,21 @@ Each language runs these scenarios against its implementation. If the tests pass
 
 ## Example: Poker Platform
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Event Store                             │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        ▼                     ▼                     ▼
-  ┌──────────┐          ┌──────────┐          ┌──────────┐
-  │   Rust   │          │  Python  │          │   Java   │
-  │ Hand Agg │          │ ML Model │          │ Payment  │
-  │(low lat) │          │Projector │          │ Gateway  │
-  └──────────┘          └──────────┘          └──────────┘
+```mermaid
+flowchart TB
+    subgraph store["Event Store"]
+        events[(Events)]
+    end
+
+    subgraph components["Components"]
+        rust["🦀 Rust<br/>Hand Aggregate<br/>(low latency)"]
+        python["🐍 Python<br/>ML Projector<br/>(PyTorch)"]
+        java["☕ Java<br/>Payment Gateway<br/>(legacy APIs)"]
+    end
+
+    events --> rust
+    events --> python
+    events --> java
 ```
 
 - **Rust**: Hand aggregate handles the hot path—player actions during live play. Microsecond latency matters.

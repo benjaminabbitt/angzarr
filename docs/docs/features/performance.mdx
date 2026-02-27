@@ -20,15 +20,21 @@ The framework provides three mechanisms: snapshots, async processing, and merge 
 
 Snapshots cache aggregate state at intervals, eliminating the need to replay from the beginning:
 
+```mermaid
+flowchart LR
+    subgraph without["Without Snapshots"]
+        e0["Event 0"] --> e1["..."] --> e99k["Event 99,999"] --> s1["State"]
+    end
 ```
-Without snapshots:
-  Event 0 → Event 1 → ... → Event 99,999 → Current State
-  (replay all 100,000 events)
 
-With snapshots:
-  Snapshot @ 99,000 → Event 99,001 → ... → Event 99,999 → Current State
-  (replay only 999 events)
+```mermaid
+flowchart LR
+    subgraph with["With Snapshots"]
+        snap["Snapshot<br/>@ 99,000"] --> e99001["Event 99,001"] --> e2["..."] --> e99999["Event 99,999"] --> s2["State"]
+    end
 ```
+
+Without: replay 100,000 events. With: replay 999 events.
 
 ### Automatic Snapshotting
 
@@ -200,9 +206,10 @@ lag = projection_time - event_time
 
 Aggregates partition by ID. Each aggregate instance handles one root:
 
-```
-Table A events → Coordinator A → Table A aggregate
-Table B events → Coordinator B → Table B aggregate
+```mermaid
+flowchart LR
+    ea["Table A events"] --> ca["Coordinator A"] --> aa["Table A aggregate"]
+    eb["Table B events"] --> cb["Coordinator B"] --> ab["Table B aggregate"]
 ```
 
 No cross-aggregate coordination needed. Scale by adding coordinator instances.

@@ -26,12 +26,13 @@ They all speak CloudEvents.
 
 Events flow through your projector, which decides what to publish:
 
-```
-EventBook → [Projector] → CloudEventsResponse → [Sink]
-                                                   │
-                                       ┌───────────┴───────────┐
-                                       ▼                       ▼
-                                 HTTP Webhook             Kafka Topic
+```mermaid
+flowchart LR
+    eb[EventBook] --> proj[Projector]
+    proj --> resp[CloudEventsResponse]
+    resp --> sink{Sink}
+    sink --> http[HTTP Webhook]
+    sink --> kafka[Kafka Topic]
 ```
 
 You control the transformation. Not every internal event needs external publication.
