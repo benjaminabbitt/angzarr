@@ -21,11 +21,11 @@ Traditional solutions—two-phase commit, distributed transactions—are complex
 When a saga issues a command that gets rejected:
 
 ```
-1. Hand saga issues DeductFromPot → Table aggregate
-2. Table rejects: "Player already folded"
-3. Framework sends RejectionNotification to saga
-4. Saga's source aggregate (Hand) receives notification
-5. Hand emits compensation event: BetReverted
+1. Hand emits BetPlaced event
+2. Saga (Hand→Table) receives event, issues DeductFromPot → Table
+3. Table rejects: "Player already folded"
+4. Framework sends RejectionNotification directly to Hand aggregate
+5. Hand's @rejected handler emits compensation event: BetReverted
 ```
 
 The audit trail shows exactly what happened: the attempt, the rejection, and the recovery.
@@ -39,15 +39,16 @@ sequenceDiagram
     participant Hand as Hand Aggregate
     participant Saga as Hand→Table Saga
     participant Table as Table Aggregate
+    participant FW as Framework
 
     Hand->>Saga: BetPlaced
     Saga->>Table: DeductFromPlayerStack
-    Table-->>Saga: Rejected (player folded)
-    Saga->>Hand: RejectionNotification
+    Table-->>FW: Rejected (player folded)
+    FW->>Hand: RejectionNotification
     Hand->>Hand: BetReverted
 ```
 
-The rejection flows back through the saga to the originating aggregate, which decides how to compensate.
+The rejection notification bypasses the saga entirely. The framework routes it directly to the source aggregate using the return address stamped on the original command. The saga is stateless—it doesn't need to know about rejections. The source aggregate decides how to compensate.
 
 ---
 
