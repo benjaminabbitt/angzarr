@@ -599,36 +599,36 @@ def step_then_process_created_with_phase(context, phase):
     """Verify process created with specified phase."""
     expected = getattr(HandPhase, phase)
     assert context.process is not None, "No process created"
-    assert (
-        context.process.phase == expected
-    ), f"Expected phase {phase}, got {context.process.phase}"
+    assert context.process.phase == expected, (
+        f"Expected phase {phase}, got {context.process.phase}"
+    )
 
 
 @then("the process has (?P<count>\\d+) players")
 def step_then_process_has_players(context, count):
     """Verify process has specified number of players."""
     expected = int(count)
-    assert (
-        len(context.process.players) == expected
-    ), f"Expected {expected} players, got {len(context.process.players)}"
+    assert len(context.process.players) == expected, (
+        f"Expected {expected} players, got {len(context.process.players)}"
+    )
 
 
 @then("the process has dealer_position (?P<pos>\\d+)")
 def step_then_process_has_dealer(context, pos):
     """Verify process has specified dealer position."""
     expected = int(pos)
-    assert (
-        context.process.dealer_position == expected
-    ), f"Expected dealer {expected}, got {context.process.dealer_position}"
+    assert context.process.dealer_position == expected, (
+        f"Expected dealer {expected}, got {context.process.dealer_position}"
+    )
 
 
 @then("the process transitions to phase (?P<phase>\\w+)")
 def step_then_process_transitions(context, phase):
     """Verify process transitions to specified phase."""
     expected = getattr(HandPhase, phase)
-    assert (
-        context.process.phase == expected
-    ), f"Expected phase {phase}, got {context.process.phase}"
+    assert context.process.phase == expected, (
+        f"Expected phase {phase}, got {context.process.phase}"
+    )
 
 
 @then("a PostBlind command is sent for (?P<blind_type>\\w+) blind")
@@ -661,9 +661,9 @@ def step_then_players_reset(context, positions):
     for pos_str in positions.replace("and", ",").split(","):
         pos = int(pos_str.strip())
         if pos in context.process.players:
-            assert not context.process.players[
-                pos
-            ].has_acted, f"Player at {pos} should have has_acted=False"
+            assert not context.process.players[pos].has_acted, (
+                f"Player at {pos} should have has_acted=False"
+            )
 
 
 @then("the betting round ends")
@@ -686,9 +686,9 @@ def step_then_process_advances(context):
 def step_then_deal_community_sent(context, count):
     """Verify DealCommunityCards command sent."""
     commands = context.command_sender.get_all_commands_of_type("DealCommunityCards")
-    assert (
-        len(commands) >= 1
-    ), f"Expected DealCommunityCards command, got {len(commands)}"
+    assert len(commands) >= 1, (
+        f"Expected DealCommunityCards command, got {len(commands)}"
+    )
 
     cmd_any = commands[0].pages[0].command
     cmd = hand.DealCommunityCards()
@@ -741,9 +741,9 @@ def step_then_pm_sends_action(context, action):
 def step_then_bets_reset(context):
     """Verify all players have bet_this_round reset."""
     for player in context.process.players.values():
-        assert (
-            player.bet_this_round == 0
-        ), f"Player at {player.position} should have bet_this_round=0"
+        assert player.bet_this_round == 0, (
+            f"Player at {player.position} should have bet_this_round=0"
+        )
 
 
 @then("all players have has_acted reset to false")
@@ -751,17 +751,17 @@ def step_then_all_reset(context):
     """Verify all players have has_acted reset."""
     for player in context.process.players.values():
         if not player.has_folded and not player.is_all_in:
-            assert (
-                not player.has_acted
-            ), f"Player at {player.position} should have has_acted=False"
+            assert not player.has_acted, (
+                f"Player at {player.position} should have has_acted=False"
+            )
 
 
 @then("current_bet is reset to 0")
 def step_then_current_bet_reset(context):
     """Verify current bet is reset."""
-    assert (
-        context.process.current_bet == 0
-    ), f"Expected current_bet=0, got {context.process.current_bet}"
+    assert context.process.current_bet == 0, (
+        f"Expected current_bet=0, got {context.process.current_bet}"
+    )
 
 
 @then("action_on is set to first player after dealer")
@@ -774,9 +774,9 @@ def step_then_action_after_dealer(context):
 def step_then_pot_total(context, amount):
     """Verify pot total."""
     expected = int(amount)
-    assert (
-        context.process.pot_total == expected
-    ), f"Expected pot {expected}, got {context.process.pot_total}"
+    assert context.process.pot_total == expected, (
+        f"Expected pot {expected}, got {context.process.pot_total}"
+    )
 
 
 @then('"(?P<player>[^"]+)" stack is (?P<stack>\\d+)')
@@ -793,15 +793,15 @@ def step_then_player_stack(context, player, stack):
 @then("any pending timeout is cancelled")
 def step_then_timeout_cancelled(context):
     """Verify timeout is cancelled."""
-    assert (
-        context.hand_id not in context.pm._timeout_tasks
-    ), "Timeout should be cancelled"
+    assert context.hand_id not in context.pm._timeout_tasks, (
+        "Timeout should be cancelled"
+    )
 
 
 @then("betting_phase is set to (?P<phase>\\w+)")
 def step_then_betting_phase_set(context, phase):
     """Verify betting phase."""
     expected = getattr(poker_types, phase)
-    assert (
-        context.process.betting_phase == expected
-    ), f"Expected {phase}, got {context.process.betting_phase}"
+    assert context.process.betting_phase == expected, (
+        f"Expected {phase}, got {context.process.betting_phase}"
+    )

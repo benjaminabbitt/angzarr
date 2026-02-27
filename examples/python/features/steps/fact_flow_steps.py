@@ -694,9 +694,9 @@ def step_then_fact_has_sequence_number(context, seq):
     expected_seq = int(seq)
     assert context.injected_fact is not None, "No injected fact"
     # sequence is 0-indexed, scenario says "sequence number 4" means index 3
-    assert (
-        context.injected_fact.sequence == expected_seq - 1
-    ), f"Expected sequence {expected_seq - 1}, got {context.injected_fact.sequence}"
+    assert context.injected_fact.sequence == expected_seq - 1, (
+        f"Expected sequence {expected_seq - 1}, got {context.injected_fact.sequence}"
+    )
 
 
 @then(r"subsequent events continue from sequence (?P<seq>\d+)")
@@ -704,9 +704,9 @@ def step_then_subsequent_sequence(context, seq):
     """Verify next event would have correct sequence."""
     expected_next = int(seq) - 1  # 0-indexed
     actual_next = len(context.player_events)
-    assert (
-        actual_next == expected_next
-    ), f"Expected next sequence {expected_next}, got {actual_next}"
+    assert actual_next == expected_next, (
+        f"Expected next sequence {expected_next}, got {actual_next}"
+    )
 
 
 @then(r"a PlayerSatOut fact is injected into the table aggregate")
@@ -814,26 +814,26 @@ def step_then_saga_fails(context, text):
 
     # If saga raised an error, check it
     if context.saga_error:
-        assert (
-            text.lower() in context.saga_error.lower()
-        ), f"Expected '{text}' in error, got: {context.saga_error}"
+        assert text.lower() in context.saga_error.lower(), (
+            f"Expected '{text}' in error, got: {context.saga_error}"
+        )
 
 
 @then(r"no commands from that saga are executed")
 def step_then_no_commands_executed(context):
     """Verify no commands were produced."""
     if context.saga_response:
-        assert (
-            not context.saga_response.commands
-        ), f"Expected no commands, got {len(context.saga_response.commands)}"
+        assert not context.saga_response.commands, (
+            f"Expected no commands, got {len(context.saga_response.commands)}"
+        )
 
 
 @then(r"only one event is stored in the aggregate")
 def step_then_one_event_stored(context):
     """Verify only one event stored (idempotency)."""
-    assert (
-        len(context.stored_events) == 1
-    ), f"Expected 1 event, got {len(context.stored_events)}"
+    assert len(context.stored_events) == 1, (
+        f"Expected 1 event, got {len(context.stored_events)}"
+    )
 
 
 @then(r"the second injection succeeds without error")
