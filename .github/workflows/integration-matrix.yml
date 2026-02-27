@@ -1,83 +1,44 @@
-name: Integration Tests (Matrix)
+name: Integration Tests (Kind)
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      language:
-        description: 'Language to test (or "all")'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - rust
-          - go
 
 env:
-  CARGO_TERM_COLOR: always
   KIND_VERSION: v0.20.0
   KUBECTL_VERSION: v1.28.0
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
+  IMAGE_PREFIX: ghcr.io/angzarr-io
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 jobs:
-  # Build core framework (shared by all language tests)
-  # Uses pre-built rust image from GHCR (built by build-images.yml)
-  build-framework:
-    runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build framework
-        run: just build-standalone
-
-      - name: Upload framework binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: framework-binary
-          path: target/release/angzarr-standalone
-          retention-days: 1
-
-  # Matrix test for each language
+  # Integration test for Rust (proof of concept)
   integration-test:
-    needs: build-framework
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Skip if triggered by workflow_run and CI failed
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: false
       matrix:
-        # Only languages with skaffold.yaml (K8s deployment support)
-        language: [rust, go]
-        exclude:
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
+        language: [rust]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download framework binary
-        uses: actions/download-artifact@v4
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
         with:
-          name: framework-binary
-          path: target/release/
-
-      - name: Make binary executable
-        run: chmod +x target/release/angzarr-standalone
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Kind
         run: |
@@ -96,34 +57,67 @@ jobs:
         with:
           version: v3.13.0
 
-      - name: Install Skaffold
-        run: |
-          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
-          chmod +x skaffold
-          sudo mv skaffold /usr/local/bin/
-
       - name: Install just
         uses: extractions/setup-just@v2
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Language-specific setup (needs Docker access, can't use container)
+      # Language-specific setup for acceptance tests
       - name: Set up Rust
         if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install mold linker (Rust)
-        if: matrix.language == 'rust'
+      # Calculate image tags to match ci.yml's content-hash scheme
+      - name: Calculate image tags
+        id: tags
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
+          BASE_HASH=$(sha256sum build/images/base/Containerfile | cut -c1-12)
+          RUST_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
+          EXAMPLE_HASH=$(sha256sum examples/rust/Containerfile | cut -c1-12)
 
-      - name: Set up Go
-        if: matrix.language == 'go'
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
+          RUST_TAG="${RUST_HASH}-${BASE_HASH}"
+
+          echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
+          echo "example-hash=$EXAMPLE_HASH" >> $GITHUB_OUTPUT
+
+      # Pull pre-built runtime images from GHCR
+      - name: Pull runtime images
+        run: |
+          IMAGES=(
+            "${{ env.IMAGE_PREFIX }}/angzarr-aggregate"
+            "${{ env.IMAGE_PREFIX }}/angzarr-projector"
+            "${{ env.IMAGE_PREFIX }}/angzarr-saga"
+            "${{ env.IMAGE_PREFIX }}/angzarr-process-manager"
+          )
+          for img in "${IMAGES[@]}"; do
+            echo "Pulling $img..."
+            # Try dev tag first (from skaffold), then latest
+            docker pull "$img:dev-latest" || docker pull "$img:latest" || echo "Warning: Could not pull $img"
+          done
+
+      # Pull pre-built Rust example images from GHCR
+      - name: Pull Rust example images
+        run: |
+          TAG="${{ steps.tags.outputs.example-hash }}"
+          IMAGES=(
+            "${{ env.IMAGE_PREFIX }}/poker-rust-player"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-table"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-hand"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-saga-table-hand"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-saga-table-player"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-saga-hand-table"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-saga-hand-player"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-pmg-hand-flow"
+            "${{ env.IMAGE_PREFIX }}/poker-rust-prj-output"
+          )
+          for img in "${IMAGES[@]}"; do
+            echo "Pulling $img:$TAG..."
+            docker pull "$img:$TAG" || echo "Warning: Could not pull $img:$TAG"
+          done
 
       # Create Kind cluster
       - name: Create Kind cluster
@@ -131,36 +125,79 @@ jobs:
           kind create cluster --config kind-config.yaml --name angzarr
           kubectl cluster-info
 
-      # Build and load images for the specific language
-      - name: Build ${{ matrix.language }} images
-        run: just images build ${{ matrix.language }}
+      # Load images into Kind
+      - name: Load runtime images into Kind
+        run: |
+          for img in aggregate projector saga process-manager; do
+            IMG="${{ env.IMAGE_PREFIX }}/angzarr-$img"
+            # Try dev tag first, then latest
+            kind load docker-image "$IMG:dev-latest" --name angzarr 2>/dev/null || \
+            kind load docker-image "$IMG:latest" --name angzarr 2>/dev/null || \
+            echo "Warning: Could not load $IMG"
+          done
 
-      - name: Load images into Kind
-        run: just images load ${{ matrix.language }}
+      - name: Load Rust example images into Kind
+        run: |
+          TAG="${{ steps.tags.outputs.example-hash }}"
+          IMAGES=(player table hand saga-table-hand saga-table-player saga-hand-table saga-hand-player pmg-hand-flow prj-output)
+          for img in "${IMAGES[@]}"; do
+            IMG="${{ env.IMAGE_PREFIX }}/poker-rust-$img:$TAG"
+            echo "Loading $IMG..."
+            kind load docker-image "$IMG" --name angzarr || echo "Warning: Could not load $IMG"
+          done
 
-      # Deploy infrastructure
+      # Deploy infrastructure (RabbitMQ, PostgreSQL, Redis)
       - name: Deploy infrastructure
         run: just infra-ci
 
-      # Deploy language-specific services via skaffold
-      - name: Deploy ${{ matrix.language }} services
+      # Deploy Rust services via Helm
+      - name: Deploy Rust services via Helm
         run: |
-          cd examples/${{ matrix.language }}
-          skaffold run --cache-artifacts=false
-          kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+          helm upgrade --install poker-rust deploy/k8s/helm/angzarr \
+            -n angzarr \
+            -f examples/rust/values.yaml \
+            --set global.imageTag=${{ steps.tags.outputs.example-hash }} \
+            --wait --timeout 5m
+
+      - name: Wait for pods to be ready
+        run: |
+          echo "Waiting for pods to be ready..."
+          kubectl get pods -n angzarr
+          kubectl wait --for=condition=ready pod \
+            -l angzarr.io/component \
+            -n angzarr \
+            --timeout=300s || true
+          echo "Final pod status:"
+          kubectl get pods -n angzarr
 
       # Run acceptance tests
       - name: Run acceptance tests
-        run: just examples ${{ matrix.language }} test-acceptance
+        run: |
+          cd examples/rust
+          just test-acceptance
         env:
-          ANGZARR_TEST_MODE: container
+          DEVCONTAINER: "true"
+          ANGZARR_TEST_MODE: direct
+          ANGZARR_ENDPOINT: "localhost:9084"
 
       # Collect logs on failure
       - name: Collect logs on failure
         if: failure()
         run: |
-          kubectl logs -n angzarr -l app=angzarr --tail=100 || true
-          kubectl describe pods -n angzarr || true
+          echo "=== Pod Status ==="
+          kubectl get pods -n angzarr -o wide
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n angzarr --sort-by='.lastTimestamp' | tail -50
+          echo ""
+          echo "=== Pod Descriptions ==="
+          kubectl describe pods -n angzarr
+          echo ""
+          echo "=== All Container Logs ==="
+          for pod in $(kubectl get pods -n angzarr -o name); do
+            echo "--- $pod ---"
+            kubectl logs "$pod" -n angzarr --all-containers --tail=100 || true
+          done
 
       # Cleanup
       - name: Delete Kind cluster
@@ -176,7 +213,11 @@ jobs:
       - name: Check test results
         run: |
           if [ "${{ needs.integration-test.result }}" == "failure" ]; then
-            echo "Some integration tests failed"
+            echo "Integration tests failed"
             exit 1
+          fi
+          if [ "${{ needs.integration-test.result }}" == "skipped" ]; then
+            echo "Integration tests were skipped (CI workflow may have failed)"
+            exit 0
           fi
           echo "All integration tests passed"

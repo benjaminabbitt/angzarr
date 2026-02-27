@@ -293,11 +293,8 @@ jobs:
         env:
           RUST_IMAGE: ${{ steps.rust.outputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            skaffold build --push --file-output=runtime-build.json
-          else
-            skaffold build --push=false --file-output=runtime-build.json
-          fi
+          # Always push runtime images (needed for integration tests on PRs)
+          skaffold build --push --file-output=runtime-build.json
           echo "Built images:"
           jq -r '.builds[].tag' runtime-build.json
 
@@ -594,7 +591,8 @@ jobs:
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Push example image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Push on main, or push Rust images on PRs (needed for integration tests)
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || matrix.lang == 'rust'
         run: |
           TAG="${{ steps.hash.outputs.hash }}"
           IMAGE="${{ env.IMAGE_PREFIX }}/${{ matrix.image_name }}:$TAG"
