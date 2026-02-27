@@ -39,7 +39,6 @@ COPY client/csharp ./client/csharp
 
 # Copy solution and project files for dependency resolution
 COPY examples/csharp/Angzarr.Examples.sln ./examples/csharp/
-COPY examples/csharp/Angzarr.Client/Angzarr.Client.csproj ./examples/csharp/Angzarr.Client/
 COPY examples/csharp/Angzarr.Proto/Angzarr.Proto.csproj ./examples/csharp/Angzarr.Proto/
 COPY examples/csharp/Player/Agg/Player.Agg.csproj ./examples/csharp/Player/Agg/
 COPY examples/csharp/Table/Agg/Table.Agg.csproj ./examples/csharp/Table/Agg/

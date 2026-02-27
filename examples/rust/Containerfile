@@ -39,6 +39,7 @@ COPY examples/rust/Cargo.toml examples/rust/Cargo.lock ./examples/rust/
 
 # Aggregates
 COPY examples/rust/player/agg/Cargo.toml ./examples/rust/player/agg/Cargo.toml
+COPY examples/rust/player/upc/Cargo.toml ./examples/rust/player/upc/Cargo.toml
 COPY examples/rust/table/agg/Cargo.toml ./examples/rust/table/agg/Cargo.toml
 COPY examples/rust/table/agg-oo/Cargo.toml ./examples/rust/table/agg-oo/Cargo.toml
 COPY examples/rust/hand/agg/Cargo.toml ./examples/rust/hand/agg/Cargo.toml
@@ -64,6 +65,7 @@ COPY examples/rust/tests/Cargo.toml ./examples/rust/tests/Cargo.toml
 # Create minimal stubs for all workspace members
 RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     examples/rust/player/agg/src \
+    examples/rust/player/upc/src \
     examples/rust/table/agg/src \
     examples/rust/table/agg-oo/src \
     examples/rust/hand/agg/src \
@@ -81,6 +83,7 @@ RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     echo "pub fn stub() {}" > client/rust/angzarr-macros/src/lib.rs && \
     echo "fn main() {}" > client/rust/tests/features.rs && \
     echo "fn main() {}" > examples/rust/player/agg/src/main.rs && \
+    echo "fn main() {}" > examples/rust/player/upc/src/main.rs && \
     echo "fn main() {}" > examples/rust/table/agg/src/main.rs && \
     echo "fn main() {}" > examples/rust/table/agg-oo/src/main.rs && \
     echo "fn main() {}" > examples/rust/hand/agg/src/main.rs && \
@@ -116,6 +119,7 @@ COPY client/rust/angzarr-macros/src ./client/rust/angzarr-macros/src
 
 # Aggregates
 COPY examples/rust/player/agg/src ./examples/rust/player/agg/src
+COPY examples/rust/player/upc/src ./examples/rust/player/upc/src
 COPY examples/rust/table/agg/src ./examples/rust/table/agg/src
 COPY examples/rust/table/agg-oo/src ./examples/rust/table/agg-oo/src
 COPY examples/rust/hand/agg/src ./examples/rust/hand/agg/src
@@ -193,6 +197,7 @@ COPY examples/rust/Cargo.toml examples/rust/Cargo.lock ./examples/rust/
 
 # Aggregates
 COPY examples/rust/player/agg/Cargo.toml ./examples/rust/player/agg/Cargo.toml
+COPY examples/rust/player/upc/Cargo.toml ./examples/rust/player/upc/Cargo.toml
 COPY examples/rust/table/agg/Cargo.toml ./examples/rust/table/agg/Cargo.toml
 COPY examples/rust/table/agg-oo/Cargo.toml ./examples/rust/table/agg-oo/Cargo.toml
 COPY examples/rust/hand/agg/Cargo.toml ./examples/rust/hand/agg/Cargo.toml
@@ -218,6 +223,7 @@ COPY examples/rust/tests/Cargo.toml ./examples/rust/tests/Cargo.toml
 # Create minimal stubs for all workspace members
 RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     examples/rust/player/agg/src \
+    examples/rust/player/upc/src \
     examples/rust/table/agg/src \
     examples/rust/table/agg-oo/src \
     examples/rust/hand/agg/src \
@@ -235,6 +241,7 @@ RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     echo "pub fn stub() {}" > client/rust/angzarr-macros/src/lib.rs && \
     echo "fn main() {}" > client/rust/tests/features.rs && \
     echo "fn main() {}" > examples/rust/player/agg/src/main.rs && \
+    echo "fn main() {}" > examples/rust/player/upc/src/main.rs && \
     echo "fn main() {}" > examples/rust/table/agg/src/main.rs && \
     echo "fn main() {}" > examples/rust/table/agg-oo/src/main.rs && \
     echo "fn main() {}" > examples/rust/hand/agg/src/main.rs && \
@@ -277,6 +284,7 @@ COPY client/rust/angzarr-macros/src ./client/rust/angzarr-macros/src
 
 # Aggregates
 COPY examples/rust/player/agg/src ./examples/rust/player/agg/src
+COPY examples/rust/player/upc/src ./examples/rust/player/upc/src
 COPY examples/rust/table/agg/src ./examples/rust/table/agg/src
 COPY examples/rust/table/agg-oo/src ./examples/rust/table/agg-oo/src
 COPY examples/rust/hand/agg/src ./examples/rust/hand/agg/src
