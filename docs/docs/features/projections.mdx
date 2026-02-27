@@ -92,19 +92,22 @@ The projector receives events, transforms them, and writes to its target storage
 | Mode | Use Case | Behavior |
 |------|----------|----------|
 | **Async** (default) | Analytics, indexing | Fire-and-forget, eventually consistent |
-| **Sync** | Read-after-write | Command waits for projector to complete |
+| **Sync** | Read-after-write | Command waits for projectors to complete |
 
-For the table UI, async is fine—players tolerate milliseconds of lag. For "show me my updated balance after this deposit," sync ensures consistency.
+Projectors just project—they don't know or care about sync mode. The **caller** specifies sync mode when sending commands:
 
 ```python
-# Async: UI updates eventually
-@projector("table-ui", sync=False)
-class TableUIProjector: ...
+# Default: async, returns immediately
+send_command(DepositFunds(amount=1000))
 
-# Sync: balance visible immediately
-@projector("player-balance", sync=True)
-class PlayerBalanceProjector: ...
+# Sync: framework waits for projectors, returns their results
+send_command(
+    DepositFunds(amount=1000),
+    sync_mode=SyncMode.SYNC_MODE_SIMPLE,
+)
 ```
+
+The framework decides whether to return projection results to the caller. The projector code is identical either way.
 
 ---
 

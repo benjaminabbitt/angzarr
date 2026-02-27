@@ -84,31 +84,24 @@ Trade consistency for throughput:
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
+| **Async** (default) | Command returns immediately | High throughput, eventual consistency |
 | **Sync** | Command waits for projectors | Read-after-write needed |
-| **Async** | Command returns immediately | High throughput, eventual consistency |
 
-### Configuring Per-Projector
-
-```python
-# Balance updates must be visible immediately
-@projector("player-balance", sync=True)
-class BalanceProjector: ...
-
-# Leaderboard can lag slightly
-@projector("leaderboard", sync=False)
-class LeaderboardProjector: ...
-```
-
-### Command-Level Override
+Sync mode is specified per-command by the caller:
 
 ```python
-# This specific command needs sync
+# Async (default): fire-and-forget, high throughput
+send_command(PlayerAction(action=FOLD))
+
+# Sync: wait for projectors before returning
 result = send_command(
     DepositFunds(amount=1000),
-    sync_projectors=["player-balance"],
+    sync_mode=SyncMode.SYNC_MODE_SIMPLE,
 )
-# Balance is guaranteed visible after this returns
+# Projections guaranteed updated when this returns
 ```
+
+Projectors are unaware of sync mode—they just project. The framework decides whether to wait for them based on the command request.
 
 ---
 
