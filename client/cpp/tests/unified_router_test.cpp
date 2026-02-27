@@ -97,8 +97,8 @@ class MockSagaHandler : public SagaDomainHandler {
         return {cover};
     }
 
-    std::vector<CommandBook> execute(const EventBook& source, const google::protobuf::Any& event,
-                                     const std::vector<EventBook>& destinations) override {
+    SagaHandlerResponse execute(const EventBook& source, const google::protobuf::Any& event,
+                                const std::vector<EventBook>& destinations) override {
         execute_called_ = true;
         destinations_count_ = static_cast<int>(destinations.size());
 
@@ -110,7 +110,7 @@ class MockSagaHandler : public SagaDomainHandler {
         auto* page = cmd.add_pages();
         page->mutable_command()->set_type_url("type.googleapis.com/CreateShipment");
 
-        return {cmd};
+        return SagaHandlerResponse::with_commands({cmd});
     }
 
     // Test inspection

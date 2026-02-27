@@ -24,6 +24,10 @@ subprojects {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    tasks.withType<JavaCompile> {
+        options.encoding = "UTF-8"
+    }
+
     configure<PublishingExtension> {
         repositories {
             maven {
