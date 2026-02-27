@@ -74,35 +74,36 @@ Version is encoded in the type name. The framework chains transformations: a V1 
 
 ## Version Detection
 
-The upcaster matches events by type URL suffix. Common versioning patterns:
+The upcaster matches events by type URL suffix. Two common patterns:
 
-### Versioned Type Names
+### Package Versioning (Recommended)
+
+Keep version in the proto package, not the type name. Cleaner organization, easier tooling:
 
 ```protobuf
-// Old versions kept for upcasting
-message PlayerRegisteredV1 {
-    string username = 1;
-}
+// proto/myapp/v1/player.proto
+package myapp.v1;
+message PlayerRegistered { ... }
 
-message PlayerRegisteredV2 {
-    string username = 1;
-    string email = 2;
-}
+// proto/myapp/v2/player.proto
+package myapp.v2;
+message PlayerRegistered { ... }
 
-// Current version (no suffix)
-message PlayerRegistered {
-    string username = 1;
-    string email = 2;
-    string tier = 3;
-}
+// proto/myapp/player.proto (current)
+package myapp;
+message PlayerRegistered { ... }
 ```
 
-### Package Versioning
+Type URLs: `myapp.v1.PlayerRegistered` → `myapp.v2.PlayerRegistered` → `myapp.PlayerRegistered`
+
+### Type Name Suffixes
+
+Simpler for small schemas, but clutters the namespace:
 
 ```protobuf
-// type.googleapis.com/myapp.v1.PlayerRegistered
-// type.googleapis.com/myapp.v2.PlayerRegistered
-// type.googleapis.com/myapp.PlayerRegistered (current)
+message PlayerRegisteredV1 { ... }
+message PlayerRegisteredV2 { ... }
+message PlayerRegistered { ... }  // current
 ```
 
 ---
