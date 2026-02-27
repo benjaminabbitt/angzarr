@@ -408,16 +408,16 @@ namespace Tests.Features
     testRunner.Then("the result is a BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 111
-    testRunner.And("the player event has blind_type \"small\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has blind_type \"small\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 112
-    testRunner.And("the player event has amount 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has amount 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 113
-    testRunner.And("the player event has player_stack 495", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has player_stack 495", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 114
-    testRunner.And("the player event has pot_total 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has pot_total 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }
             this.ScenarioCleanup();
@@ -453,13 +453,13 @@ namespace Tests.Features
     testRunner.Then("the result is a BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 121
-    testRunner.And("the player event has blind_type \"big\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has blind_type \"big\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 122
-    testRunner.And("the player event has amount 10", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has amount 10", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 123
-    testRunner.And("the player event has pot_total 15", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has pot_total 15", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }
             this.ScenarioCleanup();
@@ -504,10 +504,10 @@ namespace Tests.Features
     testRunner.Then("the result is a BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 132
-    testRunner.And("the player event has amount 3", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has amount 3", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 133
-    testRunner.And("the player event has player_stack 0", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.And("the blind event has player_stack 0", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }
             this.ScenarioCleanup();
@@ -1807,12 +1807,12 @@ namespace Tests.Features
         }
         
         [NUnit.Framework.TestAttribute()]
-        [NUnit.Framework.DescriptionAttribute("Rebuild state after dealing")]
-        public void RebuildStateAfterDealing()
+        [NUnit.Framework.DescriptionAttribute("Cannot raise less than minimum raise amount")]
+        public void CannotRaiseLessThanMinimumRaiseAmount()
         {
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
-            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state after dealing", null, tagsOfScenario, argumentsOfScenario, featureTags);
+            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Cannot raise less than minimum raise amount", null, tagsOfScenario, argumentsOfScenario, featureTags);
 #line 443
   this.ScenarioInitialize(scenarioInfo);
 #line hidden
@@ -1827,15 +1827,147 @@ namespace Tests.Features
     testRunner.Given("a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
 #line 445
-    testRunner.When("I rebuild the hand state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
+    testRunner.And("blinds posted with pot 15 and current_bet 10", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 446
-    testRunner.Then("the hand state has phase \"PREFLOP\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.And("a ActionTaken event for player \"player-1\" with action CALL amount 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
 #line 447
-    testRunner.And("the hand state has status \"betting\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+    testRunner.When("I handle a PlayerAction command for player \"player-2\" action RAISE amount 15", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 448
+    testRunner.Then("the command fails with status \"INVALID_ARGUMENT\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+#line hidden
+#line 449
+    testRunner.And("the error message contains \"raise\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+            }
+            this.ScenarioCleanup();
+        }
+        
+        [NUnit.Framework.TestAttribute()]
+        [NUnit.Framework.DescriptionAttribute("Split pot when hands are identical")]
+        public void SplitPotWhenHandsAreIdentical()
+        {
+            string[] tagsOfScenario = ((string[])(null));
+            System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
+            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Split pot when hands are identical", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 457
+  this.ScenarioInitialize(scenarioInfo);
+#line hidden
+            if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
+            {
+                testRunner.SkipScenario();
+            }
+            else
+            {
+                this.ScenarioStart();
+                TechTalk.SpecFlow.Table table12 = new TechTalk.SpecFlow.Table(new string[] {
+                            "player",
+                            "hole_cards",
+                            "community_cards"});
+                table12.AddRow(new string[] {
+                            "player-1",
+                            "As Kd",
+                            "Ah Kh 2c 5d 9s"});
+                table12.AddRow(new string[] {
+                            "player-2",
+                            "Ac Ks",
+                            "Ah Kh 2c 5d 9s"});
+#line 458
+    testRunner.Given("a showdown with player hands:", ((string)(null)), table12, "Given ");
+#line hidden
+#line 462
+    testRunner.When("hands are evaluated", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
+#line hidden
+#line 463
+    testRunner.Then("player \"player-1\" has ranking \"TWO_PAIR\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+#line hidden
+#line 464
+    testRunner.And("player \"player-2\" has ranking \"TWO_PAIR\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+            }
+            this.ScenarioCleanup();
+        }
+        
+        [NUnit.Framework.TestAttribute()]
+        [NUnit.Framework.DescriptionAttribute("Kicker determines winner with matching pairs")]
+        public void KickerDeterminesWinnerWithMatchingPairs()
+        {
+            string[] tagsOfScenario = ((string[])(null));
+            System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
+            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Kicker determines winner with matching pairs", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 466
+  this.ScenarioInitialize(scenarioInfo);
+#line hidden
+            if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
+            {
+                testRunner.SkipScenario();
+            }
+            else
+            {
+                this.ScenarioStart();
+                TechTalk.SpecFlow.Table table13 = new TechTalk.SpecFlow.Table(new string[] {
+                            "player",
+                            "hole_cards",
+                            "community_cards"});
+                table13.AddRow(new string[] {
+                            "player-1",
+                            "As Kd",
+                            "Ah 2c 5d 9s 3h"});
+                table13.AddRow(new string[] {
+                            "player-2",
+                            "Ac Qd",
+                            "Ah 2c 5d 9s 3h"});
+#line 467
+    testRunner.Given("a showdown with player hands:", ((string)(null)), table13, "Given ");
+#line hidden
+#line 471
+    testRunner.When("hands are evaluated", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
+#line hidden
+#line 472
+    testRunner.Then("player \"player-1\" has ranking \"PAIR\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+#line hidden
+#line 473
+    testRunner.And("player \"player-2\" has ranking \"PAIR\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+#line 474
+    testRunner.And("player \"player-1\" wins", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+            }
+            this.ScenarioCleanup();
+        }
+        
+        [NUnit.Framework.TestAttribute()]
+        [NUnit.Framework.DescriptionAttribute("Rebuild state after dealing")]
+        public void RebuildStateAfterDealing()
+        {
+            string[] tagsOfScenario = ((string[])(null));
+            System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
+            TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state after dealing", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 482
+  this.ScenarioInitialize(scenarioInfo);
+#line hidden
+            if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
+            {
+                testRunner.SkipScenario();
+            }
+            else
+            {
+                this.ScenarioStart();
+#line 483
+    testRunner.Given("a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
+#line hidden
+#line 484
+    testRunner.When("I rebuild the hand state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
+#line hidden
+#line 485
+    testRunner.Then("the hand state has phase \"PREFLOP\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+#line hidden
+#line 486
+    testRunner.And("the hand state has status \"betting\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
+#line hidden
+#line 487
     testRunner.And("the hand state has 2 players", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }
@@ -1849,7 +1981,7 @@ namespace Tests.Features
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
             TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state with community cards", null, tagsOfScenario, argumentsOfScenario, featureTags);
-#line 450
+#line 489
   this.ScenarioInitialize(scenarioInfo);
 #line hidden
             if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
@@ -1859,19 +1991,19 @@ namespace Tests.Features
             else
             {
                 this.ScenarioStart();
-#line 451
+#line 490
     testRunner.Given("a CardsDealt event for TEXAS_HOLDEM with 2 players", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-#line 452
+#line 491
     testRunner.And("the flop has been dealt", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 453
+#line 492
     testRunner.When("I rebuild the hand state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
-#line 454
+#line 493
     testRunner.Then("the hand state has 3 community cards", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
-#line 455
+#line 494
     testRunner.And("the hand state has phase \"FLOP\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }
@@ -1885,7 +2017,7 @@ namespace Tests.Features
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
             TechTalk.SpecFlow.ScenarioInfo scenarioInfo = new TechTalk.SpecFlow.ScenarioInfo("Rebuild state tracks folded players", null, tagsOfScenario, argumentsOfScenario, featureTags);
-#line 457
+#line 496
   this.ScenarioInitialize(scenarioInfo);
 #line hidden
             if ((TagHelper.ContainsIgnoreTag(tagsOfScenario) || TagHelper.ContainsIgnoreTag(featureTags)))
@@ -1895,22 +2027,22 @@ namespace Tests.Features
             else
             {
                 this.ScenarioStart();
-#line 458
+#line 497
     testRunner.Given("a CardsDealt event for TEXAS_HOLDEM with 3 players", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Given ");
 #line hidden
-#line 459
+#line 498
     testRunner.And("blinds posted with pot 15", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 460
+#line 499
     testRunner.And("player \"player-1\" folded", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
-#line 461
+#line 500
     testRunner.When("I rebuild the hand state", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
-#line 462
+#line 501
     testRunner.Then("player \"player-1\" has_folded is true", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
-#line 463
+#line 502
     testRunner.And("active player count is 2", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
 #line hidden
             }

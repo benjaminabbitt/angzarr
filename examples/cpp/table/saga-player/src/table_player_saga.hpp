@@ -1,6 +1,6 @@
 #pragma once
 
-#include "angzarr/event_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/player.pb.h"
 #include "examples/table.pb.h"
@@ -13,12 +13,7 @@ namespace saga {
 /// Sends ReleaseFunds commands to Player domain.
 angzarr::EventRouter create_table_player_router();
 
-/// Prepare handler: declare all players in stack_changes as destinations.
-std::vector<angzarr::Cover> prepare_hand_ended(const examples::HandEnded& event);
-
-/// Handle HandEnded: produce ReleaseFunds commands for each player.
-angzarr::CommandBook handle_hand_ended(const examples::HandEnded& event,
-                                       const std::vector<angzarr::EventBook>& destinations);
+// Note: Handlers are internal to the router - only create_table_player_router is public
 
 }  // namespace saga
 }  // namespace table

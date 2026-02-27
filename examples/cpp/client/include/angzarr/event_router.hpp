@@ -7,14 +7,36 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "angzarr/types.pb.h"
 
 namespace angzarr {
 
+/// Response from saga handlers - can contain commands and/or facts.
+struct SagaHandlerResponse {
+    std::vector<CommandBook> commands;
+    std::vector<EventBook> events;  // Facts to inject into target aggregates
+
+    static SagaHandlerResponse empty() { return {{}, {}}; }
+
+    static SagaHandlerResponse with_commands(std::vector<CommandBook> cmds) {
+        return {std::move(cmds), {}};
+    }
+
+    static SagaHandlerResponse with_events(std::vector<EventBook> evts) {
+        return {{}, std::move(evts)};
+    }
+
+    static SagaHandlerResponse with_both(std::vector<CommandBook> cmds,
+                                         std::vector<EventBook> evts) {
+        return {std::move(cmds), std::move(evts)};
+    }
+};
+
 /// Functional router for saga event handling.
-/// Two-phase pattern: prepare (get destinations) then handle (produce commands).
+/// Two-phase pattern: prepare (get destinations) then handle (produce commands/facts).
 /// Uses fluent .domain().on() pattern to register handlers with domain context.
 ///
 /// Why two-phase? Sagas need destination state to compute correct sequences.
@@ -23,8 +45,8 @@ namespace angzarr {
 class EventRouter {
    public:
     using PrepareHandler = std::function<std::vector<Cover>(const google::protobuf::Message&)>;
-    using HandleHandler =
-        std::function<CommandBook(const google::protobuf::Message&, const std::vector<EventBook>&)>;
+    using HandleHandler = std::function<SagaHandlerResponse(const google::protobuf::Message&,
+                                                            const std::vector<EventBook>&)>;
 
    private:
     std::string name_;
@@ -55,7 +77,8 @@ class EventRouter {
     /// Register an event reaction handler.
     template <typename EventType>
     EventRouter& on(
-        std::function<CommandBook(const EventType&, const std::vector<EventBook>&)> handler) {
+        std::function<SagaHandlerResponse(const EventType&, const std::vector<EventBook>&)>
+            handler) {
         const std::string type_name = EventType::descriptor()->full_name();
         handle_handlers_[type_name] = [handler](const google::protobuf::Message& msg,
                                                 const std::vector<EventBook>& destinations) {
@@ -76,13 +99,14 @@ class EventRouter {
         return it->second(event);
     }
 
-    /// Execute handle phase - produce commands.
+    /// Execute handle phase - produce commands and/or facts.
     template <typename EventType>
-    CommandBook do_handle(const EventType& event, const std::vector<EventBook>& destinations) {
+    SagaHandlerResponse do_handle(const EventType& event,
+                                  const std::vector<EventBook>& destinations) {
         const std::string type_name = EventType::descriptor()->full_name();
         auto it = handle_handlers_.find(type_name);
         if (it == handle_handlers_.end()) {
-            return CommandBook{};
+            return SagaHandlerResponse::empty();
         }
         return it->second(event, destinations);
     }

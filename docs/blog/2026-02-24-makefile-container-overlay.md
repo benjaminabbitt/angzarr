@@ -251,6 +251,6 @@ The pattern shines for polyglot projects, mixed dev teams (Linux/macOS/WSL), and
 3. Add the mount: `-v ./Makefile.container:/workspace/Makefile:ro`
 4. Run `make build` on host and in container—same command, appropriate behavior
 
-For full implementation details, see our [technical documentation](/docs/tooling/container-overlay).
+For full implementation details, see our [technical documentation](/tooling/container-overlay).
 
 **[Download working example (tar.gz)](/container-overlay.tar.gz)** — includes both Make and just versions.

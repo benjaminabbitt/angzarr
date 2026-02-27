@@ -12,9 +12,9 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // docs:start:aggregate_router
+    // docs:start:command_router
     let router = AggregateRouter::new("player", "player", PlayerHandler::new());
-    // docs:end:aggregate_router
+    // docs:end:command_router
 
     run_command_handler_server("player", 50001, router)
         .await

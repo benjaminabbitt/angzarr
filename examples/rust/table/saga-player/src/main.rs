@@ -6,7 +6,8 @@
 use angzarr_client::proto::examples::{HandEnded, ReleaseFunds};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
-    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaRouter, UnpackAny,
+    run_saga_server, CommandRejectedError, CommandResult, SagaDomainHandler, SagaHandlerResponse,
+    SagaRouter, UnpackAny,
 };
 use prost::Message;
 use prost_types::Any;
@@ -32,11 +33,11 @@ impl SagaDomainHandler for TablePlayerSagaHandler {
         source: &EventBook,
         event: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with("HandEnded") {
             return Self::handle_hand_ended(source, event, destinations);
         }
-        Ok(vec![])
+        Ok(SagaHandlerResponse::default())
     }
 }
 
@@ -65,7 +66,7 @@ impl TablePlayerSagaHandler {
         source: &EventBook,
         event_any: &Any,
         destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         let event: HandEnded = event_any
             .unpack()
             .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandEnded: {}", e)))?;
@@ -127,7 +128,10 @@ impl TablePlayerSagaHandler {
             })
             .collect();
 
-        Ok(commands)
+        Ok(SagaHandlerResponse {
+            commands,
+            events: vec![],
+        })
     }
 }
 

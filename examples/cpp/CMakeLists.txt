@@ -68,10 +68,10 @@ target_link_libraries(angzarr_proto PUBLIC
     gRPC::grpc++
 )
 
-# Client library
+# Client library - use the canonical client from client/cpp
 add_library(angzarr_client INTERFACE)
 target_include_directories(angzarr_client INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../client/cpp/include
 )
 target_link_libraries(angzarr_client INTERFACE
     angzarr_proto
@@ -79,6 +79,8 @@ target_link_libraries(angzarr_client INTERFACE
 
 # Subdirectories
 add_subdirectory(player/agg)
+add_subdirectory(player/upc)
+add_subdirectory(player/saga-table)
 add_subdirectory(table/agg)
 add_subdirectory(hand/agg)
 add_subdirectory(table/saga-hand)
@@ -86,8 +88,12 @@ add_subdirectory(table/saga-player)
 add_subdirectory(hand/saga-table)
 add_subdirectory(hand/saga-player)
 add_subdirectory(hand-flow)
-add_subdirectory(hand-flow-oo)
 add_subdirectory(prj-output)
+
+# OO-style examples (disabled - use functional style instead)
+# add_subdirectory(table/saga-hand-oo)
+# add_subdirectory(hand-flow-oo)
+# add_subdirectory(prj-output-oo)
 
 # Tests (optional, requires cucumber-cpp)
 option(BUILD_TESTS "Build cucumber-cpp tests" OFF)

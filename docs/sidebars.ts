@@ -2,17 +2,11 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
+    'why-event-sourcing',
+    'patterns-explained',
     'intro',
-    'architecture',
     'getting-started',
-    {
-      type: 'category',
-      label: 'Concepts',
-      items: [
-        'concepts/cqrs-event-sourcing',
-        'concepts/commands-vs-facts',
-      ],
-    },
+    'architecture',
     {
       type: 'category',
       label: 'Components',
@@ -21,6 +15,7 @@ const sidebars: SidebarsConfig = {
         'components/saga',
         'components/projector',
         'components/process-manager',
+        'components/commands-vs-facts',
         'components/framework-projectors',
         'components/cloudevents',
       ],

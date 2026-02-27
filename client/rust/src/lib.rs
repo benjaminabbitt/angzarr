@@ -102,6 +102,8 @@ pub use router::{
     AggregateMode,
     // Router types
     AggregateRouter,
+    // Upcaster types
+    BoxedUpcasterHandler,
     // Error types
     CommandRejectedError,
     CommandResult,
@@ -116,11 +118,15 @@ pub use router::{
     ProjectorRouter,
     RejectionHandlerResponse,
     SagaDomainHandler,
+    SagaHandlerResponse,
     SagaMode,
     SagaRouter,
     StateFactory,
     StateRouter,
     UnpackAny,
+    UpcasterHandler,
+    UpcasterMode,
+    UpcasterRouter,
 };
 
 // Note: dispatch_command! and dispatch_event! macros are available at crate root
@@ -129,12 +135,13 @@ pub use router::{
 // Re-export handler types
 pub use handler::{
     CommandHandlerGrpc, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler, StatePacker,
+    UpcasterGrpcHandler, UpcasterHandleClosureFn, UpcasterHandleFn,
 };
 
 // Re-export server utilities
 pub use server::{
     run_command_handler_server, run_process_manager_server, run_projector_server, run_saga_server,
-    ServerConfig,
+    run_upcaster_server, ServerConfig,
 };
 
 // Re-export validation helpers

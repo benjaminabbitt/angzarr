@@ -1,7 +1,6 @@
 add_executable(agg-hand
     src/main.cpp
     src/hand_state.cpp
-    src/hand.cpp
     handlers/deal_handler.cpp
     handlers/post_blind_handler.cpp
     handlers/action_handler.cpp

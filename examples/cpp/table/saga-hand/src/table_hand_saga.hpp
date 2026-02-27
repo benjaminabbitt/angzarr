@@ -1,6 +1,6 @@
 #pragma once
 
-#include "angzarr/event_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/table.pb.h"
@@ -13,12 +13,7 @@ namespace saga {
 /// Sends DealCards commands to Hand domain.
 angzarr::EventRouter create_table_hand_router();
 
-/// Prepare handler: declare destination for HandStarted event.
-std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& event);
-
-/// Handle HandStarted: produce DealCards command.
-angzarr::CommandBook handle_hand_started(const examples::HandStarted& event,
-                                         const std::vector<angzarr::EventBook>& destinations);
+// Note: Handlers are internal to the router - only create_table_hand_router is public
 
 }  // namespace saga
 }  // namespace table

@@ -1,0 +1,164 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# Why Event Sourcing?
+
+Your systems lie about what happened.
+
+Traditional databases store only current state. When something goes wrong—a disputed charge, a missing package, a compliance audit—you're left reconstructing history from logs, timestamps, and guesswork. The actual sequence of events that led to the current state? Gone.
+
+**Event sourcing changes that.** Instead of storing "the account balance is $1,500," you store the events that produced it: *deposited $1,000*, *reserved $500*, *released $500*, *deposited $500*. The current state becomes a derivation, not the source of truth.
+
+This matters when you need to answer: **"What happened, and why?"**
+
+---
+
+## Who Benefits
+
+Event sourcing pays off in domains where state changes frequently, audit trails matter, and "what was the state at time X?" is a legitimate business question.
+
+### Logistics & Supply Chain
+
+Packages move through dozens of state transitions. When a customer disputes delivery or a shipment goes missing, you need answers:
+
+- "Where was package #12345 at 3pm yesterday?"
+- "Why did this shipment get routed through Memphis?"
+- "Show me all packages affected by the warehouse fire on March 3"
+
+Traditional systems store current location. Event-sourced systems store every scan, every handoff, every routing decision—queryable at any point in time.
+
+### Billing & Accounting
+
+Financial systems demand audit trails. Event sourcing makes this intrinsic rather than bolted-on:
+
+- "What charges were on this invoice before the credit was applied?"
+- "Reconstruct the account state for the March audit"
+- "Why was this payment applied to invoice A instead of B?"
+
+:::caution Eventual Consistency
+Event sourcing provides **eventual** consistency, not strong consistency. Balance queries may show stale data briefly after writes. For ledger systems:
+- The event log is authoritative; projections are derived views
+- Double-entry patterns work well (each transaction is an event)
+- For regulatory "balance at time T" queries, event sourcing is actually *better* than CRUD—you can reconstruct exact historical state
+:::
+
+### Insurance Underwriting
+
+Insurance decisions involve complex state machines and regulatory scrutiny. When a claim is disputed or an audit arrives:
+
+- "What information did we have when we approved this policy?"
+- "Show the risk assessment history for claim #4567"
+- "Regulatory audit: prove we followed process on declined applications"
+
+Every underwriting decision, every document submission, every status change—captured as events.
+
+### Event Ticketing
+
+Concerts, sports, venues—anywhere capacity must be tracked and disputes resolved:
+
+- "What was the available capacity when this reservation was made?"
+- "Why did this refund get processed twice?"
+- "Show all seat assignments and changes for section 101 on March 5"
+- "Prove we didn't oversell—reconstruct inventory at time of each sale"
+
+### Healthcare & EHR
+
+HIPAA mandates audit logs. Event sourcing makes compliance architectural:
+
+- "What medications was this patient on when we made this diagnosis?"
+- "Show the complete treatment history for this audit"
+- "Who accessed this patient's records and when?"
+- "What information did the physician have when prescribing?"
+
+Patient records aren't just current state—they're the complete history of care decisions.
+
+### Gaming & Betting
+
+AML compliance, transaction monitoring, and regulatory audit trails are non-negotiable:
+
+- "Reconstruct this player's betting pattern for the AML investigation"
+- "Prove the payout calculation was correct for this disputed bet"
+- "Show all transactions for this account during the audit period"
+- "What was the account balance when this wager was placed?"
+
+Nevada regulators issued nearly $27 million in AML penalties in 2025 for audit failures. Event sourcing makes compliance demonstrable.
+
+### Real Estate & Escrow
+
+Multi-party transactions with regulatory disclosure requirements:
+
+- "Show the complete chain of title for this property"
+- "What disclosures were made and when during this transaction?"
+- "Who approved each stage of this escrow?"
+- "Reconstruct the transaction state when the dispute arose"
+
+### Trading & FinTech
+
+Regulatory compliance demands temporal queries:
+
+- "What was this account's balance at 1:42pm on March 15?"
+- "Show all trades that affected this position"
+- "Reconstruct the order book state when this trade executed"
+- "Prove regulatory compliance—show decision audit trail"
+
+When regulators ask "what did you know and when did you know it?"—event sourcing provides the answer.
+
+---
+
+## The Business Value
+
+### Complete Audit Trail
+
+Every state change is recorded as an immutable event. Not a separate audit log that might drift from reality—the audit trail *is* the data model. Compliance becomes architectural rather than aspirational.
+
+### Time Travel Queries
+
+"What was the state on March 15?" becomes a query, not an archaeology project. Reconstruct any historical state by replaying events up to that point.
+
+### Debugging & Dispute Resolution
+
+When something goes wrong, replay the events to understand exactly how the system arrived at the current state. No guessing, no log correlation—deterministic reconstruction.
+
+### Independent Scaling
+
+Read-heavy workloads (dashboards, reports, searches) scale independently from writes. Build multiple read models optimized for different query patterns, all derived from the same event stream.
+
+---
+
+## When This Pattern Fits
+
+Event sourcing isn't free. It adds complexity. The investment pays off when your domain exhibits these characteristics:
+
+| Characteristic | Why It Matters |
+|----------------|----------------|
+| **Eventual consistency acceptable** | Events propagate asynchronously. If you need synchronous, strongly-consistent responses, traditional CRUD may be simpler. |
+| **Audit/compliance important** | Event sourcing's overhead only pays off when you need to answer "what happened and why?" |
+| **State reconstructable from events** | If your domain has external dependencies that can't be replayed, event sourcing won't help. |
+| **High state churn** | Domains with frequent state transitions benefit most—the event log captures what CRUD overwrites. |
+| **Cross-domain coordination** | Multiple systems need to react to state changes? Events are the natural integration pattern. |
+
+---
+
+## When NOT to Use
+
+### Simple CRUD
+
+If your domain is "store this, retrieve that" without complex state transitions or audit requirements, use a database directly. Event sourcing adds complexity without proportional benefit.
+
+### Real-Time Latency-Critical Systems
+
+Event sourcing adds overhead. Real-time games, high-frequency trading, and other millisecond-sensitive applications may not tolerate it. (Though some trading systems use event sourcing for the audit trail while maintaining separate low-latency paths.)
+
+### Strong Consistency Requirements
+
+Banking ledgers that must never show intermediate states require careful design. Event sourcing *can* work here—many financial systems use it—but the eventual consistency model requires explicit handling. The event log is strongly consistent; projections are eventually consistent.
+
+---
+
+## Next Steps
+
+- **[Patterns Explained](./patterns-explained)** — Technical overview of CQRS and Event Sourcing
+- **[Introduction to Angzarr](./intro)** — How the framework implements these patterns
+- **[Getting Started](./getting-started)** — Build your first event-sourced system

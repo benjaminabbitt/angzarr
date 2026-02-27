@@ -9,7 +9,7 @@ namespace Angzarr.Client;
 /// Base class for event-driven projectors using the OO pattern.
 ///
 /// Subclasses must:
-/// - Override Name and InputDomain properties
+/// - Override Name and InputDomains properties
 /// - Decorate event handlers with [Projects(typeof(EventType))]
 /// </summary>
 public abstract class Projector
@@ -26,9 +26,9 @@ public abstract class Projector
     public abstract string Name { get; }
 
     /// <summary>
-    /// The domain this projector listens to.
+    /// The domains this projector listens to.
     /// </summary>
-    public abstract string InputDomain { get; }
+    public abstract IReadOnlyList<string> InputDomains { get; }
 
     protected Projector()
     {

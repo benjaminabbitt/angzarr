@@ -208,6 +208,8 @@ buf-docs:
         $PROTOS
     # Escape curly braces for MDX compatibility (wrap in backticks)
     sed -i 's/{\([^}]*\)}/`{\1}`/g' "{{TOP}}/docs/docs/api/proto/index.md"
+    # Fix anchors for Docusaurus compatibility (convert <a name=""> to heading IDs)
+    python3 "{{TOP}}/build/proto/fix_anchors.py" "{{TOP}}/docs/docs/api/proto/index.md"
     # Add frontmatter for Docusaurus
     sed -i '1i ---\ntitle: Protocol Buffer API\ndescription: Auto-generated documentation for Angzarr protobuf definitions\n---\n' "{{TOP}}/docs/docs/api/proto/index.md"
 
@@ -653,6 +655,105 @@ qdrant-stop:
 # Rebuild vector index for semantic codebase search (uses containerized Qdrant)
 reindex: qdrant-start
     uv run "{{TOP}}/scripts/index_codebase.py" --url http://127.0.0.1:6333
+
+# === Claude Code LSP Setup ===
+
+# Install all supported language servers and Claude Code plugins
+lsp-all: lsp-rust lsp-python lsp-go lsp-cpp lsp-java lsp-csharp
+    @echo "All language servers and Claude Code plugins installed"
+
+# Install Rust language server (rust-analyzer) and plugin
+lsp-rust:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing rust-analyzer ==="
+    if command -v rustup &>/dev/null; then
+        rustup component add rust-analyzer
+    else
+        echo "rustup not found, trying cargo install..."
+        cargo install rust-analyzer
+    fi
+    echo "=== Installing Claude Code plugin ==="
+    claude mcp add-from-claude-marketplace rust-analyzer-lsp || \
+        echo "Plugin may already be installed or claude CLI not available"
+
+# Install Python language server (pyright) and plugin
+lsp-python:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing pyright ==="
+    if command -v npm &>/dev/null; then
+        npm install -g pyright
+    elif command -v pip &>/dev/null; then
+        pip install pyright
+    else
+        echo "Error: npm or pip required to install pyright" >&2
+        exit 1
+    fi
+    echo "=== Installing Claude Code plugin ==="
+    claude mcp add-from-claude-marketplace pyright-lsp || \
+        echo "Plugin may already be installed or claude CLI not available"
+
+# Install Go language server (gopls) and plugin
+lsp-go:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing gopls ==="
+    go install golang.org/x/tools/gopls@latest
+    echo "=== Installing Claude Code plugin ==="
+    claude mcp add-from-claude-marketplace gopls-lsp || \
+        echo "Plugin may already be installed or claude CLI not available"
+
+# Install C/C++ language server (clangd) and plugin
+lsp-cpp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing clangd ==="
+    if command -v apt &>/dev/null; then
+        sudo apt install -y clangd
+    elif command -v brew &>/dev/null; then
+        brew install llvm
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y clang-tools-extra
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S clang
+    else
+        echo "Error: Could not detect package manager. Install clangd manually." >&2
+        exit 1
+    fi
+    echo "=== Installing Claude Code plugin ==="
+    claude mcp add-from-claude-marketplace clangd-lsp || \
+        echo "Plugin may already be installed or claude CLI not available"
+
+# Install Java language server (jdtls) and plugin
+lsp-java:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing jdtls ==="
+    if command -v brew &>/dev/null; then
+        brew install jdtls
+    elif command -v apt &>/dev/null; then
+        # jdtls not in apt; guide user to manual install
+        echo "jdtls not available via apt. Install manually from:"
+        echo "https://download.eclipse.org/jdtls/snapshots/"
+        echo "Or use VS Code's Java extension which bundles jdtls"
+    else
+        echo "Install jdtls manually from: https://download.eclipse.org/jdtls/snapshots/"
+    fi
+    echo "=== Installing Claude Code plugin ==="
+    claude mcp add-from-claude-marketplace jdtls-lsp || \
+        echo "Plugin may already be installed or claude CLI not available"
+
+# Install C# language server (csharp-ls) and plugin
+lsp-csharp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing csharp-ls ==="
+    dotnet tool install --global csharp-ls || \
+        dotnet tool update --global csharp-ls
+    echo "=== Installing Claude Code plugin ==="
+    claude mcp add-from-claude-marketplace csharp-lsp || \
+        echo "Plugin may already be installed or claude CLI not available"
 
 # === Internal Helpers ===
 

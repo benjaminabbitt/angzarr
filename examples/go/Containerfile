@@ -124,7 +124,7 @@ WORKDIR /app/examples/go
 COPY examples/go/ ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand-flow
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./pmg-hand-flow
 
 # ============================================================================
 # Projector build

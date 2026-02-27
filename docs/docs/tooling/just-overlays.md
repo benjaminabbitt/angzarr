@@ -61,7 +61,7 @@ When running on Linux, `just build` uses the overlay definition. On other platfo
 
 ## Container Overlay
 
-For containerized builds where the same command should work on host and inside containers, see the **[Container Overlay Pattern](/docs/tooling/container-overlay)**. This technique mounts a container-specific build file over the host file, eliminating conditionals entirely.
+For containerized builds where the same command should work on host and inside containers, see the **[Container Overlay Pattern](/tooling/container-overlay)**. This technique mounts a container-specific build file over the host file, eliminating conditionals entirely.
 
 ---
 
@@ -128,6 +128,6 @@ registry := "ghcr.io/angzarr-io"
 
 ## Next Steps
 
-- **[just](/docs/tooling/just)** — Core just commands
-- **[Container Overlay Pattern](/docs/tooling/container-overlay)** — Mount-based build file swapping
-- **[Getting Started](/docs/getting-started)** — Full development setup
+- **[just](/tooling/just)** — Core just commands
+- **[Container Overlay Pattern](/tooling/container-overlay)** — Mount-based build file swapping
+- **[Getting Started](/getting-started)** — Full development setup

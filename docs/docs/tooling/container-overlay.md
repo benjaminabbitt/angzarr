@@ -262,7 +262,7 @@ The mount overlay pattern uses two files but presents a single interface. Detect
 
 ## Working Example
 
-See the complete working example in [`docs/examples/container-overlay/`](/examples/container-overlay/):
+A working example demonstrating this pattern:
 
 ```bash
 cd docs/examples/container-overlay
@@ -283,4 +283,4 @@ make demo
 
 - **[GNU Make Manual](https://www.gnu.org/software/make/manual/)** — Make documentation
 - **[just](https://github.com/casey/just)** — Modern command runner alternative
-- **[just in Angzarr](/docs/tooling/just)** — Project-specific just commands
+- **[just in Angzarr](/tooling/just)** — Project-specific just commands

@@ -1,7 +1,6 @@
 add_executable(agg-player
     src/main.cpp
     src/player_state.cpp
-    src/player.cpp
     handlers/register_handler.cpp
     handlers/deposit_handler.cpp
     handlers/withdraw_handler.cpp

@@ -6,7 +6,8 @@ use angzarr_client::proto::{event_page, CommandBook, CommandPage, Cover, EventBo
 use angzarr_client::{
     type_url, AggregateDomainHandler, AggregateRouter, CommandRejectedError, CommandResult,
     ProcessManagerDomainHandler, ProcessManagerResponse, ProcessManagerRouter,
-    ProjectorDomainHandler, ProjectorRouter, SagaDomainHandler, SagaRouter, StateRouter,
+    ProjectorDomainHandler, ProjectorRouter, SagaDomainHandler, SagaHandlerResponse, SagaRouter,
+    StateRouter,
 };
 use cucumber::{given, then, when, World};
 use prost::Message;
@@ -47,6 +48,7 @@ fn make_event_book(domain: &str, events: Vec<EventPage>) -> EventBook {
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: events,
         snapshot: None,
@@ -59,7 +61,7 @@ fn make_event_page(seq: u32, type_url: &str, data: &str) -> EventPage {
         data: data.to_string(),
     };
     EventPage {
-        sequence: seq,
+        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: type_url.to_string(),
@@ -80,6 +82,7 @@ fn make_command_book(domain: &str, type_url: &str, data: &str, seq: u32) -> Comm
             }),
             correlation_id: String::new(),
             edition: None,
+            external_id: String::new(),
         }),
         pages: vec![CommandPage {
             sequence: seq,
@@ -147,7 +150,7 @@ impl AggregateDomainHandler for TestAggregateHandler {
                 data: "created".to_string(),
             };
             let page = EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: type_url("test.OrderCreated"),
@@ -162,7 +165,7 @@ impl AggregateDomainHandler for TestAggregateHandler {
                 data: "item_added".to_string(),
             };
             let page = EventPage {
-                sequence: 0,
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: type_url("test.ItemAdded"),
@@ -226,14 +229,14 @@ impl SagaDomainHandler for TestSagaHandler {
         _source: &EventBook,
         event: &Any,
         _destinations: &[EventBook],
-    ) -> CommandResult<Vec<CommandBook>> {
+    ) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with(&self.handler1_type) {
             self.handler_invoked.store(true, Ordering::SeqCst);
         }
         if event.type_url.ends_with(&self.handler2_type) {
             self.other_handler_invoked.store(true, Ordering::SeqCst);
         }
-        Ok(vec![])
+        Ok(SagaHandlerResponse::default())
     }
 }
 
@@ -410,7 +413,7 @@ async fn given_aggregate_with_events(world: &mut RouterWorld) {
         data: "created".to_string(),
     };
     let page = EventPage {
-        sequence: 0,
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: type_url("test.OrderCreated"),
@@ -428,7 +431,7 @@ async fn given_aggregate_at_sequence(world: &mut RouterWorld, seq: u32) {
     let mut pages = vec![];
     for i in 0..seq {
         pages.push(EventPage {
-            sequence: i,
+            sequence_type: Some(event_page::SequenceType::Sequence(i)),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url("test.OrderCreated"),

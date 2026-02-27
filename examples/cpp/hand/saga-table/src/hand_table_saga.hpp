@@ -1,6 +1,6 @@
 #pragma once
 
-#include "angzarr/event_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/table.pb.h"
@@ -13,12 +13,7 @@ namespace saga {
 /// Sends EndHand commands to Table domain.
 angzarr::EventRouter create_hand_table_router();
 
-/// Prepare handler: declare the table aggregate as destination.
-std::vector<angzarr::Cover> prepare_hand_complete(const examples::HandComplete& event);
-
-/// Handle HandComplete: produce EndHand command.
-angzarr::CommandBook handle_hand_complete(const examples::HandComplete& event,
-                                          const std::vector<angzarr::EventBook>& destinations);
+// Note: Handlers are internal to the router - only create_hand_table_router is public
 
 }  // namespace saga
 }  // namespace hand

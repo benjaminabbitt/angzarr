@@ -10,10 +10,11 @@ use tonic::{Request, Response, Status};
 use crate::proto::{
     command_handler_service_server::CommandHandlerService,
     process_manager_service_server::ProcessManagerService,
-    projector_service_server::ProjectorService, saga_service_server::SagaService, BusinessResponse,
-    ContextualCommand, EventBook, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
-    ProcessManagerPrepareRequest, ProcessManagerPrepareResponse, Projection, ReplayRequest,
-    ReplayResponse, SagaExecuteRequest, SagaPrepareRequest, SagaPrepareResponse, SagaResponse,
+    projector_service_server::ProjectorService, saga_service_server::SagaService,
+    upcaster_service_server::UpcasterService, BusinessResponse, ContextualCommand, EventBook,
+    ProcessManagerHandleRequest, ProcessManagerHandleResponse, ProcessManagerPrepareRequest,
+    ProcessManagerPrepareResponse, Projection, ReplayRequest, ReplayResponse, SagaExecuteRequest,
+    SagaPrepareRequest, SagaPrepareResponse, SagaResponse, UpcastRequest, UpcastResponse,
 };
 use crate::router::{
     AggregateDomainHandler, AggregateRouter, ProcessManagerRouter, SagaDomainHandler, SagaRouter,
@@ -290,5 +291,82 @@ impl<S: Default + Send + Sync + 'static> ProcessManagerService for ProcessManage
             .dispatch(trigger, &process_state, &req.destinations)?;
 
         Ok(Response::new(response))
+    }
+}
+
+/// Handle function type for upcasters (function pointer).
+pub type UpcasterHandleFn = fn(&[crate::proto::EventPage]) -> Vec<crate::proto::EventPage>;
+
+/// Handle closure type for upcasters.
+pub type UpcasterHandleClosureFn =
+    Arc<dyn Fn(&[crate::proto::EventPage]) -> Vec<crate::proto::EventPage> + Send + Sync>;
+
+/// Internal handle type - either fn pointer or closure.
+enum UpcasterHandleType {
+    Fn(UpcasterHandleFn),
+    Closure(UpcasterHandleClosureFn),
+}
+
+/// gRPC upcaster service implementation.
+///
+/// Wraps a handle function to transform events to current versions.
+pub struct UpcasterGrpcHandler {
+    name: String,
+    domain: String,
+    handle_type: Option<UpcasterHandleType>,
+}
+
+impl UpcasterGrpcHandler {
+    /// Create a new upcaster handler.
+    pub fn new(name: impl Into<String>, domain: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            domain: domain.into(),
+            handle_type: None,
+        }
+    }
+
+    /// Set the handle function (function pointer).
+    pub fn with_handle(mut self, handle_fn: UpcasterHandleFn) -> Self {
+        self.handle_type = Some(UpcasterHandleType::Fn(handle_fn));
+        self
+    }
+
+    /// Set the handle function (closure).
+    pub fn with_handle_fn<H>(mut self, handle_fn: H) -> Self
+    where
+        H: Fn(&[crate::proto::EventPage]) -> Vec<crate::proto::EventPage> + Send + Sync + 'static,
+    {
+        self.handle_type = Some(UpcasterHandleType::Closure(Arc::new(handle_fn)));
+        self
+    }
+
+    /// Get the upcaster name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the domain this upcaster handles.
+    pub fn domain(&self) -> &str {
+        &self.domain
+    }
+}
+
+#[tonic::async_trait]
+impl UpcasterService for UpcasterGrpcHandler {
+    async fn upcast(
+        &self,
+        request: Request<UpcastRequest>,
+    ) -> Result<Response<UpcastResponse>, Status> {
+        let req = request.into_inner();
+        let events = req.events;
+
+        let result = match &self.handle_type {
+            Some(UpcasterHandleType::Fn(handle_fn)) => handle_fn(&events),
+            Some(UpcasterHandleType::Closure(handle_fn)) => handle_fn(&events),
+            None => events, // Passthrough if no handler
+        };
+
+        Ok(Response::new(UpcastResponse { events: result }))
     }
 }

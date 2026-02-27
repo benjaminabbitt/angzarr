@@ -34,6 +34,7 @@ mod dispatch;
 mod helpers;
 mod state;
 mod traits;
+mod upcaster;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -56,6 +57,7 @@ pub use traits::{
     ProcessManagerResponse, ProjectorDomainHandler, RejectionHandlerResponse, SagaDomainHandler,
     SagaHandlerResponse, UnpackAny,
 };
+pub use upcaster::{BoxedUpcasterHandler, UpcasterHandler, UpcasterMode, UpcasterRouter};
 
 // Re-export macros (defined in dispatch module via #[macro_export])
 pub use crate::dispatch_command;

@@ -37,43 +37,43 @@ pre-commit:
   commands:
     # Rust - runs in container via just
     rust-fmt:
-      glob: "*.rs"
+      glob: "**/*.rs"
       run: just fmt
       stage_fixed: true
     rust-clippy:
-      glob: "*.rs"
+      glob: "**/*.rs"
       run: just lint
     rust-test:
-      glob: "*.rs"
+      glob: "**/*.rs"
       run: just test
 
     # Python - runs in container via just
     python-fmt:
-      glob: "*.py"
+      glob: "**/*.py"
       run: just fmt-python
       stage_fixed: true
 
     # Go - runs in container via just
     go-fmt:
-      glob: "*.go"
+      glob: "**/*.go"
       run: just fmt-go
       stage_fixed: true
 
     # C# - runs in container via just
     csharp-fmt:
-      glob: "*.cs"
+      glob: "**/*.cs"
       run: just fmt-csharp
       stage_fixed: true
 
     # Java - runs in container via just
     java-fmt:
-      glob: "*.java"
+      glob: "**/*.java"
       run: just fmt-java
       stage_fixed: true
 
     # C++ - runs in container via just
     cpp-fmt:
-      glob: "*.{cpp,hpp,cc,h,cxx}"
+      glob: "**/*.{cpp,hpp,cc,h,cxx}"
       run: just fmt-cpp
       stage_fixed: true
 

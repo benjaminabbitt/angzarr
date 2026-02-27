@@ -13,7 +13,7 @@
 #include "../handlers/leave_handler.hpp"
 #include "../handlers/start_hand_handler.hpp"
 #include "angzarr/command_handler.grpc.pb.h"
-#include "angzarr/command_router.hpp"
+#include "angzarr/router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/table.pb.h"
 #include "table_state.hpp"

@@ -51,7 +51,7 @@
 //!
 //!     #[reacts_to(OrderCompleted)]
 //!     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
-//!         -> CommandResult<Vec<CommandBook>> {
+//!         -> CommandResult<SagaHandlerResponse> {
 //!         // ...
 //!     }
 //! }
@@ -380,7 +380,7 @@ pub fn applies(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// impl OrderFulfillmentSaga {
 ///     #[reacts_to(OrderCompleted)]
 ///     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
-///         -> CommandResult<Vec<CommandBook>> {
+///         -> CommandResult<SagaHandlerResponse> {
 ///         // ...
 ///     }
 /// }
@@ -549,9 +549,9 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
                 _source: &angzarr_client::proto::EventBook,
                 event: &prost_types::Any,
                 destinations: &[angzarr_client::proto::EventBook],
-            ) -> angzarr_client::CommandResult<Vec<angzarr_client::proto::CommandBook>> {
+            ) -> angzarr_client::CommandResult<angzarr_client::SagaHandlerResponse> {
                 #(#execute_arms)*
-                Ok(vec![])
+                Ok(angzarr_client::SagaHandlerResponse::default())
             }
         }
 
@@ -587,7 +587,7 @@ pub fn prepares(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```rust,ignore
 /// #[reacts_to(OrderCompleted)]
 /// fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
-///     -> CommandResult<Vec<CommandBook>> {
+///     -> CommandResult<SagaHandlerResponse> {
 ///     // ...
 /// }
 /// ```

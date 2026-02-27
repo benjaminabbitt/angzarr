@@ -6,4 +6,4 @@ pub mod state;
 
 pub use handler::PlayerHandler;
 pub use handlers::*;
-pub use state::{PlayerState, STATE_ROUTER};
+pub use state::{rebuild_state, PlayerState, STATE_ROUTER};

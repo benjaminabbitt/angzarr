@@ -80,4 +80,4 @@ The `FactSequence` marker is **replaced with a real sequence number at persisten
 
 Downstream consumers (sagas, projectors, process managers) always receive events with proper sequence numbers—they never see `FactSequence` markers.
 
-See [Commands vs Facts](/concepts/commands-vs-facts) for details.
+See [Commands vs Facts](/components/commands-vs-facts) for details.
