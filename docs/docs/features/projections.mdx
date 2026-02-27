@@ -113,7 +113,7 @@ The framework decides whether to return projection results to the caller. The pr
 
 ## Rebuilding Projections
 
-Projections are disposable. Schema change? Bug fix? Rebuild:
+Projections are disposable—in theory. Schema change? Bug fix? Rebuild:
 
 ```bash
 # Clear and rebuild from event history
@@ -121,6 +121,18 @@ angzarr projection rebuild --projector=hand-history --from=0
 ```
 
 The event store is immutable. The projection is derived. You can always reconstruct.
+
+### A Note on "Disposable"
+
+Small projections rebuild in seconds. Large projections—years of transaction history, millions of events—can take hours and cost real money in compute and storage I/O.
+
+Architects should plan accordingly:
+- **Retention policies**: Do you need every event forever, or can older data age out?
+- **Incremental rebuilds**: Can you rebuild from a checkpoint rather than from zero?
+- **Backup projections**: For critical read models, consider snapshotting the projection itself
+- **Cost modeling**: Estimate rebuild time and cost before assuming "we'll just rebuild"
+
+"Disposable" means you *can* rebuild, not that rebuilding is free.
 
 ---
 
