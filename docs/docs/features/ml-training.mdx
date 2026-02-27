@@ -213,6 +213,16 @@ def detect_anomaly(event: TransactionCompleted, state):
 
 The event store is the single source of truth for both production and training.
 
+### When You Want Isolation
+
+Direct event access works well for many workloads. But if your training jobs are heavy and you need to isolate load from production, ETL to an external store is straightforward:
+
+- Export events to a data lake (S3, GCS, HDFS)
+- Replicate to a read replica dedicated to ML workloads
+- Stream to a separate analytical store (ClickHouse, BigQuery)
+
+The proto schema travels with the data. Your training code still sees the same messages—just from a different backing store.
+
 ---
 
 ## See Also
