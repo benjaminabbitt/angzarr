@@ -94,9 +94,8 @@ jobs:
             "${{ env.IMAGE_PREFIX }}/angzarr-process-manager"
           )
           for img in "${IMAGES[@]}"; do
-            echo "Pulling $img..."
-            # Try dev tag first (from skaffold), then latest
-            docker pull "$img:dev-latest" || docker pull "$img:latest" || echo "Warning: Could not pull $img"
+            echo "Pulling $img:latest..."
+            docker pull "$img:latest" || echo "Warning: Could not pull $img"
           done
 
       # Pull pre-built Rust example images from GHCR
@@ -129,11 +128,9 @@ jobs:
       - name: Load runtime images into Kind
         run: |
           for img in aggregate projector saga process-manager; do
-            IMG="${{ env.IMAGE_PREFIX }}/angzarr-$img"
-            # Try dev tag first, then latest
-            kind load docker-image "$IMG:dev-latest" --name angzarr 2>/dev/null || \
-            kind load docker-image "$IMG:latest" --name angzarr 2>/dev/null || \
-            echo "Warning: Could not load $IMG"
+            IMG="${{ env.IMAGE_PREFIX }}/angzarr-$img:latest"
+            echo "Loading $IMG..."
+            kind load docker-image "$IMG" --name angzarr || echo "Warning: Could not load $IMG"
           done
 
       - name: Load Rust example images into Kind
@@ -169,13 +166,13 @@ jobs:
             --set amqp.url="amqp://guest:guest@angzarr-mq-rabbitmq:5672" \
             --set storage.type=sqlite \
             --set images.aggregate.repository=${{ env.IMAGE_PREFIX }}/angzarr-aggregate \
-            --set images.aggregate.tag=dev-latest \
+            --set images.aggregate.tag=latest \
             --set images.projector.repository=${{ env.IMAGE_PREFIX }}/angzarr-projector \
-            --set images.projector.tag=dev-latest \
+            --set images.projector.tag=latest \
             --set images.saga.repository=${{ env.IMAGE_PREFIX }}/angzarr-saga \
-            --set images.saga.tag=dev-latest \
+            --set images.saga.tag=latest \
             --set images.process-manager.repository=${{ env.IMAGE_PREFIX }}/angzarr-process-manager \
-            --set images.process-manager.tag=dev-latest \
+            --set images.process-manager.tag=latest \
             --set "applications.business[0].image.tag=${TAG}" \
             --set "applications.business[1].image.tag=${TAG}" \
             --set "applications.business[2].image.tag=${TAG}" \
