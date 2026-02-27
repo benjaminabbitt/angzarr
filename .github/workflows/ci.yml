@@ -298,6 +298,12 @@ jobs:
           echo "Built images:"
           jq -r '.builds[].tag' runtime-build.json
 
+      - name: Upload runtime image tags
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-build-tags
+          path: runtime-build.json
+
   # Build client libraries using matrix
   build-client:
     name: Build ${{ matrix.lang }} Client

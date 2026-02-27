@@ -84,19 +84,66 @@ jobs:
           echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
           echo "example-hash=$EXAMPLE_HASH" >> $GITHUB_OUTPUT
 
+      # Download runtime image tags from CI workflow
+      - name: Download runtime image tags
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-build-tags
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id || '' }}
+        continue-on-error: true
+
+      # Parse runtime image tags
+      - name: Parse runtime image tags
+        id: runtime
+        run: |
+          if [ -f runtime-build.json ]; then
+            # Extract full image references from skaffold build output
+            AGG_FULL=$(jq -r '.builds[] | select(.imageName | contains("aggregate")) | .tag' runtime-build.json)
+            PRJ_FULL=$(jq -r '.builds[] | select(.imageName | contains("projector")) | .tag' runtime-build.json)
+            SAG_FULL=$(jq -r '.builds[] | select(.imageName | contains("saga")) | .tag' runtime-build.json)
+            PMG_FULL=$(jq -r '.builds[] | select(.imageName | contains("process-manager")) | .tag' runtime-build.json)
+
+            # Full image references (for docker pull/kind load)
+            echo "aggregate=$AGG_FULL" >> $GITHUB_OUTPUT
+            echo "projector=$PRJ_FULL" >> $GITHUB_OUTPUT
+            echo "saga=$SAG_FULL" >> $GITHUB_OUTPUT
+            echo "process-manager=$PMG_FULL" >> $GITHUB_OUTPUT
+
+            # Extract just the tag part (after the last colon) for Helm
+            echo "aggregate-tag=${AGG_FULL##*:}" >> $GITHUB_OUTPUT
+            echo "projector-tag=${PRJ_FULL##*:}" >> $GITHUB_OUTPUT
+            echo "saga-tag=${SAG_FULL##*:}" >> $GITHUB_OUTPUT
+            echo "process-manager-tag=${PMG_FULL##*:}" >> $GITHUB_OUTPUT
+
+            echo "Found runtime image tags from CI workflow"
+          else
+            # Fallback: try to get latest from GHCR (may be stale)
+            echo "Warning: runtime-build.json not found, using latest tags"
+            echo "aggregate=${{ env.IMAGE_PREFIX }}/angzarr-aggregate:latest" >> $GITHUB_OUTPUT
+            echo "projector=${{ env.IMAGE_PREFIX }}/angzarr-projector:latest" >> $GITHUB_OUTPUT
+            echo "saga=${{ env.IMAGE_PREFIX }}/angzarr-saga:latest" >> $GITHUB_OUTPUT
+            echo "process-manager=${{ env.IMAGE_PREFIX }}/angzarr-process-manager:latest" >> $GITHUB_OUTPUT
+            echo "aggregate-tag=latest" >> $GITHUB_OUTPUT
+            echo "projector-tag=latest" >> $GITHUB_OUTPUT
+            echo "saga-tag=latest" >> $GITHUB_OUTPUT
+            echo "process-manager-tag=latest" >> $GITHUB_OUTPUT
+          fi
+
       # Pull pre-built runtime images from GHCR
       - name: Pull runtime images
         run: |
-          IMAGES=(
-            "${{ env.IMAGE_PREFIX }}/angzarr-aggregate"
-            "${{ env.IMAGE_PREFIX }}/angzarr-projector"
-            "${{ env.IMAGE_PREFIX }}/angzarr-saga"
-            "${{ env.IMAGE_PREFIX }}/angzarr-process-manager"
-          )
-          for img in "${IMAGES[@]}"; do
-            echo "Pulling $img:latest..."
-            docker pull "$img:latest" || echo "Warning: Could not pull $img"
-          done
+          echo "Pulling aggregate: ${{ steps.runtime.outputs.aggregate }}"
+          docker pull "${{ steps.runtime.outputs.aggregate }}"
+
+          echo "Pulling projector: ${{ steps.runtime.outputs.projector }}"
+          docker pull "${{ steps.runtime.outputs.projector }}"
+
+          echo "Pulling saga: ${{ steps.runtime.outputs.saga }}"
+          docker pull "${{ steps.runtime.outputs.saga }}"
+
+          echo "Pulling process-manager: ${{ steps.runtime.outputs.process-manager }}"
+          docker pull "${{ steps.runtime.outputs.process-manager }}"
 
       # Pull pre-built Rust example images from GHCR
       - name: Pull Rust example images
@@ -127,11 +174,17 @@ jobs:
       # Load images into Kind
       - name: Load runtime images into Kind
         run: |
-          for img in aggregate projector saga process-manager; do
-            IMG="${{ env.IMAGE_PREFIX }}/angzarr-$img:latest"
-            echo "Loading $IMG..."
-            kind load docker-image "$IMG" --name angzarr || echo "Warning: Could not load $IMG"
-          done
+          echo "Loading aggregate: ${{ steps.runtime.outputs.aggregate }}"
+          kind load docker-image "${{ steps.runtime.outputs.aggregate }}" --name angzarr
+
+          echo "Loading projector: ${{ steps.runtime.outputs.projector }}"
+          kind load docker-image "${{ steps.runtime.outputs.projector }}" --name angzarr
+
+          echo "Loading saga: ${{ steps.runtime.outputs.saga }}"
+          kind load docker-image "${{ steps.runtime.outputs.saga }}" --name angzarr
+
+          echo "Loading process-manager: ${{ steps.runtime.outputs.process-manager }}"
+          kind load docker-image "${{ steps.runtime.outputs.process-manager }}" --name angzarr
 
       - name: Load Rust example images into Kind
         run: |
@@ -166,13 +219,13 @@ jobs:
             --set amqp.url="amqp://angzarr:angzarr@angzarr-mq-rabbitmq:5672" \
             --set storage.type=sqlite \
             --set images.aggregate.repository=${{ env.IMAGE_PREFIX }}/angzarr-aggregate \
-            --set images.aggregate.tag=latest \
+            --set images.aggregate.tag=${{ steps.runtime.outputs.aggregate-tag }} \
             --set images.projector.repository=${{ env.IMAGE_PREFIX }}/angzarr-projector \
-            --set images.projector.tag=latest \
+            --set images.projector.tag=${{ steps.runtime.outputs.projector-tag }} \
             --set images.saga.repository=${{ env.IMAGE_PREFIX }}/angzarr-saga \
-            --set images.saga.tag=latest \
+            --set images.saga.tag=${{ steps.runtime.outputs.saga-tag }} \
             --set images.process-manager.repository=${{ env.IMAGE_PREFIX }}/angzarr-process-manager \
-            --set images.process-manager.tag=latest \
+            --set images.process-manager.tag=${{ steps.runtime.outputs.process-manager-tag }} \
             --set "applications.business[0].image.tag=${TAG}" \
             --set "applications.business[1].image.tag=${TAG}" \
             --set "applications.business[2].image.tag=${TAG}" \
