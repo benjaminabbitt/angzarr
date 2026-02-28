@@ -48,6 +48,7 @@ package angzarr
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
@@ -63,19 +64,24 @@ type handlerFunc func(cmd *anypb.Any) (proto.Message, error)
 // multiHandlerFunc is an internal type for multi-event command handlers.
 type multiHandlerFunc func(cmd *anypb.Any) ([]proto.Message, error)
 
+// rejectionHandlerFunc is an internal type for rejection handlers.
+// Receives the Notification and returns a BusinessResponse for compensation.
+type rejectionHandlerFunc func(notification *pb.Notification) *pb.BusinessResponse
+
 // CommandHandlerBase provides OO-style command handler infrastructure.
 //
 // Embed this in your command handler struct and call Init() to set up the base.
 // Then register handlers with Handles() and appliers with Applies().
 type CommandHandlerBase[S any] struct {
-	eventBook     *pb.EventBook
-	state         *S
-	stateSet      bool
-	factory       func() S
-	handlers      map[string]handlerFunc
-	multiHandlers map[string]multiHandlerFunc
-	appliers      map[string]applierFunc[S]
-	domain        string
+	eventBook         *pb.EventBook
+	state             *S
+	stateSet          bool
+	factory           func() S
+	handlers          map[string]handlerFunc
+	multiHandlers     map[string]multiHandlerFunc
+	appliers          map[string]applierFunc[S]
+	rejectionHandlers map[string]rejectionHandlerFunc
+	domain            string
 }
 
 // Init initializes the command handler base with an event book and state factory.
@@ -97,6 +103,7 @@ func (a *CommandHandlerBase[S]) Init(eventBook *pb.EventBook, factory func() S) 
 	a.handlers = make(map[string]handlerFunc)
 	a.multiHandlers = make(map[string]multiHandlerFunc)
 	a.appliers = make(map[string]applierFunc[S])
+	a.rejectionHandlers = make(map[string]rejectionHandlerFunc)
 }
 
 // SetDomain sets the command handler's domain name for descriptor generation.
@@ -258,6 +265,32 @@ func (a *CommandHandlerBase[S]) HandlesMulti(handler any) {
 	}
 
 	a.multiHandlers[fullName] = wrapper
+}
+
+// HandlesRejection registers a rejection handler for compensation logic.
+//
+// The handler function must have signature: func(*pb.Notification) *pb.BusinessResponse
+// The handler receives the rejection notification and returns either:
+//   - EmitCompensationEvents() with events to undo the operation
+//   - DelegateToFramework() to let the framework handle compensation
+//
+// Example:
+//
+//	p.HandlesRejection("payment", "ProcessPayment", p.handlePaymentRejected)
+//
+//	func (p *Player) handlePaymentRejected(notification *pb.Notification) *pb.BusinessResponse {
+//	    ctx := angzarr.NewCompensationContext(notification)
+//	    // Emit compensation event to release reserved funds
+//	    event := &examples.FundsReleased{
+//	        Amount: p.State().ReservedAmount,
+//	        Reason: "Payment failed: " + ctx.RejectionReason,
+//	    }
+//	    p.applyAndRecord(event)
+//	    return angzarr.EmitCompensationEvents(p.EventBook())
+//	}
+func (a *CommandHandlerBase[S]) HandlesRejection(domain, command string, handler func(*pb.Notification) *pb.BusinessResponse) {
+	key := domain + "/" + command
+	a.rejectionHandlers[key] = handler
 }
 
 // Applies registers an event applier.
@@ -485,8 +518,7 @@ func (a *CommandHandlerBase[S]) Handle(request *pb.ContextualCommand) (*pb.Busin
 
 	// Check for Notification (rejection/compensation)
 	if cmdAny.TypeUrl == TypeURLPrefix+"angzarr.Notification" {
-		// TODO: Implement revocation handling
-		return DelegateToFramework("OO command handler revocation not yet implemented"), nil
+		return a.dispatchRejection(cmdAny)
 	}
 
 	if err := a.Dispatch(cmdAny); err != nil {
@@ -496,4 +528,52 @@ func (a *CommandHandlerBase[S]) Handle(request *pb.ContextualCommand) (*pb.Busin
 	return &pb.BusinessResponse{
 		Result: &pb.BusinessResponse_Events{Events: a.eventBook},
 	}, nil
+}
+
+// dispatchRejection routes a rejection notification to the matching handler.
+//
+// Handlers are registered via HandlesRejection() with domain/command key.
+// If no handler matches, delegates to the framework for default compensation.
+func (a *CommandHandlerBase[S]) dispatchRejection(cmdAny *anypb.Any) (*pb.BusinessResponse, error) {
+	// Unmarshal the Notification
+	notification := &pb.Notification{}
+	if err := cmdAny.UnmarshalTo(notification); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal Notification: %w", err)
+	}
+
+	// Unpack rejection details from notification payload
+	rejection := &pb.RejectionNotification{}
+	if notification.Payload != nil {
+		if err := notification.Payload.UnmarshalTo(rejection); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal RejectionNotification: %w", err)
+		}
+	}
+
+	// Extract domain and command type from rejected_command
+	var domain, cmdSuffix string
+	if rejection.RejectedCommand != nil && len(rejection.RejectedCommand.Pages) > 0 {
+		if rejection.RejectedCommand.Cover != nil {
+			domain = rejection.RejectedCommand.Cover.Domain
+		}
+		if cmd := rejection.RejectedCommand.Pages[0].GetCommand(); cmd != nil {
+			cmdTypeURL := cmd.TypeUrl
+			if idx := strings.LastIndex(cmdTypeURL, "/"); idx >= 0 {
+				cmdSuffix = cmdTypeURL[idx+1:]
+			} else {
+				cmdSuffix = cmdTypeURL
+			}
+		}
+	}
+
+	// Build dispatch key and look up handler
+	key := domain + "/" + cmdSuffix
+	if handler, ok := a.rejectionHandlers[key]; ok {
+		// Ensure state is rebuilt before calling handler
+		_ = a.State()
+		return handler(notification), nil
+	}
+
+	return DelegateToFramework(
+		fmt.Sprintf("CommandHandler %s has no custom compensation for %s", a.domain, key),
+	), nil
 }
