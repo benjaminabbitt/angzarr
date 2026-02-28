@@ -7,10 +7,12 @@ Orchestrates the flow of poker hands by:
 """
 
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import structlog
+from google.protobuf.message import Message
 
 # Add paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -26,6 +28,16 @@ from angzarr_client.process_manager_handler import (
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import table_pb2 as table
+
+
+@dataclass
+class EventHandler:
+    """Event handler registration for dispatch table."""
+
+    proto_class: type[Message]
+    handler: Callable
+    returns_command: bool = True
+
 
 structlog.configure(
     processors=[
@@ -50,6 +62,39 @@ class HandFlowProcessManager:
             command_sender=self._send_command,
             timeout_handler=self._handle_timeout,
         )
+        # Event dispatch table - maps type_url suffix to handler info
+        # HandStarted is handled specially (different domain, needs table_root)
+        self._event_handlers: dict[str, EventHandler] = {
+            "CardsDealt": EventHandler(
+                proto_class=hand.CardsDealt,
+                handler=self._manager.handle_cards_dealt,
+            ),
+            "BlindPosted": EventHandler(
+                proto_class=hand.BlindPosted,
+                handler=self._manager.handle_blind_posted,
+            ),
+            "ActionTaken": EventHandler(
+                proto_class=hand.ActionTaken,
+                handler=self._manager.handle_action_taken,
+            ),
+            "BettingRoundComplete": EventHandler(
+                proto_class=hand.BettingRoundComplete,
+                handler=self._manager.handle_betting_round_complete,
+            ),
+            "CommunityCardsDealt": EventHandler(
+                proto_class=hand.CommunityCardsDealt,
+                handler=self._manager.handle_community_cards_dealt,
+            ),
+            "ShowdownStarted": EventHandler(
+                proto_class=hand.ShowdownStarted,
+                handler=self._manager.handle_showdown_started,
+            ),
+            "PotAwarded": EventHandler(
+                proto_class=hand.PotAwarded,
+                handler=self._manager.handle_pot_awarded,
+                returns_command=False,
+            ),
+        }
 
     def _send_command(self, cmd_book: types.CommandBook) -> None:
         """Send a command via gRPC client."""
@@ -116,6 +161,21 @@ class HandFlowProcessManager:
 
         return destinations
 
+    def _dispatch_event(
+        self,
+        type_url: str,
+        event_any,
+        correlation_id: str,
+    ) -> Optional[types.CommandBook]:
+        """Dispatch event through handler registry."""
+        for suffix, handler_info in self._event_handlers.items():
+            if suffix in type_url:
+                event = handler_info.proto_class()
+                event_any.Unpack(event)
+                result = handler_info.handler(correlation_id, event)
+                return result if handler_info.returns_command else None
+        return None
+
     def handle(
         self,
         trigger: types.EventBook,
@@ -138,58 +198,16 @@ class HandFlowProcessManager:
             event_any = page.event
             type_url = event_any.type_url
 
+            # HandStarted is special - from table domain, initializes process
             if "HandStarted" in type_url:
                 event = table.HandStarted()
                 event_any.Unpack(event)
-                # start_hand initializes the process using correlation_id as key
                 self._manager.start_hand(event, table_root, correlation_id)
-
-            elif "CardsDealt" in type_url:
-                event = hand.CardsDealt()
-                event_any.Unpack(event)
-                cmd = self._manager.handle_cards_dealt(correlation_id, event)
+            else:
+                # Dispatch through handler registry
+                cmd = self._dispatch_event(type_url, event_any, correlation_id)
                 if cmd:
                     commands.append(cmd)
-
-            elif "BlindPosted" in type_url:
-                event = hand.BlindPosted()
-                event_any.Unpack(event)
-                cmd = self._manager.handle_blind_posted(correlation_id, event)
-                if cmd:
-                    commands.append(cmd)
-
-            elif "ActionTaken" in type_url:
-                event = hand.ActionTaken()
-                event_any.Unpack(event)
-                cmd = self._manager.handle_action_taken(correlation_id, event)
-                if cmd:
-                    commands.append(cmd)
-
-            elif "BettingRoundComplete" in type_url:
-                event = hand.BettingRoundComplete()
-                event_any.Unpack(event)
-                cmd = self._manager.handle_betting_round_complete(correlation_id, event)
-                if cmd:
-                    commands.append(cmd)
-
-            elif "CommunityCardsDealt" in type_url:
-                event = hand.CommunityCardsDealt()
-                event_any.Unpack(event)
-                cmd = self._manager.handle_community_cards_dealt(correlation_id, event)
-                if cmd:
-                    commands.append(cmd)
-
-            elif "ShowdownStarted" in type_url:
-                event = hand.ShowdownStarted()
-                event_any.Unpack(event)
-                cmd = self._manager.handle_showdown_started(correlation_id, event)
-                if cmd:
-                    commands.append(cmd)
-
-            elif "PotAwarded" in type_url:
-                event = hand.PotAwarded()
-                event_any.Unpack(event)
-                self._manager.handle_pot_awarded(correlation_id, event)
 
         # Set sequences and correlation_id on commands from destination state
         for cmd in commands:

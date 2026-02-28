@@ -119,6 +119,30 @@ class GameRules(ABC):
 class TexasHoldemRules(GameRules):
     """Rules for Texas Hold'em poker."""
 
+    # Phase transition table - avoids if/elif chain
+    _PHASE_TRANSITIONS: dict[int, PhaseTransition] = {
+        poker_types.PREFLOP: PhaseTransition(
+            next_phase=poker_types.FLOP,
+            community_cards_to_deal=3,
+            is_showdown=False,
+        ),
+        poker_types.FLOP: PhaseTransition(
+            next_phase=poker_types.TURN,
+            community_cards_to_deal=1,
+            is_showdown=False,
+        ),
+        poker_types.TURN: PhaseTransition(
+            next_phase=poker_types.RIVER,
+            community_cards_to_deal=1,
+            is_showdown=False,
+        ),
+        poker_types.RIVER: PhaseTransition(
+            next_phase=poker_types.SHOWDOWN,
+            community_cards_to_deal=0,
+            is_showdown=True,
+        ),
+    }
+
     @property
     def variant(self) -> int:
         return poker_types.TEXAS_HOLDEM
@@ -138,31 +162,7 @@ class TexasHoldemRules(GameRules):
         ]
 
     def get_next_phase(self, current_phase: int) -> Optional[PhaseTransition]:
-        if current_phase == poker_types.PREFLOP:
-            return PhaseTransition(
-                next_phase=poker_types.FLOP,
-                community_cards_to_deal=3,
-                is_showdown=False,
-            )
-        elif current_phase == poker_types.FLOP:
-            return PhaseTransition(
-                next_phase=poker_types.TURN,
-                community_cards_to_deal=1,
-                is_showdown=False,
-            )
-        elif current_phase == poker_types.TURN:
-            return PhaseTransition(
-                next_phase=poker_types.RIVER,
-                community_cards_to_deal=1,
-                is_showdown=False,
-            )
-        elif current_phase == poker_types.RIVER:
-            return PhaseTransition(
-                next_phase=poker_types.SHOWDOWN,
-                community_cards_to_deal=0,
-                is_showdown=True,
-            )
-        return None
+        return self._PHASE_TRANSITIONS.get(current_phase)
 
     def evaluate_hand(self, hole_cards: list, community_cards: list) -> tuple:
         """Evaluate best 5-card hand from 7 cards (2 hole + 5 community)."""
@@ -292,6 +292,20 @@ class OmahaRules(TexasHoldemRules):
 class FiveCardDrawRules(GameRules):
     """Rules for Five Card Draw poker."""
 
+    # Phase transition table - avoids if/elif chain
+    _PHASE_TRANSITIONS: dict[int, PhaseTransition] = {
+        poker_types.PREFLOP: PhaseTransition(
+            next_phase=poker_types.DRAW,
+            community_cards_to_deal=0,
+            is_showdown=False,
+        ),
+        poker_types.DRAW: PhaseTransition(
+            next_phase=poker_types.SHOWDOWN,
+            community_cards_to_deal=0,
+            is_showdown=True,
+        ),
+    }
+
     @property
     def variant(self) -> int:
         return poker_types.FIVE_CARD_DRAW
@@ -309,19 +323,7 @@ class FiveCardDrawRules(GameRules):
         ]
 
     def get_next_phase(self, current_phase: int) -> Optional[PhaseTransition]:
-        if current_phase == poker_types.PREFLOP:
-            return PhaseTransition(
-                next_phase=poker_types.DRAW,
-                community_cards_to_deal=0,
-                is_showdown=False,
-            )
-        elif current_phase == poker_types.DRAW:
-            return PhaseTransition(
-                next_phase=poker_types.SHOWDOWN,
-                community_cards_to_deal=0,
-                is_showdown=True,
-            )
-        return None
+        return self._PHASE_TRANSITIONS.get(current_phase)
 
     def evaluate_hand(self, hole_cards: list, community_cards: list) -> tuple:
         """Evaluate 5-card hand (no community cards in draw)."""
@@ -365,14 +367,15 @@ class FiveCardDrawRules(GameRules):
         )
 
 
+# Dispatch table for game rules factory - avoids if/elif chain
+_GAME_RULES_REGISTRY: dict[int, type[GameRules]] = {
+    poker_types.TEXAS_HOLDEM: TexasHoldemRules,
+    poker_types.OMAHA: OmahaRules,
+    poker_types.FIVE_CARD_DRAW: FiveCardDrawRules,
+}
+
+
 def get_game_rules(variant: int) -> GameRules:
     """Factory function to get rules for a game variant."""
-    if variant == poker_types.TEXAS_HOLDEM:
-        return TexasHoldemRules()
-    elif variant == poker_types.OMAHA:
-        return OmahaRules()
-    elif variant == poker_types.FIVE_CARD_DRAW:
-        return FiveCardDrawRules()
-    else:
-        # Default to Hold'em
-        return TexasHoldemRules()
+    rules_class = _GAME_RULES_REGISTRY.get(variant, TexasHoldemRules)
+    return rules_class()
