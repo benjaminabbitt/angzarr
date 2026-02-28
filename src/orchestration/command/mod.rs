@@ -10,7 +10,7 @@ pub mod local;
 
 use async_trait::async_trait;
 
-use crate::proto::{CommandBook, CommandResponse, EventBook};
+use crate::proto::{CommandBook, CommandResponse, EventBook, SyncMode};
 
 /// Outcome of executing a single command.
 #[derive(Debug)]
@@ -32,5 +32,10 @@ pub enum CommandOutcome {
 #[async_trait]
 pub trait CommandExecutor: Send + Sync {
     /// Execute a command and classify the result.
-    async fn execute(&self, command: CommandBook) -> CommandOutcome;
+    ///
+    /// The `sync_mode` parameter controls:
+    /// - `Unspecified`: Async execution (commands go to bus, results via notification)
+    /// - `Simple`: Sync projectors only, sagas async, events published to bus
+    /// - `Cascade`: Full sync chain (projectors + sagas sync, no bus publishing)
+    async fn execute(&self, command: CommandBook, sync_mode: SyncMode) -> CommandOutcome;
 }

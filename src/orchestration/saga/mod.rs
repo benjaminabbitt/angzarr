@@ -48,7 +48,8 @@ use backon::ExponentialBuilder;
 use tracing::{debug, error, warn};
 
 use crate::bus::BusError;
-use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, SagaResponse};
+use crate::bus::CommandBus;
+use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, SagaResponse, SyncMode};
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::{run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -130,9 +131,18 @@ pub trait SagaRetryContext: Send + Sync {
 struct SagaOperation<'a> {
     context: &'a dyn SagaRetryContext,
     executor: &'a dyn CommandExecutor,
+    /// Command bus for async command publishing.
+    /// When `sync_mode == Async` and this is `Some`, commands are published
+    /// to the bus (fire-and-forget) instead of executed directly.
+    command_bus: Option<&'a dyn CommandBus>,
     fetcher: Option<&'a dyn DestinationFetcher>,
     saga_name: &'a str,
     correlation_id: &'a str,
+    /// Sync mode for command execution.
+    /// ASYNC: commands published to bus (fire-and-forget), results via RejectionNotification.
+    /// CASCADE: commands executed synchronously with no bus publishing.
+    /// SIMPLE: commands executed synchronously with bus publishing.
+    sync_mode: SyncMode,
     commands: Vec<CommandBook>,
     /// Events (facts) to inject after all commands succeed.
     /// Updated by prepare_for_retry alongside commands.
@@ -172,7 +182,29 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
 
             let domain = command.domain().to_string();
 
-            match self.executor.execute(command.clone()).await {
+            // ASYNC mode: publish to command bus (fire-and-forget).
+            // Results come back via RejectionNotification through the event bus.
+            // No retry loop needed — the command handler will handle sequence
+            // conflicts and rejection routing.
+            if self.sync_mode == SyncMode::Async {
+                if let Some(bus) = self.command_bus {
+                    match bus.publish(Arc::new(command)).await {
+                        Ok(()) => {
+                            debug!(%domain, "Saga command published to bus (async)");
+                        }
+                        Err(e) => {
+                            error!(%domain, error = %e, "Failed to publish command to bus");
+                            // Bus publish failure is not retryable — infrastructure error
+                            return RetryOutcome::Fatal(format!("Command bus publish failed: {e}"));
+                        }
+                    }
+                    continue;
+                }
+                // Fall through to direct execution if no bus configured
+            }
+
+            // SIMPLE/CASCADE mode: execute synchronously
+            match self.executor.execute(command.clone(), self.sync_mode).await {
                 CommandOutcome::Success(_) => {
                     debug!(%domain, "Saga command executed successfully");
                 }
@@ -272,8 +304,10 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
 struct SagaRetryBuilder<'a> {
     context: &'a dyn SagaRetryContext,
     executor: &'a dyn CommandExecutor,
+    command_bus: Option<&'a dyn CommandBus>,
     saga_name: &'a str,
     correlation_id: &'a str,
+    sync_mode: SyncMode,
     fetcher: Option<&'a dyn DestinationFetcher>,
     commands: Vec<CommandBook>,
     events: Vec<EventBook>,
@@ -287,18 +321,26 @@ impl<'a> SagaRetryBuilder<'a> {
         executor: &'a dyn CommandExecutor,
         saga_name: &'a str,
         correlation_id: &'a str,
+        sync_mode: SyncMode,
     ) -> Self {
         Self {
             context,
             executor,
+            command_bus: None,
             saga_name,
             correlation_id,
+            sync_mode,
             fetcher: None,
             commands: Vec::new(),
             events: Vec::new(),
             destinations: Vec::new(),
             backoff: ExponentialBuilder::default(),
         }
+    }
+
+    fn command_bus(mut self, command_bus: Option<&'a dyn CommandBus>) -> Self {
+        self.command_bus = command_bus;
+        self
     }
 
     fn fetcher(mut self, fetcher: Option<&'a dyn DestinationFetcher>) -> Self {
@@ -336,9 +378,11 @@ impl<'a> SagaRetryBuilder<'a> {
         let operation = SagaOperation {
             context: self.context,
             executor: self.executor,
+            command_bus: self.command_bus,
             fetcher: self.fetcher,
             saga_name: self.saga_name,
             correlation_id: self.correlation_id,
+            sync_mode: self.sync_mode,
             commands: self.commands,
             events: self.events,
             failed_domains: HashSet::new(),
@@ -363,16 +407,26 @@ impl<'a> SagaRetryBuilder<'a> {
 /// 4. Validate output domains (if validator provided)
 /// 5. Execute commands with retry
 /// 6. Inject facts into target aggregates
+///
+/// `sync_mode` controls how commands are executed:
+/// - `Async`: Commands published to bus (fire-and-forget), results via RejectionNotification
+/// - `Simple`: Sync execution with bus publishing for downstream sagas
+/// - `Cascade`: Full sync chain, no bus publishing
+///
+/// `command_bus` is required when `sync_mode == Async`. If None and sync_mode is Async,
+/// falls back to direct execution.
 #[tracing::instrument(name = "saga.orchestrate", skip_all, fields(%saga_name, %correlation_id))]
 #[allow(clippy::too_many_arguments)]
 pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
+    command_bus: Option<&dyn CommandBus>,
     fetcher: Option<&dyn DestinationFetcher>,
     fact_executor: Option<&dyn FactExecutor>,
     saga_name: &str,
     correlation_id: &str,
     output_domain_validator: Option<&OutputDomainValidator>,
+    sync_mode: SyncMode,
     backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
     // Phase 1: Prepare — get destination covers
@@ -443,7 +497,8 @@ pub async fn orchestrate_saga(
     }
 
     // Phase 5: Execute commands with retry
-    SagaRetryBuilder::new(ctx, executor, saga_name, correlation_id)
+    SagaRetryBuilder::new(ctx, executor, saga_name, correlation_id, sync_mode)
+        .command_bus(command_bus)
         .fetcher(fetcher)
         .commands(commands)
         .events(events.clone())

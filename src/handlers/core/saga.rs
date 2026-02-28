@@ -18,12 +18,12 @@ use backon::ExponentialBuilder;
 use futures::future::BoxFuture;
 use tracing::{error, Instrument};
 
-use crate::bus::{BusError, EventHandler};
+use crate::bus::{BusError, CommandBus, EventHandler};
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::saga::{orchestrate_saga, OutputDomainValidator, SagaContextFactory};
 use crate::orchestration::FactExecutor;
-use crate::proto::EventBook;
+use crate::proto::{EventBook, SyncMode};
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::saga_backoff;
 
@@ -36,6 +36,7 @@ use crate::utils::retry::saga_backoff;
 pub struct SagaEventHandler {
     context_factory: Arc<dyn SagaContextFactory>,
     command_executor: Arc<dyn CommandExecutor>,
+    command_bus: Option<Arc<dyn CommandBus>>,
     destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
     fact_executor: Option<Arc<dyn FactExecutor>>,
     output_domain_validator: Option<Arc<OutputDomainValidator>>,
@@ -52,6 +53,7 @@ impl SagaEventHandler {
         Self {
             context_factory,
             command_executor,
+            command_bus: None,
             destination_fetcher,
             fact_executor: None,
             output_domain_validator: None,
@@ -63,6 +65,7 @@ impl SagaEventHandler {
     pub fn from_factory_with_validator(
         context_factory: Arc<dyn SagaContextFactory>,
         command_executor: Arc<dyn CommandExecutor>,
+        command_bus: Option<Arc<dyn CommandBus>>,
         destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
         fact_executor: Option<Arc<dyn FactExecutor>>,
         output_domain_validator: Option<Arc<OutputDomainValidator>>,
@@ -71,6 +74,7 @@ impl SagaEventHandler {
         Self {
             context_factory,
             command_executor,
+            command_bus,
             destination_fetcher,
             fact_executor,
             output_domain_validator,
@@ -87,6 +91,7 @@ impl EventHandler for SagaEventHandler {
 
         let factory = self.context_factory.clone();
         let executor = self.command_executor.clone();
+        let command_bus = self.command_bus.clone();
         let fetcher = self.destination_fetcher.clone();
         let fact_executor = self.fact_executor.clone();
         let validator = self.output_domain_validator.clone();
@@ -97,17 +102,23 @@ impl EventHandler for SagaEventHandler {
                 let ctx = factory.create(book);
 
                 let validator_ref: Option<&OutputDomainValidator> = validator.as_deref();
+                let command_bus_ref: Option<&dyn CommandBus> = command_bus.as_deref();
                 let fetcher_ref: Option<&dyn DestinationFetcher> = fetcher.as_deref();
                 let fact_executor_ref: Option<&dyn FactExecutor> = fact_executor.as_deref();
 
+                // Events received from bus are always async mode.
+                // CASCADE mode doesn't publish to bus, so sagas called via bus
+                // execute their commands with standard async behavior.
                 if let Err(e) = orchestrate_saga(
                     ctx.as_ref(),
                     executor.as_ref(),
+                    command_bus_ref,
                     fetcher_ref,
                     fact_executor_ref,
                     &saga_name,
                     &correlation_id,
                     validator_ref,
+                    SyncMode::Async,
                     backoff,
                 )
                 .await

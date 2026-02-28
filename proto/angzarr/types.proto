@@ -52,7 +52,7 @@ message DomainDivergence {
 // docs:start:sync_mode
 // Controls synchronous processing behavior
 enum SyncMode {
-  SYNC_MODE_UNSPECIFIED = 0;  // Async: fire and forget (default)
+  SYNC_MODE_ASYNC = 0;  // Async: fire and forget (default)
   SYNC_MODE_SIMPLE = 1;       // Sync projectors only, no saga cascade
   SYNC_MODE_CASCADE = 2;      // Full sync: projectors + saga cascade (expensive)
 }

@@ -35,7 +35,7 @@ pub use builder::RuntimeBuilder;
 pub use client::{CommandBuilder, CommandClient, SpeculativeClient, StandaloneQueryClient};
 pub use dispatcher::CommandDispatcher;
 pub use grpc_handlers::{CommandHandlerAdapter, GrpcProjectorHandler};
-pub use router::{CommandRouter, DomainStorage, SyncProjectorEntry};
+pub use router::{CommandRouter, DomainStorage, SyncProjectorEntry, SyncSagaEntry};
 pub use runtime::Runtime;
 pub use server::{ServerInfo, SingleDomainEventQuery, StandaloneAggregateService};
 pub use speculative::{DomainStateSpec, PmSpeculativeResult, SpeculativeExecutor};

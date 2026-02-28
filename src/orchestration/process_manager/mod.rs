@@ -47,7 +47,7 @@ use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
-use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, Uuid as ProtoUuid};
+use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, SyncMode, Uuid as ProtoUuid};
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -176,6 +176,10 @@ pub trait PMContextFactory: Send + Sync {
 /// 5. Persist PM events (retries on sequence conflict)
 /// 6. Execute commands with saga_origin stamped for compensation routing
 /// 7. Inject facts into target aggregates
+///
+/// `sync_mode` controls how commands are executed:
+/// - `Cascade`: Sync execution, no bus publishing
+/// - `Simple`/`Unspecified`: Standard execution with bus publishing
 #[allow(clippy::too_many_arguments)]
 #[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_name, %pm_domain, %correlation_id))]
 pub async fn orchestrate_pm(
@@ -187,6 +191,7 @@ pub async fn orchestrate_pm(
     pm_name: &str,
     pm_domain: &str,
     correlation_id: &str,
+    sync_mode: SyncMode,
     backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
     let trigger_domain = trigger
@@ -329,6 +334,7 @@ pub async fn orchestrate_pm(
             correlation_id,
             pm_name,
             pm_domain,
+            sync_mode,
         )
         .await;
 
@@ -372,6 +378,10 @@ pub async fn orchestrate_pm(
 /// PM through the standard aggregate coordinator infrastructure.
 ///
 /// PMs are aggregates — they receive Notifications the same way aggregates do.
+///
+/// `sync_mode` controls how commands are executed:
+/// - `Cascade`: Sync execution, no bus publishing
+/// - `Simple`/`Unspecified`: Standard execution with bus publishing
 async fn execute_pm_commands(
     ctx: &dyn ProcessManagerContext,
     executor: &dyn CommandExecutor,
@@ -379,6 +389,7 @@ async fn execute_pm_commands(
     correlation_id: &str,
     pm_name: &str,
     pm_domain: &str,
+    sync_mode: SyncMode,
 ) {
     use super::shared::fill_correlation_id;
     fill_correlation_id(&mut commands, correlation_id);
@@ -421,7 +432,7 @@ async fn execute_pm_commands(
             "Executing PM command"
         );
 
-        match executor.execute(command_book.clone()).await {
+        match executor.execute(command_book.clone(), sync_mode).await {
             CommandOutcome::Success(cmd_response) => {
                 debug!(
                     domain = %cmd_domain,

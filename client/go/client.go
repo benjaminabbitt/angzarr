@@ -202,7 +202,7 @@ func CommandHandlerClientFromConn(conn *grpc.ClientConn) *CommandHandlerClient {
 func (c *CommandHandlerClient) Handle(ctx context.Context, cmd *pb.CommandBook) (*pb.CommandResponse, error) {
 	request := &pb.CommandRequest{
 		Command:  cmd,
-		SyncMode: pb.SyncMode_SYNC_MODE_UNSPECIFIED,
+		SyncMode: pb.SyncMode_SYNC_MODE_ASYNC,
 	}
 	return c.HandleCommand(ctx, request)
 }

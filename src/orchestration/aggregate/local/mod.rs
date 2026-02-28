@@ -69,6 +69,8 @@ pub struct LocalAggregateContext {
     dlq_publisher: Arc<dyn DeadLetterPublisher>,
     /// Component name for DLQ metadata.
     component_name: String,
+    /// Sync mode for projector/saga invocation and bus publishing.
+    sync_mode: Option<crate::proto::SyncMode>,
 }
 
 impl LocalAggregateContext {
@@ -85,6 +87,7 @@ impl LocalAggregateContext {
             snapshot_write_enabled: true,
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
+            sync_mode: None,
         }
     }
 
@@ -97,6 +100,7 @@ impl LocalAggregateContext {
             snapshot_write_enabled: true,
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
+            sync_mode: None,
         }
     }
 
@@ -115,6 +119,12 @@ impl LocalAggregateContext {
     /// Set the component name for DLQ metadata.
     pub fn with_component_name(mut self, name: impl Into<String>) -> Self {
         self.component_name = name.into();
+        self
+    }
+
+    /// Set the sync mode for projector/saga invocation and bus publishing.
+    pub fn with_sync_mode(mut self, mode: crate::proto::SyncMode) -> Self {
+        self.sync_mode = Some(mode);
         self
     }
 
@@ -365,22 +375,27 @@ impl AggregateContext for LocalAggregateContext {
         // Call sync projectors
         let projections = self.call_sync_projectors(events).await;
 
-        tracing::info!(
-            pages = events.pages.len(),
-            domain = %events.domain(),
-            "Aggregate publishing events to bus"
-        );
-
-        // Publish events to bus — cover.domain stays bare, bus computes routing key
-        let bus_events = Arc::new(events.clone());
-        let publish_result = self.event_bus.publish(bus_events).await;
-
-        if let Err(e) = publish_result {
-            warn!(
+        // CASCADE mode: do NOT publish to bus (events flow via sync sagas)
+        // SIMPLE and UNSPECIFIED: publish to bus
+        let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
+        if !is_cascade {
+            tracing::info!(
+                pages = events.pages.len(),
                 domain = %events.domain(),
-                error = %e,
-                "Failed to publish events"
+                "Aggregate publishing events to bus"
             );
+
+            // Publish events to bus — cover.domain stays bare, bus computes routing key
+            let bus_events = Arc::new(events.clone());
+            let publish_result = self.event_bus.publish(bus_events).await;
+
+            if let Err(e) = publish_result {
+                warn!(
+                    domain = %events.domain(),
+                    error = %e,
+                    "Failed to publish events"
+                );
+            }
         }
 
         Ok(projections)

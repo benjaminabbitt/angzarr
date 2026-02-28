@@ -225,12 +225,14 @@ impl Runtime {
             .collect();
 
         // Create command router with in-process sync projectors (legacy).
+        // TODO: Wire up sync_sagas from RuntimeBuilder when saga registration is added
         let router = Arc::new(CommandRouter::new(
             business.clone(),
             domain_stores.clone(),
             discovery.clone(),
             event_bus.clone(),
             sync_projector_entries.clone(),
+            vec![], // sync_sagas - will be populated when CASCADE mode is needed
             None,
         ));
 
@@ -300,6 +302,7 @@ impl Runtime {
             let handler = SagaEventHandler::from_factory_with_validator(
                 factory,
                 executor.clone(),
+                None, // command_bus - standalone uses sync execution
                 Some(fetcher.clone()),
                 Some(fact_executor.clone()),
                 Some(Arc::new(validator)),

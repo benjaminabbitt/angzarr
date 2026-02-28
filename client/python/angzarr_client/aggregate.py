@@ -299,7 +299,8 @@ class CommandHandler(Generic[StateT], ABC):
         type_url = command_any.type_url
 
         for suffix, (method_name, cmd_type) in self._dispatch_table.items():
-            if type_url.endswith(suffix):
+            # Match exact type name (preceded by . or /) to avoid false matches
+            if type_url.endswith(f".{suffix}") or type_url.endswith(f"/{suffix}"):
                 cmd = cmd_type()
                 command_any.Unpack(cmd)
                 getattr(self, method_name)(cmd)
@@ -519,7 +520,8 @@ class CommandHandler(Generic[StateT], ABC):
 
         type_url = event_any.type_url
         for suffix, (method_name, event_type) in self._applier_table.items():
-            if type_url.endswith(suffix):
+            # Match exact type name (preceded by . or /) to avoid CardsDealt matching CommunityCardsDealt
+            if type_url.endswith(f".{suffix}") or type_url.endswith(f"/{suffix}"):
                 event = event_type()
                 event_any.Unpack(event)
                 getattr(self, method_name)(state, event)

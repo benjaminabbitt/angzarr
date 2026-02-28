@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::proto::CommandBook;
+use crate::proto::{CommandBook, SyncMode};
 use crate::standalone::CommandRouter;
 use crate::utils::retry::is_retryable_status;
 use crate::utils::sequence_validator::extract_event_book_from_status;
@@ -28,8 +28,22 @@ impl LocalCommandExecutor {
 
 #[async_trait]
 impl CommandExecutor for LocalCommandExecutor {
-    async fn execute(&self, command: CommandBook) -> CommandOutcome {
-        match self.router.execute_command(command).await {
+    async fn execute(&self, command: CommandBook, sync_mode: SyncMode) -> CommandOutcome {
+        let result = match sync_mode {
+            SyncMode::Cascade => {
+                // CASCADE: use sync execution path with no bus publishing
+                self.router
+                    .execute_with_cascade(command)
+                    .await
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            }
+            _ => {
+                // UNSPECIFIED/SIMPLE: use standard execution path
+                self.router.execute_command(command).await
+            }
+        };
+
+        match result {
             Ok(response) => CommandOutcome::Success(response),
             Err(e) => classify_local_error(e),
         }

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use backon::ExponentialBuilder;
 
-use crate::proto::CommandResponse;
+use crate::proto::{CommandResponse, SyncMode};
 use crate::proto_ext::CoverExt;
 
 use super::super::command::CommandExecutor;
@@ -86,7 +86,7 @@ struct SuccessExecutor;
 
 #[async_trait]
 impl CommandExecutor for SuccessExecutor {
-    async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
         CommandOutcome::Success(CommandResponse::default())
     }
 }
@@ -99,7 +99,7 @@ struct CountingExecutor {
 
 #[async_trait]
 impl CommandExecutor for CountingExecutor {
-    async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
         self.execute_count.fetch_add(1, Ordering::SeqCst);
         let remaining = self.failures_remaining.load(Ordering::SeqCst);
         if remaining > 0 {
@@ -119,7 +119,7 @@ struct RejectingExecutor;
 
 #[async_trait]
 impl CommandExecutor for RejectingExecutor {
-    async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
         CommandOutcome::Rejected("Business rule violation".to_string())
     }
 }
@@ -136,7 +136,7 @@ async fn test_execute_success_no_retry() {
     let ctx = AlwaysSucceeds;
     let executor = SuccessExecutor;
     let commands = vec![CommandBook::default()];
-    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1")
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
         .commands(commands)
         .backoff(fast_backoff())
         .execute()
@@ -147,7 +147,7 @@ async fn test_execute_success_no_retry() {
 async fn test_execute_empty_commands_noop() {
     let ctx = AlwaysSucceeds;
     let executor = SuccessExecutor;
-    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1")
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
         .backoff(fast_backoff())
         .execute()
         .await;
@@ -161,7 +161,7 @@ async fn test_execute_retries_then_succeeds() {
         execute_count: AtomicU32::new(0),
     };
     let commands = vec![CommandBook::default()];
-    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1")
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
         .commands(commands)
         .backoff(fast_backoff())
         .execute()
@@ -178,7 +178,7 @@ async fn test_execute_non_retryable_calls_rejection_handler() {
     };
     let executor = RejectingExecutor;
     let commands = vec![CommandBook::default()];
-    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1")
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
         .commands(commands)
         .backoff(fast_backoff())
         .execute()
@@ -199,7 +199,7 @@ async fn test_execute_exhausts_retries() {
         .with_max_delay(Duration::from_millis(10))
         .with_max_times(3);
     let commands = vec![CommandBook::default()];
-    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1")
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
         .commands(commands)
         .backoff(backoff)
         .execute()
@@ -224,11 +224,13 @@ async fn test_orchestrate_saga_with_domain_validator() {
     let result = orchestrate_saga(
         &ctx,
         &executor,
-        None,
-        None,
+        None, // command_bus
+        None, // fetcher
+        None, // fact_executor
         "test-saga",
         "corr-1",
         Some(&validator),
+        SyncMode::Async,
         fast_backoff(),
     )
     .await;
@@ -243,7 +245,7 @@ struct RetryableWithStateExecutor {
 
 #[async_trait]
 impl CommandExecutor for RetryableWithStateExecutor {
-    async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
         let remaining = self.failures_remaining.load(Ordering::SeqCst);
         if remaining > 0 {
             self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
@@ -336,7 +338,7 @@ async fn test_execute_uses_cached_state_from_conflict() {
         fetch_count: AtomicU32::new(0),
     };
     let commands = vec![CommandBook::default()];
-    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1")
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
         .fetcher(Some(&fetcher))
         .commands(commands)
         .backoff(fast_backoff())

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
-use crate::proto::{CommandBook, CommandRequest};
+use crate::proto::{CommandBook, CommandRequest, SyncMode};
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::retry::is_retryable_status;
 use crate::utils::sequence_validator::extract_event_book_from_status;
@@ -48,6 +48,7 @@ impl GrpcCommandExecutor {
     pub async fn execute_raw(
         &self,
         command_book: CommandBook,
+        sync_mode: SyncMode,
     ) -> Result<crate::proto::CommandResponse, tonic::Status> {
         let domain = command_book.domain();
         let correlation_id = command_book.correlation_id().to_string();
@@ -59,7 +60,7 @@ impl GrpcCommandExecutor {
         let mut client = client.lock().await;
         let sync_command = CommandRequest {
             command: Some(command_book),
-            sync_mode: 0, // Unspecified = async
+            sync_mode: sync_mode.into(),
         };
         client
             .handle_command(correlated_request(sync_command, &correlation_id))
@@ -70,8 +71,8 @@ impl GrpcCommandExecutor {
 
 #[async_trait]
 impl CommandExecutor for GrpcCommandExecutor {
-    async fn execute(&self, command: CommandBook) -> CommandOutcome {
-        match self.execute_raw(command).await {
+    async fn execute(&self, command: CommandBook, sync_mode: SyncMode) -> CommandOutcome {
+        match self.execute_raw(command, sync_mode).await {
             Ok(response) => CommandOutcome::Success(response),
             Err(e) if is_retryable_status(&e) => {
                 let current_state = extract_event_book_from_status(&e);
@@ -104,12 +105,12 @@ impl SingleClientExecutor {
 
 #[async_trait]
 impl CommandExecutor for SingleClientExecutor {
-    async fn execute(&self, command: CommandBook) -> CommandOutcome {
+    async fn execute(&self, command: CommandBook, sync_mode: SyncMode) -> CommandOutcome {
         let correlation_id = command.correlation_id().to_string();
         let mut client = self.client.lock().await;
         let sync_command = CommandRequest {
             command: Some(command),
-            sync_mode: 0, // Unspecified = async
+            sync_mode: sync_mode.into(),
         };
         match client
             .handle_command(correlated_request(sync_command, &correlation_id))

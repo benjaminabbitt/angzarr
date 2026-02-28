@@ -4,9 +4,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
-from angzarr_client import CommandHandler, handles, now
+from angzarr_client import CommandHandler, applies, handles, now
 from angzarr_client.errors import CommandRejectedError
-from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.examples import table_pb2 as table_proto
 
 
@@ -49,64 +48,88 @@ class Table(CommandHandler[_TableState]):
     def _create_empty_state(self) -> _TableState:
         return _TableState()
 
-    def _apply_event(self, state: _TableState, event_any) -> None:
-        """Apply a single event to state."""
-        if event := try_unpack(event_any, table_proto.TableCreated):
-            state.table_id = f"table_{event.table_name}"
-            state.table_name = event.table_name
-            state.game_variant = event.game_variant
-            state.small_blind = event.small_blind
-            state.big_blind = event.big_blind
-            state.min_buy_in = event.min_buy_in
-            state.max_buy_in = event.max_buy_in
-            state.max_players = event.max_players
-            state.action_timeout_seconds = event.action_timeout_seconds
-            state.status = "waiting"
+    # --- Event appliers ---
 
-        elif event := try_unpack(event_any, table_proto.PlayerJoined):
-            state.seats[event.seat_position] = _SeatState(
-                position=event.seat_position,
-                player_root=event.player_root,
-                stack=event.stack,
-            )
+    @applies(table_proto.TableCreated)
+    def apply_table_created(
+        self, state: _TableState, event: table_proto.TableCreated
+    ) -> None:
+        state.table_id = f"table_{event.table_name}"
+        state.table_name = event.table_name
+        state.game_variant = event.game_variant
+        state.small_blind = event.small_blind
+        state.big_blind = event.big_blind
+        state.min_buy_in = event.min_buy_in
+        state.max_buy_in = event.max_buy_in
+        state.max_players = event.max_players
+        state.action_timeout_seconds = event.action_timeout_seconds
+        state.status = "waiting"
 
-        elif event := try_unpack(event_any, table_proto.PlayerLeft):
-            state.seats.pop(event.seat_position, None)
+    @applies(table_proto.PlayerJoined)
+    def apply_player_joined(
+        self, state: _TableState, event: table_proto.PlayerJoined
+    ) -> None:
+        state.seats[event.seat_position] = _SeatState(
+            position=event.seat_position,
+            player_root=event.player_root,
+            stack=event.stack,
+        )
 
-        elif event := try_unpack(event_any, table_proto.PlayerSatOut):
+    @applies(table_proto.PlayerLeft)
+    def apply_player_left(
+        self, state: _TableState, event: table_proto.PlayerLeft
+    ) -> None:
+        state.seats.pop(event.seat_position, None)
+
+    @applies(table_proto.PlayerSatOut)
+    def apply_player_sat_out(
+        self, state: _TableState, event: table_proto.PlayerSatOut
+    ) -> None:
+        for seat in state.seats.values():
+            if seat.player_root == event.player_root:
+                seat.is_sitting_out = True
+                break
+
+    @applies(table_proto.PlayerSatIn)
+    def apply_player_sat_in(
+        self, state: _TableState, event: table_proto.PlayerSatIn
+    ) -> None:
+        for seat in state.seats.values():
+            if seat.player_root == event.player_root:
+                seat.is_sitting_out = False
+                break
+
+    @applies(table_proto.HandStarted)
+    def apply_hand_started(
+        self, state: _TableState, event: table_proto.HandStarted
+    ) -> None:
+        state.hand_count = event.hand_number
+        state.current_hand_root = event.hand_root
+        state.dealer_position = event.dealer_position
+        state.status = "in_hand"
+
+    @applies(table_proto.HandEnded)
+    def apply_hand_ended(
+        self, state: _TableState, event: table_proto.HandEnded
+    ) -> None:
+        state.current_hand_root = b""
+        state.status = "waiting"
+        # Apply stack changes
+        for player_hex, delta in event.stack_changes.items():
+            player_root = bytes.fromhex(player_hex)
             for seat in state.seats.values():
-                if seat.player_root == event.player_root:
-                    seat.is_sitting_out = True
+                if seat.player_root == player_root:
+                    seat.stack += delta
                     break
 
-        elif event := try_unpack(event_any, table_proto.PlayerSatIn):
-            for seat in state.seats.values():
-                if seat.player_root == event.player_root:
-                    seat.is_sitting_out = False
-                    break
-
-        elif event := try_unpack(event_any, table_proto.HandStarted):
-            state.hand_count = event.hand_number
-            state.current_hand_root = event.hand_root
-            state.dealer_position = event.dealer_position
-            state.status = "in_hand"
-
-        elif event := try_unpack(event_any, table_proto.HandEnded):
-            state.current_hand_root = b""
-            state.status = "waiting"
-            # Apply stack changes
-            for player_hex, delta in event.stack_changes.items():
-                player_root = bytes.fromhex(player_hex)
-                for seat in state.seats.values():
-                    if seat.player_root == player_root:
-                        seat.stack += delta
-                        break
-
-        elif event := try_unpack(event_any, table_proto.ChipsAdded):
-            for seat in state.seats.values():
-                if seat.player_root == event.player_root:
-                    seat.stack = event.new_stack
-                    break
+    @applies(table_proto.ChipsAdded)
+    def apply_chips_added(
+        self, state: _TableState, event: table_proto.ChipsAdded
+    ) -> None:
+        for seat in state.seats.values():
+            if seat.player_root == event.player_root:
+                seat.stack = event.new_stack
+                break
 
     # --- State accessors ---
 

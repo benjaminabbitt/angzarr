@@ -560,3 +560,129 @@ class TestProcessManagerFactOutput:
 
         pm2 = PMWithFacts()
         assert len(pm2._facts) == 0
+
+
+# =============================================================================
+# Tests for @applies decorator in ProcessManager
+# =============================================================================
+
+from angzarr_client.process_manager import applies
+
+
+class PMWithApplies(ProcessManager[OrderWorkflowState]):
+    """Process manager using @applies decorator pattern."""
+
+    name = "pm-with-applies"
+
+    def _create_empty_state(self) -> OrderWorkflowState:
+        return OrderWorkflowState()
+
+    @applies(OrderCreated)
+    def apply_order_created(
+        self, state: OrderWorkflowState, event: OrderCreated
+    ) -> None:
+        state.order_id = event.order_id
+        state.customer_id = event.customer_id
+
+    @applies(StockReserved)
+    def apply_stock_reserved(
+        self, state: OrderWorkflowState, event: StockReserved
+    ) -> None:
+        state.inventory_reserved = True
+
+    @handles(OrderCreated, input_domain="order", output_domain="inventory")
+    def on_order_created(self, event: OrderCreated) -> ReserveStock:
+        return ReserveStock(order_id=event.order_id, sku="default", quantity=1)
+
+
+class TestProcessManagerAppliesDecorator:
+    """Tests for @applies decorator support in ProcessManager."""
+
+    def test_applier_table_populated(self):
+        """Verify @applies methods are discovered."""
+        assert "OrderCreated" in PMWithApplies._applier_table
+        assert "StockReserved" in PMWithApplies._applier_table
+        assert len(PMWithApplies._applier_table) == 2
+
+    def test_apply_event_dispatches_to_applier(self):
+        """Verify _apply_event routes to correct @applies method."""
+        pm = PMWithApplies()
+        state = pm._create_empty_state()
+
+        event = OrderCreated(order_id="test-123", customer_id="cust-456")
+        event_any = any_pb2.Any()
+        event_any.Pack(event)
+
+        pm._apply_event(state, event_any)
+
+        assert state.order_id == "test-123"
+        assert state.customer_id == "cust-456"
+
+    def test_unknown_event_silently_ignored(self):
+        """Verify unknown events don't raise errors."""
+        pm = PMWithApplies()
+        state = pm._create_empty_state()
+
+        event_any = any_pb2.Any(type_url="test.UnknownEventType", value=b"")
+        pm._apply_event(state, event_any)  # Should not raise
+
+        # State unchanged
+        assert state.order_id == ""
+
+    def test_state_rebuilt_with_applies(self):
+        """Verify state rebuild works with @applies methods."""
+        # Create event book with prior events
+        event1 = OrderCreated(order_id="order-rebuild", customer_id="cust-rebuild")
+        event1_any = any_pb2.Any()
+        event1_any.Pack(event1)
+
+        event2 = StockReserved(order_id="order-rebuild", sku="item", quantity=1)
+        event2_any = any_pb2.Any()
+        event2_any.Pack(event2)
+
+        event_book = types.EventBook(
+            pages=[
+                types.EventPage(event=event1_any),
+                types.EventPage(event=event2_any),
+            ]
+        )
+
+        pm = PMWithApplies(event_book)
+        state = pm._get_state()
+
+        assert state.order_id == "order-rebuild"
+        assert state.customer_id == "cust-rebuild"
+        assert state.inventory_reserved is True
+
+    def test_duplicate_applier_raises(self):
+        """Verify duplicate @applies for same event type raises TypeError."""
+        with pytest.raises(TypeError, match="duplicate applier"):
+
+            class BadPM(ProcessManager[OrderWorkflowState]):
+                name = "bad-applier-pm"
+
+                def _create_empty_state(self):
+                    return OrderWorkflowState()
+
+                @applies(OrderCreated)
+                def apply_one(self, state: OrderWorkflowState, event: OrderCreated):
+                    pass
+
+                @applies(OrderCreated)
+                def apply_two(self, state: OrderWorkflowState, event: OrderCreated):
+                    pass
+
+    def test_missing_applier_and_override_raises(self):
+        """Verify PM without @applies or _apply_event override raises."""
+        with pytest.raises(NotImplementedError, match="must either define @applies"):
+
+            class MinimalPM(ProcessManager[OrderWorkflowState]):
+                name = "minimal-pm"
+
+                def _create_empty_state(self):
+                    return OrderWorkflowState()
+
+            pm = MinimalPM()
+            state = pm._create_empty_state()
+            event_any = any_pb2.Any(type_url="test.SomeEvent", value=b"")
+            pm._apply_event(state, event_any)

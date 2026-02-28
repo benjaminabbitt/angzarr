@@ -321,16 +321,21 @@ impl AggregateContext for GrpcAggregateContext {
             vec![]
         };
 
-        // Publish events to bus — cover.domain stays bare, bus computes routing key
-        let bus_events = Arc::new(events.clone());
-        let publish_result = self.event_bus.publish(bus_events).await;
+        // CASCADE mode: do NOT publish to bus (events flow via sync sagas)
+        // SIMPLE and UNSPECIFIED: publish to bus
+        let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
+        if !is_cascade {
+            // Publish events to bus — cover.domain stays bare, bus computes routing key
+            let bus_events = Arc::new(events.clone());
+            let publish_result = self.event_bus.publish(bus_events).await;
 
-        if let Err(e) = publish_result {
-            warn!(
-                domain = %events.domain(),
-                error = %e,
-                "Failed to publish events"
-            );
+            if let Err(e) = publish_result {
+                warn!(
+                    domain = %events.domain(),
+                    error = %e,
+                    "Failed to publish events"
+                );
+            }
         }
 
         Ok(projections)

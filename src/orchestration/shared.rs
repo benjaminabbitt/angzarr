@@ -7,7 +7,7 @@ use tracing::{debug, error, warn};
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
-use crate::proto::{CommandBook, Cover, EventBook};
+use crate::proto::{CommandBook, Cover, EventBook, SyncMode};
 
 /// Fetch destination EventBooks for a set of covers.
 ///
@@ -50,11 +50,16 @@ pub fn fill_correlation_id(commands: &mut [CommandBook], correlation_id: &str) {
 ///
 /// Used by process managers for simple fire-and-forget command execution.
 /// Saga uses its own retry-aware execution loop instead.
+///
+/// `sync_mode` is passed to each command execution:
+/// - `Cascade`: Sync execution, no bus publishing
+/// - `Simple`/`Unspecified`: Standard execution with bus publishing
 #[tracing::instrument(name = "orchestration.execute", skip_all, fields(%correlation_id, count = commands.len()))]
 pub async fn execute_commands(
     executor: &dyn CommandExecutor,
     mut commands: Vec<CommandBook>,
     correlation_id: &str,
+    sync_mode: SyncMode,
 ) {
     fill_correlation_id(&mut commands, correlation_id);
 
@@ -70,7 +75,7 @@ pub async fn execute_commands(
             "Executing command"
         );
 
-        match executor.execute(command_book).await {
+        match executor.execute(command_book, sync_mode).await {
             CommandOutcome::Success(cmd_response) => {
                 debug!(
                     domain = %cmd_domain,

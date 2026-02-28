@@ -171,7 +171,7 @@ class CommandHandlerClient:
         """
         request = CommandRequest(
             command=command,
-            sync_mode=SyncMode.SYNC_MODE_UNSPECIFIED,
+            sync_mode=SyncMode.SYNC_MODE_ASYNC,
         )
         return self.handle_command(request)
 

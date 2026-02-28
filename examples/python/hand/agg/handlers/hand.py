@@ -4,9 +4,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Union
 
-from angzarr_client import CommandHandler, handles, now
+from angzarr_client import CommandHandler, applies, handles, now
 from angzarr_client.errors import CommandRejectedError
-from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.examples import hand_pb2 as hand_proto
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
@@ -69,145 +68,169 @@ class Hand(CommandHandler[_HandState]):
     def _create_empty_state(self) -> _HandState:
         return _HandState()
 
-    def _apply_event(self, state: _HandState, event_any) -> None:
-        """Apply a single event to state."""
-        if event := try_unpack(event_any, hand_proto.CommunityCardsDealt):
-            for card in event.cards:
-                dealt_card = (card.suit, card.rank)
-                state.community_cards.append(dealt_card)
-                if dealt_card in state.remaining_deck:
-                    state.remaining_deck.remove(dealt_card)
-            state.current_phase = event.phase
-            state.status = "betting"
-            for player in state.players.values():
-                player.bet_this_round = 0
-                player.has_acted = False
-            state.current_bet = 0
+    # --- Event appliers ---
 
-        elif event := try_unpack(event_any, hand_proto.CardsDealt):
-            state.hand_id = f"{event.table_root.hex()}_{event.hand_number}"
-            state.table_root = event.table_root
-            state.hand_number = event.hand_number
-            state.game_variant = event.game_variant
-            state.dealer_position = event.dealer_position
-            state.status = "betting"
-            state.current_phase = poker_types.PREFLOP
+    @applies(hand_proto.CommunityCardsDealt)
+    def apply_community_cards_dealt(
+        self, state: _HandState, event: hand_proto.CommunityCardsDealt
+    ) -> None:
+        for card in event.cards:
+            dealt_card = (card.suit, card.rank)
+            state.community_cards.append(dealt_card)
+            if dealt_card in state.remaining_deck:
+                state.remaining_deck.remove(dealt_card)
+        state.current_phase = event.phase
+        state.status = "betting"
+        for player in state.players.values():
+            player.bet_this_round = 0
+            player.has_acted = False
+        state.current_bet = 0
 
-            for player in event.players:
-                state.players[player.position] = _PlayerHandInfo(
-                    player_root=player.player_root,
-                    position=player.position,
-                    stack=player.stack,
-                )
+    @applies(hand_proto.CardsDealt)
+    def apply_cards_dealt(
+        self, state: _HandState, event: hand_proto.CardsDealt
+    ) -> None:
+        state.hand_id = f"{event.table_root.hex()}_{event.hand_number}"
+        state.table_root = event.table_root
+        state.hand_number = event.hand_number
+        state.game_variant = event.game_variant
+        state.dealer_position = event.dealer_position
+        state.status = "betting"
+        state.current_phase = poker_types.PREFLOP
 
-            dealt_cards = set()
-            for pc in event.player_cards:
-                for pos, player in state.players.items():
-                    if player.player_root == pc.player_root:
-                        player.hole_cards = [(c.suit, c.rank) for c in pc.cards]
-                        for c in pc.cards:
-                            dealt_cards.add((c.suit, c.rank))
+        for player in event.players:
+            state.players[player.position] = _PlayerHandInfo(
+                player_root=player.player_root,
+                position=player.position,
+                stack=player.stack,
+            )
 
-            full_deck = []
-            for suit in [
-                poker_types.CLUBS,
-                poker_types.DIAMONDS,
-                poker_types.HEARTS,
-                poker_types.SPADES,
-            ]:
-                for rank in range(2, 15):
-                    card = (suit, rank)
-                    if card not in dealt_cards:
-                        full_deck.append(card)
-            random.shuffle(full_deck)
-            state.remaining_deck = full_deck
+        dealt_cards = set()
+        for pc in event.player_cards:
+            for pos, player in state.players.items():
+                if player.player_root == pc.player_root:
+                    player.hole_cards = [(c.suit, c.rank) for c in pc.cards]
+                    for c in pc.cards:
+                        dealt_cards.add((c.suit, c.rank))
 
-            state.pots = [
-                _PotInfo(
-                    amount=0,
-                    eligible_players=[p.player_root for p in state.players.values()],
-                    pot_type="main",
-                )
-            ]
+        full_deck = []
+        for suit in [
+            poker_types.CLUBS,
+            poker_types.DIAMONDS,
+            poker_types.HEARTS,
+            poker_types.SPADES,
+        ]:
+            for rank in range(2, 15):
+                card = (suit, rank)
+                if card not in dealt_cards:
+                    full_deck.append(card)
+        random.shuffle(full_deck)
+        state.remaining_deck = full_deck
 
-        elif event := try_unpack(event_any, hand_proto.BlindPosted):
-            for player in state.players.values():
-                if player.player_root == event.player_root:
-                    player.stack = event.player_stack
-                    player.bet_this_round = event.amount
+        state.pots = [
+            _PotInfo(
+                amount=0,
+                eligible_players=[p.player_root for p in state.players.values()],
+                pot_type="main",
+            )
+        ]
+
+    @applies(hand_proto.BlindPosted)
+    def apply_blind_posted(
+        self, state: _HandState, event: hand_proto.BlindPosted
+    ) -> None:
+        for player in state.players.values():
+            if player.player_root == event.player_root:
+                player.stack = event.player_stack
+                player.bet_this_round = event.amount
+                player.total_invested += event.amount
+                if event.blind_type == "small":
+                    state.small_blind_position = player.position
+                    state.small_blind = event.amount
+                elif event.blind_type == "big":
+                    state.big_blind_position = player.position
+                    state.big_blind = event.amount
+                    state.current_bet = event.amount
+                    state.min_raise = event.amount
+                break
+        if state.pots:
+            state.pots[0].amount = event.pot_total
+        state.status = "betting"
+
+    @applies(hand_proto.ActionTaken)
+    def apply_action_taken(
+        self, state: _HandState, event: hand_proto.ActionTaken
+    ) -> None:
+        for player in state.players.values():
+            if player.player_root == event.player_root:
+                player.stack = event.player_stack
+                player.has_acted = True
+                if event.action == poker_types.FOLD:
+                    player.has_folded = True
+                elif event.action in (
+                    poker_types.CALL,
+                    poker_types.BET,
+                    poker_types.RAISE,
+                ):
+                    player.bet_this_round += event.amount
                     player.total_invested += event.amount
-                    if event.blind_type == "small":
-                        state.small_blind_position = player.position
-                        state.small_blind = event.amount
-                    elif event.blind_type == "big":
-                        state.big_blind_position = player.position
-                        state.big_blind = event.amount
-                        state.current_bet = event.amount
-                        state.min_raise = event.amount
-                    break
-            if state.pots:
-                state.pots[0].amount = event.pot_total
-            state.status = "betting"
+                elif event.action == poker_types.ALL_IN:
+                    player.is_all_in = True
+                    player.bet_this_round += event.amount
+                    player.total_invested += event.amount
+                if event.action in (
+                    poker_types.BET,
+                    poker_types.RAISE,
+                    poker_types.ALL_IN,
+                ):
+                    if player.bet_this_round > state.current_bet:
+                        raise_amount = player.bet_this_round - state.current_bet
+                        state.current_bet = player.bet_this_round
+                        state.min_raise = max(state.min_raise, raise_amount)
+                break
+        if state.pots:
+            state.pots[0].amount = event.pot_total
+        state.action_on_position = -1
 
-        elif event := try_unpack(event_any, hand_proto.ActionTaken):
+    @applies(hand_proto.ShowdownStarted)
+    def apply_showdown_started(
+        self, state: _HandState, event: hand_proto.ShowdownStarted
+    ) -> None:
+        state.status = "showdown"
+
+    @applies(hand_proto.DrawCompleted)
+    def apply_draw_completed(
+        self, state: _HandState, event: hand_proto.DrawCompleted
+    ) -> None:
+        for player in state.players.values():
+            if player.player_root == event.player_root:
+                # Remove discarded cards and add new ones
+                new_cards = [(c.suit, c.rank) for c in event.new_cards]
+                # For simplicity, replace the specified number of cards
+                if event.cards_discarded > 0:
+                    player.hole_cards = player.hole_cards[event.cards_discarded :]
+                player.hole_cards.extend(new_cards)
+                # Remove dealt cards from deck
+                for card in new_cards:
+                    if card in state.remaining_deck:
+                        state.remaining_deck.remove(card)
+                break
+
+    @applies(hand_proto.PotAwarded)
+    def apply_pot_awarded(
+        self, state: _HandState, event: hand_proto.PotAwarded
+    ) -> None:
+        for winner in event.winners:
             for player in state.players.values():
-                if player.player_root == event.player_root:
-                    player.stack = event.player_stack
-                    player.has_acted = True
-                    if event.action == poker_types.FOLD:
-                        player.has_folded = True
-                    elif event.action in (
-                        poker_types.CALL,
-                        poker_types.BET,
-                        poker_types.RAISE,
-                    ):
-                        player.bet_this_round += event.amount
-                        player.total_invested += event.amount
-                    elif event.action == poker_types.ALL_IN:
-                        player.is_all_in = True
-                        player.bet_this_round += event.amount
-                        player.total_invested += event.amount
-                    if event.action in (
-                        poker_types.BET,
-                        poker_types.RAISE,
-                        poker_types.ALL_IN,
-                    ):
-                        if player.bet_this_round > state.current_bet:
-                            raise_amount = player.bet_this_round - state.current_bet
-                            state.current_bet = player.bet_this_round
-                            state.min_raise = max(state.min_raise, raise_amount)
-                    break
-            if state.pots:
-                state.pots[0].amount = event.pot_total
-            state.action_on_position = -1
-
-        elif try_unpack(event_any, hand_proto.ShowdownStarted):
-            state.status = "showdown"
-
-        elif event := try_unpack(event_any, hand_proto.DrawCompleted):
-            for player in state.players.values():
-                if player.player_root == event.player_root:
-                    # Remove discarded cards and add new ones
-                    new_cards = [(c.suit, c.rank) for c in event.new_cards]
-                    # For simplicity, replace the specified number of cards
-                    if event.cards_discarded > 0:
-                        player.hole_cards = player.hole_cards[event.cards_discarded :]
-                    player.hole_cards.extend(new_cards)
-                    # Remove dealt cards from deck
-                    for card in new_cards:
-                        if card in state.remaining_deck:
-                            state.remaining_deck.remove(card)
+                if player.player_root == winner.player_root:
+                    player.stack += winner.amount
                     break
 
-        elif event := try_unpack(event_any, hand_proto.PotAwarded):
-            for winner in event.winners:
-                for player in state.players.values():
-                    if player.player_root == winner.player_root:
-                        player.stack += winner.amount
-                        break
-
-        elif try_unpack(event_any, hand_proto.HandComplete):
-            state.status = "complete"
+    @applies(hand_proto.HandComplete)
+    def apply_hand_complete(
+        self, state: _HandState, event: hand_proto.HandComplete
+    ) -> None:
+        state.status = "complete"
 
     # --- State accessors ---
 

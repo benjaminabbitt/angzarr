@@ -17,7 +17,7 @@ Two-phase protocol support:
 
 Example usage:
     from angzarr_client.process_manager import (
-        ProcessManager, handles, output_domain, prepares, rejected
+        ProcessManager, applies, handles, output_domain, prepares, rejected
     )
 
     @dataclass
@@ -32,9 +32,9 @@ Example usage:
         def _create_empty_state(self) -> OrderWorkflowState:
             return OrderWorkflowState()
 
-        def _apply_event(self, state, event_any):
-            if event_any.type_url.endswith("OrderCreated"):
-                ...
+        @applies(OrderCreated)
+        def apply_order_created(self, state: OrderWorkflowState, event: OrderCreated):
+            state.order_id = event.order_id
 
         @prepares(OrderCreated)
         def prepare_order(self, event: OrderCreated) -> list[Cover]:
@@ -62,6 +62,7 @@ from typing import Generic, TypeVar
 
 from google.protobuf.any_pb2 import Any
 
+from .aggregate import applies
 from .compensation import RejectionHandlerResponse
 from .proto.angzarr import process_manager_pb2 as pm_pb2
 from .proto.angzarr import types_pb2 as types
@@ -70,6 +71,7 @@ from .router import _pack_any, domain, handles, output_domain, prepares, rejecte
 # Re-export decorators
 __all__ = [
     "ProcessManager",
+    "applies",
     "domain",
     "handles",
     "output_domain",
@@ -101,7 +103,7 @@ class ProcessManager(Generic[StateT], ABC):
     Subclasses must:
     - Set `name` class attribute
     - Implement `_create_empty_state() -> StateT`
-    - Implement `_apply_event(state: StateT, event_any: Any) -> None`
+    - Decorate event appliers with `@applies(EventType)` OR override `_apply_event()`
     - Decorate event handlers with `@handles(EventType, input_domain="...")`
     - Use `@output_domain("target")` to specify where commands go
     - Optionally decorate prepare handlers with `@prepares(EventType)`
@@ -114,8 +116,9 @@ class ProcessManager(Generic[StateT], ABC):
             def _create_empty_state(self) -> OrderWorkflowState:
                 return OrderWorkflowState()
 
-            def _apply_event(self, state, event_any):
-                ...
+            @applies(OrderCreated)
+            def apply_order_created(self, state: OrderWorkflowState, event: OrderCreated):
+                state.order_id = event.order_id
 
             @prepares(OrderCreated)
             def prepare_order(self, event: OrderCreated) -> list[Cover]:
@@ -141,6 +144,9 @@ class ProcessManager(Generic[StateT], ABC):
     _prepare_table: dict[str, tuple[str, type]] = {}  # suffix -> (method, type)
     _input_domains: dict[str, list[str]] = {}  # domain -> [event types]
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
+    _applier_table: dict[str, tuple[str, type]] = (
+        {}
+    )  # suffix -> (method_name, event_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -157,9 +163,11 @@ class ProcessManager(Generic[StateT], ABC):
         cls._prepare_table = {}
         cls._input_domains = {}
         cls._rejection_table = {}
+        cls._applier_table = {}
         cls._build_dispatch_table()
         cls._build_prepare_table()
         cls._build_rejection_table()
+        cls._build_applier_table()
 
     @classmethod
     def _build_dispatch_table(cls):
@@ -217,6 +225,22 @@ class ProcessManager(Generic[StateT], ABC):
                     )
                 cls._rejection_table[key] = attr_name
 
+    @classmethod
+    def _build_applier_table(cls):
+        """Scan for @applies methods and build applier dispatch table.
+
+        Returns:
+            Dict mapping event type suffix to (method_name, event_type).
+        """
+        for attr_name in dir(cls):
+            attr = getattr(cls, attr_name, None)
+            if callable(attr) and getattr(attr, "_is_applier", False):
+                event_type = attr._event_type
+                suffix = event_type.__name__
+                if suffix in cls._applier_table:
+                    raise TypeError(f"{cls.__name__}: duplicate applier for {suffix}")
+                cls._applier_table[suffix] = (attr_name, event_type)
+
     def __init__(self, process_state: types.EventBook = None):
         """Initialize process manager with optional prior state.
 
@@ -267,7 +291,8 @@ class ProcessManager(Generic[StateT], ABC):
         type_url = event_any.type_url
 
         for suffix, (method_name, event_type) in self._prepare_table.items():
-            if type_url.endswith(suffix):
+            # Match exact type name (preceded by . or /) to avoid false matches
+            if type_url.endswith(f".{suffix}") or type_url.endswith(f"/{suffix}"):
                 # Unpack event
                 event = event_type()
                 event_any.Unpack(event)
@@ -304,7 +329,8 @@ class ProcessManager(Generic[StateT], ABC):
             _,
             output_domain,
         ) in self._dispatch_table.items():
-            if type_url.endswith(suffix):
+            # Match exact type name (preceded by . or /) to avoid false matches
+            if type_url.endswith(f".{suffix}") or type_url.endswith(f"/{suffix}"):
                 # Unpack event
                 event = event_type()
                 event_any.Unpack(event)
@@ -522,7 +548,29 @@ class ProcessManager(Generic[StateT], ABC):
         """Create an empty state instance. Must be implemented by subclasses."""
         ...
 
-    @abstractmethod
     def _apply_event(self, state: StateT, event_any: Any) -> None:
-        """Apply a single event to state. Must be implemented by subclasses."""
-        ...
+        """Apply a single event to state.
+
+        If @applies decorated methods exist, dispatches to them automatically.
+        Otherwise, subclasses must override this method.
+
+        Args:
+            state: Current state to mutate.
+            event_any: Packed event as google.protobuf.Any.
+        """
+        if not self._applier_table:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must either define @applies methods "
+                "or override _apply_event()"
+            )
+
+        type_url = event_any.type_url
+        for suffix, (method_name, event_type) in self._applier_table.items():
+            # Match exact type name (preceded by . or /) to avoid false matches
+            if type_url.endswith(f".{suffix}") or type_url.endswith(f"/{suffix}"):
+                event = event_type()
+                event_any.Unpack(event)
+                getattr(self, method_name)(state, event)
+                return
+
+        # Unknown event type - silently ignore (forward compatibility)

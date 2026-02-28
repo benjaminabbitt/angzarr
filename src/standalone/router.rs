@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tonic::Status;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, Instrument};
 use uuid::Uuid;
 
 use crate::bus::EventBus;
@@ -27,7 +27,7 @@ use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore};
 use crate::utils::retry::saga_backoff;
 
-use super::traits::ProjectorHandler;
+use super::traits::{ProjectorHandler, SagaHandler};
 
 /// Per-domain storage.
 #[derive(Clone)]
@@ -47,6 +47,20 @@ pub struct SyncProjectorEntry {
     pub handler: Arc<dyn ProjectorHandler>,
 }
 
+/// In-process sync saga entry for standalone mode.
+///
+/// Sync sagas are called during CASCADE mode to ensure the entire
+/// command chain completes before the original request returns.
+#[derive(Clone)]
+pub struct SyncSagaEntry {
+    /// Saga name for logging.
+    pub name: String,
+    /// Handler to call synchronously during CASCADE mode.
+    pub handler: Arc<dyn SagaHandler>,
+    /// Source domain this saga subscribes to.
+    pub source_domain: String,
+}
+
 /// Command router for standalone runtime.
 ///
 /// Routes commands to registered aggregate client logic.
@@ -63,6 +77,8 @@ pub struct CommandRouter {
     event_bus: Arc<dyn EventBus>,
     /// In-process sync projectors (called during command response).
     sync_projectors: Arc<Vec<SyncProjectorEntry>>,
+    /// In-process sync sagas (called during CASCADE mode).
+    sync_sagas: Arc<Vec<SyncSagaEntry>>,
     /// The name of the edition this router is operating within, if any.
     edition_name: Option<String>,
 }
@@ -75,12 +91,14 @@ impl CommandRouter {
         discovery: Arc<dyn ServiceDiscovery>,
         event_bus: Arc<dyn EventBus>,
         sync_projectors: Vec<SyncProjectorEntry>,
+        sync_sagas: Vec<SyncSagaEntry>,
         edition_name: Option<String>,
     ) -> Self {
         let domains: Vec<_> = business.keys().cloned().collect();
         info!(
             domains = ?domains,
             sync_projectors = sync_projectors.len(),
+            sync_sagas = sync_sagas.len(),
             edition = ?edition_name,
             "Command router initialized"
         );
@@ -91,6 +109,7 @@ impl CommandRouter {
             discovery,
             event_bus,
             sync_projectors: Arc::new(sync_projectors),
+            sync_sagas: Arc::new(sync_sagas),
             edition_name,
         }
     }
@@ -160,6 +179,206 @@ impl CommandRouter {
             }
         }
         projections
+    }
+
+    /// Call in-process sync sagas for CASCADE mode.
+    ///
+    /// Executes sagas that subscribe to the source domain, fetches destinations,
+    /// and recursively executes the resulting commands with CASCADE mode.
+    ///
+    /// Returns a BoxFuture to support async recursion (sagas trigger commands
+    /// which trigger more sagas).
+    fn call_sync_sagas<'a>(
+        &'a self,
+        events: &'a crate::proto::EventBook,
+    ) -> futures::future::BoxFuture<'a, Result<(), Status>> {
+        use futures::FutureExt;
+        let source_domain = events.domain().to_string();
+        let span = tracing::info_span!("router.sync_sagas", %source_domain);
+
+        async move {
+            use crate::proto_ext::CoverExt;
+
+            let source_domain = events.domain();
+
+            // Skip infrastructure domains
+            if source_domain.starts_with('_') {
+                return Ok(());
+            }
+
+            // Find sagas subscribed to this domain
+            let matching_sagas: Vec<_> = self
+                .sync_sagas
+                .iter()
+                .filter(|s| s.source_domain == source_domain)
+                .collect();
+
+            if matching_sagas.is_empty() {
+                return Ok(());
+            }
+
+            let edition = events.edition().to_string();
+
+            for entry in matching_sagas {
+                // Phase 1: Prepare - get destination covers
+                let mut covers = match entry.handler.prepare(events).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        warn!(
+                            saga = %entry.name,
+                            error = %e,
+                            "Sync saga prepare failed"
+                        );
+                        continue;
+                    }
+                };
+
+                // Stamp edition on covers
+                for cover in &mut covers {
+                    cover.stamp_edition_if_empty(&edition);
+                }
+
+                // Fetch destination state
+                let mut destinations = Vec::with_capacity(covers.len());
+                for cover in &covers {
+                    let dest_domain = &cover.domain;
+                    let dest_root = cover
+                        .root
+                        .as_ref()
+                        .map(|r| Uuid::from_slice(&r.value).unwrap_or_default())
+                        .unwrap_or_default();
+
+                    if let Some(storage) = self.stores.get(dest_domain) {
+                        match storage
+                            .event_store
+                            .get(dest_domain, &edition, dest_root)
+                            .await
+                        {
+                            Ok(pages) => {
+                                let mut book = crate::proto::EventBook {
+                                    cover: Some(cover.clone()),
+                                    pages,
+                                    ..Default::default()
+                                };
+                                crate::proto_ext::calculate_set_next_seq(&mut book);
+                                destinations.push(book);
+                            }
+                            Err(e) => {
+                                warn!(
+                                    saga = %entry.name,
+                                    domain = %dest_domain,
+                                    error = %e,
+                                    "Failed to fetch destination state"
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Phase 2: Execute - get commands
+                let mut response = match entry.handler.execute(events, &destinations).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        warn!(
+                            saga = %entry.name,
+                            error = %e,
+                            "Sync saga execute failed"
+                        );
+                        continue;
+                    }
+                };
+
+                // Stamp edition on commands
+                for cmd in &mut response.commands {
+                    if let Some(c) = &mut cmd.cover {
+                        c.stamp_edition_if_empty(&edition);
+                    }
+                }
+
+                debug!(
+                    saga = %entry.name,
+                    commands = response.commands.len(),
+                    "Sync saga produced commands"
+                );
+
+                // Recursively execute commands with CASCADE mode
+                for command in response.commands {
+                    match self.execute_with_cascade(command).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            warn!(
+                                saga = %entry.name,
+                                error = %e,
+                                "Sync saga command execution failed"
+                            );
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        .instrument(span)
+        .boxed()
+    }
+
+    /// Execute a command with CASCADE mode (sync projectors + sync sagas).
+    ///
+    /// Used by sync sagas to recursively execute their output commands.
+    /// Also used by `LocalCommandExecutor` when receiving a CASCADE command.
+    #[tracing::instrument(name = "router.execute_cascade", skip_all, fields(domain = %command_book.domain()))]
+    pub async fn execute_with_cascade(
+        &self,
+        command_book: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        let (domain, _root_uuid) = parse_command_cover(&command_book)?;
+
+        let business = self.business.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No handler registered for domain: {domain}"))
+        })?;
+
+        let storage = self.stores.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No storage configured for domain: {domain}"))
+        })?;
+
+        // CASCADE mode: set sync_mode on context so post_persist skips bus publishing
+        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
+            Some(_) => Arc::new(
+                LocalAggregateContext::without_discovery(storage.clone(), self.event_bus.clone())
+                    .with_sync_mode(crate::proto::SyncMode::Cascade),
+            ),
+            None => Arc::new(
+                LocalAggregateContext::new(
+                    storage.clone(),
+                    self.discovery.clone(),
+                    self.event_bus.clone(),
+                )
+                .with_sync_mode(crate::proto::SyncMode::Cascade),
+            ),
+        };
+
+        let mut response =
+            execute_command_with_retry(&*ctx, &**business, command_book, saga_backoff()).await?;
+
+        // CASCADE: call sync projectors
+        if !self.sync_projectors.is_empty() {
+            if let Some(ref events) = response.events {
+                let projections = self.call_sync_projectors(events).await;
+                response.projections.extend(projections);
+            }
+        }
+
+        // CASCADE: call sync sagas (recursive)
+        if !self.sync_sagas.is_empty() {
+            if let Some(ref events) = response.events {
+                self.call_sync_sagas(events).await?;
+            }
+        }
+
+        // CASCADE: do NOT publish to bus (events stay in-process)
+        // Bus publishing happens only for non-CASCADE modes
+
+        Ok(response)
     }
 
     /// Core command execution with sequence validation.
@@ -551,6 +770,7 @@ mod tests {
                 discovery,
                 event_bus,
                 sync_projectors,
+                vec![], // sync_sagas
                 None,
             )
         }
@@ -596,6 +816,7 @@ mod tests {
                 discovery,
                 event_bus,
                 sync_projectors,
+                vec![], // sync_sagas
                 None,
             )
         }
@@ -678,6 +899,7 @@ mod tests {
                 discovery,
                 event_bus,
                 sync_projectors,
+                vec![], // sync_sagas
                 Some("test-edition".to_string()),
             );
 

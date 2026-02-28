@@ -21,7 +21,7 @@ use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::orchestration::FactExecutor;
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
-use crate::proto::EventBook;
+use crate::proto::{EventBook, SyncMode};
 use crate::proto_ext::CoverExt;
 use crate::storage::EventStore;
 use crate::utils::retry::saga_backoff;
@@ -143,6 +143,9 @@ impl EventHandler for ProcessManagerEventHandler {
                 let ctx = factory.create();
                 let fact_executor_ref: Option<&dyn FactExecutor> = fact_executor.as_deref();
 
+                // Events received from bus are always async mode (UNSPECIFIED).
+                // CASCADE mode doesn't publish to bus, so PMs called via bus
+                // execute their commands with standard async behavior.
                 if let Err(e) = orchestrate_pm(
                     ctx.as_ref(),
                     destination_fetcher.as_ref(),
@@ -152,6 +155,7 @@ impl EventHandler for ProcessManagerEventHandler {
                     &pm_name,
                     &pm_domain,
                     &correlation_id,
+                    SyncMode::Async,
                     backoff,
                 )
                 .await

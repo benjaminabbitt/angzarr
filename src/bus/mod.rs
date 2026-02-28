@@ -14,7 +14,7 @@ use serde::Deserialize;
 use tonic::Status;
 use tracing::info;
 
-use crate::proto::{EventBook, Projection};
+use crate::proto::{CommandBook, EventBook, Projection};
 
 // Implementation modules
 #[cfg(feature = "amqp")]
@@ -39,7 +39,7 @@ pub mod sns_sqs;
 // Re-exports
 #[cfg(feature = "amqp")]
 pub use amqp::{AmqpConfig, AmqpEventBus};
-pub use channel::{ChannelConfig, ChannelEventBus};
+pub use channel::{ChannelCommandBus, ChannelConfig, ChannelEventBus};
 #[cfg(unix)]
 pub use ipc::{
     IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus, SubscriberInfo, SUBSCRIBERS_ENV_VAR,
@@ -101,6 +101,43 @@ pub trait EventHandler: Send + Sync {
     /// Process an event book.
     fn handle(&self, book: Arc<EventBook>)
         -> BoxFuture<'static, std::result::Result<(), BusError>>;
+}
+
+/// Handler for processing commands from the command bus.
+///
+/// Used by aggregate coordinators to receive commands in async mode.
+/// Commands are published by sagas when `SyncMode::Async` is used.
+pub trait CommandHandler: Send + Sync {
+    /// Process a command book.
+    ///
+    /// The handler should execute the command and return. Results
+    /// (success or rejection) flow back via the event bus as
+    /// `RejectionNotification` for failures.
+    fn handle(
+        &self,
+        command: Arc<CommandBook>,
+    ) -> BoxFuture<'static, std::result::Result<(), BusError>>;
+}
+
+/// Command bus for async command delivery.
+///
+/// Sagas publish commands to this bus when `SyncMode::Async` is used.
+/// Aggregate coordinators subscribe to receive commands for their domain.
+/// This enables true fire-and-forget command execution with rejections
+/// flowing back via `RejectionNotification` on the event bus.
+#[async_trait]
+pub trait CommandBus: Send + Sync {
+    /// Publish a command to be executed asynchronously.
+    ///
+    /// Returns immediately after queuing the command.
+    /// The command will be routed to the appropriate aggregate
+    /// coordinator based on its domain.
+    async fn publish(&self, command: Arc<CommandBook>) -> Result<()>;
+
+    /// Subscribe to commands for a specific domain.
+    ///
+    /// The handler will be called for each command targeting this domain.
+    async fn subscribe(&self, domain: &str, handler: Box<dyn CommandHandler>) -> Result<()>;
 }
 
 /// Result of publishing events to the bus.

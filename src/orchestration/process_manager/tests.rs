@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use backon::ExponentialBuilder;
 
-use crate::proto::CommandResponse;
+use crate::proto::{CommandResponse, SyncMode};
 
 /// PM context that always succeeds with no commands or PM events.
 struct EmptyPm;
@@ -115,7 +115,7 @@ struct NoOpExecutor;
 
 #[async_trait]
 impl CommandExecutor for NoOpExecutor {
-    async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
         CommandOutcome::Success(CommandResponse::default())
     }
 }
@@ -159,6 +159,7 @@ async fn test_orchestrate_pm_empty_response() {
         "pmg-fulfillment",
         "fulfillment-pm",
         "corr-1",
+        SyncMode::Async,
         fast_backoff(),
     )
     .await;
@@ -185,6 +186,7 @@ async fn test_orchestrate_pm_persists_events() {
         "pmg-fulfillment",
         "fulfillment-pm",
         "corr-1",
+        SyncMode::Async,
         fast_backoff(),
     )
     .await;
@@ -212,6 +214,7 @@ async fn test_orchestrate_pm_retries_on_sequence_conflict() {
         "pmg-fulfillment",
         "fulfillment-pm",
         "corr-1",
+        SyncMode::Async,
         fast_backoff(),
     )
     .await;
@@ -245,6 +248,7 @@ async fn test_orchestrate_pm_exhausts_retries() {
         "pmg-fulfillment",
         "fulfillment-pm",
         "corr-1",
+        SyncMode::Async,
         backoff,
     )
     .await;

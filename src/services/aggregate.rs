@@ -139,13 +139,13 @@ impl CommandHandlerCoordinatorService for AggregateService {
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_request = request.into_inner();
         let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Unspecified);
+            .unwrap_or(crate::proto::SyncMode::Async);
         let command_book = sync_request
             .command
             .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
 
         // Unspecified = async (fire and forget), otherwise use sync context
-        let ctx = if sync_mode == crate::proto::SyncMode::Unspecified {
+        let ctx = if sync_mode == crate::proto::SyncMode::Async {
             self.create_async_context()
         } else {
             self.create_sync_context(sync_mode)
@@ -210,7 +210,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
     ) -> Result<Response<BusinessResponse>, Status> {
         let sync_request = request.into_inner();
         let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Unspecified);
+            .unwrap_or(crate::proto::SyncMode::Async);
         let command_book = sync_request
             .command
             .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
@@ -219,7 +219,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
         let correlation_id =
             crate::orchestration::correlation::extract_correlation_id(&command_book)?;
 
-        let ctx = if sync_mode == crate::proto::SyncMode::Unspecified {
+        let ctx = if sync_mode == crate::proto::SyncMode::Async {
             self.create_async_context()
         } else {
             self.create_sync_context(sync_mode)
@@ -280,12 +280,12 @@ impl CommandHandlerCoordinatorService for AggregateService {
     ) -> Result<Response<FactInjectionResponse>, Status> {
         let sync_event_book = request.into_inner();
         let sync_mode = crate::proto::SyncMode::try_from(sync_event_book.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Unspecified);
+            .unwrap_or(crate::proto::SyncMode::Async);
         let fact_events = sync_event_book
             .events
             .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
 
-        let ctx = if sync_mode == crate::proto::SyncMode::Unspecified {
+        let ctx = if sync_mode == crate::proto::SyncMode::Async {
             self.create_async_context()
         } else {
             self.create_sync_context(sync_mode)

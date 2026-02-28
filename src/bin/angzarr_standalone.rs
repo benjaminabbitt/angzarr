@@ -388,14 +388,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Service discovery (static — no K8s in standalone)
     let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
 
-    // Create command router (no in-process sync projectors in binary mode)
+    // Create command router (no in-process sync projectors/sagas in binary mode)
     let router = Arc::new(CommandRouter::new(
         client_logic,
         domain_stores.clone(),
         discovery,
         event_bus.clone(),
-        vec![],
-        None,
+        vec![], // sync_projectors
+        vec![], // sync_sagas
+        None,   // topology_sender
     ));
 
     // Create local command executor and destination fetcher
