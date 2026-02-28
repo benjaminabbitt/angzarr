@@ -23,6 +23,7 @@ import java.util.Map;
  * Uses in-memory state (processes map) for demonstration. Production implementations would
  * serialize state to protobuf.
  */
+// docs:start:pm_handler_oo
 public class HandFlowPM extends ProcessManager<Struct> {
 
   private final Map<String, HandProcess> processes = new HashMap<>();
@@ -408,6 +409,7 @@ public class HandFlowPM extends ProcessManager<Struct> {
 
   // --- Inner classes for state tracking ---
 
+  // docs:start:pm_state_oo
   private enum HandPhase {
     DEALING,
     POSTING_BLINDS,
@@ -450,4 +452,6 @@ public class HandFlowPM extends ProcessManager<Struct> {
     boolean hasFolded;
     boolean allIn;
   }
+  // docs:end:pm_state_oo
 }
+// docs:end:pm_handler_oo

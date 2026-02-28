@@ -15,6 +15,8 @@ members = [
     "prj-output-oo",
     "hand-flow",
     "hand-flow-oo",
+    "pmg-hand-flow",
+    "pmg-hand-flow-oo",
     "tests",
 ]
 

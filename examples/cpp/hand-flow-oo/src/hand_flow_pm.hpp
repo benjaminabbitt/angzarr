@@ -18,12 +18,15 @@
 
 namespace hand_flow_oo {
 
+// docs:start:pm_state_oo
 /// Process manager state for a single hand.
 struct PMState {
     std::string hand_root;
     bool hand_in_progress = false;
 };
+// docs:end:pm_state_oo
 
+// docs:start:pm_handler_oo
 /// Hand Flow Process Manager using OO-style explicit registration.
 ///
 /// This PM orchestrates poker hand flow by:
@@ -226,5 +229,6 @@ class HandFlowPM {
     std::map<std::string, EventApplier> appliers_;
     PMState state_;
 };
+// docs:end:pm_handler_oo
 
 }  // namespace hand_flow_oo

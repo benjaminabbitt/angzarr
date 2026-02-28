@@ -46,6 +46,17 @@ Process managers should be **lightweight state machines** coordinating across do
 
 ---
 
+## Implementation Styles
+
+Angzarr supports two process manager implementation styles:
+
+| Style | Description | Best For |
+|-------|-------------|----------|
+| **Functional** | ProcessManagerRouter with function handlers | Simple routing, explicit |
+| **OO** | ProcessManager class with `@handles`/`[Handles]` decorators | Rich state, encapsulation |
+
+---
+
 ## Example: Hand Flow PM
 
 The HandFlowPM orchestrates poker hand phases across table and hand domains:
@@ -63,6 +74,11 @@ sequenceDiagram
     H->>PM: HandComplete
     PM->>T: EndHand
 ```
+
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+ProcessManagerRouter with explicit event handler registration:
 
 ### State Definition
 
@@ -145,6 +161,98 @@ sequenceDiagram
 
 </TabItem>
 </Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+ProcessManager class with decorator-based handler registration:
+
+### State Definition
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/pmg-hand-flow-oo/main.py start=docs:start:pm_state_oo end=docs:end:pm_state_oo
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/pmg-hand-flow-oo/main.go start=docs:start:pm_state_oo end=docs:end:pm_state_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/pmg-hand-flow-oo/src/main.rs start=docs:start:pm_state_oo end=docs:end:pm_state_oo
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/hand-flow-oo/src/main/java/dev/angzarr/examples/handflowoo/HandFlowPM.java start=docs:start:pm_state_oo end=docs:end:pm_state_oo
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/HandFlowOO/HandFlowPM.cs start=docs:start:pm_state_oo end=docs:end:pm_state_oo
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/hand-flow-oo/src/hand_flow_pm.hpp start=docs:start:pm_state_oo end=docs:end:pm_state_oo
+```
+
+</TabItem>
+</Tabs>
+
+### Handler Implementation
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/pmg-hand-flow-oo/main.py start=docs:start:pm_handler_oo end=docs:end:pm_handler_oo
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/pmg-hand-flow-oo/main.go start=docs:start:pm_handler_oo end=docs:end:pm_handler_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/pmg-hand-flow-oo/src/main.rs start=docs:start:pm_handler_oo end=docs:end:pm_handler_oo
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/hand-flow-oo/src/main/java/dev/angzarr/examples/handflowoo/HandFlowPM.java start=docs:start:pm_handler_oo end=docs:end:pm_handler_oo
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/HandFlowOO/HandFlowPM.cs start=docs:start:pm_handler_oo end=docs:end:pm_handler_oo
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/hand-flow-oo/src/hand_flow_pm.hpp start=docs:start:pm_handler_oo end=docs:end:pm_handler_oo
+```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+</Tabs>
+
+Both patterns produce identical behavior—choose based on team preference. The functional `ProcessManagerRouter` is more explicit; the OO approach integrates state and handlers in one class.
 
 ---
 

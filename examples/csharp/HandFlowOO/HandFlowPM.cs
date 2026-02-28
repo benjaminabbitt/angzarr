@@ -5,6 +5,7 @@ using Google.Protobuf.WellKnownTypes;
 
 namespace HandFlowOO;
 
+// docs:start:pm_state_oo
 /// <summary>
 /// PM's aggregate state (rebuilt from its own events).
 /// For simplicity in this example, we use a minimal state.
@@ -15,6 +16,9 @@ public class PMState
     public bool HandInProgress { get; set; }
 }
 
+// docs:end:pm_state_oo
+
+// docs:start:pm_handler_oo
 /// <summary>
 /// Hand Flow Process Manager using OO-style attributes.
 ///
@@ -128,3 +132,4 @@ public class HandFlowPM : ProcessManager<PMState>
         return new List<CommandBook>();
     }
 }
+// docs:end:pm_handler_oo
