@@ -36,7 +36,7 @@ In event-sourced systems, **the event history IS the state**. To debug any aggre
 
 No database setup. No seed data. No guesswork.
 
-```
+```text title="illustrative - replay debugging flow"
 Production                          Local Development
 ───────────                         ─────────────────
 EventStore ──fetch events──→ Your IDE
@@ -70,7 +70,7 @@ Together they let you replay production scenarios locally, modify code, and re-r
 
 When an error occurs, capture the aggregate root and sequence:
 
-```python
+```python title="illustrative - error context capture"
 # Error handler captures context
 try:
     result = client.execute(command)
@@ -300,7 +300,7 @@ No database resets. No re-seeding. No cleanup.
 
 Same pattern works for saga issues. Fetch events from the source domain, replay through your saga logic:
 
-```python
+```python title="illustrative - saga debugging"
 # Fetch events that triggered the saga
 source_events = query_client.get_event_book(source_query)
 
@@ -327,7 +327,7 @@ for cmd in response.commands:
 
 For stateful process managers, fetch both the PM's own event stream and the domain events it received:
 
-```python
+```python title="illustrative - PM debugging"
 # Fetch PM's state (its own events keyed by correlation_id)
 pm_events = query_client.get_event_book(
     EventQuery(cover=Cover(domain="pm-hand-flow", root=correlation_id))
@@ -352,7 +352,7 @@ response = client.process_manager(request)
 
 For bugs that span multiple domains, replay the entire flow:
 
-```python
+```python title="illustrative - cross-domain debugging"
 # 1. Fetch Player aggregate events
 player_events = query_client.get_event_book(player_query)
 
@@ -409,7 +409,7 @@ Your production event store becomes a **library of reproducible test cases**.
 
 Log enough to fetch the event history later:
 
-```python
+```python title="illustrative - error handler logging"
 @error_handler
 def on_command_rejected(error, command, context):
     logger.error(
@@ -427,7 +427,7 @@ def on_command_rejected(error, command, context):
 
 Include issue IDs and timestamps to avoid collisions:
 
-```python
+```python title="illustrative - unique edition naming"
 edition = Edition(name=f"debug-{jira_ticket}-{developer}-{timestamp}")
 ```
 
@@ -435,7 +435,7 @@ edition = Edition(name=f"debug-{jira_ticket}-{developer}-{timestamp}")
 
 If you persist speculative results during debugging, clean up afterward:
 
-```python
+```python title="illustrative - edition cleanup"
 # After debugging session
 delete_edition_events(domain="player", edition=edition.name)
 delete_edition_events(domain="table", edition=edition.name)
@@ -445,7 +445,7 @@ delete_edition_events(domain="table", edition=edition.name)
 
 Create helper scripts for your team:
 
-```python
+```python title="illustrative - debug helper script"
 # scripts/debug_player_command.py
 def debug_player_issue(aggregate_root: str, command: CommandBook):
     """Replay a player aggregate issue locally."""

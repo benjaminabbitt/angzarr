@@ -25,7 +25,7 @@ And you already have it.
 
 ### Reading Historical Events
 
-```python
+```python title="illustrative - PyTorch dataset"
 import torch
 from torch.utils.data import IterableDataset
 
@@ -50,7 +50,7 @@ loader = DataLoader(dataset, batch_size=32)
 
 The proto messages your aggregate handles are the same messages your training pipeline consumes:
 
-```python
+```python title="illustrative - shared proto messages"
 # In aggregate
 def handle_player_action(cmd: PlayerAction, state: HandState):
     # Business logic
@@ -78,7 +78,7 @@ Real history gives you one path. Editions let you explore alternatives.
 
 ### Example: Poker Bot Training
 
-```python
+```python title="illustrative - counterfactual generation"
 def generate_training_data(hand_ids: list[str], n_alternates: int = 10):
     samples = []
 
@@ -116,7 +116,7 @@ Each counterfactual is a complete simulation through your actual aggregate logic
 
 Predict outcomes from state:
 
-```python
+```python title="illustrative - supervised learning loop"
 # Labels: did the player win?
 # Features: hand state at decision point
 
@@ -132,7 +132,7 @@ for features, label in loader:
 
 Event history as experience buffer:
 
-```python
+```python title="illustrative - RL experience buffer"
 class PokerExperienceBuffer:
     def __init__(self, domain: str):
         self.domain = domain
@@ -159,7 +159,7 @@ for epoch in range(1000):
 
 Learn normal patterns, flag deviations:
 
-```python
+```python title="illustrative - anomaly detection"
 # Train on historical events
 normal_events = stream_events("transactions", ["TransactionCompleted"])
 autoencoder = train_autoencoder(normal_events)

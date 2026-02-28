@@ -15,7 +15,7 @@ This enables event-driven integrations where external consumers (partner APIs, a
 
 ## Architecture
 
-```
+```text title="illustrative - CloudEvents projector flow"
                     Client Code                        Framework
                     ───────────                        ─────────
 EventBook ──→ [ProjectorHandler] ──→ Projection ──→ [CloudEventsCoordinator] ──→ Sink
@@ -64,7 +64,7 @@ Register handlers with explicit state passing. Better for complex routing or whe
 
 For full control over the projection lifecycle, implement the raw handle method:
 
-```rust
+```rust title="illustrative - raw handle method"
 async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
     let mut cloud_events = Vec::new();
 
@@ -114,7 +114,7 @@ async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Proj
 
 Framework produces CloudEvents 1.0 JSON:
 
-```json
+```json title="illustrative - CloudEvent JSON output"
 {
   "specversion": "1.0",
   "id": "orders:abc123def456:5",
@@ -151,7 +151,7 @@ The framework supports custom [CloudEvents extension attributes](https://github.
 
 Per the CloudEvents spec, extension attribute names **must be lowercase**. The framework automatically lowercases all extension keys, so you can use any case in your client code:
 
-```python
+```python title="illustrative - extension attribute lowercasing"
 # All of these become "traceid" in the output
 CloudEvent(
     type="com.example.order.created",
@@ -209,7 +209,7 @@ The framework uses the official [cloudevents-sdk](https://github.com/cloudevents
 
 POSTs batches using `application/cloudevents-batch+json` content type:
 
-```http
+```http title="illustrative - HTTP batch request"
 POST /events HTTP/1.1
 Host: webhook.example.com
 Content-Type: application/cloudevents-batch+json
@@ -244,7 +244,7 @@ CloudEvents are public-facing. Always create "public" proto messages that exclud
 - Internal IDs and implementation details
 - Authentication tokens or secrets
 
-```python
+```python title="illustrative - filtering sensitive data"
 # Internal event (has sensitive data)
 class OrderCreated:
     order_id: str
@@ -265,7 +265,7 @@ class PublicOrderCreated:
 
 A single source event can produce multiple CloudEvents (fan-out):
 
-```python
+```python title="illustrative - fan-out transformation"
 def transform_events(event_book):
     cloud_events = []
 
@@ -295,7 +295,7 @@ def transform_events(event_book):
 
 Return an empty `CloudEventsResponse` to skip publishing:
 
-```python
+```python title="illustrative - skipping events"
 def transform_events(event_book):
     cloud_events = []
 
@@ -314,7 +314,7 @@ def transform_events(event_book):
 
 For direct framework usage (not via client projector):
 
-```rust
+```rust title="illustrative - framework integration"
 use angzarr::handlers::projectors::{
     CloudEventsCoordinator, HttpSink, HttpSinkConfig, NullSink
 };

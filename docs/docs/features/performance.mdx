@@ -40,7 +40,7 @@ Without: replay 100,000 events. With: replay 999 events.
 
 The aggregate handler decides when to snapshot by including state in the EventBook:
 
-```python
+```python title="illustrative - client-driven snapshotting"
 def handle_command(cmd, event_book):
     state = build_state(event_book)
     event = compute(cmd, state)
@@ -116,7 +116,7 @@ flowchart LR
 
 Sync mode is specified per-command by the caller:
 
-```python
+```python title="illustrative - sync mode selection"
 # Async (default): fire-and-forget, high throughput
 send_command(PlayerAction(action=FOLD))
 
@@ -202,13 +202,7 @@ CASCADE sync can easily 10× your event store read load compared to async. Profi
 
 When concurrent commands arrive for the same aggregate, the framework must decide how to handle sequence conflicts:
 
-```protobuf
-enum MergeStrategy {
-  MERGE_COMMUTATIVE = 0;       // Retry with fresh state (default)
-  MERGE_STRICT = 1;            // Reject immediately
-  MERGE_AGGREGATE_HANDLES = 2; // Let aggregate decide
-  MERGE_MANUAL = 3;            // Send to DLQ
-}
+```protobuf file=proto/angzarr/types.proto start=docs:start:merge_strategy end=docs:end:merge_strategy
 ```
 
 ### MERGE_COMMUTATIVE (Default)
@@ -224,7 +218,7 @@ When sequences mismatch, commutative merge compares **state at expected sequence
 5. Determine which fields the command would modify
 6. If disjoint → proceed; if overlap → retry with fresh state
 
-```
+```text title="illustrative - disjoint fields (proceed)"
 Player State @ seq 5:           Player State @ seq 6:
   bankroll: 1000                  bankroll: 1000        (unchanged)
   display_name: "Alice"           display_name: "Ace"   (changed)
@@ -239,7 +233,7 @@ Intersection: ∅ → disjoint → proceed without retry
 
 Compare to a true conflict:
 
-```
+```text title="illustrative - overlapping fields (retry)"
 Player State @ seq 5:           Player State @ seq 6:
   bankroll: 1000                  bankroll: 1500        (changed)
 
@@ -259,7 +253,7 @@ Comparing states (not events) is essential. Events describe *what happened*, but
 
 The aggregate must implement a `Replay` RPC that returns state given an EventBook:
 
-```rust
+```rust title="illustrative - Replay RPC"
 async fn replay(&self, events: &EventBook) -> Result<Any, Status> {
     let state = build_state_from_events(events);
     Ok(Any::pack(&state))
@@ -280,7 +274,7 @@ When the framework cannot determine which fields a command modifies, it assumes 
 
 When fields overlap (or STRICT mode), the framework returns `FAILED_PRECONDITION` with sequence information. **The caller is responsible for retry**:
 
-```
+```text title="illustrative - caller retry flow"
 1. Send command expecting sequence N
 2. Receive FAILED_PRECONDITION: "expected N, aggregate at M"
 3. Fetch current events for the aggregate
@@ -291,7 +285,7 @@ When fields overlap (or STRICT mode), the framework returns `FAILED_PRECONDITION
 
 The framework does not automatically return the intervening events—the caller must fetch them. This is intentional: the caller needs to evaluate whether the command still makes business sense given what happened. A blind retry could produce incorrect results.
 
-```python
+```python title="illustrative - retry with refetch"
 result = send_command(cmd, sequence=5)
 if result.is_precondition_failed():
     # Fetch what happened since our last read
@@ -310,7 +304,7 @@ if result.is_precondition_failed():
 
 Reject if sequence doesn't match. Use for operations that must not be retried.
 
-```
+```text title="illustrative - strict rejection"
 Command A (seq 5) succeeds
 Command B (seq 5) → Rejected: sequence mismatch
 ```
@@ -319,7 +313,7 @@ Command B (seq 5) → Rejected: sequence mismatch
 
 The aggregate receives both the expected and actual state, deciding how to proceed:
 
-```python
+```python title="illustrative - aggregate merge handler"
 def handle_with_merge(
     cmd: PlaceBet,
     expected_state: HandState,
@@ -349,7 +343,7 @@ def handle_with_merge(
 
 Measure what matters for your domain:
 
-```python
+```python title="illustrative - performance benchmarking"
 # Command latency
 start = time.time()
 result = send_command(PlayerAction(...))
@@ -445,7 +439,7 @@ Facts represent things that have already happened—the aggregate cannot reject 
 - "Payment processor confirmed charge" → Order aggregate must record it
 - "Tournament system assigned seating" → Table aggregate must honor it
 
-```python
+```python title="illustrative - command vs fact emission"
 # Saga emitting a command (can be rejected)
 yield Command(domain="player", type=DeductChips(amount=100))
 

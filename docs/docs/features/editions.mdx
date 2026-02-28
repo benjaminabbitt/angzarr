@@ -40,16 +40,12 @@ Preview the effects of a command before committing. "Show me what the order woul
 
 Every event lives in an edition. The main timeline uses an empty edition name:
 
-```protobuf
-message Edition {
-  string name = 1;                           // "" = main timeline
-  repeated DomainDivergence divergences = 2; // Optional: explicit branch points
-}
+```protobuf file=proto/angzarr/types.proto start=docs:start:edition end=docs:end:edition
 ```
 
 To branch, specify an edition name:
 
-```python
+```python title="illustrative - speculative edition"
 # Simulate what would happen with different pricing
 edition = Edition(name="pricing-experiment-2024-03")
 
@@ -68,7 +64,7 @@ result = speculate(
 
 By default, an edition diverges implicitly from its first event. For precise control, specify explicit divergence points:
 
-```python
+```python title="illustrative - explicit divergence points"
 edition = Edition(
     name="backtest-q4",
     divergences=[
@@ -86,7 +82,7 @@ This says: "Branch from sequence 1000 in orders, sequence 500 in inventory." Eve
 
 Edition events accumulate. When you're done with a simulation, delete them:
 
-```python
+```python title="illustrative - edition cleanup"
 delete_edition_events(
     domain="orders",
     edition="pricing-experiment-2024-03",
@@ -99,7 +95,7 @@ The main timeline is unaffected. Only the branch disappears.
 
 ## Example: Backtesting a Trading Strategy
 
-```python
+```python title="illustrative - backtesting"
 # Create edition for backtest
 edition = Edition(name=f"backtest-{strategy_id}-{date}")
 
@@ -126,7 +122,7 @@ delete_edition_events(domain="trading", edition=edition.name)
 
 ## Example: Training a Poker Bot
 
-```python
+```python title="illustrative - training data generation"
 # Generate training data from alternate game outcomes
 for hand_id in sample_hands(n=10000):
     for alternate_action in possible_actions(hand_id):

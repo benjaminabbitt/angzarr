@@ -24,7 +24,7 @@ When something goes wrong in a poker hand, you can trace the entire flow: from p
 
 Every workflow has a correlation ID that threads through all related events:
 
-```
+```text title="illustrative - correlation ID flow"
 Session starts: correlation_id = "session-abc-123"
 
 PlayerSeated     (player domain)  → correlation_id
@@ -36,7 +36,7 @@ ChipsTransferred (player domain)  → correlation_id
 
 Query by correlation ID to see the complete story:
 
-```sql
+```sql title="illustrative - correlation query"
 SELECT * FROM events
 WHERE correlation_id = 'session-abc-123'
 ORDER BY timestamp;
@@ -46,7 +46,7 @@ ORDER BY timestamp;
 
 The framework propagates correlation IDs automatically:
 
-```python
+```python title="illustrative - correlation propagation"
 # Initial command sets the correlation
 send_command(
     JoinTable(table_id=table_id),
@@ -64,7 +64,7 @@ send_command(
 
 Failed events don't disappear. They land in a dead letter queue, tagged with error details:
 
-```
+```text title="illustrative - dead letter entry"
 ┌─────────────────────────────────────────────────┐
 │ Dead Letter Entry                               │
 ├─────────────────────────────────────────────────┤
@@ -83,7 +83,7 @@ Failed events don't disappear. They land in a dead letter queue, tagged with err
 
 Each domain has its own DLQ:
 
-```
+```text title="illustrative - DLQ per domain"
 angzarr.dlq.player
 angzarr.dlq.table
 angzarr.dlq.hand
@@ -93,7 +93,7 @@ angzarr.dlq.hand
 
 Once you've fixed the issue, replay failed events:
 
-```bash
+```bash title="illustrative - DLQ replay"
 # Replay all failed events for a domain
 angzarr dlq replay --domain=hand
 
@@ -110,7 +110,7 @@ angzarr dlq discard --domain=hand --before=2024-01-15
 
 When a saga command is rejected, the framework records:
 
-```
+```text title="illustrative - rejection notification"
 ┌─────────────────────────────────────────────────┐
 │ RejectionNotification                           │
 ├─────────────────────────────────────────────────┤
@@ -134,7 +134,7 @@ The rejection flows back to the source aggregate for compensation. The audit tra
 
 The framework emits structured logs at key points:
 
-```json
+```json title="illustrative - structured log (info)"
 {
   "level": "info",
   "component": "coordinator",
@@ -147,7 +147,7 @@ The framework emits structured logs at key points:
 }
 ```
 
-```json
+```json title="illustrative - structured log (warn)"
 {
   "level": "warn",
   "component": "coordinator",
@@ -187,7 +187,7 @@ The framework exposes metrics for monitoring:
 
 Expose via Prometheus endpoint:
 
-```yaml
+```yaml title="illustrative - metrics configuration"
 observability:
   metrics:
     enabled: true
@@ -201,7 +201,7 @@ observability:
 
 Connect to distributed tracing systems:
 
-```yaml
+```yaml title="illustrative - tracing configuration"
 observability:
   tracing:
     enabled: true
@@ -224,7 +224,7 @@ Correlation IDs link traces across services.
 
 When a player disputes an outcome:
 
-```bash
+```bash title="illustrative - debugging commands"
 # Find all events for this hand
 angzarr events --domain=hand --root=hand-xyz-789
 
@@ -246,7 +246,7 @@ The event history is the audit trail. Disputes resolve with facts, not guesses.
 
 Configure alerts for operational issues:
 
-```yaml
+```yaml title="illustrative - alerting rules"
 alerts:
   - name: dlq_depth_high
     condition: angzarr_dlq_depth > 100

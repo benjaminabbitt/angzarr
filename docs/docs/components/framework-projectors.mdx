@@ -32,7 +32,7 @@ Pretty-prints events to stdout with optional JSON decoding. Useful for developme
 
 ### Output Example
 
-```
+```text title="illustrative - LogService console output"
 ────────────────────────────────────────────────────────
 orders:abc123de:0000000005
 OrderCreated
@@ -56,7 +56,7 @@ OrderCreated
 
 ### Usage (Rust)
 
-```rust
+```rust title="illustrative - LogService usage"
 use angzarr::handlers::projectors::{LogService, LogServiceHandle};
 
 let service = LogService::new();
@@ -89,7 +89,7 @@ Stores all events as JSON in a SQL database for querying, debugging, and audit t
 
 ### Schema
 
-```sql
+```sql title="illustrative - EventService schema"
 CREATE TABLE events (
     domain TEXT NOT NULL,
     root_id TEXT NOT NULL,
@@ -109,7 +109,7 @@ CREATE INDEX idx_events_created ON events(created_at);
 
 ### Queries
 
-```sql
+```sql title="illustrative - EventService queries"
 -- All events for an aggregate
 SELECT * FROM events
 WHERE domain = 'orders' AND root_id = 'abc123'
@@ -129,7 +129,7 @@ ORDER BY created_at;
 
 ### Usage (Rust)
 
-```rust
+```rust title="illustrative - EventService usage"
 use angzarr::handlers::projectors::{EventService, EventServiceHandle, connect_pool};
 
 let pool = connect_pool("sqlite:events.db").await?;
@@ -149,7 +149,7 @@ Unified outbound projector for event streaming to both internal and external con
 
 ### Architecture
 
-```
+```text title="illustrative - OutboundService architecture"
                                     ┌── gRPC stream (EventBook, multi-page)
 EventBook ──→ [OutboundService] ────┼── HTTP (CloudEvents JSON/protobuf)
                                     └── Kafka (CloudEvents JSON/protobuf)
@@ -192,7 +192,7 @@ EventBook ──→ [OutboundService] ────┼── HTTP (CloudEvents JS
 
 ### Usage (Rust)
 
-```rust
+```rust title="illustrative - OutboundService usage"
 use angzarr::handlers::projectors::{OutboundService, OutboundEventHandler};
 use angzarr::handlers::projectors::outbound;
 
@@ -211,7 +211,7 @@ let handler = OutboundEventHandler::new(Arc::new(service));
 
 ### Client Example (gRPC)
 
-```python
+```python title="illustrative - gRPC client streaming"
 async def stream_events(correlation_id: str):
     async with grpc.aio.insecure_channel("localhost:1340") as channel:
         stub = EventStreamServiceStub(channel)
@@ -254,7 +254,7 @@ Each EventBook page becomes a CloudEvent with:
 
 In standalone mode, register framework projectors via `RuntimeBuilder`:
 
-```rust
+```rust title="illustrative - standalone mode registration"
 let mut runtime = RuntimeBuilder::new()
     .with_sqlite_memory()
     .register_aggregate("orders", orders_aggregate)

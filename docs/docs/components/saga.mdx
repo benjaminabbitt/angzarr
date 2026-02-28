@@ -208,29 +208,7 @@ When one event should trigger commands to **multiple different aggregates**, ret
 
 **Example:** When a table settles, distribute payouts to multiple players:
 
-```python
-def handle_table_settled(event: TableSettled, destinations: list[EventBook]) -> list[CommandBook]:
-    """Distribute payouts to each winning player."""
-    commands = []
-
-    for payout in event.payouts:
-        # One command per player aggregate
-        cmd = ReleaseFunds(
-            player_root=payout.player_root,
-            amount=payout.amount,
-        )
-        cmd_any = Any()
-        cmd_any.Pack(cmd)
-
-        # Find destination state for this player
-        dest = next(d for d in destinations if d.cover.root.value == payout.player_root)
-
-        commands.append(CommandBook(
-            cover=Cover(domain="player", root=UUID(value=payout.player_root)),
-            pages=[CommandPage(sequence=next_sequence(dest), command=cmd_any)],
-        ))
-
-    return commands
+```python file=examples/python/table/saga-hand/splitter_example.py start=docs:start:saga_splitter end=docs:end:saga_splitter
 ```
 
 Each `CommandBook` targets a different aggregate root. The framework dispatches them independently — if one fails, others may still succeed (handle via compensation).
@@ -241,7 +219,7 @@ Each `CommandBook` targets a different aggregate root. The framework dispatches 
 
 When a saga command is rejected (e.g., table is full), Angzarr routes a **Notification** back to the source aggregate:
 
-```
+```text title="illustrative - compensation flow diagram"
 1. Player emits FundsReserved
        │
        ▼
@@ -262,95 +240,37 @@ The source aggregate decides how to compensate based on the rejection reason.
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-@rejected("table", "JoinTable")
-def handle_join_rejected(state: PlayerState, notification: Notification) -> FundsReleased:
-    # Release the funds that were reserved for this failed join
-    return FundsReleased(
-        amount=state.reserved_amount,
-        reason=f"Join failed: {notification.rejection_reason}",
-        new_available=state.bankroll,
-        new_reserved=0,
-    )
+```python file=examples/python/player/agg/handlers/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-fn handle_join_rejected(
-    state: &PlayerState,
-    notification: &Notification,
-) -> Result<FundsReleased, Status> {
-    Ok(FundsReleased {
-        amount: state.reserved_amount,
-        reason: format!("Join failed: {}", notification.rejection_reason),
-        new_available: state.bankroll,
-        new_reserved: 0,
-    })
-}
+```rust file=examples/rust/player/agg/src/handlers/rejected.rs start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-func handleJoinRejected(state *PlayerState, notification *Notification) (*FundsReleased, error) {
-    return &FundsReleased{
-        Amount:       state.ReservedAmount,
-        Reason:       fmt.Sprintf("Join failed: %s", notification.RejectionReason),
-        NewAvailable: state.Bankroll,
-        NewReserved:  0,
-    }, nil
-}
+```go file=examples/go/player/agg/handlers/revocation.go start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-@Rejected(domain = "table", command = "JoinTable")
-public FundsReleased handleJoinRejected(PlayerState state, Notification notification) {
-    return FundsReleased.newBuilder()
-        .setAmount(state.getReservedAmount())
-        .setReason("Join failed: " + notification.getRejectionReason())
-        .setNewAvailable(state.getBankroll())
-        .setNewReserved(0)
-        .build();
-}
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-[Rejected("table", "JoinTable")]
-public FundsReleased HandleJoinRejected(PlayerState state, Notification notification)
-{
-    return new FundsReleased
-    {
-        Amount = state.ReservedAmount,
-        Reason = $"Join failed: {notification.RejectionReason}",
-        NewAvailable = state.Bankroll,
-        NewReserved = 0
-    };
-}
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-FundsReleased handle_join_rejected(
-    const PlayerState& state, const Notification& notification) {
-
-    FundsReleased event;
-    event.set_amount(state.reserved_amount());
-    event.set_reason("Join failed: " + notification.rejection_reason());
-    event.set_new_available(state.bankroll());
-    event.set_new_reserved(0);
-    return event;
-}
+```cpp file=examples/cpp/player/agg/handlers/rejected_handler.cpp start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
@@ -373,7 +293,7 @@ Sagas can emit either **commands** or **facts** to target domains:
 
 Commands go through the target aggregate's guard/validate/compute flow and can be rejected. Facts bypass validation entirely—the aggregate must accept them.
 
-```python
+```python title="illustrative"
 # Command: request an action (can be rejected)
 def handle_hand_started(event: HandStarted, destinations: list[EventBook]):
     return CommandBook(
@@ -401,7 +321,7 @@ Use facts when the source domain has authority the target must accept—tourname
 
 The saga coordinator uses a two-phase flow to provide target domain context:
 
-```
+```text title="illustrative - two-phase flow"
 Phase 1: Coordinator receives source event
          ↓
          Coordinator calls prepare handler to get destination covers
@@ -418,7 +338,7 @@ The `SagaContext` contains the **target domain(s)** aggregate states—not the s
 - Make routing decisions based on target state
 - Avoid stale sequence errors
 
-```python
+```python title="illustrative"
 # SagaContext contains target domain state (table), not source (player)
 # Fetched by coordinator before invoking your handler
 

@@ -47,6 +47,10 @@ build:
 test:
     just _container test
 
+# Start gRPC test server for unified Rust harness testing
+serve:
+    just _container serve
+
 coverage:
     just _container coverage
 

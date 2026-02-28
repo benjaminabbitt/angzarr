@@ -64,13 +64,7 @@ These concerns live in different places, and understanding why matters.
 
 Every event has a **Cover** — metadata that travels with the event forever. For facts, the Cover carries an `external_id`: the identifier from the external system (Stripe's payment intent ID, the sensor's reading ID, the ruling number).
 
-```protobuf
-message Cover {
-  string domain = 2;
-  UUID root = 1;
-  string correlation_id = 3;
-  string external_id = 5;     // Idempotency key - PRESERVED forever
-}
+```protobuf file=proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
 ```
 
 The `external_id` is your permanent link back to reality. When the same webhook arrives again, the coordinator checks: "Have I seen this `external_id` before?" If yes, it silently ignores the duplicate. The Cover—and its `external_id`—survives the entire event lifecycle.
@@ -79,18 +73,7 @@ The `external_id` is your permanent link back to reality. When the same webhook 
 
 The `FactSequence` marker tells the coordinator: "This event doesn't have a sequence number yet. Assign one."
 
-```protobuf
-message EventPage {
-  oneof sequence_type {
-    uint32 sequence = 1;      // Normal: position in stream
-    FactSequence fact = 5;    // Fact marker - REPLACED after processing
-  }
-}
-
-message FactSequence {
-  string source = 1;          // Origin system (e.g., "stripe")
-  string description = 2;     // Human-readable description
-}
+```protobuf file=proto/angzarr/types.proto start=docs:start:fact_sequence end=docs:end:fact_sequence
 ```
 
 Unlike the Cover, the `FactSequence` is **transient**. After processing, it's replaced with a real sequence number. The event then looks like any other sequenced event—but the `external_id` on the Cover remains, providing that permanent link to the external system.
@@ -111,7 +94,7 @@ The coordinator handles facts in five steps:
 
 Here's how you emit a fact with proper idempotency:
 
-```python
+```python title="illustrative - fact emission"
 cover = Cover(
     domain="payments",
     root=payment_id,
@@ -142,7 +125,7 @@ Webhook retries? Network hiccups? Duplicate deliveries? The coordinator checks `
 
 By default, facts route to the aggregate before persistence:
 
-```yaml
+```yaml title="illustrative - fact routing config"
 route_facts_to_aggregate: true
 ```
 
@@ -154,9 +137,14 @@ Set to `false` if facts should persist directly without aggregate processing.
 
 ## Examples
 
+:::info Illustrative Examples
+The following examples show the pattern for external system integration.
+Your implementation will vary based on your webhook provider and domain.
+:::
+
 ### Payment Webhooks
 
-```python
+```python title="illustrative - payment webhook"
 # Stripe webhook handler
 @webhook("/stripe")
 def handle_stripe_webhook(event: StripeEvent):
@@ -174,7 +162,7 @@ def handle_stripe_webhook(event: StripeEvent):
 
 ### IoT Sensor Data
 
-```python
+```python title="illustrative - IoT sensor fact"
 # Temperature reading from sensor
 emit_fact(
     domain="warehouse",
@@ -189,7 +177,7 @@ emit_fact(
 
 ### External Rulings
 
-```python
+```python title="illustrative - external ruling"
 # Floor manager ruling in poker
 emit_fact(
     domain="hand",

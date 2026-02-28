@@ -63,6 +63,218 @@ flowchart TB
 
 ---
 
+## Why Cucumber/Gherkin
+
+Angzarr uses Cucumber/Gherkin extensively—not just for acceptance tests, but also for **contract tests** and **integration tests**. The primary motivation is **readability**.
+
+### Ease of Reading
+
+Gherkin specifications are easier to read than programmatic tests:
+
+```gherkin title="illustrative"
+# Gherkin: Intent is immediately clear
+Scenario: Events persist with correct sequence numbers
+  Given an empty event store
+  When I append 3 events to aggregate "player-123"
+  Then the events have sequences 0, 1, 2
+  And querying from sequence 1 returns 2 events
+```
+
+```rust title="illustrative"
+// Programmatic: Requires understanding test framework idioms
+#[tokio::test]
+async fn test_events_persist_with_correct_sequence_numbers() {
+    let store = setup_store().await;
+    let root = uuid::Uuid::new_v4();
+
+    for i in 0..3 {
+        store.append(&root, make_event(i)).await.unwrap();
+    }
+
+    let events = store.get_from(&root, 1).await.unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].sequence, 1);
+}
+```
+
+Both test the same thing, but the Gherkin version:
+- Documents behavior in plain English
+- Serves as living specification
+- Is reviewable by non-developers
+- Makes test coverage gaps obvious
+
+### Where We Use Cucumber
+
+| Component | Test Type | Harness | Why |
+|-----------|-----------|---------|-----|
+| **Core** (`src/`, `tests/`) | Contract, Integration | Rust cucumber-rs | Readable specs for framework behavior |
+| **Clients** (`client/{lang}/`) | Contract | Unified Rust gRPC harness | One source of truth across 6 languages |
+| **Examples** (`examples/{lang}/`) | Acceptance | Per-language harnesses | Demonstrative for developers |
+
+### Core Testing with Cucumber
+
+Core framework tests use Gherkin for **readability**, not cross-language consistency:
+
+```text title="illustrative - directory structure"
+tests/
+├── interfaces/
+│   ├── features/
+│   │   ├── event_store.feature      # EventStore contract
+│   │   ├── snapshot_store.feature   # SnapshotStore contract
+│   │   ├── position_store.feature   # PositionStore contract
+│   │   ├── event_bus.feature        # EventBus contract
+│   │   └── dlq.feature              # DLQ behavior
+│   └── steps/                       # Rust step definitions
+├── client/
+│   ├── features/
+│   │   ├── aggregate-client.feature # Client SDK contracts
+│   │   ├── command-builder.feature
+│   │   └── query-client.feature
+│   └── (Rust harness calls clients via gRPC)
+└── acceptance/
+    └── features/
+        └── end_to_end.feature       # Full stack scenarios
+```
+
+### Client Testing Architecture
+
+Client libraries are tested with a **unified Rust gRPC harness**:
+
+```text title="illustrative - architecture diagram"
+┌─────────────────────────────────────────────────────────────┐
+│  Rust Gherkin Harness (cucumber-rs)                         │
+│  - Step definitions: tests/client/                          │
+│  - Feature files: client/features/*.feature                 │
+└─────────────────┬───────────────────────────────────────────┘
+                  │ gRPC
+    ┌─────────────┼─────────────┬─────────────┬───────────────┐
+    ▼             ▼             ▼             ▼               ▼
+┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
+│ Python │  │  Go    │  │  Rust  │  │  Java  │  │  C#    │  │  C++   │
+│ Client │  │ Client │  │ Client │  │ Client │  │ Client │  │ Client │
+└────────┘  └────────┘  └────────┘  └────────┘  └────────┘  └────────┘
+```
+
+**Why unified?**
+- One source of truth for SDK contracts
+- Same tests validate all 6 language implementations
+- Tests actual gRPC protocol, not internal APIs
+
+#### Client Contract Examples
+
+```gherkin title="client/features/aggregate_client.feature"
+# docs:start:aggregate_client_contract
+Feature: AggregateClient - Command Execution
+  The AggregateClient sends commands to aggregates for processing.
+  Commands are validated, processed, and result in events being persisted.
+  Supports async (fire-and-forget), sync, and speculative modes.
+
+  Without command execution, the system cannot accept user actions or
+  change aggregate state.
+# docs:end:aggregate_client_contract
+
+  # docs:start:client_command
+  Scenario: Execute command on new aggregate
+    Given a new aggregate root in domain "orders"
+    When I execute a "CreateOrder" command with data "customer-123"
+    Then the command should succeed
+    And the response should contain 1 event
+    And the event should have type "OrderCreated"
+
+  Scenario: Execute command on existing aggregate
+    Given an aggregate "orders" with root "order-001" at sequence 3
+    When I execute a "AddItem" command at sequence 3
+    Then the command should succeed
+    And the response should contain events starting at sequence 3
+  # docs:end:client_command
+
+  # docs:start:client_concurrency
+  Scenario: Command at wrong sequence fails with precondition error
+    Given an aggregate "orders" with root "order-002" at sequence 5
+    When I execute a command at sequence 3
+    Then the command should fail with precondition error
+    And the error should indicate sequence mismatch
+
+  Scenario: Concurrent writes are detected
+    Given an aggregate "orders" with root "order-003" at sequence 0
+    When two commands are sent concurrently at sequence 0
+    Then one should succeed
+    And one should fail with precondition error
+  # docs:end:client_concurrency
+```
+
+```gherkin title="client/features/command_builder.feature"
+# docs:start:command_builder_contract
+Feature: CommandBuilder - Fluent Command Construction
+  The CommandBuilder provides a fluent API for constructing commands.
+  It handles serialization, correlation IDs, sequence numbers, and
+  type URLs while providing compile-time and runtime validation.
+
+  The builder pattern enables both OO-style client usage and can be
+  adapted for router-based implementations.
+# docs:end:command_builder_contract
+
+  Scenario: Build command with all required fields
+    When I build a command for domain "orders" root "order-001"
+      And I set the command type to "CreateOrder"
+      And I set the command payload
+    Then the built command should have domain "orders"
+    And the built command should have root "order-001"
+    And the built command should have type URL containing "CreateOrder"
+
+  Scenario: Build with explicit correlation ID
+    When I build a command for domain "orders"
+      And I set correlation ID to "trace-123"
+      And I set the command type and payload
+    Then the built command should have correlation ID "trace-123"
+
+  Scenario: Builder methods can be chained
+    When I build a command using fluent chaining:
+      """
+      client.command("orders", root)
+        .with_correlation_id("trace-456")
+        .with_sequence(3)
+        .with_command("CreateOrder", payload)
+        .build()
+      """
+    Then the build should succeed
+    And all chained values should be preserved
+```
+
+```bash title="illustrative"
+just test-client python    # Test Python client via Rust harness
+just test-client go        # Test Go client via Rust harness
+just test-clients          # Test all clients
+```
+
+### Example Testing Architecture
+
+Example implementations use **per-language Gherkin harnesses**:
+
+```text title="illustrative - directory structure"
+examples/features/unit/*.feature  (shared specifications)
+           │
+           ├── Python: behave + examples/python/features/steps/
+           ├── Go: godog + examples/go/tests/steps/
+           ├── Rust: cucumber-rs + examples/rust/tests/
+           ├── Java: cucumber-junit5 + examples/java/tests/
+           ├── C#: SpecFlow + examples/csharp/Tests/Steps/
+           └── C++: cucumber-cpp + examples/cpp/tests/
+```
+
+**Why per-language?**
+- Demonstrative for non-polyglot developers
+- Developers see Gherkin AND step definitions in their language
+- Educational code they can learn from and copy
+
+```bash title="illustrative"
+just examples python test  # behave
+just examples go test      # godog
+just examples rust test    # cucumber-rs
+```
+
+---
+
 ## Unit Tests
 
 No external dependencies. Tests interact only with the system under test—no I/O, no concurrency, no infrastructure.
@@ -82,7 +294,7 @@ If you're writing mocks, you're testing the wrong thing. Business logic should b
 
 All aggregate command handlers follow a three-function pattern that makes business logic 100% unit testable:
 
-```
+```text title="illustrative - pseudocode"
 guard(state) → Result<()>
     Check state preconditions (aggregate exists, correct phase, etc.)
     Pure function: state in, Result out
@@ -107,91 +319,19 @@ compute(cmd, state, validated) → Event
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-# test_player.py
-def test_guard_rejects_unregistered_player():
-    state = PlayerState(registered=False)
-
-    with pytest.raises(CommandRejectedError):
-        guard_registered(state)
-
-def test_validate_rejects_non_positive_amount():
-    cmd = DepositFunds(amount=0)
-
-    with pytest.raises(CommandRejectedError):
-        validate_deposit(cmd)
-
-def test_compute_deposit_increases_bankroll():
-    state = PlayerState(registered=True, bankroll=1000)
-    cmd = DepositFunds(amount=500)
-
-    event = compute_deposit(cmd, state)
-
-    assert event.new_bankroll == 1500
+```python file=examples/python/player/agg/handlers/test_commands.py start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-// player_test.go
-func TestGuardRejectsUnregisteredPlayer(t *testing.T) {
-    state := &PlayerState{Registered: false}
-
-    err := guardRegistered(state)
-
-    assert.Error(t, err)
-}
-
-func TestValidateRejectsNonPositiveAmount(t *testing.T) {
-    cmd := &DepositFunds{Amount: 0}
-
-    err := validateDeposit(cmd)
-
-    assert.Error(t, err)
-}
-
-func TestComputeDepositIncreasesBankroll(t *testing.T) {
-    state := &PlayerState{Registered: true, Bankroll: 1000}
-    cmd := &DepositFunds{Amount: 500}
-
-    event := computeDeposit(cmd, state)
-
-    assert.Equal(t, int32(1500), event.NewBankroll)
-}
+```go file=examples/go/player/agg/handlers/deposit_test.go start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-#[test]
-fn test_guard_rejects_unregistered_player() {
-    let state = PlayerState { registered: false, ..Default::default() };
-
-    let result = guard_registered(&state);
-
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_validate_rejects_non_positive_amount() {
-    let cmd = DepositFunds { amount: 0 };
-
-    let result = validate_deposit(&cmd);
-
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_compute_deposit_increases_bankroll() {
-    let state = PlayerState { registered: true, bankroll: 1000, ..Default::default() };
-    let cmd = DepositFunds { amount: 500 };
-
-    let event = compute_deposit(&cmd, &state);
-
-    assert_eq!(event.new_bankroll, 1500);
-}
+```rust file=examples/rust/player/agg/src/handlers/deposit.rs start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
@@ -214,7 +354,7 @@ Prioritize readability over rigid format. Tests are documentation.
 
 Events cross a serialization boundary between business logic and the framework:
 
-```
+```text title="illustrative - data flow diagram"
 Business Logic                    Framework
 ─────────────────────────────────────────────────────
 compute(cmd, state) → raw event
@@ -236,7 +376,7 @@ The framework stores events as opaque `Any` blobs—it doesn't know business typ
 
 **Full event sourcing test cycle:**
 
-```python
+```python title="illustrative"
 def test_deposit_full_cycle():
     # 1. Start with state
     state = PlayerState(bankroll=100)
@@ -275,22 +415,35 @@ Test Angzarr **framework internals** using synthetic aggregates (`EchoAggregate`
 
 **Location:** `tests/standalone_integration/`
 
-```rust
-#[tokio::test]
-async fn test_event_persistence() {
-    // In-process SQLite, no containers
-    let runtime = RuntimeBuilder::new()
-        .with_sqlite_memory()
-        .with_channel_bus()
-        .build()
-        .await;
+### Gherkin Example
 
-    let store = runtime.event_store();
+```gherkin title="tests/interfaces/features/event_bus.feature"
+Feature: EventBus interface
+  The EventBus distributes committed events to interested subscribers. After
+  an aggregate persists events, the bus broadcasts them to sagas, projectors,
+  and process managers that need to react.
 
-    // Test with synthetic aggregate—not real business domain
-    let events = store.add_events(&event_book).await.unwrap();
-    assert_eq!(events.len(), 1);
-}
+  Background:
+    Given an EventBus backend
+
+  Scenario: Handlers only receive events from their subscribed domain
+    Given the player-projector subscribes only to the player domain
+    When events are published to player and table domains
+    Then the player-projector receives only player events
+    And never sees table events which are filtered out by the bus
+
+  Scenario: Cross-domain handlers can subscribe to multiple domains
+    Given the output-projector subscribed to player and table domains
+    When events are published to player, table, and hand domains
+    Then the output-projector receives player events because it subscribed
+    And the output-projector receives table events because it subscribed
+    And the output-projector does NOT receive hand events because it did not subscribe
+
+  Scenario: Events arrive in sequence order from a single publisher
+    Given a single-threaded hand aggregate publishing events
+    And a projector subscribed to hand
+    When events with sequences 0, 1, 2, 3, 4 are published in order
+    Then the projector receives them in sequence order: 0, 1, 2, 3, 4
 ```
 
 ---
@@ -308,15 +461,54 @@ Verify all storage implementations behave identically. Same interface, interchan
 
 **Location:** `tests/interfaces/`
 
-```bash
+### Gherkin Contract Specifications
+
+Contract tests are written in Gherkin for readability. The same feature files run against every backend:
+
+```gherkin title="tests/interfaces/features/event_store.feature"
+Feature: EventStore interface
+  The EventStore is the source of truth for all state changes in the system.
+  Every aggregate's current state is derived by replaying its events. This
+  immutability provides a complete audit trail, enables temporal queries, and
+  allows the system to reconstruct any aggregate's state at any point in history.
+
+  Background:
+    Given an EventStore backend
+
+  Scenario: First event in an aggregate's history starts at sequence 0
+    Given an aggregate "player" with no events
+    When I add 1 event to the aggregate
+    Then the aggregate should have 1 event
+    And the first event should have sequence 0
+
+  Scenario: Multiple events from a single command receive consecutive sequences
+    Given an aggregate "player" with no events
+    When I add 5 events to the aggregate
+    Then the aggregate should have 5 events
+    And events should have consecutive sequences starting from 0
+
+  Scenario: Concurrent writers are detected via sequence mismatch
+    Given an aggregate "player" with 3 events
+    When I try to add an event with sequence 1
+    Then the operation should fail with a sequence conflict
+
+  Scenario: Stale writers cannot overwrite history
+    Given an aggregate "player" with 3 events
+    When I try to add an event with sequence 0
+    Then the operation should fail with a sequence conflict
+```
+
+### Running Contract Tests
+
+```bash title="illustrative"
 # Run against SQLite (fast, no containers)
-STORAGE_BACKEND=sqlite cargo test --test interface_tests --features sqlite
+STORAGE_BACKEND=sqlite cargo test --test interfaces --features sqlite
 
 # Run against PostgreSQL (testcontainers)
-STORAGE_BACKEND=postgres cargo test --test interface_tests --features postgres
+STORAGE_BACKEND=postgres cargo test --test interfaces --features postgres
 
 # Run against immudb (testcontainers)
-STORAGE_BACKEND=immudb cargo test --test interface_tests --features immudb
+STORAGE_BACKEND=immudb cargo test --test interfaces --features immudb
 ```
 
 Contract tests ensure you can swap backends without behavior changes. If SQLite passes but Postgres fails, the Postgres implementation has a bug.
@@ -325,7 +517,7 @@ Contract tests ensure you can swap backends without behavior changes. If SQLite 
 
 Contract tests use [testcontainers](https://rust.testcontainers.org/) to provision real databases:
 
-```rust
+```rust title="illustrative"
 async fn start_postgres() -> (ContainerAsync<GenericImage>, String) {
     let image = GenericImage::new("postgres", "16")
         .with_exposed_port(5432.tcp())
@@ -369,7 +561,7 @@ Gherkin is business-readable specification, not test code. Describe **what** the
 
 #### Declarative Over Imperative
 
-```gherkin
+```gherkin title="illustrative"
 # Wrong: UI choreography
 When I click "Add to Cart"
 And I click "Checkout"
@@ -406,7 +598,7 @@ Each scenario tests exactly one thing. Multiple When-Then pairs = multiple scena
 
 Open features with context explaining what this capability enables, why it matters, and what breaks if it doesn't work:
 
-```gherkin
+```gherkin title="illustrative"
 Feature: Player fund reservation
 
   Players must reserve funds when joining a table. This ensures:
@@ -421,7 +613,7 @@ Feature: Player fund reservation
 
 Don't just test happy paths. Business rules live in constraints:
 
-```gherkin
+```gherkin title="illustrative"
 Scenario: Cannot reserve more than available balance
   Given Alice has $500 available
   When Alice tries to reserve $600
@@ -433,7 +625,7 @@ Scenario: Cannot reserve more than available balance
 
 Show saga/PM translations explicitly without exposing implementation:
 
-```gherkin
+```gherkin title="illustrative"
 Scenario: Order completion triggers fulfillment
   Given an order with items:
     | sku    | quantity |
@@ -448,7 +640,7 @@ Scenario: Order completion triggers fulfillment
 
 The **same Gherkin scenarios** validate all language implementations:
 
-```
+```text title="illustrative - directory structure"
 examples/
 ├── features/                    # Shared Gherkin (canonical source)
 │   ├── player.feature
@@ -464,7 +656,7 @@ examples/
 <Tabs groupId="language">
 <TabItem value="rust" label="Rust" default>
 
-```bash
+```bash title="illustrative"
 # Rust uses cucumber-rs
 cargo test --package e2e --test acceptance
 
@@ -475,7 +667,7 @@ cargo test --package e2e --test acceptance -- --tags @player
 </TabItem>
 <TabItem value="python" label="Python">
 
-```bash
+```bash title="illustrative"
 # Python uses behave
 cd examples/python
 behave features/
@@ -487,7 +679,7 @@ behave features/ --tags=@player
 </TabItem>
 <TabItem value="go" label="Go">
 
-```bash
+```bash title="illustrative"
 # Go uses godog
 cd examples/go
 go test -v ./... --godog.tags=@player
@@ -512,7 +704,7 @@ Acceptance tests support two backends via trait abstraction:
 
 This trades production fidelity for speed. Use **Direct mode** to validate against real infrastructure.
 
-```bash
+```bash title="illustrative"
 # Standalone (default) — channel bus + SQLite, in-process
 cargo test --package e2e --test acceptance
 
@@ -528,7 +720,7 @@ ANGZARR_TEST_MODE=direct \
 
 ### Using just (recommended)
 
-```bash
+```bash title="illustrative"
 # Unit tests
 just test
 
@@ -544,7 +736,7 @@ just test-interfaces-all
 
 ### Direct commands
 
-```bash
+```bash title="illustrative"
 # Unit tests
 cargo test --lib
 

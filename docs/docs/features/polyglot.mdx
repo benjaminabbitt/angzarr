@@ -29,7 +29,7 @@ Any language with gRPC support works. These six have thin client libraries that 
 
 The secret is [Protocol Buffers](https://protobuf.dev/). Your data model—commands, events, state—lives in `.proto` files:
 
-```protobuf
+```protobuf title="illustrative - shared proto contract"
 // Shared across all languages
 message PlayerActed {
   string hand_id = 1;
@@ -55,7 +55,7 @@ Generate bindings for each language. The types are the contract.
 
 All six implementations share the same Gherkin specifications:
 
-```gherkin
+```gherkin title="illustrative - shared Gherkin spec"
 # examples/features/player.feature
 Scenario: Player deposits funds
   Given a registered player with $100 balance
@@ -103,7 +103,7 @@ Each component:
 
 Start with one language. Add others as needed.
 
-```
+```text title="illustrative - gradual migration timeline"
 Month 1: Python prototype
          └── Prove the architecture
 

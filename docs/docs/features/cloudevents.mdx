@@ -45,7 +45,7 @@ You control the transformation. Not every internal event needs external publicat
 
 ## The CloudEvent Envelope
 
-```json
+```json title="illustrative - CloudEvent envelope"
 {
   "specversion": "1.0",
   "id": "hand:abc123:42",
@@ -75,37 +75,17 @@ You control the transformation. Not every internal event needs external publicat
 
 ## Building CloudEvents in a Projector
 
-```python
-@projector("cloudevents-publisher")
-class GameEventsPublisher:
+OO-style projector that filters sensitive fields and publishes public versions:
 
-    @handles("HandComplete")
-    def on_hand_complete(self, event: HandComplete) -> CloudEventsResponse:
-        # Decide what to publish externally
-        return CloudEventsResponse(
-            events=[
-                CloudEvent(
-                    type="io.angzarr.poker.hand.complete",
-                    payload=Any.pack(HandCompleteSummary(
-                        hand_id=event.hand_id,
-                        winner_id=event.winner_id,
-                        pot=event.pot,
-                    )),
-                    extensions={
-                        "tableid": event.table_id,
-                        "gametype": "nlhe",
-                    },
-                )
-            ]
-        )
-
-    @handles("PlayerRegistered")
-    def on_player_registered(self, event: PlayerRegistered) -> CloudEventsResponse:
-        # Skip internal events
-        return CloudEventsResponse(events=[])
+```python file=examples/python/prj-cloudevents/cloudevents_projector.py start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
 ```
 
-Return zero events to skip publishing. Return multiple for fan-out.
+Router-style alternative with explicit handler registration:
+
+```python file=examples/python/prj-cloudevents/cloudevents_projector.py start=docs:start:cloudevents_router end=docs:end:cloudevents_router
+```
+
+Return `None` to skip publishing. Return a CloudEvent for publication.
 
 ---
 
@@ -113,7 +93,7 @@ Return zero events to skip publishing. Return multiple for fan-out.
 
 ### HTTP Sink
 
-```bash
+```bash title="illustrative - HTTP sink config"
 CLOUDEVENTS_SINK=http
 CLOUDEVENTS_HTTP_ENDPOINT=https://webhook.example.com/events
 CLOUDEVENTS_HTTP_TIMEOUT=30
@@ -127,7 +107,7 @@ Events POST as `application/cloudevents-batch+json`. The framework handles:
 
 ### Kafka Sink
 
-```bash
+```bash title="illustrative - Kafka sink config"
 CLOUDEVENTS_SINK=kafka
 CLOUDEVENTS_KAFKA_BROKERS=localhost:9092
 CLOUDEVENTS_KAFKA_TOPIC=game-events
@@ -142,7 +122,7 @@ Events publish with:
 
 ### Both
 
-```bash
+```bash title="illustrative - dual sink config"
 CLOUDEVENTS_SINK=both
 ```
 
@@ -166,7 +146,7 @@ Publish to HTTP and Kafka simultaneously.
 
 Add custom metadata to events:
 
-```python
+```python title="illustrative - custom extensions"
 CloudEvent(
     type="io.angzarr.poker.suspicious_activity",
     payload=Any.pack(alert),
@@ -188,7 +168,7 @@ The `correlationid` extension is added automatically from the Cover's correlatio
 
 Your projector controls what gets published:
 
-```python
+```python title="illustrative - event filtering"
 @handles("PlayerActed")
 def on_player_acted(self, event: PlayerActed) -> CloudEventsResponse:
     # Only publish all-ins for drama tracking

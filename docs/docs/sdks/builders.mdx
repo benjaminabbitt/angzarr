@@ -207,7 +207,7 @@ auto new_root_id = angzarr::root_uuid(response.events());
 
 If you don't specify a correlation ID, the builder generates a UUID automatically:
 
-```
+```text title="illustrative - auto-generated correlation ID"
 // These are equivalent:
 .withCorrelationId(UUID.randomUUID().toString())
 // vs just omitting it - builder generates one

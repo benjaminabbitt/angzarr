@@ -20,7 +20,7 @@ Traditional solutions—two-phase commit, distributed transactions—are complex
 
 When a saga issues a command that gets rejected:
 
-```
+```text title="illustrative - compensation flow"
 1. Hand emits BetPlaced event
 2. Saga (Hand→Table) receives event, issues DeductFromPot → Table
 3. Table rejects: "Player already folded"
@@ -56,18 +56,7 @@ The rejection notification bypasses the saga entirely. The framework routes it d
 
 Register handlers for specific rejection scenarios:
 
-```python
-@rejected("table", "DeductFromPlayerStack")
-def handle_deduction_rejected(
-    state: HandState,
-    notification: RejectionNotification
-) -> BetReverted:
-    return BetReverted(
-        hand_id=state.hand_id,
-        player_id=state.current_actor,
-        amount=notification.rejected_command.amount,
-        reason=notification.rejection_reason,
-    )
+```python file=examples/python/player/agg/handlers/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 The framework routes rejections to the appropriate handler based on the rejected command's domain and type.
@@ -94,7 +83,12 @@ The aggregate decides the business response. The framework ensures the notificat
 
 When handling a rejection, you can specify additional actions:
 
-```python
+:::info Illustrative Example
+The following shows the RevocationResponse pattern. Your handlers will use
+your domain's specific events and rejection reasons.
+:::
+
+```python title="illustrative - RevocationResponse options"
 @rejected("player", "ReserveFunds")
 def handle_reserve_failed(state, notification):
     if notification.rejection_reason == "insufficient_balance":
@@ -123,7 +117,12 @@ def handle_reserve_failed(state, notification):
 
 Complex workflows may require compensating multiple steps:
 
-```python
+:::info Illustrative Example
+The following shows multi-step compensation patterns. Your implementation
+will define domain-specific events for each compensating action.
+:::
+
+```python title="illustrative - multi-step compensation"
 # Player tried to join table but verification failed
 @rejected("verification", "VerifyPlayer")
 def handle_verification_failed(state: TableState, notification):

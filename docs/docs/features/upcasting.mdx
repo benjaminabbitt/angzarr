@@ -45,7 +45,7 @@ The original bytes remain untouched. The audit trail is immutable. But your aggr
 
 Register upcasters that transform events from one type to the next:
 
-```python
+```python title="illustrative - upcaster chain"
 class PlayerUpcaster(Upcaster):
     name = "upcaster-player"
     domain = "player"
@@ -80,7 +80,7 @@ The upcaster matches events by type URL suffix. Two common patterns:
 
 Keep version in the proto package, not the type name. Cleaner organization, easier tooling:
 
-```protobuf
+```protobuf title="illustrative - package versioning"
 // proto/myapp/v1/player.proto
 package myapp.v1;
 message PlayerRegistered { ... }
@@ -100,7 +100,7 @@ Type URLs: `myapp.v1.PlayerRegistered` → `myapp.v2.PlayerRegistered` → `myap
 
 Simpler for small schemas, but clutters the namespace:
 
-```protobuf
+```protobuf title="illustrative - type name suffixes"
 message PlayerRegisteredV1 { ... }
 message PlayerRegisteredV2 { ... }
 message PlayerRegistered { ... }  // current
@@ -177,7 +177,7 @@ func (u *PlayerUpcaster) Upcast(event *pb.EventPage) *pb.EventPage {
 
 Upcasters should be pure functions: same input, same output. No database lookups, no external calls.
 
-```python
+```python title="illustrative - pure vs impure upcasters"
 # Good: pure transformation
 def upcast(event):
     event["new_field"] = derive_from_existing(event["old_field"])
@@ -193,7 +193,7 @@ def upcast(event):
 
 Always upcast to the next version, not directly to latest:
 
-```python
+```python title="illustrative - chained vs skipped versions"
 # Good: V1 → V2 → current
 @upcasts(OrderCreatedV1, OrderCreatedV2)
 def v1_to_v2(self, old): ...
@@ -210,7 +210,7 @@ def v1_to_current(self, old): ...  # What about V2 events?
 
 Your test suite should include events from every historical version:
 
-```python
+```python title="illustrative - upcast chain test"
 def test_upcast_chain():
     v1_event = load_fixture("player_registered_v1.json")
     v3_event = upcast_chain(v1_event)

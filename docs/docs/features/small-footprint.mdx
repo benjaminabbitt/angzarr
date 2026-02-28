@@ -61,7 +61,7 @@ Reviews focus on business logic correctness, not infrastructure bugs. When the a
 
 Every aggregate handler follows guard → validate → compute:
 
-```python
+```python title="illustrative - handler pattern"
 @command_handler(DepositFunds)
 def handle_deposit(cmd: DepositFunds, state: PlayerState, seq: int):
     # Guard: check preconditions

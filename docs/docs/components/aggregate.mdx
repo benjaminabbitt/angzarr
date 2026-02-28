@@ -164,7 +164,7 @@ Builds the resulting event from validated inputs:
 
 State is rebuilt by applying events in sequence:
 
-```
+```text title="illustrative - state reconstruction"
 Prior Events:
   [0] PlayerRegistered { username: "Alice", initial_bankroll: 1000 }
   [1] FundsDeposited { amount: 500, new_bankroll: 1500 }
@@ -189,95 +189,37 @@ Each function is testable in isolation:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-def test_deposit_increases_bankroll():
-    state = PlayerState(registered=True, bankroll=1000)
-    cmd = DepositFunds(amount=500)
-
-    event = compute_deposit(cmd, state)
-
-    assert event.new_bankroll == 1500
+```python file=examples/python/player/agg/handlers/test_commands.py start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-func TestDepositIncreasesBankroll(t *testing.T) {
-    state := &PlayerState{Registered: true, Bankroll: 1000}
-    cmd := &DepositFunds{Amount: 500}
-
-    event := computeDeposit(cmd, state)
-
-    assert.Equal(t, int32(1500), event.NewBankroll)
-}
+```go file=examples/go/player/agg/handlers/deposit_test.go start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-#[test]
-fn test_deposit_increases_bankroll() {
-    let state = PlayerState { registered: true, bankroll: 1000, ..Default::default() };
-    let cmd = DepositFunds { amount: 500 };
-
-    let event = compute_deposit(&cmd, &state);
-
-    assert_eq!(event.new_bankroll, 1500);
-}
+```rust file=examples/rust/player/agg/src/handlers/deposit.rs start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-@Test
-void testDepositIncreasesBankroll() {
-    PlayerState state = new PlayerState();
-    state.registered = true;
-    state.bankroll = 1000;
-
-    DepositFunds cmd = DepositFunds.newBuilder().setAmount(500).build();
-
-    FundsDeposited event = computeDeposit(cmd, state);
-
-    assertEquals(1500, event.getNewBankroll());
-}
+```java file=examples/java/player/agg/src/test/java/dev/angzarr/examples/player/handlers/DepositHandlerTest.java start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-[Fact]
-public void TestDepositIncreasesBankroll()
-{
-    var state = new PlayerState { Registered = true, Bankroll = 1000 };
-    var cmd = new DepositFunds { Amount = 500 };
-
-    var @event = ComputeDeposit(cmd, state);
-
-    Assert.Equal(1500, @event.NewBankroll);
-}
+```csharp file=examples/csharp/Player/Agg.Tests/DepositHandlerTests.cs start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-TEST(DepositTest, IncreasesBankroll) {
-    PlayerState state;
-    state.registered = true;
-    state.bankroll = 1000;
-
-    DepositFunds cmd;
-    cmd.set_amount(500);
-
-    FundsDeposited event = compute_deposit(cmd, state);
-
-    EXPECT_EQ(event.new_bankroll(), 1500);
-}
+```cpp file=examples/cpp/player/agg/tests/deposit_test.cpp start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
@@ -397,7 +339,7 @@ Both patterns produce identical behavior—choose based on team preference. The 
 
 Aggregates receive **facts** in addition to commands. Facts are events injected directly—they bypass guard/validate/compute because they represent external reality the aggregate cannot reject.
 
-```python
+```python title="illustrative"
 # Command handler: can reject
 @handles("DepositFunds")
 def handle_deposit(cmd: DepositFunds, state: PlayerState) -> FundsDeposited:
@@ -426,7 +368,7 @@ The aggregate's only job is to record the fact and update state. See **[Commands
 
 Each event has a `sequence` field. The aggregate computes the next sequence from prior events:
 
-```python
+```python title="illustrative"
 def next_sequence(event_book: EventBook) -> int:
     if event_book.pages:
         return event_book.pages[-1].sequence + 1

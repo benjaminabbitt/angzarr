@@ -50,6 +50,10 @@ build:
 test:
     just _container test
 
+# Start gRPC test server for unified Rust harness testing
+serve:
+    just _container serve
+
 # Create release archive
 archive VERSION:
     just _container archive {{VERSION}}

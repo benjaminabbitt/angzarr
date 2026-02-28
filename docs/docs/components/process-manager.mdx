@@ -280,19 +280,19 @@ PMs can emit either **commands** (requests that can be rejected) or **facts** (a
 | **Command** | Yes | Request action that may fail validation |
 | **Fact** | No | Assert PM's orchestration decision |
 
-Facts are useful when the PM has authority the target aggregate must accept—phase transitions, timeouts, tournament rulings:
+Facts are useful when the PM has authority the target aggregate must accept—phase transitions, tournament rulings, dealer decisions:
 
-```python
+```python title="illustrative"
 # Command: request action, may be rejected
 def handle_hand_complete(event: HandComplete, state: WorkflowState):
     return CommandBook(domain="player", command=TransferChips(amount=event.pot))
 
 # Fact: assert PM decision, cannot be rejected
-def handle_timeout(event: PlayerTimedOut, state: WorkflowState):
+def handle_phase_transition(event: AllPlayersReady, state: WorkflowState):
     return FactBook(
         domain="hand",
-        external_id=f"timeout:{state.correlation_id}:{event.player_id}",
-        event=PlayerForceFolded(player_id=event.player_id, reason="timeout"),
+        external_id=f"phase:{state.correlation_id}:{state.current_phase}",
+        event=PhaseAdvanced(phase=state.next_phase),
     )
 ```
 
@@ -304,7 +304,7 @@ See **[Commands vs Facts](/features/facts)** for details on when to use each.
 
 PM state is stored as events in the PM's own event stream:
 
-```
+```text title="illustrative - PM event stream"
 PM Event Stream (correlation_id = "hand-abc-123"):
   [0] WorkflowStarted { hand_id: "...", phase: "awaiting_deal" }
   [1] PhaseTransitioned { from: "awaiting_deal", to: "dealing" }
@@ -320,7 +320,7 @@ On restart, the PM rebuilds state by replaying its own events.
 
 When a PM-issued command is rejected, the PM receives a Notification before the source aggregate:
 
-```
+```text title="illustrative - rejection flow"
 1. PM issues DealCards → Hand rejects (invalid_player_count)
        │
        ▼
@@ -336,7 +336,7 @@ When a PM-issued command is rejected, the PM receives a Notification before the 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
+```python title="illustrative"
 @rejected("hand", "DealCards")
 def handle_deal_rejected(self, state: HandFlowState, notification: Notification):
     # Update workflow state
@@ -354,21 +354,11 @@ def handle_deal_rejected(self, state: HandFlowState, notification: Notification)
 
 ## Timeouts
 
-PMs can schedule timeouts for player actions:
+:::note Future Feature
+PM-scheduled timeouts (e.g., player action timers, turn clocks) are planned but not yet implemented.
 
-```python
-def handle_action_required(self, event: ActionRequired, state: HandFlowState):
-    # Schedule timeout
-    return [ScheduleTimeout(
-        correlation_id=state.correlation_id,
-        seconds=30,
-        timeout_event=PlayerTimedOut(player_id=event.player_id),
-    )]
-
-def handle_player_timed_out(self, event: PlayerTimedOut, state: HandFlowState):
-    # Auto-fold on timeout
-    return [Fold(hand_id=state.hand_id, player_id=event.player_id)]
-```
+The envisioned API will allow PMs to schedule timeout events that fire after a specified duration, enabling patterns like auto-fold on inactivity.
+:::
 
 ---
 
@@ -380,7 +370,7 @@ def handle_player_timed_out(self, event: PlayerTimedOut, state: HandFlowState):
 | **Identity** | None | correlation_id |
 | **Input domains** | Single | Multiple |
 | **Persistence** | No | Yes (workflow events) |
-| **Timeouts** | No | Yes |
+| **Timeouts** | No | Planned |
 | **Complexity** | Low | Higher |
 
 **Rule of thumb**: Start with sagas. Upgrade to PM when you need state tracking or multi-domain input.

@@ -41,7 +41,7 @@ All charts use official upstream images, not Bitnami.
 2. Deploy infrastructure charts
 3. Deploy core angzarr chart with applications
 
-```bash
+```bash title="illustrative - deployment order"
 # Create namespace
 kubectl create namespace angzarr
 
@@ -67,7 +67,7 @@ Uses CloudNative-PG operator with official PostgreSQL image.
 
 ### values.yaml
 
-```yaml
+```yaml title="illustrative - PostgreSQL values"
 name: angzarr-db
 image:
   repository: ghcr.io/cloudnative-pg/postgresql
@@ -84,7 +84,7 @@ storage:
 
 CloudNative-PG creates services: `<name>-rw` (read-write), `<name>-ro` (read-only).
 
-```yaml
+```yaml title="illustrative - PostgreSQL connection"
 # In angzarr values
 storage:
   postgres:
@@ -99,7 +99,7 @@ Uses RabbitMQ Cluster Operator with official RabbitMQ image.
 
 ### values.yaml
 
-```yaml
+```yaml title="illustrative - RabbitMQ values"
 name: angzarr-mq
 image:
   repository: rabbitmq
@@ -111,7 +111,7 @@ storage:
 
 ### Connection String
 
-```yaml
+```yaml title="illustrative - RabbitMQ connection"
 # In angzarr values
 messaging:
   type: amqp
@@ -127,7 +127,7 @@ Uses Strimzi operator with official Apache Kafka image.
 
 ### values.yaml
 
-```yaml
+```yaml title="illustrative - Kafka values"
 name: angzarr-kafka
 version: "3.9.0"
 kafka:
@@ -140,7 +140,7 @@ controller:
 
 ### Connection String
 
-```yaml
+```yaml title="illustrative - Kafka connection"
 # In angzarr values
 messaging:
   type: kafka
@@ -154,7 +154,7 @@ messaging:
 
 For local development with Kind:
 
-```bash
+```bash title="illustrative - Kind deployment"
 # Create cluster and deploy infrastructure
 just -f deploy/kind/justfile up
 
@@ -170,7 +170,7 @@ just -f deploy/kind/justfile framework
 
 For local development with k3s and OpenTofu:
 
-```bash
+```bash title="illustrative - k3s/OpenTofu deployment"
 cd deploy/tofu/environments/k3s
 tofu init
 tofu apply
@@ -204,7 +204,7 @@ See **[OpenTofu](/tooling/opentofu)** for complete deployment guides including:
 
 ### Quick Reference
 
-```bash
+```bash title="illustrative - OpenTofu environments"
 # Local k3s
 cd deploy/tofu/environments/k3s && tofu apply
 

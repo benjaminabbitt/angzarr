@@ -139,7 +139,7 @@ Both patterns produce identical behavior—choose based on team preference. The 
 
 Projectors **can** subscribe to events from multiple domains, but **should not** unless absolutely required:
 
-```python
+```python title="illustrative"
 # Avoid this pattern when possible
 router = StateRouter("prj-output")
     .subscribes("player", ["PlayerRegistered", "FundsDeposited"])

@@ -59,6 +59,10 @@ mutate-html:
 build:
     just _container build
 
+# Start gRPC test server for unified Rust harness testing
+serve:
+    just _container serve
+
 publish-test:
     just _container publish-test
 

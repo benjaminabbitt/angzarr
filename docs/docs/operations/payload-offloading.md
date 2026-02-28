@@ -10,7 +10,7 @@ When event or command payloads exceed message bus size limits, angzarr stores th
 
 ## Overview
 
-```
+```text title="illustrative - large payload flow"
 Large Payload Flow:
 
 1. Event with 5MB payload
@@ -42,7 +42,7 @@ The claim check pattern trades latency for reliability — payloads that would f
 
 Local storage for development and standalone mode:
 
-```yaml
+```yaml title="illustrative - filesystem config"
 payload_offload:
   enabled: true
   store_type: filesystem
@@ -56,7 +56,7 @@ Files stored as: `/var/angzarr/payloads/{sha256-hash}.bin`
 
 For GCP deployments:
 
-```yaml
+```yaml title="illustrative - GCS config"
 payload_offload:
   enabled: true
   store_type: gcs
@@ -71,7 +71,7 @@ Files stored as: `gs://my-angzarr-payloads/events/{sha256-hash}.bin`
 
 For AWS deployments:
 
-```yaml
+```yaml title="illustrative - S3 config"
 payload_offload:
   enabled: true
   store_type: s3
@@ -96,7 +96,7 @@ All backends use SHA-256 content hashing:
 | **Integrity** | Hash verified on retrieval |
 | **Immutability** | Same hash = same content forever |
 
-```
+```text title="illustrative - content-addressable storage"
 Payload: [binary data...]
 Hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 URI: gs://bucket/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin
@@ -120,7 +120,7 @@ Events and commands reference external payloads via `PayloadReference`:
 
 Configure when offloading triggers:
 
-```yaml
+```yaml title="illustrative - threshold config"
 payload_offload:
   enabled: true
   threshold_bytes: 262144  # 256KB - offload payloads larger than this
@@ -135,7 +135,7 @@ payload_offload:
 
 External payloads have a retention period. The `TtlReaper` background task cleans up expired payloads:
 
-```yaml
+```yaml title="illustrative - TTL config"
 payload_offload:
   ttl_days: 30              # Delete payloads older than this
   reaper_interval_hours: 24 # Run cleanup every 24 hours
@@ -143,7 +143,7 @@ payload_offload:
 
 ### Cleanup Process
 
-```
+```text title="illustrative - cleanup process"
 1. Reaper scans storage for payloads older than TTL
 2. Cross-references with event store (are events still live?)
 3. Deletes orphaned payloads
@@ -154,7 +154,7 @@ payload_offload:
 
 For immediate cleanup:
 
-```bash
+```bash title="illustrative - manual cleanup"
 # Using angzarr CLI
 angzarr payload-store cleanup --older-than 7d
 
@@ -186,7 +186,7 @@ Common failure causes:
 
 Payload offloading is transparent to handlers — the framework handles storage and retrieval:
 
-```python
+```python title="illustrative - transparent handler"
 # Handler receives full payload regardless of storage location
 def handle_large_document(state, cmd):
     # cmd.document_bytes is already retrieved
@@ -202,7 +202,7 @@ def handle_large_document(state, cmd):
 
 For explicit control:
 
-```rust
+```rust title="illustrative - manual offloading"
 use angzarr::payload_store::PayloadStore;
 
 async fn store_large_payload(
@@ -236,7 +236,7 @@ async fn retrieve_payload(
 
 ### Alerts
 
-```yaml
+```yaml title="illustrative - Prometheus alerts"
 # Prometheus alerts
 - alert: PayloadRetrievalErrors
   expr: rate(payload_store_get_errors_total[5m]) > 0.1
@@ -278,7 +278,7 @@ Balance storage costs vs replay needs:
 
 Payload stores can grow quickly with large events:
 
-```bash
+```bash title="illustrative - storage size check"
 # Check storage size
 gsutil du -s gs://my-payloads/
 aws s3 ls s3://my-payloads/ --summarize

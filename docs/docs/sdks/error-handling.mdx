@@ -237,7 +237,7 @@ It's important to distinguish between:
 
 ### Business Rejection Example
 
-```
+```text title="illustrative - business rejection"
 User tries to withdraw $500 from account with $100 balance
 → Aggregate rejects: "Insufficient funds"
 → CommandRejectedError with is_precondition_failed() = true
@@ -246,7 +246,7 @@ User tries to withdraw $500 from account with $100 balance
 
 ### Sequence Mismatch Example
 
-```
+```text title="illustrative - sequence mismatch"
 Client A reads aggregate at sequence 5
 Client B updates aggregate to sequence 6
 Client A sends command with sequence 5

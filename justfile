@@ -403,6 +403,55 @@ test-local-full: test-local
     @echo "=== All Local Tests (Full) Complete ==="
     @echo "═══════════════════════════════════════════════════════════════════"
 
+# === Cross-Language Client Tests ===
+# Unified Rust Gherkin harness tests client libraries via gRPC.
+# One source of truth for SDK contract testing across all languages.
+
+# Test a specific language's client library via Rust gRPC harness
+# Usage: just test-client python [--tags=@aggregate]
+test-client LANG *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "═══════════════════════════════════════════════════════════════════"
+    echo "=== Testing {{LANG}} client via Rust gRPC harness ==="
+    echo "═══════════════════════════════════════════════════════════════════"
+
+    # Start the language client gRPC server in background
+    just client {{LANG}} serve &
+    SERVER_PID=$!
+    trap "kill $SERVER_PID 2>/dev/null || true" EXIT
+
+    # Wait for server to be ready
+    sleep 2
+
+    # Run Rust Gherkin harness against the client
+    ANGZARR_CLIENT_LANG={{LANG}} cargo test --test client {{ARGS}}
+
+    echo ""
+    echo "=== {{LANG}} client tests complete ==="
+
+# Test all client libraries via Rust gRPC harness
+test-clients:
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Cross-Language Client Tests (All Languages) ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo ""
+    just test-client rust || true
+    @echo ""
+    just test-client python || true
+    @echo ""
+    just test-client go || true
+    @echo ""
+    just test-client java || true
+    @echo ""
+    just test-client csharp || true
+    @echo ""
+    just test-client cpp || true
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== All Cross-Language Client Tests Complete ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+
 # Clean build artifacts
 clean:
     just _container clean
@@ -511,7 +560,7 @@ infra-ci:
     helm upgrade --install angzarr-redis "{{HELM_K8S}}/redis" \
         -n angzarr --set auth.password=angzarr --wait --timeout 2m
     # RabbitMQ (simple, no operator)
-    helm upgrade --install angzarr-mq "{{HELM_K8S}}/rabbitmq" \
+    helm upgrade --install angzarr-mq "{{HELM_K8S}}/rabbitmq-simple" \
         -n angzarr --set auth.password=angzarr --wait --timeout 2m
     echo "=== CI Infrastructure deployed ==="
     kubectl get pods -n angzarr

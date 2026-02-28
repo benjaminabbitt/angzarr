@@ -60,7 +60,7 @@ One event stream serves all of them. Each projection uses the storage that fits 
 
 A projector subscribes to events and updates its storage:
 
-```python
+```python title="illustrative - projector handler"
 @projector("table-state")
 class TableStateProjector:
     def __init__(self, redis: Redis):
@@ -96,7 +96,7 @@ The projector receives events, transforms them, and writes to its target storage
 
 Projectors just project—they don't know or care about sync mode. The **caller** specifies sync mode when sending commands:
 
-```python
+```python title="illustrative - sync mode selection"
 # Default: async, returns immediately
 send_command(DepositFunds(amount=1000))
 
@@ -115,7 +115,7 @@ The framework decides whether to return projection results to the caller. The pr
 
 Projections are disposable—in theory. Schema change? Bug fix? Rebuild:
 
-```bash
+```bash title="illustrative - projection rebuild"
 # Clear and rebuild from event history
 angzarr projection rebuild --projector=projector-hand-history --from=0
 ```
@@ -140,7 +140,7 @@ For large projections, it may be cheaper to maintain and migrate them than to re
 
 The framework tracks each projector's position in the event stream:
 
-```
+```text title="illustrative - position tracking"
 Projector: projector-hand-history
 Domain: hand
 Last processed: sequence 45,832
@@ -153,7 +153,7 @@ On restart, the projector resumes from its last position. No events missed, no d
 
 ## Example: Hand History for Poker
 
-```python
+```python title="illustrative - hand history projector"
 @domain("hand")
 class HandHistoryProjector(Projector):
     name = "projector-hand-history"
@@ -186,7 +186,7 @@ class HandHistoryProjector(Projector):
 
 Query the projection for fast reads:
 
-```sql
+```sql title="illustrative - projection queries"
 -- Player's recent hands
 SELECT * FROM hands WHERE player_id = ? ORDER BY completed_at DESC LIMIT 20;
 
@@ -200,7 +200,7 @@ SELECT * FROM actions WHERE hand_id = ? ORDER BY sequence;
 
 Projectors can subscribe to multiple domains when necessary. Use `input_domain` on each `@handles` decorator to specify which domain the handler subscribes to:
 
-```python
+```python title="illustrative - multi-domain projector"
 class LeaderboardProjector(Projector):
     name = "projector-leaderboard"
 

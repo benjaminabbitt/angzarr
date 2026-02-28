@@ -37,7 +37,7 @@ flowchart LR
 
 Enable OpenTelemetry with the `otel` feature:
 
-```bash
+```bash title="illustrative - enabling OTel"
 cargo build --features otel
 ```
 
@@ -54,7 +54,7 @@ Without this flag, only console logging via `tracing` is available.
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | - |
 | `RUST_LOG` | Log level filter | `info` |
 
-```bash
+```bash title="illustrative - environment variables"
 export OTEL_SERVICE_NAME=angzarr-order
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 export OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.version=1.0.0
@@ -119,7 +119,7 @@ Each span includes:
 
 ### Deploy Observability Stack
 
-```bash
+```bash title="illustrative - deploying observability stack"
 # Add Helm repos
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -139,7 +139,7 @@ This deploys:
 
 ### Enable OTel on Angzarr
 
-```bash
+```bash title="illustrative - enabling OTel on Angzarr"
 helm install angzarr ./deploy/helm/angzarr \
   -f values-local.yaml \
   -f values-observability.yaml \
@@ -160,7 +160,7 @@ Pre-built dashboards are deployed automatically:
 
 ## Alerting Examples
 
-```yaml
+```yaml title="illustrative - Prometheus alerting rules"
 groups:
   - name: angzarr
     rules:

@@ -172,17 +172,57 @@ Uses `RuntimeBuilder` in-process with real SQLite, real channels, real named pip
 
 Feature files and READMEs are living documentation. They explain *why*, not *how*. See [docs/documentation-guide.md](docs/documentation-guide.md) for patterns.
 
+**Code Block Attribution**
+Every code block in documentation must either:
+1. Link to its source file via `title="path/to/file.ext"` in the code fence
+2. Be marked as illustrative with `title="illustrative"` if not from a real file
+
+Never create synthetic/fake code examples without express permission. Prefer real code:
+1. Add `# docs:start:<name>` and `# docs:end:<name>` markers to real source files
+2. Embed the real code in documentation using those markers
+3. Reference actual file paths so readers can find the source
+
+This ensures documentation stays in sync with the codebase and examples are always runnable.
+
 ### Acceptance Tests
 
 Test **business behavior** through the full stack. Written in Gherkin, describing what the system does from a business perspective. Exercise real domain logic through sagas, process managers, and projectors.
 
-- Location: `examples/features/` (Gherkin), `examples/{lang}/` (runners)
-- Same Gherkin feature files validate all language implementations (Rust, Python, Go)
-- **Backing**: Channel bus + SQLite storage (standalone mode) — no containers needed
-- Run with: `just test-acceptance` (in examples directory)
-- **Execution**: CI/CD + manual local
+#### Client Libraries: Unified Rust gRPC Harness
 
-Two execution modes via `Backend` trait abstraction:
+Client libraries (`client/{lang}/`) are tested with a **single Rust Gherkin harness** via gRPC:
+- One source of truth for SDK contract testing
+- Same tests validate all language implementations
+- Tests exercise actual gRPC protocol
+
+```bash
+just test-client python    # Test Python client via Rust harness
+just test-client go        # Test Go client via Rust harness
+just test-clients          # Test all clients
+```
+
+#### Examples: Per-Language Gherkin Harnesses
+
+Example implementations (`examples/{lang}/`) use **per-language test harnesses**:
+- Demonstrative for non-polyglot developers
+- Developers see Gherkin + step definitions in their language
+- Educational code they can learn from
+
+```bash
+just examples python test  # behave (Python)
+just examples go test      # godog (Go)
+just examples rust test    # cucumber-rs (Rust)
+just examples java test    # cucumber-junit5 (Java)
+just examples csharp test  # SpecFlow (C#)
+just examples cpp test     # cucumber-cpp (C++)
+```
+
+#### Location
+- **Shared feature files**: `examples/features/unit/*.feature` (canonical)
+- **Client harness**: `tests/client/` (Rust gRPC harness)
+- **Example step definitions**: `examples/{lang}/features/steps/` (per-language)
+
+#### Execution Modes
 - **Standalone** (default): in-process `RuntimeBuilder` with SQLite + channel bus
 - **Direct** (`ANGZARR_TEST_MODE=direct`): remote gRPC against deployed cluster
 

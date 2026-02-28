@@ -12,7 +12,7 @@ This document explores a fundamental tension in event-sourced systems: the diffe
 
 In traditional CQRS/ES, the flow is clear:
 
-```
+```text title="illustrative - command flow"
 Client → Command → Aggregate → Accept/Reject → Event
 ```
 
@@ -57,14 +57,14 @@ This creates awkward patterns:
 
 The [Functional Event Sourcing Decider](https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider) separates concerns:
 
-```
+```text title="illustrative - decider pattern"
 decide: Command → State → Event list    # Decision logic
 evolve: State → Event → State           # State transitions
 ```
 
 Some implementations extend this with a separate path for facts:
 
-```
+```text title="illustrative - fact recording path"
 record: Fact → State → Event list       # No validation, just acknowledge
 ```
 
@@ -113,27 +113,7 @@ When the aggregate coordinator receives a fact event:
 
 The sequence field uses a `oneof` to distinguish:
 
-```protobuf
-message Cover {
-  string domain = 2;
-  UUID root = 1;
-  string correlation_id = 3;  // Workflow correlation
-  Edition edition = 4;
-  string external_id = 5;     // Idempotency key for fact events - propagates system-wide
-}
-
-message EventPage {
-  oneof sequence_type {
-    uint32 sequence = 1;           // Normal: position in stream
-    FactSequence fact = 5;         // Fact: external reality marker
-  }
-  // ... rest of event
-}
-
-message FactSequence {
-  string source = 1;               // Origin system identifier (e.g., "stripe", "fedex")
-  string description = 2;          // Human-readable description (optional)
-}
+```protobuf file=proto/angzarr/types.proto start=docs:start:fact_sequence end=docs:end:fact_sequence
 ```
 
 **Key design:** The `external_id` lives on `Cover`, not `FactSequence`. This ensures:
@@ -144,14 +124,14 @@ message FactSequence {
 ### Flow Comparison
 
 **Traditional command flow:**
-```
+```text title="illustrative - traditional command flow"
 Saga receives: OrderCompleted
 Saga emits:    RecordPayment command (sequence=5)
 Aggregate:     Validate → Accept/Reject → Emit PaymentRecorded
 ```
 
 **Angzarr fact flow:**
-```
+```text title="illustrative - Angzarr fact flow"
 Saga receives: OrderCompleted
 Saga emits:    PaymentRecorded event
                - Cover.external_id = "pi_xxx" (Stripe payment ID)
@@ -164,7 +144,7 @@ Coordinator:   Check external_id → Assign sequence → Append → Publish
 
 The coordinator handles fact events through a configurable pipeline:
 
-```
+```text title="illustrative - fact processing pipeline"
 Fact Event arrives (with FactSequence marker)
         ↓
 Check idempotency (Cover.external_id)
@@ -250,7 +230,7 @@ Setting it to `false` is useful for pure append-only fact logging where aggregat
 
 Sagas emitting facts use the event path:
 
-```rust
+```rust title="illustrative - saga emitting facts"
 // Traditional: emit command
 fn execute(&self, event: OrderCompleted, dest: &EventBook) -> CommandBook {
     CommandBook::new(

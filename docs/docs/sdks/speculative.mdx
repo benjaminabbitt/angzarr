@@ -221,7 +221,7 @@ for (const auto& page : response.events().pages()) {
 
 Validate a user action before they commit:
 
-```
+```text title="illustrative - form validation flow"
 User fills out order form:
   - Product: Widget (ID: widget-123)
   - Quantity: 100
@@ -362,7 +362,7 @@ print(f"Projection: {response}")
 
 Speculative execution is excellent for integration tests:
 
-```python
+```python title="illustrative - speculative test"
 def test_order_creation_produces_correct_events():
     client = SpeculativeClient.connect("localhost:1310")
 
