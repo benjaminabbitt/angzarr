@@ -53,9 +53,6 @@ pub const STREAM_OUTPUT_ENV_VAR: &str = "STREAM_OUTPUT";
 /// Environment variable for passing target command as JSON.
 pub const TARGET_COMMAND_JSON_ENV_VAR: &str = "ANGZARR__TARGET__COMMAND_JSON";
 
-/// Environment variable for single command handler address.
-pub const COMMAND_ADDRESS_ENV_VAR: &str = "COMMAND_ADDRESS";
-
 /// Environment variable for Kubernetes namespace.
 pub const NAMESPACE_ENV_VAR: &str = "NAMESPACE";
 /// Alternative environment variable for Kubernetes namespace (downward API).

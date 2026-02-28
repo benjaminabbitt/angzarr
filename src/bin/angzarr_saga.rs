@@ -31,8 +31,6 @@
 //! - TARGET_COMMAND: Optional command to spawn saga (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing (format: "domain=address,...")
-//!   Enables two-phase protocol with EventQuery support
-//! - COMMAND_ADDRESS: Single command handler (fallback, no two-phase support)
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
 use std::sync::Arc;
@@ -43,14 +41,10 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
-use angzarr::config::SagaCompensationConfig;
-use angzarr::config::{COMMAND_ADDRESS_ENV_VAR, STATIC_ENDPOINTS_ENV_VAR};
+use angzarr::config::{SagaCompensationConfig, STATIC_ENDPOINTS_ENV_VAR};
 use angzarr::descriptor::{parse_subscriptions, Target};
 use angzarr::handlers::core::saga::SagaEventHandler;
-use angzarr::orchestration::command::grpc::SingleClientExecutor;
-use angzarr::orchestration::command::CommandExecutor;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
-use angzarr::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use angzarr::proto::saga_service_client::SagaServiceClient;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::retry::connection_backoff;
@@ -121,55 +115,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Configured saga subscriptions"
     );
 
-    // Build executor, fetcher, and factory based on configuration mode
-    let handler = if let Ok(endpoints_str) = std::env::var(STATIC_ENDPOINTS_ENV_VAR) {
-        info!("Using static endpoint configuration for two-phase saga routing");
-        let (executor, fetcher) = connect_endpoints(&endpoints_str).await?;
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            Arc::new(Mutex::new(saga_client)),
-            publisher,
-            SagaCompensationConfig::default(),
-            None,
-            bootstrap.domain.clone(),
-        ));
-        SagaEventHandler::from_factory(factory, executor, Some(fetcher))
-    } else if let Ok(command_address) = std::env::var(COMMAND_ADDRESS_ENV_VAR) {
-        let cmd_addr = command_address.clone();
-        let client = (|| {
-            let addr = cmd_addr.clone();
-            async move {
-                let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
-                Ok::<_, String>(CommandHandlerCoordinatorServiceClient::new(channel))
-            }
-        })
-        .retry(connection_backoff())
-        .notify(|err: &String, dur: Duration| {
-            warn!(service = "command handler", error = %err, delay = ?dur, "Connection failed, retrying");
-        })
-        .await?;
-        warn!("Using single COMMAND_ADDRESS - two-phase saga protocol not supported");
-        let comp_handler = Arc::new(Mutex::new(client));
-        let executor: Arc<dyn CommandExecutor> =
-            Arc::new(SingleClientExecutor::new(comp_handler.clone()));
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            Arc::new(Mutex::new(saga_client)),
-            publisher,
-            SagaCompensationConfig::default(),
-            Some(comp_handler),
-            bootstrap.domain.clone(),
-        ));
-        SagaEventHandler::from_factory(factory, executor, None)
-    } else {
+    // Build executor, fetcher, and factory from static endpoints
+    let endpoints_str = std::env::var(STATIC_ENDPOINTS_ENV_VAR).map_err(|_| {
         error!(
-            "Neither {} nor {} set - saga cannot execute commands",
-            STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR
+            "{} not set - saga cannot execute commands",
+            STATIC_ENDPOINTS_ENV_VAR
         );
-        return Err(format!(
-            "Saga sidecar requires {} or {}",
-            STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR
-        )
-        .into());
-    };
+        format!("Saga sidecar requires {}", STATIC_ENDPOINTS_ENV_VAR)
+    })?;
+
+    info!("Using static endpoint configuration for two-phase saga routing");
+    let (executor, fetcher) = connect_endpoints(&endpoints_str).await?;
+    let factory = Arc::new(GrpcSagaContextFactory::new(
+        Arc::new(Mutex::new(saga_client)),
+        publisher,
+        SagaCompensationConfig::default(),
+        None,
+        bootstrap.domain.clone(),
+    ));
+    let handler = SagaEventHandler::from_factory(factory, executor, Some(fetcher));
 
     let queue_name = format!("saga-{}", bootstrap.domain);
     run_subscriber(messaging, queue_name, Box::new(handler)).await
