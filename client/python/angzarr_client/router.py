@@ -861,7 +861,6 @@ class _FluentRouterBase:
 
     next_sequence = staticmethod(Router.next_sequence)
     pack_any = staticmethod(Router.pack_any)
-    pack_command = staticmethod(Router.pack_any)  # Legacy alias
 
 
 class SingleFluentRouter(_FluentRouterBase):

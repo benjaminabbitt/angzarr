@@ -38,21 +38,6 @@ use super::metrics::{
     STORAGE_DURATION,
 };
 
-// Legacy metric name constants for backwards compatibility with external dashboards
-pub const METRIC_STORAGE_DURATION: &str = "angzarr.storage.duration";
-pub const METRIC_EVENTS_STORED: &str = "angzarr.storage.events.stored";
-pub const METRIC_EVENTS_LOADED: &str = "angzarr.storage.events.loaded";
-pub const METRIC_SNAPSHOTS_STORED: &str = "angzarr.storage.snapshots.stored";
-pub const METRIC_SNAPSHOTS_LOADED: &str = "angzarr.storage.snapshots.loaded";
-pub const METRIC_POSITIONS_UPDATED: &str = "angzarr.storage.positions.updated";
-
-// Legacy label name constants
-pub const LABEL_OPERATION: &str = "operation";
-pub const LABEL_STORAGE: &str = "storage_type";
-pub const LABEL_DOMAIN: &str = "domain";
-pub const LABEL_NAMESPACE: &str = "namespace";
-pub const LABEL_HANDLER: &str = "handler";
-
 /// Wrapper that adds metrics instrumentation to any storage implementation.
 ///
 /// When the `otel` feature is enabled, emits histograms and counters for all

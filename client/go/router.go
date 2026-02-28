@@ -466,15 +466,6 @@ func (r *EventRouter) Dispatch(source *pb.EventBook, destinations []*pb.EventBoo
 	return commands, nil
 }
 
-// InputDomain returns the first registered domain (for backwards compatibility).
-// Deprecated: Use Subscriptions() instead.
-func (r *EventRouter) InputDomain() string {
-	for domain := range r.handlers {
-		return domain
-	}
-	return ""
-}
-
 // ============================================================================
 // StateRouter - fluent state reconstruction
 // ============================================================================

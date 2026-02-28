@@ -81,8 +81,7 @@ use angzarr::config::{
     TRANSPORT_TYPE_ENV_VAR,
 };
 use angzarr::descriptor::parse_subscriptions;
-use angzarr::discovery::k8s::K8sServiceDiscovery;
-use angzarr::discovery::ServiceDiscovery;
+use angzarr::discovery::{ServiceDiscovery, StaticServiceDiscovery};
 use angzarr::handlers::core::{
     ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler,
 };
@@ -386,7 +385,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Service discovery (static — no K8s in standalone)
-    let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
+    let discovery: Arc<dyn ServiceDiscovery> = Arc::new(StaticServiceDiscovery::new());
 
     // Create command router (no in-process sync projectors/sagas in binary mode)
     let router = Arc::new(CommandRouter::new(

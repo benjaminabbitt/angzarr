@@ -616,15 +616,6 @@ infra-destroy:
     helm uninstall angzarr-mq -n angzarr || true
     helm uninstall angzarr-db -n angzarr || true
 
-# Legacy: Deploy via Tofu (deprecated - use Helm charts instead)
-infra-tofu:
-    just tofu init local
-    just tofu apply-auto local
-
-# Legacy: Destroy via Tofu
-infra-tofu-destroy:
-    just tofu destroy-auto local
-
 # Initialize secrets
 secrets-init:
     uv run "{{TOP}}/scripts/manage_secrets.py" init

@@ -48,19 +48,6 @@ pub use lossy::{LossyBus, LossyConfig, LossyDynBus, LossyStats};
 pub use instrumented::{
     // Special values
     DOMAIN_CORRELATION_QUERY,
-    // Label names
-    LABEL_DOMAIN,
-    LABEL_HANDLER,
-    LABEL_NAMESPACE,
-    LABEL_OPERATION,
-    LABEL_STORAGE,
-    // Metric names
-    METRIC_EVENTS_LOADED,
-    METRIC_EVENTS_STORED,
-    METRIC_POSITIONS_UPDATED,
-    METRIC_SNAPSHOTS_LOADED,
-    METRIC_SNAPSHOTS_STORED,
-    METRIC_STORAGE_DURATION,
     // Operation names
     OP_EVENT_ADD,
     OP_EVENT_GET,

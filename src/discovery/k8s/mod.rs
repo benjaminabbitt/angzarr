@@ -133,20 +133,6 @@ impl K8sServiceDiscovery {
         })
     }
 
-    /// Create a static instance without K8s client.
-    ///
-    /// **Deprecated**: Use `StaticServiceDiscovery::new()` directly instead.
-    /// This method exists for backwards compatibility.
-    pub fn new_static() -> Self {
-        Self {
-            client: None,
-            namespace: "static".to_string(),
-            aggregates: Arc::new(RwLock::new(HashMap::new())),
-            projectors: Arc::new(RwLock::new(HashMap::new())),
-            inner: StaticServiceDiscovery::new(),
-        }
-    }
-
     /// Create from environment variables.
     ///
     /// Reads namespace from NAMESPACE_ENV_VAR or POD_NAMESPACE_ENV_VAR env vars.

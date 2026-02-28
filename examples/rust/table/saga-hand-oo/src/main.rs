@@ -7,7 +7,7 @@
 //! Sends DealCards commands to Hand domain.
 //!
 //! This example demonstrates the OO pattern using:
-//! - `#[saga(name = "...", input = "...", output = "...")]` on impl blocks
+//! - `#[saga(name = "...", input = "...")]` on impl blocks
 //! - `#[prepares(EventType)]` on prepare methods
 //! - `#[handles(EventType)]` on handler methods
 
@@ -24,7 +24,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 /// Table→Hand saga using OO-style annotations.
 pub struct TableHandSaga;
 
-#[saga(name = "saga-table-hand", input = "table", output = "hand")]
+#[saga(name = "saga-table-hand", input = "table")]
 impl TableHandSaga {
     /// Prepare handler: declare destination cover to fetch.
     #[prepares(HandStarted)]

@@ -229,18 +229,6 @@ class EventRouter {
     explicit EventRouter(const std::string& name) : name_(name) {}
 
     /**
-     * Create a new EventRouter with a single input domain (backwards compatibility).
-     * @deprecated Use EventRouter(name).domain(input_domain) instead.
-     */
-    [[deprecated("Use EventRouter(name).domain(input_domain) instead")]] EventRouter(
-        const std::string& name, const std::string& input_domain)
-        : name_(name) {
-        if (!input_domain.empty()) {
-            domain(input_domain);
-        }
-    }
-
-    /**
      * Set the current domain context for subsequent on() calls.
      */
     EventRouter& domain(const std::string& name) {
@@ -362,46 +350,6 @@ class EventRouter {
             }
         }
         return commands;
-    }
-
-    /**
-     * Return the first registered domain (for backwards compatibility).
-     * @deprecated Use subscriptions() instead.
-     */
-    [[deprecated("Use subscriptions() instead")]] std::string input_domain() const {
-        if (!handlers_.empty()) {
-            return handlers_.begin()->first;
-        }
-        return "";
-    }
-
-    /**
-     * Declare an output domain and command type (deprecated, no-op).
-     * This method was used for topology discovery but is now deprecated.
-     * @deprecated This method has no effect and will be removed.
-     */
-    [[deprecated("This method has no effect and will be removed")]] EventRouter& sends(
-        const std::string& /*domain*/, const std::string& /*command_type*/) {
-        // No-op for backwards compatibility
-        return *this;
-    }
-
-    /**
-     * Return output domain names (deprecated, returns empty vector).
-     * @deprecated Output domains are no longer tracked.
-     */
-    [[deprecated("Output domains are no longer tracked")]] std::vector<std::string> output_domains()
-        const {
-        return {};
-    }
-
-    /**
-     * Return command types for a given output domain (deprecated, returns empty vector).
-     * @deprecated Output types are no longer tracked.
-     */
-    [[deprecated("Output types are no longer tracked")]] std::vector<std::string> output_types(
-        const std::string& /*domain*/) const {
-        return {};
     }
 
    private:

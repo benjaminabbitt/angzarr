@@ -61,7 +61,7 @@ use tracing::{error, info, warn};
 use angzarr::bus::AmqpEventBus;
 use angzarr::bus::{EventBus, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
-use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
+use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery, StaticServiceDiscovery};
 use angzarr::proto::{
     command_handler_coordinator_service_server::CommandHandlerCoordinatorServiceServer,
     command_handler_service_client::CommandHandlerServiceClient,
@@ -155,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let discovery: Arc<dyn ServiceDiscovery> =
         if std::env::var(DISCOVERY_ENV_VAR).as_deref() == Ok(DISCOVERY_STATIC) {
             info!("Using static service discovery (standalone mode)");
-            Arc::new(K8sServiceDiscovery::new_static())
+            Arc::new(StaticServiceDiscovery::new())
         } else {
             match K8sServiceDiscovery::from_env().await {
                 Ok(discovery) => {
@@ -172,7 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "Service discovery not available (running outside K8s?): {}",
                         e
                     );
-                    Arc::new(K8sServiceDiscovery::new_static())
+                    Arc::new(StaticServiceDiscovery::new())
                 }
             }
         };

@@ -186,7 +186,7 @@ async fn test_repairer_handles_empty_aggregate() {
 
 #[tokio::test]
 async fn test_discovery_resolves_event_query_via_env_var() {
-    use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
+    use angzarr::discovery::{ServiceDiscovery, StaticServiceDiscovery};
 
     // Set up event store with full history
     let event_store = Arc::new(MockEventStore::new());
@@ -211,7 +211,7 @@ async fn test_discovery_resolves_event_query_via_env_var() {
     std::env::set_var("EVENT_QUERY_ADDRESS", addr.to_string());
 
     // Create static discovery (no K8s, will use env var fallback)
-    let discovery = K8sServiceDiscovery::new_static();
+    let discovery = StaticServiceDiscovery::new();
 
     // Resolve EventQuery for domain - should use env var
     let mut eq_client = discovery
@@ -252,7 +252,7 @@ async fn test_discovery_resolves_event_query_via_env_var() {
 
 #[tokio::test]
 async fn test_discovery_resolves_registered_aggregate() {
-    use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
+    use angzarr::discovery::{ServiceDiscovery, StaticServiceDiscovery};
 
     // Set up event store with full history
     let event_store = Arc::new(MockEventStore::new());
@@ -274,7 +274,7 @@ async fn test_discovery_resolves_registered_aggregate() {
     let addr = start_event_query_server(event_store, snapshot_store).await;
 
     // Create discovery and register aggregate
-    let discovery = K8sServiceDiscovery::new_static();
+    let discovery = StaticServiceDiscovery::new();
     discovery
         .register_aggregate(domain, &addr.ip().to_string(), addr.port())
         .await;

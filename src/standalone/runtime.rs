@@ -9,8 +9,7 @@ use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::bus::{EventBus, MessagingConfig};
-use crate::discovery::k8s::K8sServiceDiscovery;
-use crate::discovery::ServiceDiscovery;
+use crate::discovery::{ServiceDiscovery, StaticServiceDiscovery};
 use crate::handlers::core::{
     AggregateCommandHandler, ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler,
     SyncProjectorEntry as HandlerSyncProjectorEntry,
@@ -166,7 +165,7 @@ impl Runtime {
         let servers = Vec::new();
 
         // Service discovery (unused for sync projectors — those are called in-process)
-        let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
+        let discovery: Arc<dyn ServiceDiscovery> = Arc::new(StaticServiceDiscovery::new());
 
         // Clone handler Arcs for speculative executor (before consumption into bus subscribers)
         // Include subscription info for domain-based routing
@@ -498,7 +497,7 @@ impl Runtime {
         })?;
 
         // Create a local aggregate context factory for this domain
-        let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
+        let discovery: Arc<dyn ServiceDiscovery> = Arc::new(StaticServiceDiscovery::new());
 
         // Get client logic from router if available (for routing facts to aggregate)
         let client_logic = self.router.get_client_logic(&domain);
