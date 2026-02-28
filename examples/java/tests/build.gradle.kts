@@ -34,15 +34,5 @@ tasks.test {
     systemProperty("cucumber.junit-platform.naming-strategy", "long")
 }
 
-// TODO: Update Java step definitions to match shared feature file format
-// The shared features use different step patterns than the current Java step definitions
-// For now, feature files are not copied - tests will compile but not run scenarios
-// tasks.register<Copy>("copyFeatures") {
-//     from("${rootDir}/../features/unit")
-//     into("src/test/resources/features")
-//     include("player.feature", "table.feature", "hand.feature")
-// }
-//
-// tasks.named("processTestResources") {
-//     dependsOn("copyFeatures")
-// }
+// Feature files are symlinked from examples/features/unit/
+// Step definitions match the shared feature format

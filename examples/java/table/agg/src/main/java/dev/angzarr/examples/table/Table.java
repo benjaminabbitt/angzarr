@@ -250,37 +250,8 @@ public class Table extends CommandHandler<TableState> {
         .build();
   }
 
-  @Handles(SitOut.class)
-  public PlayerSatOut sitOut(SitOut cmd) {
-    if (!exists()) {
-      throw Errors.CommandRejectedError.preconditionFailed("Table does not exist");
-    }
-    SeatState seat = getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray());
-    if (seat == null) {
-      throw Errors.CommandRejectedError.preconditionFailed("Player is not seated at this table");
-    }
-    if (seat.isSittingOut()) {
-      throw Errors.CommandRejectedError.preconditionFailed("Player already sitting out");
-    }
-
-    return PlayerSatOut.newBuilder().setPlayerRoot(cmd.getPlayerRoot()).setSatOutAt(now()).build();
-  }
-
-  @Handles(SitIn.class)
-  public PlayerSatIn sitIn(SitIn cmd) {
-    if (!exists()) {
-      throw Errors.CommandRejectedError.preconditionFailed("Table does not exist");
-    }
-    SeatState seat = getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray());
-    if (seat == null) {
-      throw Errors.CommandRejectedError.preconditionFailed("Player is not seated at this table");
-    }
-    if (!seat.isSittingOut()) {
-      throw Errors.CommandRejectedError.preconditionFailed("Player not sitting out");
-    }
-
-    return PlayerSatIn.newBuilder().setPlayerRoot(cmd.getPlayerRoot()).setSatInAt(now()).build();
-  }
+  // Note: SitOut/SitIn commands are in the player domain (player owns intent)
+  // Table receives PlayerSatOut/PlayerSatIn as facts via saga
 
   @Handles(StartHand.class)
   public HandStarted startHand(StartHand cmd) {
