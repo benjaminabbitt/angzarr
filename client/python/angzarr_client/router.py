@@ -1151,29 +1151,27 @@ class OORouter:
         return [(d, self.types_for_domain(d)) for d in self._domains]
 
     def add(self, cls) -> OORouter:
-        """Add handlers from a @domain decorated class.
+        """Add handlers from a class with @domain or @handles(input_domain=) decorators.
 
         Scans cls for @handles and @prepares decorated methods.
-        Domain is read from cls._domain (set by @domain decorator).
+        Domain resolution (per handler):
+        1. Handler's explicit input_domain (from @handles(E, input_domain="x"))
+        2. Class-level _domain (from @domain decorator)
 
         Args:
-            cls: Class with @domain decorator and @handles methods.
+            cls: Class with @domain decorator and/or @handles methods with input_domain.
 
         Returns:
             Self for fluent chaining.
 
         Raises:
-            ValueError: If class is missing @domain decorator.
+            ValueError: If handler has no domain (no @domain and no input_domain).
         """
         class_domain = getattr(cls, "_domain", None)
-        if class_domain is None:
-            raise ValueError(f"{cls.__name__} must use @domain decorator")
-
-        self._domains.add(class_domain)
         self._scan_class(cls, class_domain)
         return self
 
-    def _scan_class(self, cls, class_domain: str) -> None:
+    def _scan_class(self, cls, class_domain: str | None) -> None:
         """Scan a class for decorated methods and register handlers."""
         for attr_name in dir(cls):
             attr = getattr(cls, attr_name, None)
@@ -1183,14 +1181,31 @@ class OORouter:
             # Check for @handles decorated methods
             if getattr(attr, "_is_handler", False):
                 event_type = attr._event_type
-                self._register_handler(cls, attr_name, class_domain, event_type)
+                # Use handler's input_domain if specified, else fall back to class domain
+                handler_domain = getattr(attr, "_input_domain", None) or class_domain
+                if handler_domain is None:
+                    raise ValueError(
+                        f"{cls.__name__}.{attr_name}: must have @domain on class "
+                        "or input_domain in @handles"
+                    )
+                self._domains.add(handler_domain)
+                self._register_handler(cls, attr_name, handler_domain, event_type)
 
             # Check for @prepares decorated methods
             if getattr(attr, "_is_prepare_handler", False):
                 event_type = attr._event_type
-                self._register_prepare_handler(cls, attr_name, class_domain, event_type)
+                handler_domain = getattr(attr, "_input_domain", None) or class_domain
+                if handler_domain is None:
+                    raise ValueError(
+                        f"{cls.__name__}.{attr_name}: must have @domain on class "
+                        "or input_domain in @handles"
+                    )
+                self._domains.add(handler_domain)
+                self._register_prepare_handler(
+                    cls, attr_name, handler_domain, event_type
+                )
 
-            # Check for @rejected decorated methods
+            # Check for @rejected decorated methods (domain is explicit, not class-level)
             if getattr(attr, "_is_rejection_handler", False):
                 domain = attr._rejection_domain
                 command = attr._rejection_command
