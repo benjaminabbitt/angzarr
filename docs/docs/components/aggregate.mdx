@@ -285,7 +285,17 @@ TEST(DepositTest, IncreasesBankroll) {
 
 ---
 
-## CommandRouter
+## Handler Registration
+
+Angzarr supports two handler registration styles:
+
+| Style | Description | Best For |
+|-------|-------------|----------|
+| **Functional** | CommandRouter with function handlers | Simple handlers, composition |
+| **OO** | Aggregate base class with decorators | Encapsulated state, type safety |
+
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
 
 Use the `CommandRouter` to register handlers and dispatch commands:
 
@@ -296,9 +306,9 @@ Use the `CommandRouter` to register handlers and dispatch commands:
 ```
 
 </TabItem>
-<TabItem value="go" label="Go">
+<TabItem value="csharp" label="C#">
 
-```go file=examples/go/player/agg/main.go start=docs:start:command_router end=docs:end:command_router
+```csharp file=examples/csharp/Player/Agg/PlayerRouter.cs start=docs:start:command_router end=docs:end:command_router
 ```
 
 </TabItem>
@@ -314,9 +324,9 @@ Use the `CommandRouter` to register handlers and dispatch commands:
 ```
 
 </TabItem>
-<TabItem value="csharp" label="C#">
+<TabItem value="go" label="Go">
 
-```csharp file=examples/csharp/Player/Agg/PlayerRouter.cs start=docs:start:command_router end=docs:end:command_router
+```go file=examples/go/player/agg/main.go start=docs:start:command_router end=docs:end:command_router
 ```
 
 </TabItem>
@@ -328,20 +338,15 @@ Use the `CommandRouter` to register handlers and dispatch commands:
 </TabItem>
 </Tabs>
 
-### OO Alternative: Aggregate Base Class
+</TabItem>
+<TabItem value="oo" label="OO">
 
-All languages also support an OO approach where handlers are methods on an `Aggregate` subclass, using decorators/attributes/macros for dispatch:
+Handlers are methods on an `Aggregate` subclass, using decorators/attributes/macros for dispatch:
 
-<Tabs groupId="language">
+<Tabs groupId="language-oo">
 <TabItem value="python" label="Python" default>
 
 ```python file=examples/python/table/agg/handlers/table.py start=docs:start:oo_handlers end=docs:end:oo_handlers
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
-
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:annotation_handlers end=docs:end:annotation_handlers
 ```
 
 </TabItem>
@@ -351,9 +356,17 @@ All languages also support an OO approach where handlers are methods on an `Aggr
 ```
 
 </TabItem>
-<TabItem value="cpp" label="C++">
+<TabItem value="rust" label="Rust">
 
-```cpp file=examples/cpp/player/agg/src/player.cpp start=docs:start:oo_handlers end=docs:end:oo_handlers
+Rust uses proc macros on impl blocks:
+
+```rust file=examples/rust/table/agg-oo/src/main.rs start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:annotation_handlers end=docs:end:annotation_handlers
 ```
 
 </TabItem>
@@ -365,12 +378,13 @@ Go uses method chaining on `AggregateBase` rather than struct tags:
 ```
 
 </TabItem>
-<TabItem value="rust" label="Rust">
+<TabItem value="cpp" label="C++">
 
-Rust uses proc macros on impl blocks:
-
-```rust file=examples/rust/table/agg-oo/src/main.rs start=docs:start:oo_handlers end=docs:end:oo_handlers
+```cpp file=examples/cpp/player/agg/src/player.cpp start=docs:start:oo_handlers end=docs:end:oo_handlers
 ```
+
+</TabItem>
+</Tabs>
 
 </TabItem>
 </Tabs>

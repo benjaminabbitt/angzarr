@@ -68,6 +68,11 @@ flowchart LR
 
 When a table starts a hand, issue a DealCards command to the hand domain:
 
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+EventRouter with explicit handler registration:
+
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
@@ -75,9 +80,9 @@ When a table starts a hand, issue a DealCards command to the hand domain:
 ```
 
 </TabItem>
-<TabItem value="go" label="Go">
+<TabItem value="csharp" label="C#">
 
-```go file=examples/go/table/saga-hand/main.go start=docs:start:saga_handler end=docs:end:saga_handler
+```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -93,9 +98,9 @@ When a table starts a hand, issue a DealCards command to the hand domain:
 ```
 
 </TabItem>
-<TabItem value="csharp" label="C#">
+<TabItem value="go" label="Go">
 
-```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:saga_handler end=docs:end:saga_handler
+```go file=examples/go/table/saga-hand/main.go start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -103,6 +108,53 @@ When a table starts a hand, issue a DealCards command to the hand domain:
 
 ```cpp file=examples/cpp/table/saga-hand/src/table_hand_saga.cpp start=docs:start:saga_handler end=docs:end:saga_handler
 ```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+Saga class with `@prepares`/`@handles` decorators:
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/table/saga-hand-oo/main.py start=docs:start:saga_oo end=docs:end:saga_oo
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Table/SagaHandOO/TableHandSaga.cs start=docs:start:saga_oo end=docs:end:saga_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/table/saga-hand-oo/src/main.rs start=docs:start:saga_oo end=docs:end:saga_oo
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/table/saga-hand-oo/src/main/java/dev/angzarr/examples/table/sagahandoo/TableHandSaga.java start=docs:start:saga_oo end=docs:end:saga_oo
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/table/saga-hand-oo/main.go start=docs:start:saga_oo end=docs:end:saga_oo
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/table/saga-hand-oo/src/main.cpp start=docs:start:saga_class_oo end=docs:end:saga_class_oo
+```
+
+</TabItem>
+</Tabs>
 
 </TabItem>
 </Tabs>
@@ -116,9 +168,9 @@ When a table starts a hand, issue a DealCards command to the hand domain:
 ```
 
 </TabItem>
-<TabItem value="go" label="Go">
+<TabItem value="csharp" label="C#">
 
-```go file=examples/go/table/saga-hand/main.go start=docs:start:event_router end=docs:end:event_router
+```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:event_router end=docs:end:event_router
 ```
 
 </TabItem>
@@ -134,9 +186,9 @@ When a table starts a hand, issue a DealCards command to the hand domain:
 ```
 
 </TabItem>
-<TabItem value="csharp" label="C#">
+<TabItem value="go" label="Go">
 
-```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:event_router end=docs:end:event_router
+```go file=examples/go/table/saga-hand/main.go start=docs:start:event_router end=docs:end:event_router
 ```
 
 </TabItem>

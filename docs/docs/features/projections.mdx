@@ -198,18 +198,17 @@ SELECT * FROM actions WHERE hand_id = ? ORDER BY sequence;
 
 ## Multi-Domain Projectors
 
-Projectors can subscribe to multiple domains when necessary. Use `input_domains` to declare domain subscriptions, `@handles` to route events to methods:
+Projectors can subscribe to multiple domains when necessary. Use `input_domain` on each `@handles` decorator to specify which domain the handler subscribes to:
 
 ```python
 class LeaderboardProjector(Projector):
     name = "projector-leaderboard"
-    input_domains = ["player", "hand"]
 
-    @handles(PlayerRegistered)
+    @handles(PlayerRegistered, input_domain="player")
     def on_player_registered(self, event: PlayerRegistered):
         self.create_player_entry(event.player_id)
 
-    @handles(HandComplete)
+    @handles(HandComplete, input_domain="hand")
     def on_hand_complete(self, event: HandComplete):
         self.update_player_stats(event.winner_id, event.pot)
 ```
