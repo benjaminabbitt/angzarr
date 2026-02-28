@@ -25,21 +25,113 @@ Unlike aggregates and sagas, projectors are **read-only** from the event sourcin
 
 ---
 
+## Implementation Styles
+
+Angzarr supports two projector implementation styles:
+
+| Style | Description | Best For |
+|-------|-------------|----------|
+| **Functional** | StateRouter with function handlers | Simple projections, stateless |
+| **OO** | Projector class with `@projects`/`[Projects]` decorators | Rich state, encapsulation |
+
+---
+
 ## Example: Output Projector
 
 Transforms poker events into human-readable text:
 
-```cpp file=examples/cpp/prj-output/src/output_projector_doc.cpp start=docs:start:projector_oo end=docs:end:projector_oo
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+StateRouter with explicit event handler registration:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/prj-output/projector.py start=docs:start:projector_functional end=docs:end:projector_functional
 ```
 
----
+</TabItem>
+<TabItem value="csharp" label="C#">
 
-## StateRouter
-
-Use the `StateRouter` to register event handlers:
-
-```cpp file=examples/cpp/prj-output/src/output_projector_doc.cpp start=docs:start:state_router end=docs:end:state_router
+```csharp file=examples/csharp/Prj/Output/OutputProjector.cs start=docs:start:state_router end=docs:end:state_router
 ```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/prj-output/src/main.rs start=docs:start:projector_functional end=docs:end:projector_functional
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/prj-output/src/main/java/dev/angzarr/examples/prjoutput/OutputProjector.java start=docs:start:projector_functional end=docs:end:projector_functional
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/prj-output/main.go start=docs:start:projector_functional end=docs:end:projector_functional
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/prj-output/src/main.cpp start=docs:start:projector_functional end=docs:end:projector_functional
+```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+Projector class with decorator-based handler registration:
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/prj-output-oo/main.py start=docs:start:projector_oo end=docs:end:projector_oo
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/PrjOutputOO/OutputProjector.cs start=docs:start:projector_oo end=docs:end:projector_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/prj-output-oo/src/main.rs start=docs:start:projector_oo end=docs:end:projector_oo
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/prj-output-oo/src/main/java/dev/angzarr/examples/prjoutputoo/OutputProjector.java start=docs:start:projector_oo end=docs:end:projector_oo
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/prj-output-oo/main.go start=docs:start:projector_oo end=docs:end:projector_oo
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/prj-output-oo/src/main.cpp start=docs:start:projector_class_oo end=docs:end:projector_class_oo
+```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+</Tabs>
+
+Both patterns produce identical behavior—choose based on team preference. The functional `StateRouter` is more explicit; the OO approach integrates state and handlers in one class.
 
 ---
 

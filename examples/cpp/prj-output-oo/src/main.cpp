@@ -63,7 +63,7 @@ std::string truncate_id(const std::string& root) {
     return root;
 }
 
-// docs:start:projector_oo
+// docs:start:projector_class_oo
 /**
  * Projector: Output (OO Pattern)
  *
@@ -100,7 +100,7 @@ class OutputProjector : public angzarr::Projector {
         return angzarr::Projection::upsert("log", "withdrawn");
     }
 };
-// docs:end:projector_oo
+// docs:end:projector_class_oo
 
 // docs:start:projector_oo_service
 /**
