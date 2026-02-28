@@ -130,6 +130,8 @@ Clients connect directly to per-domain command handler coordinators via K8s DNS 
 
 Four levels of testing:
 
+**Never** write tests that just blank "pass"es
+
 ### Unit Tests
 
 No external dependencies. Tests interact only with the system under test. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.

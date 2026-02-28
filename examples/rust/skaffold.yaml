@@ -66,6 +66,12 @@ deploy:
           applications.business[2].port: 50003
 
 profiles:
+  # Kind profile - no push, images loaded directly to Kind
+  - name: kind
+    build:
+      local:
+        push: false
+
   # Release profile - slower builds, minimal images
   - name: release
     build:
