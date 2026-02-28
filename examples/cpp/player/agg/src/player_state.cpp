@@ -23,6 +23,7 @@ bool ends_with(const std::string& str, const std::string& suffix) {
 
 }  // anonymous namespace
 
+// docs:start:state_router
 PlayerState PlayerState::from_event_book(const angzarr::EventBook& event_book) {
     PlayerState state;
     for (const auto& page : event_book.pages()) {
@@ -89,5 +90,6 @@ void PlayerState::apply_event(PlayerState& state, const google::protobuf::Any& e
         }
     }
 }
+// docs:end:state_router
 
 }  // namespace player

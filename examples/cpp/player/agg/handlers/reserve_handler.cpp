@@ -19,6 +19,7 @@ std::string bytes_to_hex(const std::string& bytes) {
 }
 }  // anonymous namespace
 
+// docs:start:reserve_funds_imp
 examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd,
                                        const PlayerState& state) {
     // Guard
@@ -59,6 +60,7 @@ examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd,
 
     return event;
 }
+// docs:end:reserve_funds_imp
 
 }  // namespace handlers
 }  // namespace player

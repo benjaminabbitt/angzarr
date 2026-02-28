@@ -18,6 +18,7 @@ public class PlayerAggregate : CommandHandler<PlayerState>
 
     // --- Event appliers ---
 
+    // docs:start:state_appliers_oo
     [Applies(typeof(PlayerRegistered))]
     public void ApplyRegistered(PlayerState state, PlayerRegistered evt)
     {
@@ -82,6 +83,8 @@ public class PlayerAggregate : CommandHandler<PlayerState>
             state.Bankroll = evt.NewBalance.Amount;
         }
     }
+
+    // docs:end:state_appliers_oo
 
     // --- State accessors ---
 

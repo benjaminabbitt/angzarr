@@ -27,7 +27,7 @@ namespace {
 
 constexpr int DEFAULT_PORT = 50412;
 
-// docs:start:saga_oo
+// docs:start:saga_class_oo
 /**
  * Saga: Table -> Hand (OO Pattern)
  *
@@ -84,7 +84,7 @@ class TableHandSaga : public angzarr::Saga {
         return deal_cmd;
     }
 };
-// docs:end:saga_oo
+// docs:end:saga_class_oo
 
 // docs:start:saga_oo_service
 /**

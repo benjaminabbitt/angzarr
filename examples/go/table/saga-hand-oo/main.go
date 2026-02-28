@@ -20,6 +20,7 @@ type TableHandSaga struct {
 	angzarr.SagaBase
 }
 
+// docs:start:saga_oo
 // NewTableHandSaga creates a new TableHandSaga with registered handlers.
 func NewTableHandSaga() *TableHandSaga {
 	s := &TableHandSaga{}
@@ -94,6 +95,8 @@ func (s *TableHandSaga) handleHandStarted(
 		},
 	}, nil
 }
+
+// docs:end:saga_oo
 
 func main() {
 	saga := NewTableHandSaga()

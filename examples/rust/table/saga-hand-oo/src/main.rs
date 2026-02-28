@@ -20,6 +20,7 @@ use prost::Message;
 use prost_types::Any;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+// docs:start:saga_oo
 /// Table→Hand saga using OO-style annotations.
 pub struct TableHandSaga;
 
@@ -98,6 +99,7 @@ impl TableHandSaga {
         })
     }
 }
+// docs:end:saga_oo
 
 #[tokio::main]
 async fn main() {

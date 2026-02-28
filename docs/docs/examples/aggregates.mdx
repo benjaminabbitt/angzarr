@@ -13,11 +13,11 @@ Real handler examples from the poker domain. All code is from the actual [exampl
 
 | Style | Description | Best For |
 |-------|-------------|----------|
+| **Functional** | Pure `guard()`/`validate()`/`compute()` functions | Simple handlers, easy testing |
 | **OO (Object-Oriented)** | Aggregate class with `@handles`/`[Handles]` decorators | Rich domain models, encapsulation |
-| **Imperative** | Pure `guard()`/`validate()`/`compute()` functions | Simple handlers, easy testing |
 
-| Language | OO | Imperative |
-|----------|:--:|:----------:|
+| Language | Functional | OO |
+|----------|:----------:|:--:|
 | Python | ✓ | ✓ |
 | C# | ✓ | ✓ |
 | Rust | ✓ | ✓ |
@@ -27,46 +27,172 @@ Real handler examples from the poker domain. All code is from the actual [exampl
 
 ---
 
-## Player: Reserve Funds
+## Command Handlers
 
-The Player aggregate demonstrates the **two-phase reservation pattern**. Funds are reserved before joining a table, then released if the join fails.
+The examples below show the **guard → validate → compute** pattern (functional) and decorator-based dispatch (OO).
+
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+Pure functions following **guard → validate → compute**. Each function has a single responsibility, directly unit testable without mocks.
 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-**[`examples/python/player/agg/handlers/commands.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/commands.py)**
+```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_guard end=docs:end:deposit_compute
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Player/Agg/Handlers/DepositHandler.cs start=docs:start:deposit_guard end=docs:end:deposit_compute
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/player/agg/src/handlers/deposit.rs start=docs:start:deposit_guard end=docs:end:deposit_compute
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/DepositHandler.java start=docs:start:deposit_guard end=docs:end:deposit_compute
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/player/agg/handlers/deposit.go start=docs:start:deposit_guard end=docs:end:deposit_compute
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/player/agg/handlers/deposit_handler.cpp start=docs:start:deposit_guard end=docs:end:deposit_compute
+```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+Class-based handlers with decorator/annotation registration. State managed by base class.
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/table/agg/handlers/table.py start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:deposit_oo end=docs:end:deposit_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/table/agg-oo/src/main.rs start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:deposit_oo end=docs:end:deposit_oo
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/hand/agg/hand.go start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/player/agg/src/player.cpp start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+</Tabs>
+
+---
+
+## Two-Phase Reservation Pattern
+
+The Player aggregate demonstrates **two-phase reservation**. Funds are reserved before joining a table, then released if the join fails.
+
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
 
 ```python file=examples/python/player/agg/handlers/commands.py start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
 ```
 
 </TabItem>
-<TabItem value="csharp-oo" label="C# OO">
-
-**[`examples/csharp/Player/Agg/Player.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Player.cs)**
-
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:reserve_funds_oo end=docs:end:reserve_funds_oo
-```
-
-</TabItem>
-<TabItem value="csharp-imp" label="C# Imperative">
-
-**[`examples/csharp/Player/Agg/Handlers/ReserveHandler.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Handlers/ReserveHandler.cs)**
+<TabItem value="csharp" label="C#">
 
 ```csharp file=examples/csharp/Player/Agg/Handlers/ReserveHandler.cs start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
 ```
 
 </TabItem>
-<TabItem value="rust-imp" label="Rust Imperative">
-
-**[`examples/rust/player/agg/src/handlers/reserve.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/handlers/reserve.rs)**
+<TabItem value="rust" label="Rust">
 
 ```rust file=examples/rust/player/agg/src/handlers/reserve.rs start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
 ```
 
 </TabItem>
-<TabItem value="java-oo" label="Java OO">
+<TabItem value="java" label="Java">
 
-**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/ReserveHandler.java start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/player/agg/handlers/reserve.go start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/player/agg/handlers/reserve_handler.cpp start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
+```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/table/agg/handlers/table.py start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:reserve_funds_oo end=docs:end:reserve_funds_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/table/agg-oo/src/main.rs start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
 
 ```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:reserve_funds_oo end=docs:end:reserve_funds_oo
 ```
@@ -74,20 +200,17 @@ The Player aggregate demonstrates the **two-phase reservation pattern**. Funds a
 </TabItem>
 <TabItem value="go" label="Go">
 
-**[`examples/go/player/agg/handlers/reserve.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/reserve.go)**
-
-Go uses the imperative pattern (no OO aggregate base class):
-
-```go file=examples/go/player/agg/handlers/reserve.go start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
+```go file=examples/go/hand/agg/hand.go start=docs:start:oo_handlers end=docs:end:oo_handlers
 ```
 
 </TabItem>
-<TabItem value="java-imp" label="Java Imperative">
+<TabItem value="cpp" label="C++">
 
-**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/ReserveHandler.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/ReserveHandler.java)**
-
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/ReserveHandler.java start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
+```cpp file=examples/cpp/player/agg/src/player.cpp start=docs:start:oo_handlers end=docs:end:oo_handlers
 ```
+
+</TabItem>
+</Tabs>
 
 </TabItem>
 </Tabs>
@@ -100,56 +223,96 @@ State is rebuilt by applying events. ⍼ Angzarr provides two patterns:
 
 | Pattern | Description | Best For |
 |---------|-------------|----------|
+| **Functional (StateRouter)** | Fluent builder with typed event handlers | Clean separation, easy testing |
 | **OO with `@applies`** | Decorators on aggregate class methods | Rich domain models |
-| **StateRouter** | Fluent builder with typed event handlers | Clean separation, easy testing |
+
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+StateRouter provides fluent registration of event appliers, keeping state reconstruction separate from command handling.
 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
-
-**[`examples/python/player/agg/handlers/state.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/state.py)**
 
 ```python file=examples/python/player/agg/handlers/state.py start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
-<TabItem value="csharp-router" label="C# StateRouter">
-
-**[`examples/csharp/Player/Agg/PlayerState.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/PlayerState.cs)**
+<TabItem value="csharp" label="C#">
 
 ```csharp file=examples/csharp/Player/Agg/PlayerState.cs start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
-<TabItem value="rust-router" label="Rust StateRouter">
-
-**[`examples/rust/player/agg/src/state.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/state.rs)**
+<TabItem value="rust" label="Rust">
 
 ```rust file=examples/rust/player/agg/src/state.rs start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
-<TabItem value="java-oo" label="Java OO">
+<TabItem value="java" label="Java">
 
-**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
-
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:state_appliers_oo end=docs:end:state_appliers_oo
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/StateBuilder.java start=docs:start:state_builder end=docs:end:state_builder
 ```
 
 </TabItem>
-<TabItem value="go-router" label="Go StateRouter">
-
-**[`examples/go/player/agg/handlers/state.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/state.go)**
+<TabItem value="go" label="Go">
 
 ```go file=examples/go/player/agg/handlers/state.go start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
-<TabItem value="java-imp" label="Java StateBuilder">
+<TabItem value="cpp" label="C++">
 
-**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/StateBuilder.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/StateBuilder.java)**
-
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/StateBuilder.java start=docs:start:state_builder end=docs:end:state_builder
+```cpp file=examples/cpp/player/agg/src/player_state.cpp start=docs:start:state_router end=docs:end:state_router
 ```
+
+</TabItem>
+</Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+OO aggregates use `@applies`/`[Applies]` decorators on methods within the aggregate class.
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/table/agg/handlers/table.py start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:state_appliers_oo end=docs:end:state_appliers_oo
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/table/agg-oo/src/main.rs start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:state_appliers_oo end=docs:end:state_appliers_oo
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/hand/agg/hand.go start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/player/agg/src/player.cpp start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+</Tabs>
 
 </TabItem>
 </Tabs>
