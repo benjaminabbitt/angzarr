@@ -19,16 +19,6 @@ pub trait EventPageExt {
     /// Get the raw payload bytes, if present.
     fn payload(&self) -> Option<&[u8]>;
 
-    /// Decode the event payload as a specific message type.
-    ///
-    /// Returns None if the event is missing, type URL doesn't match the suffix,
-    /// or decoding fails.
-    #[deprecated(
-        since = "0.1.0",
-        note = "use decode_typed for reflection-based type matching"
-    )]
-    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
-
     /// Type-safe decode using prost::Name reflection.
     ///
     /// Returns None if the event is missing, type URL doesn't match exactly,
@@ -59,18 +49,6 @@ impl EventPageExt for EventPage {
         }
     }
 
-    #[allow(deprecated)]
-    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
-        let event = match &self.payload {
-            Some(crate::proto::event_page::Payload::Event(e)) => e,
-            _ => return None,
-        };
-        if !event.type_url.ends_with(type_suffix) {
-            return None;
-        }
-        M::decode(event.value.as_slice()).ok()
-    }
-
     fn decode_typed<M: prost::Message + Default + Name>(&self) -> Option<M> {
         let event = match &self.payload {
             Some(crate::proto::event_page::Payload::Event(e)) => e,
@@ -96,16 +74,6 @@ pub trait CommandPageExt {
 
     /// Get the raw payload bytes, if present.
     fn payload(&self) -> Option<&[u8]>;
-
-    /// Decode the command payload as a specific message type.
-    ///
-    /// Returns None if the command is missing, type URL doesn't match the suffix,
-    /// or decoding fails.
-    #[deprecated(
-        since = "0.1.0",
-        note = "use decode_typed for reflection-based type matching"
-    )]
-    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
 
     /// Type-safe decode using prost::Name reflection.
     ///
@@ -136,18 +104,6 @@ impl CommandPageExt for CommandPage {
             Some(crate::proto::command_page::Payload::Command(c)) => Some(c.value.as_slice()),
             _ => None,
         }
-    }
-
-    #[allow(deprecated)]
-    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
-        let command = match &self.payload {
-            Some(crate::proto::command_page::Payload::Command(c)) => c,
-            _ => return None,
-        };
-        if !command.type_url.ends_with(type_suffix) {
-            return None;
-        }
-        M::decode(command.value.as_slice()).ok()
     }
 
     fn decode_typed<M: prost::Message + Default + Name>(&self) -> Option<M> {

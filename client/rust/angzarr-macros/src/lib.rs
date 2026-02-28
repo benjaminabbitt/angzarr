@@ -372,7 +372,6 @@ pub fn applies(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// # Attributes
 /// - `name = "saga-name"` - The saga's name (required)
 /// - `input = "domain"` - Input domain to listen to (required)
-/// - `output = "domain"` - Output domain for commands (deprecated, ignored)
 ///
 /// # Example
 /// ```rust,ignore
@@ -397,15 +396,12 @@ pub fn saga(attr: TokenStream, item: TokenStream) -> TokenStream {
 struct SagaArgs {
     name: String,
     input: String,
-    #[allow(dead_code)]
-    output: Option<String>, // Deprecated, ignored
 }
 
 impl syn::parse::Parse for SagaArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut name = None;
         let mut input_domain = None;
-        let mut output = None;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
@@ -415,7 +411,6 @@ impl syn::parse::Parse for SagaArgs {
             match ident.to_string().as_str() {
                 "name" => name = Some(value.value()),
                 "input" => input_domain = Some(value.value()),
-                "output" => output = Some(value.value()), // Deprecated, accepted but ignored
                 _ => return Err(syn::Error::new(ident.span(), "unknown attribute")),
             }
 
@@ -431,7 +426,6 @@ impl syn::parse::Parse for SagaArgs {
             input: input_domain.ok_or_else(|| {
                 syn::Error::new(proc_macro2::Span::call_site(), "input is required")
             })?,
-            output, // Deprecated, accepted but ignored
         })
     }
 }
@@ -439,7 +433,6 @@ impl syn::parse::Parse for SagaArgs {
 fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
     let name = &args.name;
     let input_domain = &args.input;
-    // args.output is deprecated and ignored
     let self_ty = &input.self_ty;
 
     // Collect handler methods

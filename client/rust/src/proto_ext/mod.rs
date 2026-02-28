@@ -211,51 +211,6 @@ mod tests {
         assert_eq!(page.payload(), None);
     }
 
-    #[test]
-    fn test_event_page_decode() {
-        use crate::proto::event_page::Payload;
-        use crate::proto::EventPage;
-        use prost::Message;
-
-        let msg = prost_types::Duration {
-            seconds: 99,
-            nanos: 0,
-        };
-        let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
-            created_at: None,
-            payload: Some(Payload::Event(prost_types::Any {
-                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
-                value: msg.encode_to_vec(),
-            })),
-        };
-        let decoded: Option<prost_types::Duration> = page.decode("Duration");
-        assert!(decoded.is_some());
-        assert_eq!(decoded.unwrap().seconds, 99);
-    }
-
-    #[test]
-    fn test_event_page_decode_type_mismatch() {
-        use crate::proto::event_page::Payload;
-        use crate::proto::EventPage;
-        use prost::Message;
-
-        let msg = prost_types::Duration {
-            seconds: 99,
-            nanos: 0,
-        };
-        let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
-            created_at: None,
-            payload: Some(Payload::Event(prost_types::Any {
-                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
-                value: msg.encode_to_vec(),
-            })),
-        };
-        let decoded: Option<prost_types::Duration> = page.decode("Timestamp");
-        assert!(decoded.is_none());
-    }
-
     // CommandPage tests
     #[test]
     fn test_command_page_sequence_num() {
@@ -311,29 +266,6 @@ mod tests {
             })),
         };
         assert_eq!(page.payload(), Some(&[4u8, 5, 6][..]));
-    }
-
-    #[test]
-    fn test_command_page_decode() {
-        use crate::proto::command_page::Payload;
-        use crate::proto::CommandPage;
-        use prost::Message;
-
-        let msg = prost_types::Duration {
-            seconds: 123,
-            nanos: 0,
-        };
-        let page = CommandPage {
-            sequence: 1,
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-            payload: Some(Payload::Command(prost_types::Any {
-                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
-                value: msg.encode_to_vec(),
-            })),
-        };
-        let decoded: Option<prost_types::Duration> = page.decode("Duration");
-        assert!(decoded.is_some());
-        assert_eq!(decoded.unwrap().seconds, 123);
     }
 
     // EventBook extension tests
