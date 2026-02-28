@@ -130,187 +130,95 @@ All six implementations share the same Gherkin specifications, ensuring identica
 
 ## Quick Example
 
-The same handler across all six languages. Each follows the **guard → validate → compute** pattern:
+Two styles, same behavior: **Functional** (pure functions) and **OO** (class-based with decorators).
 
-<Tabs>
+<Tabs groupId="style">
+<TabItem value="functional" label="Functional" default>
+
+Free functions following **guard → validate → compute**. Easy to unit test—call directly with state, assert on output.
+
+<Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-# examples/python/player/agg/handlers/commands.py
-@command_handler(player_proto.DepositFunds)
-def handle_deposit_funds(
-    cmd: player_proto.DepositFunds, state: PlayerState, seq: int
-) -> player_proto.FundsDeposited:
-    # Guard
-    if not state.exists:
-        raise CommandRejectedError("Player does not exist")
-
-    # Validate
-    amount = cmd.amount.amount if cmd.amount else 0
-    if amount <= 0:
-        raise CommandRejectedError("amount must be positive")
-
-    # Compute
-    new_balance = state.bankroll + amount
-    return player_proto.FundsDeposited(
-        amount=cmd.amount,
-        new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
-        deposited_at=now(),
-    )
+```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
-
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/commands.py)
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-// examples/rust/player/agg/src/handlers/deposit.rs
-fn guard(state: &PlayerState) -> CommandResult<()> {
-    if !state.exists() {
-        return Err(CommandRejectedError::new("Player does not exist"));
-    }
-    Ok(())
-}
-
-fn validate(cmd: &DepositFunds) -> CommandResult<i64> {
-    let amount = cmd.amount.as_ref().map(|c| c.amount).unwrap_or(0);
-    if amount <= 0 {
-        return Err(CommandRejectedError::new("amount must be positive"));
-    }
-    Ok(amount)
-}
-
-fn compute(cmd: &DepositFunds, state: &PlayerState, amount: i64) -> FundsDeposited {
-    let new_balance = state.bankroll + amount;
-    FundsDeposited {
-        amount: cmd.amount.clone(),
-        new_balance: Some(Currency { amount: new_balance, currency_code: "CHIPS".into() }),
-        deposited_at: Some(angzarr_client::now()),
-    }
-}
+```rust file=examples/rust/player/agg/src/handlers/deposit.rs start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
-
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/handlers/deposit.rs)
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-// examples/go/player/agg/handlers/deposit.go
-func guardDepositFunds(state PlayerState) error {
-    if !state.Exists() {
-        return angzarr.NewCommandRejectedError("Player does not exist")
-    }
-    return nil
-}
-
-func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
-    amount := int64(0)
-    if cmd.Amount != nil {
-        amount = cmd.Amount.Amount
-    }
-    if amount <= 0 {
-        return 0, angzarr.NewCommandRejectedError("amount must be positive")
-    }
-    return amount, nil
-}
-
-func computeFundsDeposited(cmd *examples.DepositFunds, state PlayerState, amount int64) *examples.FundsDeposited {
-    newBalance := state.Bankroll + amount
-    return &examples.FundsDeposited{
-        Amount:     cmd.Amount,
-        NewBalance: &examples.Currency{Amount: newBalance, CurrencyCode: "CHIPS"},
-    }
-}
+```go file=examples/go/player/agg/handlers/deposit.go start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
-
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/deposit.go)
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-// examples/java/player/agg/src/main/java/.../handlers/DepositHandler.java
-public static FundsDeposited handle(DepositFunds cmd, PlayerState state) {
-    // Guard
-    if (!state.exists()) {
-        throw Errors.CommandRejectedError.preconditionFailed("Player does not exist");
-    }
-
-    // Validate
-    long amount = cmd.hasAmount() ? cmd.getAmount().getAmount() : 0;
-    if (amount <= 0) {
-        throw Errors.CommandRejectedError.invalidArgument("amount must be positive");
-    }
-
-    // Compute
-    long newBalance = state.getBankroll() + amount;
-    return FundsDeposited.newBuilder()
-        .setAmount(cmd.getAmount())
-        .setNewBalance(Currency.newBuilder().setAmount(newBalance).setCurrencyCode("CHIPS"))
-        .build();
-}
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/DepositHandler.java start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
-
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/DepositHandler.java)
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-// examples/csharp/Player/Agg/Handlers/DepositHandler.cs
-public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)
-{
-    // Guard
-    if (!state.Exists)
-        throw CommandRejectedError.PreconditionFailed("Player does not exist");
-
-    // Validate
-    var amount = cmd.Amount?.Amount ?? 0;
-    if (amount <= 0)
-        throw CommandRejectedError.InvalidArgument("amount must be positive");
-
-    // Compute
-    var newBalance = state.Bankroll + amount;
-    return new FundsDeposited
-    {
-        Amount = cmd.Amount,
-        NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-    };
-}
+```csharp file=examples/csharp/Player/Agg/Handlers/DepositHandler.cs start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
-
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Handlers/DepositHandler.cs)
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-// examples/cpp/player/agg/handlers/deposit_handler.cpp
-examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd, const PlayerState& state) {
-    // Guard
-    if (!state.exists()) {
-        throw angzarr::CommandRejectedError::precondition_failed("Player does not exist");
-    }
-
-    // Validate
-    int64_t amount = cmd.has_amount() ? cmd.amount().amount() : 0;
-    if (amount <= 0) {
-        throw angzarr::CommandRejectedError::invalid_argument("amount must be positive");
-    }
-
-    // Compute
-    int64_t new_balance = state.bankroll + amount;
-    examples::FundsDeposited event;
-    event.mutable_amount()->CopyFrom(cmd.amount());
-    event.mutable_new_balance()->set_amount(new_balance);
-    event.mutable_new_balance()->set_currency_code("CHIPS");
-    return event;
-}
+```cpp file=examples/cpp/player/agg/handlers/deposit_handler.cpp start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
 
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/cpp/player/agg/handlers/deposit_handler.cpp)
+</TabItem>
+</Tabs>
+
+</TabItem>
+<TabItem value="oo" label="OO">
+
+Class-based handlers with decorator/annotation registration. State managed by base class.
+
+<Tabs groupId="language-oo">
+<TabItem value="python" label="Python" default>
+
+```python file=examples/python/table/agg/handlers/table.py start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/table/agg-oo/src/main.rs start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/hand/agg/hand.go start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:deposit_oo end=docs:end:deposit_oo
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:deposit_oo end=docs:end:deposit_oo
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/player/agg/src/player.cpp start=docs:start:oo_handlers end=docs:end:oo_handlers
+```
+
+</TabItem>
+</Tabs>
 
 </TabItem>
 </Tabs>

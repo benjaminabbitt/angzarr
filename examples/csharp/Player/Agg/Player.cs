@@ -121,6 +121,7 @@ public class PlayerAggregate : CommandHandler<PlayerState>
         };
     }
 
+    // docs:start:deposit_oo
     [Handles(typeof(DepositFunds))]
     public FundsDeposited HandleDeposit(DepositFunds cmd)
     {
@@ -139,6 +140,8 @@ public class PlayerAggregate : CommandHandler<PlayerState>
             DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
+
+    // docs:end:deposit_oo
 
     [Handles(typeof(WithdrawFunds))]
     public FundsWithdrawn HandleWithdraw(WithdrawFunds cmd)

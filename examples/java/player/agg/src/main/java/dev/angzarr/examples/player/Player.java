@@ -165,6 +165,7 @@ public class Player extends CommandHandler<PlayerState> {
         .build();
   }
 
+  // docs:start:deposit_oo
   @Handles(DepositFunds.class)
   public FundsDeposited deposit(DepositFunds cmd) {
     // Guard
@@ -186,6 +187,8 @@ public class Player extends CommandHandler<PlayerState> {
         .setDepositedAt(now())
         .build();
   }
+
+  // docs:end:deposit_oo
 
   @Handles(WithdrawFunds.class)
   public FundsWithdrawn withdraw(WithdrawFunds cmd) {
