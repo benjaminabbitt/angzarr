@@ -30,8 +30,10 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
+use std::collections::HashSet;
+
 use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
-use crate::proto_ext::calculate_set_next_seq;
+use crate::proto_ext::{calculate_set_next_seq, EventPageExt};
 use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 
 /// Extract domain, root UUID, and correlation_id from an EventBook.
@@ -255,6 +257,69 @@ impl EventBookRepository {
             }),
             snapshot: None,
             pages: events,
+            ..Default::default()
+        };
+        calculate_set_next_seq(&mut book);
+        Ok(book)
+    }
+
+    /// Load an EventBook with only specific sequences.
+    ///
+    /// Returns events matching the requested sequence numbers.
+    /// Useful for sparse queries where only certain events are needed.
+    ///
+    /// # Performance Note
+    ///
+    /// Currently fetches all events and filters in memory. For aggregates
+    /// with many events, consider adding `get_sequences` to `EventStore`
+    /// trait for database-level filtering.
+    pub async fn get_sequences(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        sequences: &[u32],
+    ) -> Result<EventBook> {
+        // Convert to HashSet for O(1) lookup
+        let seq_set: HashSet<u32> = sequences.iter().copied().collect();
+
+        // Optimization: if sequences are contiguous, use range query
+        if !sequences.is_empty() {
+            let min_seq = *sequences.iter().min().unwrap();
+            let max_seq = *sequences.iter().max().unwrap();
+            let range_size = (max_seq - min_seq + 1) as usize;
+
+            // If requested sequences span a contiguous range, use range query
+            if range_size == sequences.len() {
+                return self
+                    .get_from_to(domain, edition, root, min_seq, max_seq + 1)
+                    .await;
+            }
+        }
+
+        // Sparse sequences: fetch all and filter
+        let all_events = self.event_store.get(domain, edition, root).await?;
+
+        let filtered_events: Vec<_> = all_events
+            .into_iter()
+            .filter(|page| seq_set.contains(&page.sequence_num()))
+            .collect();
+
+        let mut book = EventBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+                edition: Some(Edition {
+                    name: edition.to_string(),
+                    divergences: vec![],
+                }),
+                external_id: String::new(),
+            }),
+            snapshot: None,
+            pages: filtered_events,
             ..Default::default()
         };
         calculate_set_next_seq(&mut book);

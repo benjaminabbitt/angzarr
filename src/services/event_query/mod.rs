@@ -129,10 +129,10 @@ impl EventQueryTrait for EventQueryService {
                     .await
             }
             Some(Selection::Sequences(ref seq_set)) => {
-                // TODO: Implement specific sequence fetching
-                // For now, fall back to full query
-                info!(domain = %domain, root = %root_uuid, sequences = ?seq_set.values, "GetEventBook sequences query (not yet implemented, using full)");
-                self.event_book_repo.get(&domain, edition, root_uuid).await
+                info!(domain = %domain, root = %root_uuid, sequences = ?seq_set.values, "GetEventBook sequences query");
+                self.event_book_repo
+                    .get_sequences(&domain, edition, root_uuid, &seq_set.values)
+                    .await
             }
             Some(Selection::Temporal(ref tq)) => {
                 match tq.point_in_time {
@@ -294,9 +294,10 @@ impl EventQueryTrait for EventQueryService {
                                     .get_from_to(&domain, edition, root, lower, upper)
                                     .await
                             }
-                            Some(Selection::Sequences(_)) => {
-                                // TODO: Implement specific sequence fetching
-                                event_book_repo.get(&domain, edition, root).await
+                            Some(Selection::Sequences(ref seq_set)) => {
+                                event_book_repo
+                                    .get_sequences(&domain, edition, root, &seq_set.values)
+                                    .await
                             }
                             Some(Selection::Temporal(ref tq)) => match tq.point_in_time {
                                 Some(PointInTime::AsOfTime(ref ts)) => {

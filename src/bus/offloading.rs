@@ -20,6 +20,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::future::BoxFuture;
 use prost::Message;
 use tracing::{debug, warn};
 
@@ -141,62 +142,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
 
     /// Resolve external payload references in an event book.
     pub async fn resolve_payloads(&self, book: &EventBook) -> Result<EventBook> {
-        use crate::proto::event_page::Payload;
-
-        let mut new_pages = Vec::with_capacity(book.pages.len());
-        let mut had_errors = false;
-
-        for page in &book.pages {
-            if let Some(Payload::External(ref reference)) = page.payload {
-                // Fetch the payload
-                match self.store.get(reference).await {
-                    Ok(payload_bytes) => {
-                        // Decode back to Any
-                        match prost_types::Any::decode(payload_bytes.as_slice()) {
-                            Ok(event) => {
-                                new_pages.push(EventPage {
-                                    sequence_type: page.sequence_type.clone(),
-                                    created_at: page.created_at,
-                                    payload: Some(Payload::Event(event)),
-                                });
-                                continue;
-                            }
-                            Err(e) => {
-                                warn!(
-                                    uri = %reference.uri,
-                                    error = %e,
-                                    "Failed to decode retrieved payload"
-                                );
-                                had_errors = true;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            uri = %reference.uri,
-                            error = %e,
-                            "Failed to retrieve external payload"
-                        );
-                        had_errors = true;
-                    }
-                }
-            }
-
-            // Keep original page (no reference or resolution failed)
-            new_pages.push(page.clone());
-        }
-
-        if had_errors {
-            // Log but don't fail - partial resolution is better than nothing
-            warn!("Some external payloads could not be resolved");
-        }
-
-        Ok(EventBook {
-            cover: book.cover.clone(),
-            pages: new_pages,
-            snapshot: book.snapshot.clone(),
-            next_sequence: book.next_sequence,
-        })
+        resolve_payloads_with_store(self.store.as_ref(), book).await
     }
 }
 
@@ -209,9 +155,14 @@ impl<S: PayloadStore + 'static> EventBus for OffloadingEventBus<S> {
     }
 
     async fn subscribe(&self, handler: Box<dyn EventHandler>) -> Result<()> {
-        // For now, just pass through - resolution happens at coordinator level
-        // TODO: implement resolving handler wrapper if needed
-        self.inner.subscribe(handler).await
+        // Wrap handler to resolve external payloads before delivery.
+        // This makes offloading transparent to consumers - they receive
+        // fully resolved EventBooks regardless of whether payloads were offloaded.
+        let resolving_handler = Box::new(ResolvingHandler {
+            inner: Arc::from(handler),
+            store: Arc::clone(&self.store),
+        });
+        self.inner.subscribe(resolving_handler).await
     }
 
     async fn start_consuming(&self) -> Result<()> {
@@ -240,6 +191,102 @@ impl<S: PayloadStore + 'static> EventBus for OffloadingEventBus<S> {
 impl From<PayloadStoreError> for BusError {
     fn from(e: PayloadStoreError) -> Self {
         BusError::Publish(format!("Payload store error: {}", e))
+    }
+}
+
+// ============================================================================
+// Resolving Handler
+// ============================================================================
+
+/// Resolve external payload references in an EventBook.
+///
+/// Standalone function for use by `ResolvingHandler`. Fetches external payloads
+/// from the store and replaces references with inline events.
+async fn resolve_payloads_with_store<S: PayloadStore>(
+    store: &S,
+    book: &EventBook,
+) -> Result<EventBook> {
+    use crate::proto::event_page::Payload;
+
+    let mut new_pages = Vec::with_capacity(book.pages.len());
+    let mut had_errors = false;
+
+    for page in &book.pages {
+        if let Some(Payload::External(ref reference)) = page.payload {
+            // Fetch the payload
+            match store.get(reference).await {
+                Ok(payload_bytes) => {
+                    // Decode back to Any
+                    match prost_types::Any::decode(payload_bytes.as_slice()) {
+                        Ok(event) => {
+                            new_pages.push(EventPage {
+                                sequence_type: page.sequence_type.clone(),
+                                created_at: page.created_at,
+                                payload: Some(Payload::Event(event)),
+                            });
+                            continue;
+                        }
+                        Err(e) => {
+                            warn!(
+                                uri = %reference.uri,
+                                error = %e,
+                                "Failed to decode retrieved payload"
+                            );
+                            had_errors = true;
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        uri = %reference.uri,
+                        error = %e,
+                        "Failed to retrieve external payload"
+                    );
+                    had_errors = true;
+                }
+            }
+        }
+
+        // Keep original page (no reference or resolution failed)
+        new_pages.push(page.clone());
+    }
+
+    if had_errors {
+        // Log but don't fail - partial resolution is better than nothing
+        warn!("Some external payloads could not be resolved");
+    }
+
+    Ok(EventBook {
+        cover: book.cover.clone(),
+        pages: new_pages,
+        snapshot: book.snapshot.clone(),
+        next_sequence: book.next_sequence,
+    })
+}
+
+/// Handler wrapper that resolves external payload references before delegation.
+///
+/// When the `OffloadingEventBus` receives events with external payload references,
+/// this handler fetches the actual payloads from the store before passing them
+/// to the wrapped handler. This makes payload offloading transparent to consumers.
+struct ResolvingHandler<S: PayloadStore> {
+    inner: Arc<dyn EventHandler>,
+    store: Arc<S>,
+}
+
+impl<S: PayloadStore + 'static> EventHandler for ResolvingHandler<S> {
+    fn handle(
+        &self,
+        book: Arc<EventBook>,
+    ) -> BoxFuture<'static, std::result::Result<(), BusError>> {
+        let store = Arc::clone(&self.store);
+        let inner = Arc::clone(&self.inner);
+
+        Box::pin(async move {
+            // Resolve external payloads before passing to the actual handler
+            let resolved = resolve_payloads_with_store(store.as_ref(), &book).await?;
+            inner.handle(Arc::new(resolved)).await
+        })
     }
 }
 
@@ -363,5 +410,125 @@ mod tests {
             &published[0].pages[0].payload,
             Some(event_page::Payload::Event(_))
         ));
+    }
+
+    // ============================================================================
+    // ResolvingHandler Tests
+    // ============================================================================
+
+    /// Test handler that captures received EventBooks for verification.
+    struct CapturingHandler {
+        received: Arc<tokio::sync::RwLock<Vec<EventBook>>>,
+    }
+
+    impl CapturingHandler {
+        fn new() -> (Self, Arc<tokio::sync::RwLock<Vec<EventBook>>>) {
+            let received = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+            (
+                Self {
+                    received: Arc::clone(&received),
+                },
+                received,
+            )
+        }
+    }
+
+    impl EventHandler for CapturingHandler {
+        fn handle(
+            &self,
+            book: Arc<EventBook>,
+        ) -> BoxFuture<'static, std::result::Result<(), BusError>> {
+            let received = Arc::clone(&self.received);
+            Box::pin(async move {
+                received.write().await.push((*book).clone());
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolving_handler_resolves_external_payloads() {
+        let (store, _temp) = create_test_store().await;
+
+        // Create an offloaded event by storing payload externally
+        let original_event = prost_types::Any {
+            type_url: "test.Event".to_string(),
+            value: vec![42u8; 500],
+        };
+        let payload_bytes = original_event.encode_to_vec();
+        let reference = store.put(&payload_bytes).await.unwrap();
+
+        // Create EventBook with external reference
+        let offloaded_book = EventBook {
+            cover: None,
+            pages: vec![EventPage {
+                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+                created_at: None,
+                payload: Some(event_page::Payload::External(reference)),
+            }],
+            snapshot: None,
+            next_sequence: 1,
+        };
+
+        // Set up resolving handler
+        let (capturing_handler, received) = CapturingHandler::new();
+        let resolving_handler = ResolvingHandler {
+            inner: Arc::new(capturing_handler),
+            store: Arc::clone(&store),
+        };
+
+        // Invoke the resolving handler with offloaded event
+        resolving_handler
+            .handle(Arc::new(offloaded_book))
+            .await
+            .unwrap();
+
+        // Verify inner handler received resolved event
+        let captured = received.read().await;
+        assert_eq!(captured.len(), 1);
+        let resolved_payload = &captured[0].pages[0].payload;
+        match resolved_payload {
+            Some(event_page::Payload::Event(e)) => {
+                assert_eq!(e.type_url, "test.Event");
+                assert_eq!(e.value.len(), 500);
+                assert!(e.value.iter().all(|&b| b == 42));
+            }
+            _ => panic!(
+                "Expected resolved Event payload, got {:?}",
+                resolved_payload
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolving_handler_passes_inline_events_unchanged() {
+        let (store, _temp) = create_test_store().await;
+
+        // Create EventBook with inline event (no external reference)
+        let inline_book = make_event_book(100);
+
+        // Set up resolving handler
+        let (capturing_handler, received) = CapturingHandler::new();
+        let resolving_handler = ResolvingHandler {
+            inner: Arc::new(capturing_handler),
+            store: Arc::clone(&store),
+        };
+
+        // Invoke the resolving handler
+        resolving_handler
+            .handle(Arc::new(inline_book.clone()))
+            .await
+            .unwrap();
+
+        // Verify inner handler received event unchanged
+        let captured = received.read().await;
+        assert_eq!(captured.len(), 1);
+        match &captured[0].pages[0].payload {
+            Some(event_page::Payload::Event(e)) => {
+                assert_eq!(e.type_url, "test.Event");
+                assert_eq!(e.value.len(), 100);
+            }
+            _ => panic!("Expected inline Event payload"),
+        }
     }
 }

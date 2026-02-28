@@ -26,6 +26,18 @@ use crate::proto::{
 use super::router::DomainStorage;
 use super::traits::{ProcessManagerHandler, ProjectionMode, ProjectorHandler, SagaHandler};
 
+// Type aliases for complex handler maps to satisfy clippy::type_complexity
+type ProjectorMap = HashMap<String, (Arc<dyn ProjectorHandler>, Vec<String>)>;
+type SagaMap = HashMap<String, (Arc<dyn SagaHandler>, String)>;
+type ProcessManagerMap = HashMap<
+    String,
+    (
+        Arc<dyn ProcessManagerHandler>,
+        String,
+        Vec<crate::descriptor::Target>,
+    ),
+>;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -66,19 +78,21 @@ pub struct PmSpeculativeResult {
 /// methods as normal execution — only the surrounding framework behavior differs
 /// (no persistence, no publishing, no command execution).
 pub struct SpeculativeExecutor {
-    projectors: HashMap<String, Arc<dyn ProjectorHandler>>,
-    sagas: HashMap<String, Arc<dyn SagaHandler>>,
-    /// PM handler + PM's own domain name.
-    process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, String)>,
+    /// Projector handler + subscribed domains (empty = all domains).
+    projectors: ProjectorMap,
+    /// Saga handler + input domain it subscribes to.
+    sagas: SagaMap,
+    /// PM handler + PM's own domain name + subscriptions.
+    process_managers: ProcessManagerMap,
     domain_stores: HashMap<String, DomainStorage>,
 }
 
 impl SpeculativeExecutor {
     /// Create from cloned handler references and domain stores.
     pub fn new(
-        projectors: HashMap<String, Arc<dyn ProjectorHandler>>,
-        sagas: HashMap<String, Arc<dyn SagaHandler>>,
-        process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, String)>,
+        projectors: ProjectorMap,
+        sagas: SagaMap,
+        process_managers: ProcessManagerMap,
         domain_stores: HashMap<String, DomainStorage>,
     ) -> Self {
         Self {
@@ -103,7 +117,7 @@ impl SpeculativeExecutor {
         name: &str,
         events: &EventBook,
     ) -> Result<Projection, Status> {
-        let handler = self.projectors.get(name).ok_or_else(|| {
+        let (handler, _domains) = self.projectors.get(name).ok_or_else(|| {
             Status::not_found(format!("No projector registered with name: {name}"))
         })?;
 
@@ -120,11 +134,16 @@ impl SpeculativeExecutor {
         events: &EventBook,
     ) -> Result<Projection, Status> {
         // Find a projector that handles this domain
-        // For now, use the first registered projector
-        // TODO: Add domain routing based on handler descriptors
-        let (name, handler) = self.projectors.iter().next().ok_or_else(|| {
-            Status::not_found(format!("No projector registered for domain: {domain}"))
-        })?;
+        let (name, (handler, _)) = self
+            .projectors
+            .iter()
+            .find(|(_, (_, domains))| {
+                // Empty domains list means "all domains"
+                domains.is_empty() || domains.iter().any(|d| d == domain)
+            })
+            .ok_or_else(|| {
+                Status::not_found(format!("No projector registered for domain: {domain}"))
+            })?;
 
         debug!(projector = %name, %domain, "Routing speculative projector by domain");
         handler.handle(events, ProjectionMode::Speculate).await
@@ -141,7 +160,7 @@ impl SpeculativeExecutor {
         source: &EventBook,
         domain_specs: &HashMap<String, DomainStateSpec>,
     ) -> Result<Vec<CommandBook>, Status> {
-        let handler = self
+        let (handler, _input_domain) = self
             .sagas
             .get(name)
             .ok_or_else(|| Status::not_found(format!("No saga registered with name: {name}")))?;
@@ -161,13 +180,15 @@ impl SpeculativeExecutor {
         domain_specs: &HashMap<String, DomainStateSpec>,
     ) -> Result<Vec<CommandBook>, Status> {
         // Find a saga that handles this source domain
-        // For now, use the first registered saga
-        // TODO: Add domain routing based on handler descriptors
-        let (name, handler) = self.sagas.iter().next().ok_or_else(|| {
-            Status::not_found(format!(
-                "No saga registered for source domain: {source_domain}"
-            ))
-        })?;
+        let (name, (handler, _)) = self
+            .sagas
+            .iter()
+            .find(|(_, (_, input_domain))| input_domain == source_domain)
+            .ok_or_else(|| {
+                Status::not_found(format!(
+                    "No saga registered for source domain: {source_domain}"
+                ))
+            })?;
 
         debug!(saga = %name, source_domain = %source_domain, "Routing speculative saga by domain");
         self.execute_saga_speculative(handler.as_ref(), source, domain_specs)
@@ -205,9 +226,10 @@ impl SpeculativeExecutor {
         trigger: &EventBook,
         domain_specs: &HashMap<String, DomainStateSpec>,
     ) -> Result<PmSpeculativeResult, Status> {
-        let (handler, pm_domain) = self.process_managers.get(name).ok_or_else(|| {
-            Status::not_found(format!("No process manager registered with name: {name}"))
-        })?;
+        let (handler, pm_domain, _subscriptions) =
+            self.process_managers.get(name).ok_or_else(|| {
+                Status::not_found(format!("No process manager registered with name: {name}"))
+            })?;
 
         self.execute_pm_speculative(name, handler.as_ref(), pm_domain, trigger, domain_specs)
             .await
@@ -215,7 +237,7 @@ impl SpeculativeExecutor {
 
     /// Speculatively run a process manager for the given trigger domain.
     ///
-    /// Routes to the first PM that handles events from the specified domain.
+    /// Routes to the first PM that subscribes to events from the specified domain.
     /// Used when the PM name is not explicitly provided (trait-based interface).
     pub async fn speculate_pm_by_trigger_domain(
         &self,
@@ -223,11 +245,14 @@ impl SpeculativeExecutor {
         trigger: &EventBook,
         domain_specs: &HashMap<String, DomainStateSpec>,
     ) -> Result<PmSpeculativeResult, Status> {
-        // Find a PM that handles this trigger domain
-        // For now, use the first registered PM
-        // TODO: Add domain routing based on handler descriptors
-        let (name, (handler, pm_domain)) =
-            self.process_managers.iter().next().ok_or_else(|| {
+        // Find a PM that handles this trigger domain by checking subscriptions
+        let (name, (handler, pm_domain, _)) = self
+            .process_managers
+            .iter()
+            .find(|(_, (_, _, subscriptions))| {
+                subscriptions.iter().any(|t| t.domain == trigger_domain)
+            })
+            .ok_or_else(|| {
                 Status::not_found(format!(
                     "No process manager registered for trigger domain: {trigger_domain}"
                 ))
@@ -759,5 +784,292 @@ mod tests {
         assert_eq!(book.pages[0].sequence_num(), 5);
         assert_eq!(book.pages[1].sequence_num(), 3);
         assert_eq!(book.pages[2].sequence_num(), 7);
+    }
+
+    // ============================================================================
+    // Domain Routing Tests
+    // ============================================================================
+
+    mod domain_routing {
+        use super::*;
+        use crate::descriptor::Target;
+        use crate::orchestration::projector::ProjectionMode;
+        use crate::proto::{Cover, Projection, SagaResponse};
+        use crate::standalone::traits::{ProcessManagerHandleResult, ProcessManagerHandler};
+        use async_trait::async_trait;
+
+        /// Mock projector that always returns an empty projection.
+        struct MockProjector;
+
+        #[async_trait]
+        impl super::super::ProjectorHandler for MockProjector {
+            async fn handle(
+                &self,
+                _events: &EventBook,
+                _mode: ProjectionMode,
+            ) -> Result<Projection, Status> {
+                Ok(Projection::default())
+            }
+        }
+
+        /// Mock saga that returns empty response.
+        struct MockSaga;
+
+        #[async_trait]
+        impl super::super::SagaHandler for MockSaga {
+            async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+                Ok(vec![])
+            }
+
+            async fn execute(
+                &self,
+                _source: &EventBook,
+                _destinations: &[EventBook],
+            ) -> Result<SagaResponse, Status> {
+                Ok(SagaResponse::default())
+            }
+        }
+
+        /// Mock process manager that returns empty result.
+        struct MockPM;
+
+        impl ProcessManagerHandler for MockPM {
+            fn prepare(
+                &self,
+                _trigger: &EventBook,
+                _process_state: Option<&EventBook>,
+            ) -> Vec<Cover> {
+                vec![]
+            }
+
+            fn handle(
+                &self,
+                _trigger: &EventBook,
+                _process_state: Option<&EventBook>,
+                _destinations: &[EventBook],
+            ) -> ProcessManagerHandleResult {
+                ProcessManagerHandleResult {
+                    commands: vec![],
+                    process_events: None,
+                    facts: vec![],
+                }
+            }
+        }
+
+        // --------------------------------------------------------------------
+        // Projector Domain Routing
+        // --------------------------------------------------------------------
+
+        #[tokio::test]
+        async fn test_projector_routing_finds_by_matching_domain() {
+            let mut projectors = HashMap::new();
+            projectors.insert(
+                "orders-projector".to_string(),
+                (
+                    Arc::new(MockProjector) as Arc<dyn super::super::ProjectorHandler>,
+                    vec!["orders".to_string()],
+                ),
+            );
+
+            let executor = SpeculativeExecutor::new(
+                projectors,
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+            );
+
+            let events = EventBook::default();
+            let result = executor
+                .speculate_projector_by_domain("orders", &events)
+                .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_projector_routing_empty_domains_matches_all() {
+            let mut projectors = HashMap::new();
+            projectors.insert(
+                "catch-all-projector".to_string(),
+                (
+                    Arc::new(MockProjector) as Arc<dyn super::super::ProjectorHandler>,
+                    vec![], // Empty = matches all domains
+                ),
+            );
+
+            let executor = SpeculativeExecutor::new(
+                projectors,
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+            );
+
+            let events = EventBook::default();
+
+            // Should match any domain
+            assert!(executor
+                .speculate_projector_by_domain("orders", &events)
+                .await
+                .is_ok());
+            assert!(executor
+                .speculate_projector_by_domain("inventory", &events)
+                .await
+                .is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_projector_routing_not_found_for_unmatched_domain() {
+            let mut projectors = HashMap::new();
+            projectors.insert(
+                "orders-projector".to_string(),
+                (
+                    Arc::new(MockProjector) as Arc<dyn super::super::ProjectorHandler>,
+                    vec!["orders".to_string()],
+                ),
+            );
+
+            let executor = SpeculativeExecutor::new(
+                projectors,
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+            );
+
+            let events = EventBook::default();
+            let result = executor
+                .speculate_projector_by_domain("inventory", &events)
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert_eq!(err.code(), tonic::Code::NotFound);
+        }
+
+        // --------------------------------------------------------------------
+        // Saga Domain Routing
+        // --------------------------------------------------------------------
+
+        #[tokio::test]
+        async fn test_saga_routing_finds_by_input_domain() {
+            let mut sagas = HashMap::new();
+            sagas.insert(
+                "order-fulfillment".to_string(),
+                (
+                    Arc::new(MockSaga) as Arc<dyn super::super::SagaHandler>,
+                    "orders".to_string(), // input_domain
+                ),
+            );
+
+            let executor =
+                SpeculativeExecutor::new(HashMap::new(), sagas, HashMap::new(), HashMap::new());
+
+            let source = EventBook::default();
+            let result = executor
+                .speculate_saga_by_source_domain("orders", &source, &HashMap::new())
+                .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_saga_routing_not_found_for_unmatched_domain() {
+            let mut sagas = HashMap::new();
+            sagas.insert(
+                "order-fulfillment".to_string(),
+                (
+                    Arc::new(MockSaga) as Arc<dyn super::super::SagaHandler>,
+                    "orders".to_string(),
+                ),
+            );
+
+            let executor =
+                SpeculativeExecutor::new(HashMap::new(), sagas, HashMap::new(), HashMap::new());
+
+            let source = EventBook::default();
+            let result = executor
+                .speculate_saga_by_source_domain("inventory", &source, &HashMap::new())
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert_eq!(err.code(), tonic::Code::NotFound);
+        }
+
+        // --------------------------------------------------------------------
+        // Process Manager Domain Routing
+        // --------------------------------------------------------------------
+
+        #[tokio::test]
+        async fn test_pm_routing_finds_by_subscription_domain() {
+            let mut pms = HashMap::new();
+            pms.insert(
+                "order-flow".to_string(),
+                (
+                    Arc::new(MockPM) as Arc<dyn ProcessManagerHandler>,
+                    "order-flow".to_string(), // PM domain
+                    vec![Target::domain("orders"), Target::domain("inventory")], // subscriptions
+                ),
+            );
+
+            let executor =
+                SpeculativeExecutor::new(HashMap::new(), HashMap::new(), pms, HashMap::new());
+
+            let trigger = EventBook::default();
+
+            // Should find PM for subscribed domain
+            let result = executor
+                .speculate_pm_by_trigger_domain("orders", &trigger, &HashMap::new())
+                .await;
+            assert!(result.is_ok());
+
+            let result = executor
+                .speculate_pm_by_trigger_domain("inventory", &trigger, &HashMap::new())
+                .await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_pm_routing_not_found_for_unsubscribed_domain() {
+            let mut pms = HashMap::new();
+            pms.insert(
+                "order-flow".to_string(),
+                (
+                    Arc::new(MockPM) as Arc<dyn ProcessManagerHandler>,
+                    "order-flow".to_string(),
+                    vec![Target::domain("orders")], // Only subscribed to orders
+                ),
+            );
+
+            let executor =
+                SpeculativeExecutor::new(HashMap::new(), HashMap::new(), pms, HashMap::new());
+
+            let trigger = EventBook::default();
+            let result = executor
+                .speculate_pm_by_trigger_domain("fulfillment", &trigger, &HashMap::new())
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert_eq!(err.code(), tonic::Code::NotFound);
+        }
+
+        #[tokio::test]
+        async fn test_pm_routing_empty_pms_returns_not_found() {
+            let executor = SpeculativeExecutor::new(
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+            );
+
+            let trigger = EventBook::default();
+            let result = executor
+                .speculate_pm_by_trigger_domain("orders", &trigger, &HashMap::new())
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert_eq!(err.code(), tonic::Code::NotFound);
+        }
     }
 }

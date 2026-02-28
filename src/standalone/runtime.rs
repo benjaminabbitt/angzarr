@@ -169,18 +169,38 @@ impl Runtime {
         let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
 
         // Clone handler Arcs for speculative executor (before consumption into bus subscribers)
-        let spec_projectors: HashMap<String, Arc<dyn ProjectorHandler>> = projectors
-            .iter()
-            .map(|(name, (handler, _))| (name.clone(), handler.clone()))
-            .collect();
-        let spec_sagas: HashMap<String, Arc<dyn SagaHandler>> = sagas
-            .iter()
-            .map(|(name, (handler, _))| (name.clone(), handler.clone()))
-            .collect();
-        let spec_pms: HashMap<String, (Arc<dyn ProcessManagerHandler>, String)> = process_managers
+        // Include subscription info for domain-based routing
+        let spec_projectors: HashMap<String, (Arc<dyn ProjectorHandler>, Vec<String>)> = projectors
             .iter()
             .map(|(name, (handler, config))| {
-                (name.clone(), (handler.clone(), config.domain.clone()))
+                (name.clone(), (handler.clone(), config.domains.clone()))
+            })
+            .collect();
+        let spec_sagas: HashMap<String, (Arc<dyn SagaHandler>, String)> = sagas
+            .iter()
+            .map(|(name, (handler, config))| {
+                (name.clone(), (handler.clone(), config.input_domain.clone()))
+            })
+            .collect();
+        #[allow(clippy::type_complexity)]
+        let spec_pms: HashMap<
+            String,
+            (
+                Arc<dyn ProcessManagerHandler>,
+                String,
+                Vec<crate::descriptor::Target>,
+            ),
+        > = process_managers
+            .iter()
+            .map(|(name, (handler, config))| {
+                (
+                    name.clone(),
+                    (
+                        handler.clone(),
+                        config.domain.clone(),
+                        config.subscriptions.clone(),
+                    ),
+                )
             })
             .collect();
 

@@ -650,4 +650,206 @@ mod mock_integration {
         assert_eq!(book.pages.len(), 1);
         assert_eq!(book.pages[0].sequence_num(), 0);
     }
+
+    // ============================================================================
+    // get_sequences tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_get_sequences_sparse() {
+        let (repo, event_store, _) = setup_shared();
+
+        let domain = "test_domain";
+        let root = Uuid::new_v4();
+
+        use crate::storage::EventStore;
+        event_store
+            .add(
+                domain,
+                "test",
+                root,
+                vec![
+                    test_event(0, "Event0"),
+                    test_event(1, "Event1"),
+                    test_event(2, "Event2"),
+                    test_event(3, "Event3"),
+                    test_event(4, "Event4"),
+                ],
+                "",
+            )
+            .await
+            .unwrap();
+
+        // Request sparse sequences: 1, 3
+        let book = repo
+            .get_sequences(domain, "test", root, &[1, 3])
+            .await
+            .unwrap();
+
+        assert_eq!(book.pages.len(), 2);
+        assert_eq!(book.pages[0].sequence_num(), 1);
+        assert_eq!(book.pages[1].sequence_num(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_sequences_contiguous_uses_range() {
+        let (repo, event_store, _) = setup_shared();
+
+        let domain = "test_domain";
+        let root = Uuid::new_v4();
+
+        use crate::storage::EventStore;
+        event_store
+            .add(
+                domain,
+                "test",
+                root,
+                vec![
+                    test_event(0, "Event0"),
+                    test_event(1, "Event1"),
+                    test_event(2, "Event2"),
+                    test_event(3, "Event3"),
+                    test_event(4, "Event4"),
+                ],
+                "",
+            )
+            .await
+            .unwrap();
+
+        // Request contiguous sequences: 1, 2, 3 — optimized to range query
+        let book = repo
+            .get_sequences(domain, "test", root, &[1, 2, 3])
+            .await
+            .unwrap();
+
+        assert_eq!(book.pages.len(), 3);
+        assert_eq!(book.pages[0].sequence_num(), 1);
+        assert_eq!(book.pages[1].sequence_num(), 2);
+        assert_eq!(book.pages[2].sequence_num(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_sequences_empty_returns_empty() {
+        let (repo, event_store, _) = setup_shared();
+
+        let domain = "test_domain";
+        let root = Uuid::new_v4();
+
+        use crate::storage::EventStore;
+        event_store
+            .add(
+                domain,
+                "test",
+                root,
+                vec![test_event(0, "Event0"), test_event(1, "Event1")],
+                "",
+            )
+            .await
+            .unwrap();
+
+        // Request empty sequence list
+        let book = repo.get_sequences(domain, "test", root, &[]).await.unwrap();
+
+        assert!(book.pages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_sequences_single() {
+        let (repo, event_store, _) = setup_shared();
+
+        let domain = "test_domain";
+        let root = Uuid::new_v4();
+
+        use crate::storage::EventStore;
+        event_store
+            .add(
+                domain,
+                "test",
+                root,
+                vec![
+                    test_event(0, "Event0"),
+                    test_event(1, "Event1"),
+                    test_event(2, "Event2"),
+                ],
+                "",
+            )
+            .await
+            .unwrap();
+
+        // Request single sequence
+        let book = repo
+            .get_sequences(domain, "test", root, &[2])
+            .await
+            .unwrap();
+
+        assert_eq!(book.pages.len(), 1);
+        assert_eq!(book.pages[0].sequence_num(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_sequences_nonexistent_filtered_out() {
+        let (repo, event_store, _) = setup_shared();
+
+        let domain = "test_domain";
+        let root = Uuid::new_v4();
+
+        use crate::storage::EventStore;
+        event_store
+            .add(
+                domain,
+                "test",
+                root,
+                vec![test_event(0, "Event0"), test_event(1, "Event1")],
+                "",
+            )
+            .await
+            .unwrap();
+
+        // Request sequences including ones that don't exist
+        let book = repo
+            .get_sequences(domain, "test", root, &[0, 5, 10])
+            .await
+            .unwrap();
+
+        // Only sequence 0 exists
+        assert_eq!(book.pages.len(), 1);
+        assert_eq!(book.pages[0].sequence_num(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_sequences_preserves_order() {
+        let (repo, event_store, _) = setup_shared();
+
+        let domain = "test_domain";
+        let root = Uuid::new_v4();
+
+        use crate::storage::EventStore;
+        event_store
+            .add(
+                domain,
+                "test",
+                root,
+                vec![
+                    test_event(0, "Event0"),
+                    test_event(1, "Event1"),
+                    test_event(2, "Event2"),
+                    test_event(3, "Event3"),
+                ],
+                "",
+            )
+            .await
+            .unwrap();
+
+        // Request in different order — output should be in sequence order
+        let book = repo
+            .get_sequences(domain, "test", root, &[3, 1, 2])
+            .await
+            .unwrap();
+
+        assert_eq!(book.pages.len(), 3);
+        // Order depends on storage implementation — MockEventStore returns in sequence order
+        assert_eq!(book.pages[0].sequence_num(), 1);
+        assert_eq!(book.pages[1].sequence_num(), 2);
+        assert_eq!(book.pages[2].sequence_num(), 3);
+    }
 }
