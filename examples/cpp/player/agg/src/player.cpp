@@ -2,6 +2,7 @@
 
 #include "deposit_handler.hpp"
 #include "register_handler.hpp"
+#include "rejected_handler.hpp"
 #include "release_handler.hpp"
 #include "reserve_handler.hpp"
 #include "transfer_handler.hpp"
@@ -62,5 +63,9 @@ examples::FundsTransferred Player::handle_transfer(const examples::TransferFunds
     return handlers::handle_transfer(cmd, state_);
 }
 // docs:end:oo_handlers
+
+examples::FundsReleased Player::handle_join_rejected(const angzarr::Notification& notification) {
+    return handlers::handle_join_rejected(notification, state_);
+}
 
 }  // namespace player

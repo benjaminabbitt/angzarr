@@ -3,7 +3,7 @@
 //! This projector transforms internal domain events into CloudEvents 1.0 format
 //! for external consumption via HTTP webhooks or Kafka.
 
-use angzarr_client::proto::angzarr::CloudEvent;
+use angzarr_client::proto::CloudEvent;
 use angzarr_client::proto::examples::{
     FundsDeposited, PlayerRegistered, PublicFundsDeposited, PublicPlayerRegistered,
 };

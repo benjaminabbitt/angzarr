@@ -3,7 +3,7 @@
 //! This PM coordinates the workflow between table and hand domains,
 //! tracking phase transitions and dispatching commands as the hand progresses.
 
-use angzarr_client::proto::angzarr::CommandBook;
+use angzarr_client::proto::CommandBook;
 use angzarr_client::proto::examples::{
     CardsDealt, DealCards, EndHand, HandComplete, HandStarted, PostBlinds,
 };

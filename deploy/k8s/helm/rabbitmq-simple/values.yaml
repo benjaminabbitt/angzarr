@@ -1,0 +1,35 @@
+# Simple RabbitMQ configuration for CI
+# No operator required - direct StatefulSet deployment
+
+image:
+  repository: rabbitmq
+  tag: "4.1-management-alpine"
+  pullPolicy: IfNotPresent
+
+# Authentication
+auth:
+  username: guest
+  password: guest
+
+# Resources (minimal for CI)
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Storage (ephemeral for CI - no persistence)
+persistence:
+  enabled: false
+
+# Service configuration
+service:
+  type: ClusterIP
+
+# NodePort for management UI (optional)
+management:
+  nodePort:
+    enabled: false
+    port: 31672

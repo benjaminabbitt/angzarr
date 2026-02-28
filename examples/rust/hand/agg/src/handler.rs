@@ -1,8 +1,8 @@
-//! Hand command handler implementing AggregateDomainHandler.
+//! Hand command handler implementing CommandHandlerDomainHandler.
 
 use angzarr_client::proto::{CommandBook, EventBook, Notification};
 use angzarr_client::{
-    dispatch_command, AggregateDomainHandler, CommandResult, RejectionHandlerResponse, StateRouter,
+    dispatch_command, CommandHandlerDomainHandler, CommandResult, RejectionHandlerResponse, StateRouter,
 };
 use prost_types::Any;
 
@@ -24,7 +24,7 @@ impl Default for HandHandler {
     }
 }
 
-impl AggregateDomainHandler for HandHandler {
+impl CommandHandlerDomainHandler for HandHandler {
     type State = HandState;
 
     fn command_types(&self) -> Vec<String> {

@@ -240,7 +240,7 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
                     #(#state_router_on_calls)*
             });
 
-        /// Auto-generated handler wrapper implementing AggregateDomainHandler.
+        /// Auto-generated handler wrapper implementing CommandHandlerDomainHandler.
         pub struct #handler_name {
             inner: #self_ty,
         }
@@ -251,7 +251,7 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
             }
         }
 
-        impl angzarr_client::AggregateDomainHandler for #handler_name {
+        impl angzarr_client::CommandHandlerDomainHandler for #handler_name {
             type State = #state_ty;
 
             fn command_types(&self) -> Vec<String> {
@@ -286,12 +286,12 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
         }
 
         impl #self_ty {
-            /// Creates an AggregateRouter from this aggregate's annotated methods.
-            pub fn into_router(self) -> angzarr_client::AggregateRouter<#state_ty, #handler_name>
+            /// Creates a CommandHandlerRouter from this aggregate's annotated methods.
+            pub fn into_router(self) -> angzarr_client::CommandHandlerRouter<#state_ty, #handler_name>
             where
                 Self: Send + Sync + 'static,
             {
-                angzarr_client::AggregateRouter::new(#domain, #domain, #handler_name::new(self))
+                angzarr_client::CommandHandlerRouter::new(#domain, #domain, #handler_name::new(self))
             }
         }
     }
@@ -578,21 +578,6 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
 /// ```
 #[proc_macro_attribute]
 pub fn prepares(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
-}
-
-/// Marks a method as an event handler.
-///
-/// # Example
-/// ```rust,ignore
-/// #[handles(OrderCompleted)]
-/// fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
-///     -> CommandResult<SagaHandlerResponse> {
-///     // ...
-/// }
-/// ```
-#[proc_macro_attribute]
-pub fn handles(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 

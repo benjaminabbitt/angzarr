@@ -1,7 +1,7 @@
 //! Table bounded context gRPC server.
 
 use agg_table::TableHandler;
-use angzarr_client::{run_command_handler_server, AggregateRouter};
+use angzarr_client::{run_command_handler_server, CommandHandlerRouter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -12,7 +12,7 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let router = AggregateRouter::new("table", "table", TableHandler::new());
+    let router = CommandHandlerRouter::new("table", "table", TableHandler::new());
 
     run_command_handler_server("table", 50002, router)
         .await

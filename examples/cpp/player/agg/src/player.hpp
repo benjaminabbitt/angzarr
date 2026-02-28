@@ -37,6 +37,9 @@ class Player : public angzarr::Aggregate<Player, PlayerState> {
     examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd);
     examples::FundsReleased handle_release(const examples::ReleaseFunds& cmd);
     examples::FundsTransferred handle_transfer(const examples::TransferFunds& cmd);
+
+    // Rejection handler for JoinTable rejection
+    examples::FundsReleased handle_join_rejected(const angzarr::Notification& notification);
 };
 
 }  // namespace player

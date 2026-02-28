@@ -3,7 +3,7 @@
 //! Demonstrates the splitter pattern where one event triggers commands
 //! to multiple different aggregates.
 
-use angzarr_client::proto::angzarr::{CommandBook, CommandPage, Cover, Uuid};
+use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, Uuid};
 use angzarr_client::proto::examples::{TableSettled, TransferFunds};
 use angzarr_client::SagaContext;
 use prost_types::Any;
@@ -26,7 +26,7 @@ fn handle_table_settled(event: &TableSettled, context: &SagaContext) -> Vec<Comm
                 ..Default::default()
             }),
             pages: vec![CommandPage {
-                sequence: Some(angzarr_client::proto::angzarr::command_page::Sequence::Num(target_seq)),
+                sequence: Some(command_page::Sequence::Num(target_seq)),
                 command: Some(Any::from_msg(&cmd).unwrap()),
                 ..Default::default()
             }],

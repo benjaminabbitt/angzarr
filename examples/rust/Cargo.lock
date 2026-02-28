@@ -789,32 +789,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hand-flow"
-version = "0.1.0"
-dependencies = [
- "angzarr-client",
- "hex",
- "prost",
- "prost-types",
- "tokio",
- "tonic",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "hand-flow-oo"
-version = "0.1.0"
-dependencies = [
- "angzarr-client",
- "angzarr-macros",
- "prost",
- "prost-types",
- "tokio",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

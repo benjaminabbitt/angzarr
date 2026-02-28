@@ -13,10 +13,10 @@ members = [
     "hand/saga-player",
     "prj-output",
     "prj-output-oo",
-    "hand-flow",
-    "hand-flow-oo",
-    "pmg-hand-flow",
-    "pmg-hand-flow-oo",
+    # "hand-flow",      # TODO: proto field mismatches
+    # "hand-flow-oo",   # TODO: proto field mismatches
+    # "pmg-hand-flow",  # TODO: proto field mismatches, missing build_command/ProcessManager
+    # "pmg-hand-flow-oo", # TODO: proto field mismatches
     "tests",
 ]
 

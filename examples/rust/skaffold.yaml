@@ -40,7 +40,7 @@ deploy:
   helm:
     releases:
       - name: poker-rust
-        chartPath: ../../deploy/helm/angzarr
+        chartPath: ../../deploy/k8s/helm/angzarr
         namespace: angzarr
         createNamespace: true
         valuesFiles:

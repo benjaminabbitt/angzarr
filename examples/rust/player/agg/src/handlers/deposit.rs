@@ -58,3 +58,54 @@ pub fn handle_deposit_funds(
 
     Ok(new_event_book(command_book, seq, event_any))
 }
+
+// docs:start:unit_test_deposit
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deposit_increases_bankroll() {
+        let state = PlayerState {
+            player_id: "player_1".to_string(),
+            bankroll: 1000,
+            ..Default::default()
+        };
+        let cmd = DepositFunds {
+            amount: Some(Currency {
+                amount: 500,
+                currency_code: "CHIPS".to_string(),
+            }),
+        };
+
+        let event = compute(&cmd, &state, 500);
+
+        assert_eq!(event.new_balance.unwrap().amount, 1500);
+    }
+
+    #[test]
+    fn test_deposit_rejects_non_existent_player() {
+        let state = PlayerState::default(); // player_id empty = doesn't exist
+
+        let result = guard(&state);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().reason.contains("does not exist"));
+    }
+
+    #[test]
+    fn test_deposit_rejects_zero_amount() {
+        let cmd = DepositFunds {
+            amount: Some(Currency {
+                amount: 0,
+                currency_code: "CHIPS".to_string(),
+            }),
+        };
+
+        let result = validate(&cmd);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().reason.contains("positive"));
+    }
+}
+// docs:end:unit_test_deposit
