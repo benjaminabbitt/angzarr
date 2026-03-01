@@ -74,7 +74,7 @@ Feature: Notification transient signals
   Scenario: Rejection notification has correct type URL
     Given a saga command was rejected
     When I wrap the rejection in a notification
-    Then the notification payload type URL should be "type.googleapis.com/angzarr.RejectionNotification"
+    Then the notification payload type URL should be "type.angzarr.io/angzarr.RejectionNotification"
 
   # ==========================================================================
   # Notification Routing

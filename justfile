@@ -26,7 +26,6 @@ CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null
 mod client "client/justfile"
 mod examples "examples/justfile"
 mod images "build/images/justfile"
-mod k3s "deploy/k3s/justfile"
 mod kind "deploy/kind/justfile"
 mod tofu "deploy/tofu/justfile"
 
@@ -457,26 +456,73 @@ clean:
     just _container clean
 
 # === Coverage ===
+# Uses cargo-llvm-cov for accurate line/branch coverage.
+# Local tests (cov-*) run without docker socket.
+# Contract tests (cov-contract-*, cov-full-*) require docker socket for testcontainers.
 
-# Run full workspace coverage (unit + integration tests)
-cov:
-    just _container cov
+# Run unit tests with coverage
+cov-unit:
+    just _container cov-unit
 
-# Run coverage for acceptance/Gherkin tests only
+# Run standalone integration tests with coverage
+cov-integration:
+    just _container cov-integration
+
+# Run interface/Gherkin tests with coverage
 cov-gherkin:
     just _container cov-gherkin
 
-# Generate HTML coverage report and open it
-cov-html:
-    just _container cov-html
+# Run all local tests with coverage (unit + integration + gherkin)
+cov:
+    just _container cov
 
-# Quick terminal summary of coverage
+# Quick terminal summary of coverage (all local tests)
 cov-summary:
     just _container cov-summary
+
+# Generate HTML coverage report (all local tests)
+cov-html:
+    just _container cov-html
 
 # Generate LCOV format for CI integration
 cov-lcov:
     just _container cov-lcov
+
+# --- Contract Test Coverage (requires docker socket for testcontainers) ---
+
+# Run PostgreSQL contract tests with coverage
+cov-contract-postgres:
+    just _container-dind cov-contract-postgres
+
+# Run Redis contract tests with coverage
+cov-contract-redis:
+    just _container-dind cov-contract-redis
+
+# Run AMQP bus contract tests with coverage
+cov-contract-amqp:
+    just _container-dind cov-contract-amqp
+
+# Run Kafka bus contract tests with coverage
+cov-contract-kafka:
+    just _container-dind cov-contract-kafka
+
+# Run all contract tests with combined coverage
+cov-contracts:
+    just _container-dind cov-contracts
+
+# --- Full Coverage (all test types, requires docker socket) ---
+
+# Run all tests with combined coverage (local + contracts)
+cov-full:
+    just _container-dind cov-full
+
+# Full coverage with HTML report
+cov-full-html:
+    just _container-dind cov-full-html
+
+# Full coverage summary
+cov-full-summary:
+    just _container-dind cov-full-summary
 
 # Watch and check on save (host only - requires bacon)
 watch:

@@ -5,11 +5,12 @@ managed:
     - file_option: go_package_prefix
       value: github.com/benjaminabbitt/angzarr/client/go/proto
 plugins:
-  - remote: buf.build/protocolbuffers/go
+  # Pin to v1.36.x for compatibility with google.golang.org/protobuf v1.36.x
+  - remote: buf.build/protocolbuffers/go:v1.36.6
     out: ../client/go/proto
     opt:
       - paths=source_relative
-  - remote: buf.build/grpc/go
+  - remote: buf.build/grpc/go:v1.5.1
     out: ../client/go/proto
     opt:
       - paths=source_relative

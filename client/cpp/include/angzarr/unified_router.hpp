@@ -329,10 +329,10 @@ class SagaRouter {
             throw InvalidArgumentError("Missing event payload");
         }
 
-        auto commands = handler_.execute(source, last_page.event(), destinations);
+        auto result = handler_.execute(source, last_page.event(), destinations);
 
         SagaResponse response;
-        for (auto& cmd : commands) {
+        for (auto& cmd : result.commands) {
             *response.add_commands() = std::move(cmd);
         }
         return response;
@@ -732,6 +732,20 @@ ProcessManagerRouter<S> make_pm_router(std::string name, std::string pm_domain,
  */
 inline ProjectorRouter make_projector_router(std::string name) {
     return ProjectorRouter(std::move(name));
+}
+
+// ============================================================================
+// Backward Compatibility Aliases
+// ============================================================================
+
+/// @deprecated Use CommandHandlerRouter instead
+template <typename S, typename H>
+using AggregateRouter = CommandHandlerRouter<S, H>;
+
+/// @deprecated Use make_command_handler_router instead
+template <typename S, typename H>
+AggregateRouter<S, H> make_aggregate_router(std::string name, std::string domain, H handler) {
+    return CommandHandlerRouter<S, H>(std::move(name), std::move(domain), std::move(handler));
 }
 
 }  // namespace angzarr

@@ -165,9 +165,7 @@ pub trait RetryableOperation: Send + Sync {
     ///
     /// This method can be used to refresh state before the next try.
     /// If it returns an error, the retry loop is aborted.
-    async fn prepare_for_retry(&mut self, failure: &Self::Failure) -> Result<(), Self::Failure> {
-        // Default implementation does nothing.
-        let _ = failure;
+    async fn prepare_for_retry(&mut self) -> Result<(), Self::Failure> {
         Ok(())
     }
 }
@@ -192,7 +190,7 @@ where
             RetryOutcome::Retryable(failure) => {
                 if let Some(delay) = delays.next() {
                     log_retry_attempt(operation.name(), attempt, &failure, delay);
-                    if let Err(fatal_failure) = operation.prepare_for_retry(&failure).await {
+                    if let Err(fatal_failure) = operation.prepare_for_retry().await {
                         error!(
                             operation = %operation.name(),
                             "Failed to prepare for retry: {}",

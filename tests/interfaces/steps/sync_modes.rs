@@ -275,7 +275,7 @@ impl SagaHandler for RecordingSaga {
         Ok(vec![])
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         _source: &EventBook,
         _destinations: &[EventBook],

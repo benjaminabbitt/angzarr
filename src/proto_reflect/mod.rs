@@ -14,25 +14,35 @@ use std::sync::OnceLock;
 /// Global descriptor pool, initialized at startup.
 static DESCRIPTOR_POOL: OnceLock<prost_reflect::DescriptorPool> = OnceLock::new();
 
+/// Error message constants for proto reflection operations.
+pub mod errmsg {
+    pub const NOT_INITIALIZED: &str = "Descriptor pool not initialized";
+    pub const ALREADY_INITIALIZED: &str = "Descriptor pool already initialized";
+    pub const INVALID_TYPE_URL: &str = "Invalid type URL: ";
+    pub const UNKNOWN_TYPE: &str = "Unknown message type: ";
+    pub const DECODE_ERROR: &str = "Decode error: ";
+    pub const POOL_DECODE_ERROR: &str = "Pool decode error: ";
+}
+
 /// Errors that can occur during proto reflection.
 #[derive(Debug, thiserror::Error)]
 pub enum ReflectError {
-    #[error("Descriptor pool not initialized")]
+    #[error("{}", errmsg::NOT_INITIALIZED)]
     NotInitialized,
 
-    #[error("Descriptor pool already initialized")]
+    #[error("{}", errmsg::ALREADY_INITIALIZED)]
     AlreadyInitialized,
 
-    #[error("Invalid type URL: {0}")]
+    #[error("{}{}", errmsg::INVALID_TYPE_URL, .0)]
     InvalidTypeUrl(String),
 
-    #[error("Unknown message type: {0}")]
+    #[error("{}{}", errmsg::UNKNOWN_TYPE, .0)]
     UnknownType(String),
 
-    #[error("Decode error: {0}")]
+    #[error("{}{}", errmsg::DECODE_ERROR, .0)]
     Decode(#[from] prost::DecodeError),
 
-    #[error("Pool decode error: {0}")]
+    #[error("{}{}", errmsg::POOL_DECODE_ERROR, .0)]
     PoolDecode(String),
 }
 
@@ -364,19 +374,19 @@ mod tests {
         // this would return NotInitialized. However, other tests
         // may have initialized it. We test the error type exists.
         let err = ReflectError::NotInitialized;
-        assert!(err.to_string().contains("not initialized"));
+        assert_eq!(err.to_string(), errmsg::NOT_INITIALIZED);
     }
 
     #[test]
     fn test_already_initialized_error() {
         let err = ReflectError::AlreadyInitialized;
-        assert!(err.to_string().contains("already initialized"));
+        assert_eq!(err.to_string(), errmsg::ALREADY_INITIALIZED);
     }
 
     #[test]
     fn test_unknown_type_error() {
         let err = ReflectError::UnknownType("foo.Bar".to_string());
-        assert!(err.to_string().contains("foo.Bar"));
+        assert_eq!(err.to_string(), format!("{}foo.Bar", errmsg::UNKNOWN_TYPE));
     }
 
     // ============================================================================

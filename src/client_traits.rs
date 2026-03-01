@@ -16,27 +16,36 @@ use crate::proto::{
 /// Result type for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;
 
+/// Error message constants for client operations.
+pub mod errmsg {
+    pub const CONNECTION_FAILED: &str = "connection failed: ";
+    pub const TRANSPORT_ERROR: &str = "transport error: ";
+    pub const GRPC_ERROR: &str = "grpc error: ";
+    pub const INVALID_ARGUMENT: &str = "invalid argument: ";
+    pub const INVALID_TIMESTAMP: &str = "invalid timestamp: ";
+}
+
 /// Errors that can occur during client operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     /// Failed to establish connection to the server.
-    #[error("connection failed: {0}")]
+    #[error("{}{}", errmsg::CONNECTION_FAILED, .0)]
     Connection(String),
 
     /// Transport-level error from tonic.
-    #[error("transport error: {0}")]
+    #[error("{}{}", errmsg::TRANSPORT_ERROR, .0)]
     Transport(#[from] tonic::transport::Error),
 
     /// gRPC error from the server.
-    #[error("grpc error: {0}")]
+    #[error("{}{}", errmsg::GRPC_ERROR, .0)]
     Grpc(Box<Status>),
 
     /// Invalid argument provided by caller.
-    #[error("invalid argument: {0}")]
+    #[error("{}{}", errmsg::INVALID_ARGUMENT, .0)]
     InvalidArgument(String),
 
     /// Failed to parse timestamp.
-    #[error("invalid timestamp: {0}")]
+    #[error("{}{}", errmsg::INVALID_TIMESTAMP, .0)]
     InvalidTimestamp(String),
 }
 

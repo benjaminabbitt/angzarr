@@ -58,7 +58,10 @@ impl Default for SagaCompensationConfig {
     }
 }
 
-/// Process Manager configuration.
+/// Process Manager client/deployment configuration.
+///
+/// Used for distributed mode connectivity and timeout settings.
+/// For runtime configuration (subscriptions), see `standalone::traits::ProcessManagerConfig`.
 ///
 /// Process managers coordinate long-running workflows across multiple aggregates.
 /// They maintain event-sourced state and can subscribe to multiple domains.
@@ -68,7 +71,7 @@ impl Default for SagaCompensationConfig {
 /// - Is the "state" derivable from existing aggregates?
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct ProcessManagerConfig {
+pub struct ProcessManagerClientConfig {
     /// Name of the process manager. Also used as the domain for PM state.
     pub name: String,
     /// gRPC address (host:port).
@@ -77,7 +80,7 @@ pub struct ProcessManagerConfig {
     pub timeouts: Option<std::collections::HashMap<String, TimeoutConfig>>,
 }
 
-impl ProcessManagerConfig {
+impl ProcessManagerClientConfig {
     /// Domain = name. Process manager stores its state in its own domain.
     pub fn domain(&self) -> &str {
         &self.name
@@ -114,8 +117,8 @@ mod tests {
     }
 
     #[test]
-    fn test_process_manager_config_default() {
-        let config = ProcessManagerConfig::default();
+    fn test_process_manager_client_config_default() {
+        let config = ProcessManagerClientConfig::default();
         assert_eq!(config.name, "");
         assert_eq!(config.address, "");
         assert!(config.timeouts.is_none());
@@ -123,8 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn test_process_manager_config_domain() {
-        let config = ProcessManagerConfig {
+    fn test_process_manager_client_config_domain() {
+        let config = ProcessManagerClientConfig {
             name: "order-fulfillment".to_string(),
             address: "localhost:50060".to_string(),
             timeouts: None,

@@ -1,10 +1,9 @@
 package dev.angzarr.examples.table;
 
-import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
-import com.google.protobuf.InvalidProtocolBufferException;
 import dev.angzarr.client.CommandHandler;
 import dev.angzarr.client.Errors;
+import dev.angzarr.client.annotations.Applies;
 import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.util.ByteUtils;
 import dev.angzarr.examples.*;
@@ -35,84 +34,84 @@ public class Table extends CommandHandler<TableState> {
     return new TableState();
   }
 
-  @Override
-  protected void applyEvent(TableState state, Any eventAny) {
-    String typeUrl = eventAny.getTypeUrl();
+  // --- Event appliers ---
 
-    try {
-      if (typeUrl.endsWith("TableCreated")) {
-        TableCreated event = eventAny.unpack(TableCreated.class);
-        state.setTableId("table_" + event.getTableName());
-        state.setTableName(event.getTableName());
-        state.setGameVariant(event.getGameVariantValue());
-        state.setSmallBlind(event.getSmallBlind());
-        state.setBigBlind(event.getBigBlind());
-        state.setMinBuyIn(event.getMinBuyIn());
-        state.setMaxBuyIn(event.getMaxBuyIn());
-        state.setMaxPlayers(event.getMaxPlayers());
-        state.setActionTimeoutSeconds(event.getActionTimeoutSeconds());
-        state.setStatus("waiting");
-        state.setDealerPosition(0);
-        state.setHandCount(0);
+  @Applies(TableCreated.class)
+  public void applyTableCreated(TableState state, TableCreated event) {
+    state.setTableId("table_" + event.getTableName());
+    state.setTableName(event.getTableName());
+    state.setGameVariant(event.getGameVariantValue());
+    state.setSmallBlind(event.getSmallBlind());
+    state.setBigBlind(event.getBigBlind());
+    state.setMinBuyIn(event.getMinBuyIn());
+    state.setMaxBuyIn(event.getMaxBuyIn());
+    state.setMaxPlayers(event.getMaxPlayers());
+    state.setActionTimeoutSeconds(event.getActionTimeoutSeconds());
+    state.setStatus("waiting");
+    state.setDealerPosition(0);
+    state.setHandCount(0);
+  }
 
-      } else if (typeUrl.endsWith("PlayerJoined")) {
-        PlayerJoined event = eventAny.unpack(PlayerJoined.class);
-        SeatState seat = new SeatState(event.getSeatPosition());
-        seat.setPlayerRoot(event.getPlayerRoot().toByteArray());
-        seat.setStack(event.getStack());
-        seat.setActive(true);
-        seat.setSittingOut(false);
-        state.getSeats().put(event.getSeatPosition(), seat);
+  @Applies(PlayerJoined.class)
+  public void applyPlayerJoined(TableState state, PlayerJoined event) {
+    SeatState seat = new SeatState(event.getSeatPosition());
+    seat.setPlayerRoot(event.getPlayerRoot().toByteArray());
+    seat.setStack(event.getStack());
+    seat.setActive(true);
+    seat.setSittingOut(false);
+    state.getSeats().put(event.getSeatPosition(), seat);
+  }
 
-      } else if (typeUrl.endsWith("PlayerLeft")) {
-        PlayerLeft event = eventAny.unpack(PlayerLeft.class);
-        state.getSeats().remove(event.getSeatPosition());
+  @Applies(PlayerLeft.class)
+  public void applyPlayerLeft(TableState state, PlayerLeft event) {
+    state.getSeats().remove(event.getSeatPosition());
+  }
 
-      } else if (typeUrl.endsWith("PlayerSatOut")) {
-        PlayerSatOut event = eventAny.unpack(PlayerSatOut.class);
-        SeatState seat = findSeatByPlayer(state, event.getPlayerRoot().toByteArray());
-        if (seat != null) {
-          seat.setSittingOut(true);
-        }
+  @Applies(PlayerSatOut.class)
+  public void applyPlayerSatOut(TableState state, PlayerSatOut event) {
+    SeatState seat = findSeatByPlayer(state, event.getPlayerRoot().toByteArray());
+    if (seat != null) {
+      seat.setSittingOut(true);
+    }
+  }
 
-      } else if (typeUrl.endsWith("PlayerSatIn")) {
-        PlayerSatIn event = eventAny.unpack(PlayerSatIn.class);
-        SeatState seat = findSeatByPlayer(state, event.getPlayerRoot().toByteArray());
-        if (seat != null) {
-          seat.setSittingOut(false);
-        }
+  @Applies(PlayerSatIn.class)
+  public void applyPlayerSatIn(TableState state, PlayerSatIn event) {
+    SeatState seat = findSeatByPlayer(state, event.getPlayerRoot().toByteArray());
+    if (seat != null) {
+      seat.setSittingOut(false);
+    }
+  }
 
-      } else if (typeUrl.endsWith("HandStarted")) {
-        HandStarted event = eventAny.unpack(HandStarted.class);
-        state.setStatus("in_hand");
-        state.setCurrentHandRoot(event.getHandRoot().toByteArray());
-        state.setHandCount(event.getHandNumber());
-        state.setDealerPosition(event.getDealerPosition());
+  @Applies(HandStarted.class)
+  public void applyHandStarted(TableState state, HandStarted event) {
+    state.setStatus("in_hand");
+    state.setCurrentHandRoot(event.getHandRoot().toByteArray());
+    state.setHandCount(event.getHandNumber());
+    state.setDealerPosition(event.getDealerPosition());
+  }
 
-      } else if (typeUrl.endsWith("HandEnded")) {
-        HandEnded event = eventAny.unpack(HandEnded.class);
-        state.setStatus("waiting");
-        state.setCurrentHandRoot(new byte[0]);
-        // Update stacks from results
-        for (var entry : event.getStackChangesMap().entrySet()) {
-          String playerHex = entry.getKey();
-          long delta = entry.getValue();
-          for (SeatState seat : state.getSeats().values()) {
-            if (ByteUtils.bytesToHex(seat.getPlayerRoot()).equals(playerHex)) {
-              seat.setStack(seat.getStack() + delta);
-            }
-          }
-        }
-
-      } else if (typeUrl.endsWith("ChipsAdded")) {
-        ChipsAdded event = eventAny.unpack(ChipsAdded.class);
-        SeatState seat = findSeatByPlayer(state, event.getPlayerRoot().toByteArray());
-        if (seat != null) {
-          seat.setStack(event.getNewStack());
+  @Applies(HandEnded.class)
+  public void applyHandEnded(TableState state, HandEnded event) {
+    state.setStatus("waiting");
+    state.setCurrentHandRoot(new byte[0]);
+    // Update stacks from results
+    for (var entry : event.getStackChangesMap().entrySet()) {
+      String playerHex = entry.getKey();
+      long delta = entry.getValue();
+      for (SeatState seat : state.getSeats().values()) {
+        if (ByteUtils.bytesToHex(seat.getPlayerRoot()).equals(playerHex)) {
+          seat.setStack(seat.getStack() + delta);
         }
       }
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException("Failed to unpack event: " + typeUrl, e);
+    }
+  }
+
+  @Applies(ChipsAdded.class)
+  public void applyChipsAdded(TableState state, ChipsAdded event) {
+    SeatState seat = findSeatByPlayer(state, event.getPlayerRoot().toByteArray());
+    if (seat != null) {
+      seat.setStack(event.getNewStack());
     }
   }
 

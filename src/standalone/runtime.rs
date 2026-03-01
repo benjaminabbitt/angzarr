@@ -25,6 +25,7 @@ use crate::proto::CommandBook;
 use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
+use crate::utils::retry::saga_backoff;
 
 use super::client::CommandClient;
 use super::dispatcher::CommandDispatcher;
@@ -278,13 +279,10 @@ impl Runtime {
 
         // Async projectors — each gets its own subscriber
         for entry in &projector_entries {
-            let handler = ProjectorEventHandler::with_config(
-                entry.handler.clone(),
-                None,
-                entry.config.domains.clone(),
-                entry.config.synchronous,
-                entry.name.clone(),
-            );
+            let handler =
+                ProjectorEventHandler::from_handler(entry.handler.clone(), entry.name.clone())
+                    .with_domains(entry.config.domains.clone())
+                    .with_synchronous(entry.config.synchronous);
             let sub = event_bus
                 .create_subscriber(&format!("projector-{}", entry.name), None)
                 .await?;
@@ -301,11 +299,11 @@ impl Runtime {
             let handler = SagaEventHandler::from_factory_with_validator(
                 factory,
                 executor.clone(),
-                None, // command_bus - standalone uses sync execution
+                None, // command_bus - not used in standalone
                 Some(fetcher.clone()),
                 Some(fact_executor.clone()),
                 Some(Arc::new(validator)),
-                crate::utils::retry::saga_backoff(),
+                saga_backoff(),
             );
             let sub = event_bus
                 .create_subscriber(&format!("saga-{name}"), Some(&config.input_domain))

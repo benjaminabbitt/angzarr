@@ -85,14 +85,14 @@ impl SagaRetryContext for LocalSagaContext {
         Ok(covers)
     }
 
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = self.source.edition().to_string();
         let mut response = self
             .saga_handler
-            .execute(&self.source, &destinations)
+            .handle(&self.source, &destinations)
             .await
             .map_err(box_err)?;
 

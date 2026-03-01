@@ -59,9 +59,11 @@ use tracing::{error, info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::AmqpEventBus;
-use angzarr::bus::{EventBus, IpcEventBus, MessagingType, MockEventBus};
+use angzarr::bus::{EventBus, IpcEventBus, MockEventBus};
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
-use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery, StaticServiceDiscovery};
+#[cfg(feature = "k8s")]
+use angzarr::discovery::K8sServiceDiscovery;
+use angzarr::discovery::{ServiceDiscovery, StaticServiceDiscovery};
 use angzarr::proto::{
     command_handler_coordinator_service_server::CommandHandlerCoordinatorServiceServer,
     command_handler_service_client::CommandHandlerServiceClient,
@@ -128,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let event_bus: Arc<dyn EventBus> = match &config.messaging {
         #[cfg(feature = "amqp")]
-        Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {
+        Some(messaging) if messaging.messaging_type == "amqp" => {
             info!(
                 "Connecting to AMQP for event publishing: {}",
                 messaging.amqp.url
@@ -136,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let amqp_bus_config = angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
         }
-        Some(messaging) if messaging.messaging_type == MessagingType::Ipc => {
+        Some(messaging) if messaging.messaging_type == "ipc" => {
             info!(
                 "Using IPC for event publishing: {}",
                 messaging.ipc.base_path
@@ -157,23 +159,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Using static service discovery (standalone mode)");
             Arc::new(StaticServiceDiscovery::new())
         } else {
-            match K8sServiceDiscovery::from_env().await {
-                Ok(discovery) => {
-                    let discovery = Arc::new(discovery);
-                    if let Err(e) = discovery.initial_sync().await {
-                        warn!("Service discovery initial sync failed: {}", e);
+            #[cfg(feature = "k8s")]
+            {
+                match K8sServiceDiscovery::from_env().await {
+                    Ok(discovery) => {
+                        let discovery = Arc::new(discovery);
+                        if let Err(e) = discovery.initial_sync().await {
+                            warn!("Service discovery initial sync failed: {}", e);
+                        }
+                        discovery.start_watching();
+                        info!("Service discovery initialized");
+                        discovery
                     }
-                    discovery.start_watching();
-                    info!("Service discovery initialized");
-                    discovery
+                    Err(e) => {
+                        warn!(
+                            "Service discovery not available (running outside K8s?): {}",
+                            e
+                        );
+                        Arc::new(StaticServiceDiscovery::new())
+                    }
                 }
-                Err(e) => {
-                    warn!(
-                        "Service discovery not available (running outside K8s?): {}",
-                        e
-                    );
-                    Arc::new(StaticServiceDiscovery::new())
-                }
+            }
+            #[cfg(not(feature = "k8s"))]
+            {
+                info!("K8s feature not enabled, using static service discovery");
+                Arc::new(StaticServiceDiscovery::new())
             }
         };
 

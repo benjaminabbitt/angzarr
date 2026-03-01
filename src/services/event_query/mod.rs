@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{
@@ -197,7 +197,9 @@ impl EventQueryTrait for EventQueryService {
                         }
                     }
                     Err(e) => {
-                        let _ = tx.send(Err(Status::internal(e.to_string()))).await;
+                        if tx.send(Err(Status::internal(e.to_string()))).await.is_err() {
+                            debug!(correlation_id = %correlation_id, "Client disconnected before error could be sent");
+                        }
                     }
                 }
             });
@@ -226,10 +228,14 @@ impl EventQueryTrait for EventQueryService {
                 .await
             {
                 Ok(book) => {
-                    let _ = tx.send(Ok(book)).await;
+                    if tx.send(Ok(book)).await.is_err() {
+                        debug!(domain = %domain, root = %root_uuid, "Client disconnected before response");
+                    }
                 }
                 Err(e) => {
-                    let _ = tx.send(Err(Status::internal(e.to_string()))).await;
+                    if tx.send(Err(Status::internal(e.to_string()))).await.is_err() {
+                        debug!(domain = %domain, root = %root_uuid, "Client disconnected before error could be sent");
+                    }
                 }
             }
         });
@@ -254,9 +260,14 @@ impl EventQueryTrait for EventQueryService {
                         let cover = match query.cover.as_ref() {
                             Some(c) => c,
                             None => {
-                                let _ = tx
+                                if tx
                                     .send(Err(Status::invalid_argument("Query must have a cover")))
-                                    .await;
+                                    .await
+                                    .is_err()
+                                {
+                                    debug!("Client disconnected during synchronize");
+                                    break;
+                                }
                                 continue;
                             }
                         };
@@ -267,20 +278,30 @@ impl EventQueryTrait for EventQueryService {
                                 Ok(uuid) => uuid,
                                 Err(e) => {
                                     error!(error = %e, "Invalid UUID in synchronize query");
-                                    let _ = tx
+                                    if tx
                                         .send(Err(Status::invalid_argument(format!(
                                             "Invalid UUID: {e}"
                                         ))))
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        debug!("Client disconnected during synchronize");
+                                        break;
+                                    }
                                     continue;
                                 }
                             },
                             None => {
-                                let _ = tx
+                                if tx
                                     .send(Err(Status::invalid_argument(
                                         "Query must have a root UUID",
                                     )))
-                                    .await;
+                                    .await
+                                    .is_err()
+                                {
+                                    debug!("Client disconnected during synchronize");
+                                    break;
+                                }
                                 continue;
                             }
                         };
@@ -310,9 +331,14 @@ impl EventQueryTrait for EventQueryService {
                                                 .await
                                         }
                                         Err(e) => {
-                                            let _ = tx
+                                            if tx
                                                 .send(Err(Status::invalid_argument(e.to_string())))
-                                                .await;
+                                                .await
+                                                .is_err()
+                                            {
+                                                debug!("Client disconnected during synchronize");
+                                                break;
+                                            }
                                             continue;
                                         }
                                     }
@@ -323,11 +349,16 @@ impl EventQueryTrait for EventQueryService {
                                         .await
                                 }
                                 None => {
-                                    let _ = tx
-                                            .send(Err(Status::invalid_argument(
-                                                "TemporalQuery must specify as_of_time or as_of_sequence",
-                                            )))
-                                            .await;
+                                    if tx
+                                        .send(Err(Status::invalid_argument(
+                                            "TemporalQuery must specify as_of_time or as_of_sequence",
+                                        )))
+                                        .await
+                                        .is_err()
+                                    {
+                                        debug!("Client disconnected during synchronize");
+                                        break;
+                                    }
                                     continue;
                                 }
                             },
@@ -351,7 +382,9 @@ impl EventQueryTrait for EventQueryService {
                     }
                     Err(e) => {
                         error!(error = %e, "Synchronize: stream error");
-                        let _ = tx.send(Err(e)).await;
+                        if tx.send(Err(e)).await.is_err() {
+                            debug!("Client disconnected during synchronize stream error");
+                        }
                         break;
                     }
                 }
@@ -374,7 +407,9 @@ impl EventQueryTrait for EventQueryService {
                 Ok(d) => d,
                 Err(e) => {
                     error!(error = %e, "Failed to list domains");
-                    let _ = tx.send(Err(Status::internal(e.to_string()))).await;
+                    if tx.send(Err(Status::internal(e.to_string()))).await.is_err() {
+                        debug!("Client disconnected before domain list error could be sent");
+                    }
                     return;
                 }
             };

@@ -17,13 +17,66 @@ use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use backon::{BackoffBuilder, ExponentialBuilder};
 use base64::prelude::*;
+use futures::future::BoxFuture;
 use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn, Instrument};
 
-use super::{domain_matches_any, BusError, EventBus, EventHandler, PublishResult, Result};
+use super::config::{EventBusMode, MessagingConfig};
+use super::error::{BusError, Result};
+use super::factory::BusBackend;
+use super::traits::{domain_matches_any, EventBus, EventHandler, PublishResult};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    BusBackend {
+        try_create: |config, mode| Box::pin(try_create(config, mode)),
+    }
+}
+
+async fn try_create(
+    config: &MessagingConfig,
+    mode: EventBusMode,
+) -> Option<Result<Arc<dyn EventBus>>> {
+    if config.messaging_type != "sns-sqs" {
+        return None;
+    }
+
+    let mut sns_sqs_config = match mode {
+        EventBusMode::Publisher => {
+            SnsSqsConfig::publisher().with_topic_prefix(&config.sns_sqs.topic_prefix)
+        }
+        EventBusMode::Subscriber { queue, domain } => SnsSqsConfig::subscriber(queue, vec![domain])
+            .with_topic_prefix(&config.sns_sqs.topic_prefix),
+        EventBusMode::SubscriberAll { queue } => {
+            let domains = config.sns_sqs.domains.clone().unwrap_or_default();
+            if domains.is_empty() {
+                SnsSqsConfig::subscriber_all(queue)
+            } else {
+                SnsSqsConfig::subscriber(queue, domains)
+            }
+            .with_topic_prefix(&config.sns_sqs.topic_prefix)
+        }
+    };
+
+    // Apply region if specified
+    if let Some(ref region) = config.sns_sqs.region {
+        sns_sqs_config = sns_sqs_config.with_region(region);
+    }
+
+    match SnsSqsEventBus::new(sns_sqs_config).await {
+        Ok(bus) => {
+            info!(messaging_type = "sns-sqs", "Event bus initialized");
+            Some(Ok(Arc::new(bus)))
+        }
+        Err(e) => Some(Err(e)),
+    }
+}
 
 /// Message attribute name for domain (for filtering).
 const DOMAIN_ATTR: &str = "domain";
@@ -128,10 +181,11 @@ async fn process_sqs_message(
     #[cfg(feature = "otel")]
     sqs_extract_trace_context(message, &consume_span);
 
-    let success =
-        async { crate::bus::dispatch_to_handlers_with_domain(handlers, &book, msg_domain).await }
-            .instrument(consume_span)
-            .await;
+    let success = async {
+        crate::bus::dispatch::dispatch_to_handlers_with_domain(handlers, &book, msg_domain).await
+    }
+    .instrument(consume_span)
+    .await;
 
     if success {
         SqsProcessResult::Success

@@ -7,8 +7,10 @@ metadata:
 # Usage: skaffold build -f build/images/skaffold.yaml [--profile dev]
 
 build:
+  # Git-based tags - unique per commit, no registry checks during tag computation
+  # (inputDigest requires resolving base images which triggers registry lookups)
   tagPolicy:
-    inputDigest: {}   # Content-based tags
+    gitCommit: {}
   local:
     push: false       # Don't push by default (CI uses --push flag)
     useBuildkit: true

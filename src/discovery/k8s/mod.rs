@@ -38,6 +38,7 @@ use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
 
 use super::static_discovery::StaticServiceDiscovery;
+use super::{DiscoveredService, DiscoveryError};
 
 /// Label for component type.
 const COMPONENT_LABEL: &str = "app.kubernetes.io/component";
@@ -51,55 +52,6 @@ const COMPONENT_PROJECTOR: &str = "projector";
 
 /// Default gRPC port.
 const DEFAULT_GRPC_PORT: u16 = 50051;
-
-/// Error types for service discovery.
-#[derive(Debug, thiserror::Error)]
-pub enum DiscoveryError {
-    #[error("Service not found for domain: {0}")]
-    DomainNotFound(String),
-
-    #[error("No services found for component: {0}")]
-    NoServicesFound(String),
-
-    #[error("Connection failed to {service} at {address}: {message}")]
-    ConnectionFailed {
-        service: String,
-        address: String,
-        message: String,
-    },
-
-    #[error("Kubernetes API error: {0}")]
-    KubeError(#[from] kube::Error),
-}
-
-/// A discovered K8s service.
-#[derive(Debug, Clone)]
-pub struct DiscoveredService {
-    /// Service name.
-    pub name: String,
-    /// Full DNS address (service.namespace.svc.cluster.local).
-    pub service_address: String,
-    /// gRPC port.
-    pub port: u16,
-    /// Domain this service handles (angzarr.io/domain).
-    pub domain: Option<String>,
-}
-
-impl DiscoveredService {
-    /// Get the gRPC endpoint URL or path.
-    ///
-    /// For TCP endpoints, returns `http://address:port`.
-    /// For UDS endpoints (starting with `/`), returns the path as-is.
-    pub fn grpc_url(&self) -> String {
-        if self.service_address.starts_with('/') {
-            // UDS path - return as-is
-            self.service_address.clone()
-        } else {
-            // TCP address
-            format!("http://{}:{}", self.service_address, self.port)
-        }
-    }
-}
 
 /// K8s label-based service discovery.
 ///

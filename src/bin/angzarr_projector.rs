@@ -168,11 +168,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
     // Create handler with or without streaming capability
-    let handler = if let Some(pub_bus) = publisher {
-        ProjectorEventHandler::with_publisher(projector_client, pub_bus, projector_name.to_string())
-    } else {
-        ProjectorEventHandler::new(projector_client, projector_name.to_string())
-    };
+    let mut handler = ProjectorEventHandler::new(projector_client, projector_name.to_string());
+    if let Some(pub_bus) = publisher {
+        handler = handler.with_publisher(pub_bus);
+    }
+    let handler = handler;
 
     subscriber
         .subscribe(Box::new(handler))

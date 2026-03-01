@@ -32,14 +32,77 @@ use async_nats::jetstream::{
     Context,
 };
 use async_trait::async_trait;
+use futures::future::BoxFuture;
 use futures::StreamExt;
 use prost::Message;
 use tokio::sync::RwLock;
-use tracing::debug;
+use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
+use super::config::{EventBusMode, MessagingConfig};
+use super::error::{BusError, Result};
+use super::factory::BusBackend;
+use super::traits::{EventBus, EventHandler, PublishResult};
 use crate::proto::{Cover, EventBook};
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    BusBackend {
+        try_create: |config, mode| Box::pin(try_create(config, mode)),
+    }
+}
+
+async fn try_create(
+    config: &MessagingConfig,
+    mode: EventBusMode,
+) -> Option<Result<Arc<dyn EventBus>>> {
+    if config.messaging_type != "nats" {
+        return None;
+    }
+
+    // Connect to NATS
+    let client = match async_nats::connect(&config.nats.url).await {
+        Ok(c) => c,
+        Err(e) => {
+            return Some(Err(BusError::Connection(format!(
+                "NATS connect failed: {}",
+                e
+            ))))
+        }
+    };
+
+    let bus_config = match mode {
+        EventBusMode::Publisher => NatsBusConfig {
+            prefix: config.nats.stream_prefix.clone(),
+            consumer_name: None,
+            domain_filter: None,
+        },
+        EventBusMode::Subscriber { queue, domain } => NatsBusConfig {
+            prefix: config.nats.stream_prefix.clone(),
+            consumer_name: Some(queue),
+            domain_filter: Some(domain),
+        },
+        EventBusMode::SubscriberAll { queue } => NatsBusConfig {
+            prefix: config.nats.stream_prefix.clone(),
+            consumer_name: Some(queue),
+            domain_filter: None,
+        },
+    };
+
+    match NatsEventBus::with_config(client, bus_config).await {
+        Ok(bus) => {
+            info!(messaging_type = "nats", "Event bus initialized");
+            Some(Ok(Arc::new(bus)))
+        }
+        Err(e) => Some(Err(BusError::Connection(format!(
+            "NATS setup failed: {}",
+            e
+        )))),
+    }
+}
 
 // ============================================================================
 // Consumer Helper Functions
@@ -113,7 +176,7 @@ fn spawn_message_consumer(
             };
 
             // Dispatch to handlers
-            crate::bus::dispatch_to_handlers(&handlers, &book).await;
+            crate::bus::dispatch::dispatch_to_handlers(&handlers, &book).await;
 
             // Acknowledge message
             if let Err(e) = msg.ack().await {

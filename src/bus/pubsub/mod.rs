@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use backon::{BackoffBuilder, ExponentialBuilder};
+use futures::future::BoxFuture;
 use gcloud_pubsub::client::{Client, ClientConfig};
 use gcloud_pubsub::publisher::Publisher;
 use gcloud_pubsub::subscription::{Subscription, SubscriptionConfig};
@@ -23,9 +24,57 @@ use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn, Instrument};
 
-use super::{domain_matches_any, BusError, EventBus, EventHandler, PublishResult, Result};
+use super::config::{EventBusMode, MessagingConfig};
+use super::error::{BusError, Result};
+use super::factory::BusBackend;
+use super::traits::{domain_matches_any, EventBus, EventHandler, PublishResult};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    BusBackend {
+        try_create: |config, mode| Box::pin(try_create(config, mode)),
+    }
+}
+
+async fn try_create(
+    config: &MessagingConfig,
+    mode: EventBusMode,
+) -> Option<Result<Arc<dyn EventBus>>> {
+    if config.messaging_type != "pubsub" {
+        return None;
+    }
+
+    let pubsub_config = match mode {
+        EventBusMode::Publisher => PubSubConfig::publisher(&config.pubsub.project_id)
+            .with_topic_prefix(&config.pubsub.topic_prefix),
+        EventBusMode::Subscriber { queue, domain } => {
+            PubSubConfig::subscriber(&config.pubsub.project_id, queue, vec![domain])
+                .with_topic_prefix(&config.pubsub.topic_prefix)
+        }
+        EventBusMode::SubscriberAll { queue } => {
+            let domains = config.pubsub.domains.clone().unwrap_or_default();
+            if domains.is_empty() {
+                PubSubConfig::subscriber_all(&config.pubsub.project_id, queue)
+            } else {
+                PubSubConfig::subscriber(&config.pubsub.project_id, queue, domains)
+            }
+            .with_topic_prefix(&config.pubsub.topic_prefix)
+        }
+    };
+
+    match PubSubEventBus::new(pubsub_config).await {
+        Ok(bus) => {
+            info!(messaging_type = "pubsub", "Event bus initialized");
+            Some(Ok(Arc::new(bus)))
+        }
+        Err(e) => Some(Err(e)),
+    }
+}
 
 /// Attribute name for domain (for filtering).
 const DOMAIN_ATTR: &str = "domain";
@@ -83,7 +132,7 @@ async fn process_message_payload(
 
     // Dispatch to handlers
     let consume_span = tracing::info_span!("bus.consume", domain = %domain);
-    let success = crate::bus::dispatch_to_handlers_with_domain(handlers, &book, domain)
+    let success = crate::bus::dispatch::dispatch_to_handlers_with_domain(handlers, &book, domain)
         .instrument(consume_span)
         .await;
 

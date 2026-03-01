@@ -128,7 +128,7 @@ public sealed class CommandHandlerClient : IDisposable
             new Angzarr.CommandRequest
             {
                 Command = command,
-                SyncMode = Angzarr.SyncMode.Unspecified, // Async fire-and-forget
+                SyncMode = Angzarr.SyncMode.Async, // Async fire-and-forget
             }
         );
     }

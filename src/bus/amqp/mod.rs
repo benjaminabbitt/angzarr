@@ -7,6 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use backon::{BackoffBuilder, ExponentialBuilder};
 use deadpool_lapin::{Manager, Pool, PoolError};
+use futures::future::BoxFuture;
 use hex;
 use lapin::{
     options::{
@@ -20,9 +21,49 @@ use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, Instrument};
 
-use super::{BusError, EventBus, EventHandler, PublishResult, Result};
+use super::config::{EventBusMode, MessagingConfig};
+use super::error::{BusError, Result};
+use super::factory::BusBackend;
+use super::traits::{EventBus, EventHandler, PublishResult};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    BusBackend {
+        try_create: |config, mode| Box::pin(try_create(config, mode)),
+    }
+}
+
+async fn try_create(
+    config: &MessagingConfig,
+    mode: EventBusMode,
+) -> Option<Result<Arc<dyn EventBus>>> {
+    if config.messaging_type != "amqp" {
+        return None;
+    }
+
+    let amqp_config = match mode {
+        EventBusMode::Publisher => AmqpConfig::publisher(&config.amqp.url),
+        EventBusMode::Subscriber { queue, domain } => {
+            AmqpConfig::subscriber(&config.amqp.url, queue, &domain)
+        }
+        EventBusMode::SubscriberAll { queue } => {
+            AmqpConfig::subscriber_all(&config.amqp.url, queue)
+        }
+    };
+
+    match AmqpEventBus::new(amqp_config).await {
+        Ok(bus) => {
+            info!(messaging_type = "amqp", "Event bus initialized");
+            Some(Ok(Arc::new(bus)))
+        }
+        Err(e) => Some(Err(e)),
+    }
+}
 
 /// Exchange name for angzarr events.
 const EVENTS_EXCHANGE: &str = "angzarr.events";

@@ -1,9 +1,8 @@
 package dev.angzarr.examples.hand;
 
-import com.google.protobuf.Any;
-import com.google.protobuf.InvalidProtocolBufferException;
 import dev.angzarr.client.CommandHandler;
 import dev.angzarr.client.Errors;
+import dev.angzarr.client.annotations.Applies;
 import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.util.ByteUtils;
 import dev.angzarr.examples.*;
@@ -31,136 +30,140 @@ public class Hand extends CommandHandler<HandState> {
     return new HandState();
   }
 
-  @Override
-  protected void applyEvent(HandState state, Any eventAny) {
-    String typeUrl = eventAny.getTypeUrl();
+  // --- Event appliers ---
 
-    try {
-      // Note: CommunityCardsDealt must be checked before CardsDealt since both end with
-      // "CardsDealt"
-      if (typeUrl.endsWith("CommunityCardsDealt")) {
-        CommunityCardsDealt event = eventAny.unpack(CommunityCardsDealt.class);
-        for (Card c : event.getCardsList()) {
-          state.getCommunityCards().add(cardToBytes(c));
-        }
-        state.setCurrentPhase(event.getPhaseValue());
+  @Applies(CardsDealt.class)
+  public void applyCardsDealt(HandState state, CardsDealt event) {
+    state.setHandId("hand_" + event.getHandNumber());
+    state.setTableRoot(event.getTableRoot().toByteArray());
+    state.setHandNumber(event.getHandNumber());
+    state.setGameVariant(event.getGameVariantValue());
+    state.setDealerPosition(event.getDealerPosition());
+    state.setStatus("betting");
+    state.setCurrentPhase(BettingPhase.PREFLOP_VALUE);
 
-      } else if (typeUrl.endsWith("CardsDealt")) {
-        CardsDealt event = eventAny.unpack(CardsDealt.class);
-        state.setHandId("hand_" + event.getHandNumber());
-        state.setTableRoot(event.getTableRoot().toByteArray());
-        state.setHandNumber(event.getHandNumber());
-        state.setGameVariant(event.getGameVariantValue());
-        state.setDealerPosition(event.getDealerPosition());
-        state.setStatus("betting");
-        state.setCurrentPhase(BettingPhase.PREFLOP_VALUE);
+    // Initialize players
+    for (PlayerInHand p : event.getPlayersList()) {
+      PlayerHandState pState = new PlayerHandState();
+      pState.setPlayerRoot(p.getPlayerRoot().toByteArray());
+      pState.setPosition(p.getPosition());
+      pState.setStack(p.getStack());
+      state.getPlayers().put(ByteUtils.bytesToHex(p.getPlayerRoot().toByteArray()), pState);
+    }
 
-        // Initialize players
-        for (PlayerInHand p : event.getPlayersList()) {
-          PlayerHandState pState = new PlayerHandState();
-          pState.setPlayerRoot(p.getPlayerRoot().toByteArray());
-          pState.setPosition(p.getPosition());
-          pState.setStack(p.getStack());
-          state.getPlayers().put(ByteUtils.bytesToHex(p.getPlayerRoot().toByteArray()), pState);
-        }
-
-        // Store hole cards
-        for (PlayerHoleCards phc : event.getPlayerCardsList()) {
-          PlayerHandState pState = state.getPlayer(phc.getPlayerRoot().toByteArray());
-          if (pState != null) {
-            for (Card c : phc.getCardsList()) {
-              pState.getHoleCards().add(cardToBytes(c));
-            }
-          }
-        }
-
-        // Store remaining deck
-        for (Card c : event.getRemainingDeckList()) {
-          state.getRemainingDeck().add(cardToBytes(c));
-        }
-
-      } else if (typeUrl.endsWith("BlindPosted")) {
-        BlindPosted event = eventAny.unpack(BlindPosted.class);
-        PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
-        if (pState != null) {
-          pState.setStack(event.getPlayerStack());
-          pState.setBetThisRound(event.getAmount());
-          pState.setTotalInvested(pState.getTotalInvested() + event.getAmount());
-        }
-        state.setPotTotal(event.getPotTotal());
-        state.setCurrentBet(Math.max(state.getCurrentBet(), event.getAmount()));
-        // Track min_raise as the big blind (highest blind posted)
-        if (event.getAmount() > state.getMinRaise()) {
-          state.setMinRaise(event.getAmount());
-        }
-
-      } else if (typeUrl.endsWith("ActionTaken")) {
-        ActionTaken event = eventAny.unpack(ActionTaken.class);
-        PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
-        if (pState != null) {
-          pState.setStack(event.getPlayerStack());
-          pState.setHasActed(true);
-          if (event.getAction() == ActionType.FOLD) {
-            pState.setHasFolded(true);
-          } else if (event.getAction() == ActionType.ALL_IN) {
-            pState.setAllIn(true);
-          }
-          pState.setBetThisRound(pState.getBetThisRound() + event.getAmount());
-          pState.setTotalInvested(pState.getTotalInvested() + event.getAmount());
-        }
-        state.setPotTotal(event.getPotTotal());
-        state.setCurrentBet(event.getAmountToCall());
-
-      } else if (typeUrl.endsWith("BettingRoundComplete")) {
-        BettingRoundComplete event = eventAny.unpack(BettingRoundComplete.class);
-        state.setPotTotal(event.getPotTotal());
-        state.setCurrentBet(0);
-        // Reset bets for next round
-        for (PlayerHandState p : state.getPlayers().values()) {
-          p.setBetThisRound(0);
-          p.setHasActed(false);
-        }
-
-      } else if (typeUrl.endsWith("HandComplete")) {
-        state.setStatus("complete");
-
-      } else if (typeUrl.endsWith("PotAwarded")) {
-        PotAwarded event = eventAny.unpack(PotAwarded.class);
-        for (PotWinner winner : event.getWinnersList()) {
-          PlayerHandState pState = state.getPlayer(winner.getPlayerRoot().toByteArray());
-          if (pState != null) {
-            pState.setStack(pState.getStack() + winner.getAmount());
-          }
-        }
-        state.setStatus("complete");
-
-      } else if (typeUrl.endsWith("DrawCompleted")) {
-        DrawCompleted event = eventAny.unpack(DrawCompleted.class);
-        PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
-        if (pState != null) {
-          // Replace discarded cards with new cards
-          pState.getHoleCards().clear();
-          for (Card c : event.getNewCardsList()) {
-            pState.getHoleCards().add(cardToBytes(c));
-          }
-        }
-
-      } else if (typeUrl.endsWith("ShowdownStarted")) {
-        state.setStatus("showdown");
-        state.setCurrentPhase(BettingPhase.SHOWDOWN_VALUE);
-
-      } else if (typeUrl.endsWith("CardsRevealed")) {
-        // No state change needed - just records revealed cards
-
-      } else if (typeUrl.endsWith("CardsMucked")) {
-        CardsMucked event = eventAny.unpack(CardsMucked.class);
-        PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
-        if (pState != null) {
-          pState.setHasFolded(true); // Muck is effectively a fold at showdown
+    // Store hole cards
+    for (PlayerHoleCards phc : event.getPlayerCardsList()) {
+      PlayerHandState pState = state.getPlayer(phc.getPlayerRoot().toByteArray());
+      if (pState != null) {
+        for (Card c : phc.getCardsList()) {
+          pState.getHoleCards().add(cardToBytes(c));
         }
       }
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException("Failed to unpack event: " + typeUrl, e);
+    }
+
+    // Store remaining deck
+    for (Card c : event.getRemainingDeckList()) {
+      state.getRemainingDeck().add(cardToBytes(c));
+    }
+  }
+
+  @Applies(CommunityCardsDealt.class)
+  public void applyCommunityCardsDealt(HandState state, CommunityCardsDealt event) {
+    for (Card c : event.getCardsList()) {
+      state.getCommunityCards().add(cardToBytes(c));
+    }
+    state.setCurrentPhase(event.getPhaseValue());
+  }
+
+  @Applies(BlindPosted.class)
+  public void applyBlindPosted(HandState state, BlindPosted event) {
+    PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
+    if (pState != null) {
+      pState.setStack(event.getPlayerStack());
+      pState.setBetThisRound(event.getAmount());
+      pState.setTotalInvested(pState.getTotalInvested() + event.getAmount());
+    }
+    state.setPotTotal(event.getPotTotal());
+    state.setCurrentBet(Math.max(state.getCurrentBet(), event.getAmount()));
+    // Track min_raise as the big blind (highest blind posted)
+    if (event.getAmount() > state.getMinRaise()) {
+      state.setMinRaise(event.getAmount());
+    }
+  }
+
+  @Applies(ActionTaken.class)
+  public void applyActionTaken(HandState state, ActionTaken event) {
+    PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
+    if (pState != null) {
+      pState.setStack(event.getPlayerStack());
+      pState.setHasActed(true);
+      if (event.getAction() == ActionType.FOLD) {
+        pState.setHasFolded(true);
+      } else if (event.getAction() == ActionType.ALL_IN) {
+        pState.setAllIn(true);
+      }
+      pState.setBetThisRound(pState.getBetThisRound() + event.getAmount());
+      pState.setTotalInvested(pState.getTotalInvested() + event.getAmount());
+    }
+    state.setPotTotal(event.getPotTotal());
+    state.setCurrentBet(event.getAmountToCall());
+  }
+
+  @Applies(BettingRoundComplete.class)
+  public void applyBettingRoundComplete(HandState state, BettingRoundComplete event) {
+    state.setPotTotal(event.getPotTotal());
+    state.setCurrentBet(0);
+    // Reset bets for next round
+    for (PlayerHandState p : state.getPlayers().values()) {
+      p.setBetThisRound(0);
+      p.setHasActed(false);
+    }
+  }
+
+  @Applies(HandComplete.class)
+  public void applyHandComplete(HandState state, HandComplete event) {
+    state.setStatus("complete");
+  }
+
+  @Applies(PotAwarded.class)
+  public void applyPotAwarded(HandState state, PotAwarded event) {
+    for (PotWinner winner : event.getWinnersList()) {
+      PlayerHandState pState = state.getPlayer(winner.getPlayerRoot().toByteArray());
+      if (pState != null) {
+        pState.setStack(pState.getStack() + winner.getAmount());
+      }
+    }
+    state.setStatus("complete");
+  }
+
+  @Applies(DrawCompleted.class)
+  public void applyDrawCompleted(HandState state, DrawCompleted event) {
+    PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
+    if (pState != null) {
+      // Replace discarded cards with new cards
+      pState.getHoleCards().clear();
+      for (Card c : event.getNewCardsList()) {
+        pState.getHoleCards().add(cardToBytes(c));
+      }
+    }
+  }
+
+  @Applies(ShowdownStarted.class)
+  public void applyShowdownStarted(HandState state, ShowdownStarted event) {
+    state.setStatus("showdown");
+    state.setCurrentPhase(BettingPhase.SHOWDOWN_VALUE);
+  }
+
+  @Applies(CardsRevealed.class)
+  public void applyCardsRevealed(HandState state, CardsRevealed event) {
+    // No state change needed - just records revealed cards
+  }
+
+  @Applies(CardsMucked.class)
+  public void applyCardsMucked(HandState state, CardsMucked event) {
+    PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
+    if (pState != null) {
+      pState.setHasFolded(true); // Muck is effectively a fold at showdown
     }
   }
 

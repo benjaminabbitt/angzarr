@@ -191,7 +191,7 @@ class CommandHandlerClient {
     CommandResponse handle(const CommandBook& command) {
         CommandRequest request;
         *request.mutable_command() = command;
-        request.set_sync_mode(SYNC_MODE_UNSPECIFIED);  // Async
+        request.set_sync_mode(SYNC_MODE_ASYNC);  // Async (fire-and-forget)
 
         CommandResponse response;
         grpc::ClientContext context;
@@ -345,5 +345,8 @@ class DomainClient {
         return endpoint.substr(pos + 3);
     }
 };
+
+// Alias for backward compatibility with builder.hpp
+using AggregateClient = CommandHandlerClient;
 
 }  // namespace angzarr

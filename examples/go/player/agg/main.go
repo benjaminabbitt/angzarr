@@ -1,4 +1,7 @@
-// Player bounded context gRPC server.
+// Player bounded context gRPC server using functional pattern.
+//
+// This command handler uses the functional pattern with CommandRouter
+// and standalone handler functions following guard/validate/compute.
 package main
 
 import (
@@ -7,15 +10,13 @@ import (
 )
 
 func main() {
-	// docs:start:command_router
 	router := angzarr.NewCommandRouter("player", handlers.RebuildState).
-		On("RegisterPlayer", handlers.HandleRegisterPlayer).
-		On("DepositFunds", handlers.HandleDepositFunds).
-		On("WithdrawFunds", handlers.HandleWithdrawFunds).
-		On("ReserveFunds", handlers.HandleReserveFunds).
-		On("ReleaseFunds", handlers.HandleReleaseFunds).
-		OnRejected("table", "JoinTable", handlers.HandleTableJoinRejected)
-	// docs:end:command_router
+		On("examples.RegisterPlayer", handlers.HandleRegisterPlayer).
+		On("examples.DepositFunds", handlers.HandleDepositFunds).
+		On("examples.WithdrawFunds", handlers.HandleWithdrawFunds).
+		On("examples.ReserveFunds", handlers.HandleReserveFunds).
+		On("examples.ReleaseFunds", handlers.HandleReleaseFunds).
+		OnRejected("table", "examples.JoinTable", handlers.HandleTableJoinRejected)
 
 	angzarr.RunCommandHandlerServer("player", "50201", router)
 }

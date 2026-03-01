@@ -1,14 +1,19 @@
-"""Saga: Table -> Hand
+"""Saga: Table -> Hand (OO Pattern)
+
+DOC: This file is referenced in docs/docs/examples/sagas.mdx
+     Update documentation when making changes to saga patterns.
 
 Reacts to HandStarted events from Table domain.
 Sends DealCards commands to Hand domain.
+
+Uses the OO-style implementation with the Saga base class
+and @domain, @output_domain, @prepares, and @handles decorators.
 """
 
 import sys
 from pathlib import Path
 
 import structlog
-from google.protobuf.any_pb2 import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -16,7 +21,7 @@ from angzarr_client import next_sequence
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.router import EventRouter
+from angzarr_client.saga import Saga, domain, handles, output_domain, prepares
 from angzarr_client.saga_handler import SagaHandler, run_saga_server
 
 structlog.configure(
@@ -33,63 +38,68 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
-def prepare_hand_started(event: Any, root: types.UUID | None) -> list[types.Cover]:
-    """Declare the hand aggregate as destination."""
-    hand_started = table.HandStarted()
-    event.Unpack(hand_started)
+# docs:start:saga_oo
+@domain("table")
+@output_domain("hand")
+class TableHandSaga(Saga):
+    """Saga that translates HandStarted events to DealCards commands.
 
-    return [
-        types.Cover(
-            domain="hand",
-            root=types.UUID(value=hand_started.hand_root),
+    Uses the OO pattern with @domain, @output_domain, @prepares, and @handles decorators.
+    """
+
+    name = "saga-table-hand"
+
+    @prepares(table.HandStarted)
+    def prepare_hand_started(self, event: table.HandStarted) -> list[types.Cover]:
+        """Declare the hand aggregate as destination."""
+        return [
+            types.Cover(
+                domain="hand",
+                root=types.UUID(value=event.hand_root),
+            )
+        ]
+
+    @handles(table.HandStarted)
+    def handle_hand_started(
+        self,
+        event: table.HandStarted,
+        destinations: list[types.EventBook],
+    ) -> types.CommandBook:
+        """Translate HandStarted -> DealCards."""
+        # Get next sequence from destination state
+        dest_seq = next_sequence(destinations[0]) if destinations else 0
+
+        # Convert SeatSnapshot to PlayerInHand
+        players = [
+            hand.PlayerInHand(
+                player_root=seat.player_root,
+                position=seat.position,
+                stack=seat.stack,
+            )
+            for seat in event.active_players
+        ]
+
+        # Build DealCards command
+        deal_cards = hand.DealCards(
+            table_root=event.hand_root,
+            hand_number=event.hand_number,
+            game_variant=event.game_variant,
+            dealer_position=event.dealer_position,
+            small_blind=event.small_blind,
+            big_blind=event.big_blind,
         )
-    ]
+        deal_cards.players.extend(players)
 
+        # Return pre-packed CommandBook for full control
+        from google.protobuf.any_pb2 import Any
 
-# docs:start:saga_handler
-def handle_hand_started(
-    event: Any,
-    root: types.UUID | None,
-    correlation_id: str,
-    destinations: list[types.EventBook],
-) -> list[types.CommandBook]:
-    """Translate HandStarted -> DealCards."""
-    hand_started = table.HandStarted()
-    event.Unpack(hand_started)
+        cmd_any = Any()
+        cmd_any.Pack(deal_cards, type_url_prefix="type.googleapis.com/")
 
-    # Get next sequence from destination state
-    dest_seq = next_sequence(destinations[0]) if destinations else 0
-
-    # Convert SeatSnapshot to PlayerInHand
-    players = [
-        hand.PlayerInHand(
-            player_root=seat.player_root,
-            position=seat.position,
-            stack=seat.stack,
-        )
-        for seat in hand_started.active_players
-    ]
-
-    # Build DealCards command
-    deal_cards = hand.DealCards(
-        table_root=hand_started.hand_root,
-        hand_number=hand_started.hand_number,
-        game_variant=hand_started.game_variant,
-        dealer_position=hand_started.dealer_position,
-        small_blind=hand_started.small_blind,
-        big_blind=hand_started.big_blind,
-    )
-    deal_cards.players.extend(players)
-
-    cmd_any = Any()
-    cmd_any.Pack(deal_cards, type_url_prefix="type.googleapis.com/")
-
-    return [
-        types.CommandBook(
+        return types.CommandBook(
             cover=types.Cover(
                 domain="hand",
-                root=types.UUID(value=hand_started.hand_root),
-                correlation_id=correlation_id,
+                root=types.UUID(value=event.hand_root),
             ),
             pages=[
                 types.CommandPage(
@@ -98,22 +108,11 @@ def handle_hand_started(
                 )
             ],
         )
-    ]
 
 
-# docs:end:saga_handler
-
-
-# docs:start:event_router
-router = (
-    EventRouter("saga-table-hand")
-    .domain("table")
-    .prepare(table.HandStarted, prepare_hand_started)
-    .on(table.HandStarted, handle_hand_started)
-)
-# docs:end:event_router
+# docs:end:saga_oo
 
 
 if __name__ == "__main__":
-    handler = SagaHandler(router)
+    handler = SagaHandler(TableHandSaga)
     run_saga_server("saga-table-hand", "50411", handler, logger=logger)

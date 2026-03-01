@@ -465,7 +465,7 @@ async fn test_projector_and_saga_both_receive_events() {
             Ok(vec![]) // No destination state needed
         }
 
-        async fn execute(
+        async fn handle(
             &self,
             source: &EventBook,
             _destinations: &[EventBook],
@@ -493,12 +493,12 @@ async fn test_projector_and_saga_both_receive_events() {
             self.0.prepare(source).await
         }
 
-        async fn execute(
+        async fn handle(
             &self,
             source: &EventBook,
             destinations: &[EventBook],
         ) -> Result<SagaResponse, Status> {
-            self.0.execute(source, destinations).await
+            self.0.handle(source, destinations).await
         }
     }
 

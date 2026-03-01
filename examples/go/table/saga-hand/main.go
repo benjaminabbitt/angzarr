@@ -1,4 +1,4 @@
-// Saga: Table → Hand
+// Saga: Table → Hand (OO Pattern)
 //
 // DOC: This file is referenced in docs/docs/examples/sagas.mdx
 //
@@ -6,63 +6,65 @@
 //
 // Reacts to HandStarted events from Table domain.
 // Sends DealCards commands to Hand domain.
+//
+// Uses the OO-style implementation with SagaBase and method-based
+// handlers with fluent registration.
 package main
 
 import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// prepareHandStarted declares the hand aggregate as destination.
-func prepareHandStarted(source *pb.EventBook, event *anypb.Any) []*pb.Cover {
-	var handStarted examples.HandStarted
-	if err := proto.Unmarshal(event.Value, &handStarted); err != nil {
-		return nil
-	}
+// TableHandSaga translates HandStarted events to DealCards commands.
+type TableHandSaga struct {
+	angzarr.SagaBase
+}
 
+// docs:start:saga_oo
+// NewTableHandSaga creates a new TableHandSaga with registered handlers.
+func NewTableHandSaga() *TableHandSaga {
+	s := &TableHandSaga{}
+	s.Init("saga-table-hand", "table", "hand")
+
+	// Register prepare handler
+	s.Prepares(s.prepareHandStarted)
+
+	// Register event handler
+	s.Handles(s.handleHandStarted)
+
+	return s
+}
+
+// prepareHandStarted declares the hand aggregate as destination.
+func (s *TableHandSaga) prepareHandStarted(event *examples.HandStarted) []*pb.Cover {
 	return []*pb.Cover{
 		{
 			Domain: "hand",
-			Root:   &pb.UUID{Value: handStarted.HandRoot},
+			Root:   &pb.UUID{Value: event.HandRoot},
 		},
 	}
 }
 
-// docs:start:saga_handler
 // handleHandStarted translates HandStarted → DealCards.
-func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
-	var handStarted examples.HandStarted
-	if err := proto.Unmarshal(event.Value, &handStarted); err != nil {
-		return nil, err
-	}
-
-	// Get next sequence from destination state.
-	//
-	// # Why Set Sequence from Destination State?
-	//
-	// The framework validates command sequences for optimistic concurrency.
-	// Sagas MUST use destination.NextSequence() because:
-	// 1. The destination aggregate may have events we haven't seen
-	// 2. Using a stale sequence causes FAILED_PRECONDITION rejection
-	// 3. The framework intentionally doesn't auto-stamp sequences to force
-	//    saga authors to engage with destination state
+func (s *TableHandSaga) handleHandStarted(
+	event *examples.HandStarted,
+	destinations []*pb.EventBook,
+) (*pb.CommandBook, error) {
+	// Get next sequence from destination state
 	var destSeq uint32
 	if len(destinations) > 0 {
 		destSeq = angzarr.NextSequence(destinations[0])
 	}
 
-	// Get correlation ID from source
-	var correlationID string
-	if source.Cover != nil {
-		correlationID = source.Cover.CorrelationId
-	}
+	// Get correlation ID from source (will be set by framework during dispatch)
+	correlationID := ""
 
 	// Convert SeatSnapshot to PlayerInHand
-	players := make([]*examples.PlayerInHand, len(handStarted.ActivePlayers))
-	for i, seat := range handStarted.ActivePlayers {
+	players := make([]*examples.PlayerInHand, len(event.ActivePlayers))
+	for i, seat := range event.ActivePlayers {
 		players[i] = &examples.PlayerInHand{
 			PlayerRoot: seat.PlayerRoot,
 			Position:   seat.Position,
@@ -72,13 +74,13 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 
 	// Build DealCards command
 	dealCards := &examples.DealCards{
-		TableRoot:      handStarted.HandRoot,
-		HandNumber:     handStarted.HandNumber,
-		GameVariant:    handStarted.GameVariant,
+		TableRoot:      event.HandRoot,
+		HandNumber:     event.HandNumber,
+		GameVariant:    event.GameVariant,
 		Players:        players,
-		DealerPosition: handStarted.DealerPosition,
-		SmallBlind:     handStarted.SmallBlind,
-		BigBlind:       handStarted.BigBlind,
+		DealerPosition: event.DealerPosition,
+		SmallBlind:     event.SmallBlind,
+		BigBlind:       event.BigBlind,
 	}
 
 	cmdAny, err := anypb.New(dealCards)
@@ -86,32 +88,24 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 		return nil, err
 	}
 
-	return []*pb.CommandBook{
-		{
-			Cover: &pb.Cover{
-				Domain:        "hand",
-				Root:          &pb.UUID{Value: handStarted.HandRoot},
-				CorrelationId: correlationID,
-			},
-			Pages: []*pb.CommandPage{
-				{
-					Sequence: destSeq,
-					Payload:  &pb.CommandPage_Command{Command: cmdAny},
-				},
+	return &pb.CommandBook{
+		Cover: &pb.Cover{
+			Domain:        "hand",
+			Root:          &pb.UUID{Value: event.HandRoot},
+			CorrelationId: correlationID,
+		},
+		Pages: []*pb.CommandPage{
+			{
+				Sequence: destSeq,
+				Payload:  &pb.CommandPage_Command{Command: cmdAny},
 			},
 		},
 	}, nil
 }
 
-// docs:end:saga_handler
+// docs:end:saga_oo
 
 func main() {
-	// docs:start:event_router
-	router := angzarr.NewEventRouter("saga-table-hand").
-		Domain("table").
-		Prepare("HandStarted", prepareHandStarted).
-		On("HandStarted", handleHandStarted)
-	// docs:end:event_router
-
-	angzarr.RunSagaServer("saga-table-hand", "50211", router)
+	saga := NewTableHandSaga()
+	angzarr.RunOOSagaServer("saga-table-hand", "50211", saga)
 }

@@ -429,13 +429,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(GrpcProjectorHandler::new(client));
 
         let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        let proj_handler = ProjectorEventHandler::with_config(
-            handler,
-            None,
-            vec![listen_domain.clone()],
-            false,
-            socket_name.clone(),
-        );
+        let proj_handler = ProjectorEventHandler::from_handler(handler, socket_name.clone())
+            .with_domains(vec![listen_domain.clone()]);
 
         let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
         sub.subscribe(Box::new(proj_handler)).await?;

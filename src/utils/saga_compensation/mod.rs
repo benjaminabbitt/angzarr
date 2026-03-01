@@ -28,22 +28,31 @@ use crate::proto_ext::CoverExt;
 /// Result type for compensation operations.
 pub type Result<T> = std::result::Result<T, CompensationError>;
 
+/// Error message constants for compensation operations.
+pub mod errmsg {
+    pub const MISSING_SAGA_ORIGIN: &str = "Command missing saga origin - not a saga command";
+    pub const MISSING_TRIGGERING_AGGREGATE: &str = "Missing triggering aggregate in saga origin";
+    pub const ABORTED: &str = "Compensation aborted: ";
+    pub const ESCALATION_FAILED: &str = "Escalation failed: ";
+    pub const EVENT_STORE_ERROR: &str = "Event store error: ";
+}
+
 /// Errors that can occur during saga compensation.
 #[derive(Debug, thiserror::Error)]
 pub enum CompensationError {
-    #[error("Command missing saga origin - not a saga command")]
+    #[error("{}", errmsg::MISSING_SAGA_ORIGIN)]
     MissingSagaOrigin,
 
-    #[error("Missing triggering aggregate in saga origin")]
+    #[error("{}", errmsg::MISSING_TRIGGERING_AGGREGATE)]
     MissingTriggeringAggregate,
 
-    #[error("Compensation aborted: {0}")]
+    #[error("{}{}", errmsg::ABORTED, .0)]
     Aborted(String),
 
-    #[error("Escalation failed: {0}")]
+    #[error("{}{}", errmsg::ESCALATION_FAILED, .0)]
     EscalationFailed(String),
 
-    #[error("Event store error: {0}")]
+    #[error("{}{}", errmsg::EVENT_STORE_ERROR, .0)]
     EventStore(String),
 }
 

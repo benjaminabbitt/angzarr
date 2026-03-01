@@ -6,7 +6,8 @@
 # Provides: JDK 21, Gradle 8.5
 # Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
+# BASE_IMAGE must be provided via build arg (no default to avoid registry lookups)
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 # TARGETARCH is set by Docker buildx (amd64, arm64)

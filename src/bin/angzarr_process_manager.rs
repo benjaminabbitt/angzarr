@@ -35,7 +35,7 @@ use tracing::{info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::bus::{EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus};
+use angzarr::bus::{EventBus, IpcConfig, IpcEventBus, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::descriptor::parse_subscriptions;
 use angzarr::handlers::core::ProcessManagerEventHandler;
@@ -66,13 +66,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("PM storage initialized for direct state persistence");
 
     // Initialize event bus (publisher) for PM state events
-    let event_bus: Arc<dyn EventBus> = match messaging.messaging_type {
+    let event_bus: Arc<dyn EventBus> = match messaging.messaging_type.as_str() {
         #[cfg(feature = "amqp")]
-        MessagingType::Amqp => {
+        "amqp" => {
             let amqp_config = AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_config).await?)
         }
-        MessagingType::Ipc => {
+        "ipc" => {
             let ipc_config = IpcConfig::publisher(&messaging.ipc.base_path);
             Arc::new(IpcEventBus::new(ipc_config))
         }

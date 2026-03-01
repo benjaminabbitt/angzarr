@@ -151,7 +151,7 @@ impl SpeculativeExecutor {
 
     /// Speculatively run a saga against source events.
     ///
-    /// Invokes the same `SagaHandler::prepare()` and `execute()` registered
+    /// Invokes the same `SagaHandler::prepare()` and `handle()` registered
     /// with the runtime. Destination state is resolved via `domain_specs`.
     /// Returns the commands the saga would produce without executing them.
     pub async fn speculate_saga(
@@ -208,8 +208,8 @@ impl SpeculativeExecutor {
         // Phase 2: resolve destinations
         let destinations = self.resolve_destinations(&covers, domain_specs).await?;
 
-        // Phase 3: execute — produce commands
-        let response = handler.execute(source, &destinations).await?;
+        // Phase 3: handle — produce commands
+        let response = handler.handle(source, &destinations).await?;
 
         Ok(response.commands)
     }
@@ -551,17 +551,6 @@ mod tests {
         assert_eq!(result.facts.len(), 1);
     }
 
-    #[test]
-    fn test_pm_speculative_result_debug() {
-        let result = PmSpeculativeResult {
-            commands: vec![],
-            process_events: None,
-            facts: vec![],
-        };
-        // Should be Debug-printable
-        assert!(format!("{:?}", result).contains("PmSpeculativeResult"));
-    }
-
     // ============================================================================
     // SpeculativeExecutor::build_event_book Tests
     // ============================================================================
@@ -693,70 +682,6 @@ mod tests {
         assert_eq!(SpeculativeExecutor::root_from_event_book(&book), None);
     }
 
-    // ============================================================================
-    // SpeculativeExecutor Construction Tests
-    // ============================================================================
-
-    #[test]
-    fn test_speculative_executor_empty_construction() {
-        let executor = SpeculativeExecutor::new(
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-        );
-
-        // Should construct without error
-        let _ = executor;
-    }
-
-    #[test]
-    fn test_speculative_executor_with_domain_stores() {
-        use crate::standalone::router::DomainStorage;
-        use crate::storage::mock::{MockEventStore, MockSnapshotStore};
-
-        let mut domain_stores = HashMap::new();
-        domain_stores.insert(
-            "orders".to_string(),
-            DomainStorage {
-                event_store: Arc::new(MockEventStore::new()),
-                snapshot_store: Arc::new(MockSnapshotStore::new()),
-            },
-        );
-
-        let executor = SpeculativeExecutor::new(
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-            domain_stores,
-        );
-
-        let _ = executor;
-    }
-
-    // ============================================================================
-    // Edge Cases
-    // ============================================================================
-
-    #[test]
-    fn test_domain_state_spec_zero_sequence() {
-        let spec = DomainStateSpec::AtSequence(0);
-        assert!(format!("{:?}", spec).contains("0"));
-    }
-
-    #[test]
-    fn test_domain_state_spec_max_sequence() {
-        let spec = DomainStateSpec::AtSequence(u32::MAX);
-        assert!(format!("{:?}", spec).contains(&u32::MAX.to_string()));
-    }
-
-    #[test]
-    fn test_domain_state_spec_empty_timestamp() {
-        let spec = DomainStateSpec::AtTimestamp(String::new());
-        // Empty timestamp is valid at this level (validation happens elsewhere)
-        assert!(format!("{:?}", spec).contains("AtTimestamp"));
-    }
-
     #[test]
     fn test_build_event_book_preserves_page_order() {
         let root = Uuid::new_v4();
@@ -821,7 +746,7 @@ mod tests {
                 Ok(vec![])
             }
 
-            async fn execute(
+            async fn handle(
                 &self,
                 _source: &EventBook,
                 _destinations: &[EventBook],

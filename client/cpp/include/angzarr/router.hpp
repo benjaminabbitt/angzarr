@@ -11,19 +11,12 @@
 #include "angzarr/command_handler.pb.h"
 #include "angzarr/types.pb.h"
 #include "errors.hpp"
+#include "handler_traits.hpp"
 #include "helpers.hpp"
 
 namespace angzarr {
 
-/**
- * Response from rejection handlers - can emit events AND/OR notification.
- */
-struct RejectionHandlerResponse {
-    /// Events to persist to own state (compensation).
-    std::optional<EventBook> events;
-    /// Notification to forward upstream (rejection propagation).
-    std::optional<Notification> notification;
-};
+// RejectionHandlerResponse is defined in handler_traits.hpp
 
 /**
  * DRY command dispatcher for aggregates (functional pattern).
@@ -34,7 +27,7 @@ class CommandRouter {
     using CommandHandler =
         std::function<EventBook(const CommandBook&, const google::protobuf::Any&, State&, int)>;
     using RejectionHandler = std::function<RejectionHandlerResponse(const Notification&, State&)>;
-    using StateRebuilder = std::function<State(const EventBook&)>;
+    using StateRebuilder = std::function<State(const EventBook*)>;
 
     explicit CommandRouter(const std::string& domain, StateRebuilder rebuild = nullptr)
         : domain_(domain), rebuild_(std::move(rebuild)) {}
@@ -92,10 +85,10 @@ class CommandRouter {
      */
     BusinessResponse dispatch(const ContextualCommand& cmd) {
         const auto& command_book = cmd.command();
-        const EventBook& prior_events = cmd.events();
+        const EventBook* prior_events = cmd.has_events() ? &cmd.events() : nullptr;
 
         auto state = get_state(prior_events);
-        int seq = cmd.has_events() ? helpers::next_sequence(&prior_events) : 0;
+        int seq = helpers::next_sequence(prior_events);
 
         if (command_book.pages_size() == 0) {
             throw InvalidArgumentError("No command pages");
@@ -129,7 +122,7 @@ class CommandRouter {
     }
 
    private:
-    State get_state(const EventBook& event_book) {
+    State get_state(const EventBook* event_book) {
         if (rebuild_) {
             return rebuild_(event_book);
         }
@@ -359,56 +352,6 @@ class EventRouter {
     std::map<std::string, std::map<std::string, PrepareHandler>> prepare_handlers_;
 };
 
-/**
- * Fluent state reconstruction from events (functional pattern).
- */
-template <typename State>
-class StateRouter {
-   public:
-    using Applier = std::function<void(State&, const google::protobuf::Any&)>;
-
-    explicit StateRouter(std::function<State()> factory) : factory_(std::move(factory)) {}
-
-    /**
-     * Register an event applier.
-     */
-    template <typename Event>
-    StateRouter& on(std::function<void(State&, const Event&)> applier) {
-        std::string suffix = Event::descriptor()->name();
-        appliers_[suffix] = [applier](State& state, const google::protobuf::Any& any) {
-            Event event;
-            any.UnpackTo(&event);
-            applier(state, event);
-        };
-        return *this;
-    }
-
-    /**
-     * Rebuild state from an EventBook.
-     */
-    State with_event_book(const EventBook* book) {
-        auto state = factory_();
-        if (!book) return state;
-
-        for (const auto& page : book->pages()) {
-            if (!page.has_event()) continue;
-            apply_event(state, page.event());
-        }
-        return state;
-    }
-
-   private:
-    void apply_event(State& state, const google::protobuf::Any& event_any) {
-        for (const auto& [suffix, applier] : appliers_) {
-            if (helpers::type_url_matches(event_any.type_url(), suffix)) {
-                applier(state, event_any);
-                return;
-            }
-        }
-    }
-
-    std::function<State()> factory_;
-    std::map<std::string, Applier> appliers_;
-};
+// StateRouter is defined in handler_traits.hpp
 
 }  // namespace angzarr

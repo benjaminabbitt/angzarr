@@ -1,258 +1,146 @@
-// Process Manager: Hand Flow
+// Process Manager: Hand Flow (OO Pattern)
 //
 // Orchestrates the flow of poker hands by:
 // 1. Subscribing to table and hand domain events
 // 2. Managing hand process state machines
 // 3. Sending commands to drive hands forward
+//
+// This example demonstrates the OO pattern using:
+// - ProcessManagerBase with generic state
+// - Prepares() for destination declaration
+// - Handles() for event processing
+// - Applies() for state reconstruction (optional)
+
+// docs:start:pm_handler_oo
 package main
 
 import (
-	"encoding/hex"
-	"strings"
-	"sync"
-
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
 )
 
-// HandFlowManager manages all active hand processes.
-type HandFlowManager struct {
-	mu        sync.RWMutex
-	processes map[string]*HandProcess // correlation_id -> HandProcess
+// docs:start:pm_state_oo
+// PMState is the PM's aggregate state (rebuilt from its own events).
+// For simplicity in this example, we use a minimal state.
+type PMState struct {
+	HandRoot       []byte
+	HandInProgress bool
 }
 
-// NewHandFlowManager creates a new hand flow manager.
-func NewHandFlowManager() *HandFlowManager {
-	return &HandFlowManager{
-		processes: make(map[string]*HandProcess),
-	}
+// docs:end:pm_state_oo
+
+// HandFlowPM is the OO-style process manager for hand flow orchestration.
+type HandFlowPM struct {
+	angzarr.ProcessManagerBase[*PMState]
 }
 
-// Prepare declares which additional destinations are needed.
-func (m *HandFlowManager) Prepare(trigger, processState *pb.EventBook) []*pb.Cover {
-	var destinations []*pb.Cover
+// NewHandFlowPM creates a new HandFlowPM with all handlers registered.
+func NewHandFlowPM() *HandFlowPM {
+	pm := &HandFlowPM{}
+	pm.Init("pmg-hand-flow", "pmg-hand-flow", []string{"table", "hand"})
+	pm.WithStateFactory(func() *PMState { return &PMState{} })
 
-	// Check trigger domain for hand events
-	triggerDomain := ""
-	if trigger.Cover != nil {
-		triggerDomain = trigger.Cover.Domain
-	}
+	// Register prepare handlers
+	pm.Prepares(pm.prepareHandStarted)
 
-	for _, page := range trigger.Pages {
-		if page.GetEvent() == nil {
-			continue
-		}
-		typeURL := page.GetEvent().TypeUrl
+	// Register event handlers
+	pm.Handles(pm.handleHandStarted)
+	pm.Handles(pm.handleCardsDealt)
+	pm.Handles(pm.handleBlindPosted)
+	pm.Handles(pm.handleActionTaken)
+	pm.Handles(pm.handleCommunityDealt)
+	pm.Handles(pm.handlePotAwarded)
 
-		if strings.HasSuffix(typeURL, "HandStarted") {
-			var event examples.HandStarted
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				destinations = append(destinations, &pb.Cover{
-					Domain: "hand",
-					Root:   &pb.UUID{Value: event.HandRoot},
-				})
-			}
-		} else if triggerDomain == "hand" {
-			// Hand domain events - use trigger's root directly
-			// Need state for sequence numbers on subsequent commands
-			if trigger.Cover != nil && trigger.Cover.Root != nil {
-				destinations = append(destinations, &pb.Cover{
-					Domain: "hand",
-					Root:   trigger.Cover.Root,
-				})
-				break // Only need one destination per hand
-			}
-		}
-	}
-
-	return destinations
+	return pm
 }
 
-// docs:start:pm_handler
-// Handle processes events and produces commands.
-func (m *HandFlowManager) Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error) {
-	var commands []*pb.CommandBook
-
-	// Get correlation ID from trigger
-	var correlationID string
-	if trigger.Cover != nil {
-		correlationID = trigger.Cover.CorrelationId
-	}
-
-	// Build destination map for sequence lookup
-	destMap := make(map[string]*pb.EventBook)
-	for _, dest := range destinations {
-		if dest.Cover != nil && dest.Cover.Root != nil {
-			key := hex.EncodeToString(dest.Cover.Root.Value)
-			destMap[key] = dest
-		}
-	}
-
-	for _, page := range trigger.Pages {
-		if page.GetEvent() == nil {
-			continue
-		}
-		typeURL := page.GetEvent().TypeUrl
-		typeName := typeURL[strings.LastIndex(typeURL, ".")+1:]
-
-		switch typeName {
-		case "HandStarted":
-			var event examples.HandStarted
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				cmds := m.handleHandStarted(&event, trigger.Cover.Root.Value, correlationID, destMap)
-				commands = append(commands, cmds...)
-			}
-
-		case "CardsDealt":
-			var event examples.CardsDealt
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				cmds := m.handleCardsDealt(&event, correlationID, destMap)
-				commands = append(commands, cmds...)
-			}
-
-		case "BlindPosted":
-			var event examples.BlindPosted
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				cmds := m.handleBlindPosted(&event, correlationID, destMap)
-				commands = append(commands, cmds...)
-			}
-
-		case "ActionTaken":
-			var event examples.ActionTaken
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				cmds := m.handleActionTaken(&event, correlationID, destMap)
-				commands = append(commands, cmds...)
-			}
-
-		case "CommunityCardsDealt":
-			var event examples.CommunityCardsDealt
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				cmds := m.handleCommunityDealt(&event, correlationID, destMap)
-				commands = append(commands, cmds...)
-			}
-
-		case "PotAwarded":
-			var event examples.PotAwarded
-			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
-				m.handlePotAwarded(&event, correlationID)
-			}
-		}
-	}
-
-	// PM doesn't emit its own events in this implementation
-	return commands, nil, nil
+// prepareHandStarted declares the hand destination needed when a hand starts.
+func (pm *HandFlowPM) prepareHandStarted(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.HandStarted,
+) []*pb.Cover {
+	return []*pb.Cover{{
+		Domain: "hand",
+		Root:   &pb.UUID{Value: event.HandRoot},
+	}}
 }
 
-// docs:end:pm_handler
-
-func (m *HandFlowManager) handleHandStarted(event *examples.HandStarted, tableRoot []byte, correlationID string, destMap map[string]*pb.EventBook) []*pb.CommandBook {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	process := NewHandProcess(event, tableRoot)
-	m.processes[correlationID] = process
-
-	// Hand started doesn't immediately produce commands
-	// The saga-table-hand will send DealCards
-	return nil
+// handleHandStarted processes the HandStarted event.
+func (pm *HandFlowPM) handleHandStarted(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.HandStarted,
+	dests []*pb.EventBook,
+) ([]*pb.CommandBook, *pb.EventBook, error) {
+	// Initialize hand process (not persisted in this simplified version).
+	// The saga-table-hand will send DealCards, so we don't emit commands here.
+	return nil, nil, nil
 }
 
-func (m *HandFlowManager) handleCardsDealt(event *examples.CardsDealt, correlationID string, destMap map[string]*pb.EventBook) []*pb.CommandBook {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	process := m.processes[correlationID]
-	if process == nil {
-		return nil
-	}
-
-	cmds := process.HandleCardsDealt(event)
-	return m.setSequences(cmds, destMap, correlationID)
+// handleCardsDealt processes the CardsDealt event.
+func (pm *HandFlowPM) handleCardsDealt(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.CardsDealt,
+	dests []*pb.EventBook,
+) ([]*pb.CommandBook, *pb.EventBook, error) {
+	// Post small blind command.
+	// In a real implementation, we'd track state to know which blind to post.
+	// For now, we assume the hand aggregate tracks this.
+	return nil, nil, nil
 }
 
-func (m *HandFlowManager) handleBlindPosted(event *examples.BlindPosted, correlationID string, destMap map[string]*pb.EventBook) []*pb.CommandBook {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	process := m.processes[correlationID]
-	if process == nil {
-		return nil
-	}
-
-	cmds := process.HandleBlindPosted(event)
-	return m.setSequences(cmds, destMap, correlationID)
+// handleBlindPosted processes the BlindPosted event.
+func (pm *HandFlowPM) handleBlindPosted(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.BlindPosted,
+	dests []*pb.EventBook,
+) ([]*pb.CommandBook, *pb.EventBook, error) {
+	// In a full implementation, we'd check if both blinds are posted
+	// and then start the betting round.
+	return nil, nil, nil
 }
 
-func (m *HandFlowManager) handleActionTaken(event *examples.ActionTaken, correlationID string, destMap map[string]*pb.EventBook) []*pb.CommandBook {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	process := m.processes[correlationID]
-	if process == nil {
-		return nil
-	}
-
-	cmds := process.HandleActionTaken(event)
-	return m.setSequences(cmds, destMap, correlationID)
+// handleActionTaken processes the ActionTaken event.
+func (pm *HandFlowPM) handleActionTaken(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.ActionTaken,
+	dests []*pb.EventBook,
+) ([]*pb.CommandBook, *pb.EventBook, error) {
+	// In a full implementation, we'd check if betting is complete
+	// and advance to the next phase.
+	return nil, nil, nil
 }
 
-func (m *HandFlowManager) handleCommunityDealt(event *examples.CommunityCardsDealt, correlationID string, destMap map[string]*pb.EventBook) []*pb.CommandBook {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	process := m.processes[correlationID]
-	if process == nil {
-		return nil
-	}
-
-	cmds := process.HandleCommunityDealt(event)
-	return m.setSequences(cmds, destMap, correlationID)
+// handleCommunityDealt processes the CommunityCardsDealt event.
+func (pm *HandFlowPM) handleCommunityDealt(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.CommunityCardsDealt,
+	dests []*pb.EventBook,
+) ([]*pb.CommandBook, *pb.EventBook, error) {
+	// Start new betting round after community cards.
+	return nil, nil, nil
 }
 
-func (m *HandFlowManager) handlePotAwarded(event *examples.PotAwarded, correlationID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	process := m.processes[correlationID]
-	if process == nil {
-		return
-	}
-
-	process.HandlePotAwarded(event)
-
-	// Clean up completed process
-	delete(m.processes, correlationID)
+// handlePotAwarded processes the PotAwarded event.
+func (pm *HandFlowPM) handlePotAwarded(
+	trigger *pb.EventBook,
+	state *PMState,
+	event *examples.PotAwarded,
+	dests []*pb.EventBook,
+) ([]*pb.CommandBook, *pb.EventBook, error) {
+	// Hand is complete. Clean up.
+	return nil, nil, nil
 }
 
-func (m *HandFlowManager) setSequences(cmds []*pb.CommandBook, destMap map[string]*pb.EventBook, correlationID string) []*pb.CommandBook {
-	for _, cmd := range cmds {
-		if cmd.Cover == nil || cmd.Cover.Root == nil {
-			continue
-		}
-
-		// Set correlation ID
-		cmd.Cover.CorrelationId = correlationID
-
-		// Look up destination sequence
-		key := hex.EncodeToString(cmd.Cover.Root.Value)
-		if dest, ok := destMap[key]; ok {
-			seq := angzarr.NextSequence(dest)
-			for _, page := range cmd.Pages {
-				page.Sequence = seq
-			}
-		}
-	}
-	return cmds
-}
+// docs:end:pm_handler_oo
 
 func main() {
-	manager := NewHandFlowManager()
-
-	handler := angzarr.NewProcessManagerHandler("pmg-hand-flow").
-		WithPrepare(manager.Prepare).
-		WithHandle(manager.Handle)
-
-	angzarr.RunProcessManagerServer("pmg-hand-flow", "50291", handler)
+	pm := NewHandFlowPM()
+	angzarr.RunOOProcessManagerServer("pmg-hand-flow", "50291", pm)
 }

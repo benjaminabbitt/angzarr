@@ -21,19 +21,26 @@ pub mod shared;
 // Fact Injection
 // ============================================================================
 
+/// Error message constants for fact injection operations.
+pub mod errmsg {
+    pub const AGGREGATE_NOT_FOUND: &str = "Target aggregate not found: ";
+    pub const REJECTED: &str = "Fact handler rejected: ";
+    pub const INTERNAL: &str = "Fact injection failed: ";
+}
+
 /// Error type for fact injection failures.
 #[derive(Debug, thiserror::Error)]
 pub enum FactInjectionError {
     /// Target aggregate not found for the fact's domain.
-    #[error("Target aggregate not found: {domain}")]
+    #[error("{}{domain}", errmsg::AGGREGATE_NOT_FOUND)]
     AggregateNotFound { domain: String },
 
     /// Fact handler rejected the fact.
-    #[error("Fact handler rejected: {reason}")]
+    #[error("{}{reason}", errmsg::REJECTED)]
     Rejected { reason: String },
 
     /// Storage or transport error during fact injection.
-    #[error("Fact injection failed: {0}")]
+    #[error("{}{}", errmsg::INTERNAL, .0)]
     Internal(String),
 }
 

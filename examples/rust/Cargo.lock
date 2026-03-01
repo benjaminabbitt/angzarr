@@ -34,6 +34,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "agg-player-oo"
+version = "0.1.0"
+dependencies = [
+ "angzarr-client",
+ "angzarr-macros",
+ "hex",
+ "prost",
+ "prost-types",
+ "tokio",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "agg-table"
 version = "0.1.0"
 dependencies = [

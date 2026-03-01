@@ -122,7 +122,7 @@ impl<T: SagaHandler> SagaHandler for InstrumentedSagaHandler<T> {
         self.inner.prepare(source).await
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         destinations: &[EventBook],
@@ -134,7 +134,7 @@ impl<T: SagaHandler> SagaHandler for InstrumentedSagaHandler<T> {
             .map(|c| c.domain.as_str())
             .unwrap_or("unknown");
 
-        let result = self.inner.execute(source, destinations).await;
+        let result = self.inner.handle(source, destinations).await;
 
         #[cfg(feature = "otel")]
         {
@@ -269,7 +269,7 @@ mod tests {
             Ok(vec![])
         }
 
-        async fn execute(
+        async fn handle(
             &self,
             _source: &EventBook,
             _destinations: &[EventBook],
@@ -284,7 +284,7 @@ mod tests {
         let handler = InstrumentedSagaHandler::new(inner, "test-saga");
 
         let source = EventBook::default();
-        let result = handler.execute(&source, &[]).await;
+        let result = handler.handle(&source, &[]).await;
         assert!(result.is_ok());
     }
 

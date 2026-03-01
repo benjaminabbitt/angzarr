@@ -225,7 +225,7 @@ pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 ///         Ok(vec![])
 ///     }
 ///
-///     async fn execute(
+///     async fn handle(
 ///         &self,
 ///         source: &EventBook,
 ///         _destinations: &[EventBook],
@@ -262,7 +262,7 @@ pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 ///         Ok(covers)
 ///     }
 ///
-///     async fn execute(
+///     async fn handle(
 ///         &self,
 ///         source: &EventBook,
 ///         destinations: &[EventBook],
@@ -290,7 +290,7 @@ pub trait SagaHandler: Send + Sync + 'static {
     /// If prepare returned empty, destinations will be empty slice.
     ///
     /// Return empty commands vec if saga doesn't act on this event (no-op).
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         destinations: &[EventBook],

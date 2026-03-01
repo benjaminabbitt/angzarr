@@ -10,9 +10,9 @@ use crate::advice::{
     InstrumentedDynBus, InstrumentedPMHandler, InstrumentedProjectorHandler,
     InstrumentedSagaHandler,
 };
-use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, MessagingType};
+use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig};
 use crate::config::ResourceLimits;
-use crate::storage::{SqliteConfig, StorageConfig, StorageType};
+use crate::storage::{SqliteConfig, StorageConfig};
 use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
 use super::runtime::Runtime;
@@ -74,13 +74,13 @@ impl RuntimeBuilder {
     pub fn new() -> Self {
         Self {
             storage: StorageConfig {
-                storage_type: StorageType::Sqlite,
+                storage_type: "sqlite".to_string(),
                 sqlite: SqliteConfig::default(),
                 ..Default::default()
             },
             domain_storage: HashMap::new(),
             messaging: MessagingConfig {
-                messaging_type: MessagingType::Channel,
+                messaging_type: "channel".to_string(),
                 ..Default::default()
             },
             transport: TransportConfig {
@@ -103,21 +103,21 @@ impl RuntimeBuilder {
 
     /// Use SQLite in-memory storage (default).
     pub fn with_sqlite_memory(mut self) -> Self {
-        self.storage.storage_type = StorageType::Sqlite;
+        self.storage.storage_type = "sqlite".to_string();
         self.storage.sqlite.path = None;
         self
     }
 
     /// Use SQLite file storage.
     pub fn with_sqlite_file(mut self, path: impl Into<String>) -> Self {
-        self.storage.storage_type = StorageType::Sqlite;
+        self.storage.storage_type = "sqlite".to_string();
         self.storage.sqlite.path = Some(path.into());
         self
     }
 
     /// Use PostgreSQL storage.
     pub fn with_postgres(mut self, uri: impl Into<String>) -> Self {
-        self.storage.storage_type = StorageType::Postgres;
+        self.storage.storage_type = "postgres".to_string();
         self.storage.postgres.uri = uri.into();
         self
     }
@@ -143,20 +143,20 @@ impl RuntimeBuilder {
 
     /// Use channel messaging (in-memory, default).
     pub fn with_channel_messaging(mut self) -> Self {
-        self.messaging.messaging_type = MessagingType::Channel;
+        self.messaging.messaging_type = "channel".to_string();
         self
     }
 
     /// Use AMQP messaging.
     pub fn with_amqp(mut self, url: impl Into<String>) -> Self {
-        self.messaging.messaging_type = MessagingType::Amqp;
+        self.messaging.messaging_type = "amqp".to_string();
         self.messaging.amqp.url = url.into();
         self
     }
 
     /// Use Kafka messaging.
     pub fn with_kafka(mut self, bootstrap_servers: impl Into<String>) -> Self {
-        self.messaging.messaging_type = MessagingType::Kafka;
+        self.messaging.messaging_type = "kafka".to_string();
         self.messaging.kafka.bootstrap_servers = bootstrap_servers.into();
         self
     }
@@ -426,9 +426,9 @@ mod tests {
     fn test_builder_defaults() {
         let builder = RuntimeBuilder::new();
 
-        assert_eq!(builder.storage.storage_type, StorageType::Sqlite);
+        assert_eq!(builder.storage.storage_type, "sqlite");
         assert!(builder.storage.sqlite.path.is_none());
-        assert_eq!(builder.messaging.messaging_type, MessagingType::Channel);
+        assert_eq!(builder.messaging.messaging_type, "channel".to_string());
         assert_eq!(builder.transport.transport_type, TransportType::Uds);
     }
 
@@ -436,7 +436,7 @@ mod tests {
     fn test_builder_sqlite_file() {
         let builder = RuntimeBuilder::new().with_sqlite_file("./data/events.db");
 
-        assert_eq!(builder.storage.storage_type, StorageType::Sqlite);
+        assert_eq!(builder.storage.storage_type, "sqlite");
         assert_eq!(
             builder.storage.sqlite.path,
             Some("./data/events.db".to_string())
@@ -447,7 +447,7 @@ mod tests {
     fn test_builder_postgres() {
         let builder = RuntimeBuilder::new().with_postgres("postgres://localhost:5432/test");
 
-        assert_eq!(builder.storage.storage_type, StorageType::Postgres);
+        assert_eq!(builder.storage.storage_type, "postgres");
         assert_eq!(
             builder.storage.postgres.uri,
             "postgres://localhost:5432/test"
@@ -458,7 +458,7 @@ mod tests {
     fn test_builder_amqp() {
         let builder = RuntimeBuilder::new().with_amqp("amqp://localhost:5672");
 
-        assert_eq!(builder.messaging.messaging_type, MessagingType::Amqp);
+        assert_eq!(builder.messaging.messaging_type, "amqp".to_string());
         assert_eq!(builder.messaging.amqp.url, "amqp://localhost:5672");
     }
 }

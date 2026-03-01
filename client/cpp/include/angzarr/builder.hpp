@@ -37,13 +37,24 @@ namespace angzarr {
 class CommandBuilder {
    public:
     /**
-     * Create a command builder for a domain.
+     * Create a command builder for a domain with optional client.
      *
-     * @param client The aggregate client to use for execution
+     * @param client The aggregate client to use for execution (can be nullptr for build-only)
      * @param domain The aggregate domain
      */
     CommandBuilder(AggregateClient* client, const std::string& domain)
         : client_(client), domain_(domain), sequence_(0) {}
+
+    /**
+     * Create a command builder for building without a client.
+     *
+     * Use this constructor when you only need to build() commands,
+     * not execute() them.
+     *
+     * @param domain The aggregate domain
+     */
+    explicit CommandBuilder(const std::string& domain)
+        : client_(nullptr), domain_(domain), sequence_(0) {}
 
     /**
      * Set the aggregate root UUID.

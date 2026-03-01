@@ -11,7 +11,7 @@ Angzarr uses modular Helm charts for Kubernetes and OpenTofu for cloud infrastru
 | Mode | Infrastructure | Best For |
 |------|---------------|----------|
 | **Standalone** | SQLite + Channel bus | Development, testing |
-| **Local K8s** | Kind/k3s + Helm | Integration testing |
+| **Local K8s** | Kind + Helm | Integration testing |
 | **GCP Cloud Run** | Cloud SQL + Pub/Sub | Serverless production |
 | **GCP GKE** | Cloud SQL + Helm | K8s production on GCP |
 | **AWS Fargate** | RDS + SNS/SQS | Serverless production on AWS |
@@ -166,20 +166,6 @@ just -f deploy/kind/justfile framework
 
 ---
 
-## k3s/OpenTofu Deployment
-
-For local development with k3s and OpenTofu:
-
-```bash title="illustrative - k3s/OpenTofu deployment"
-cd deploy/tofu/environments/k3s
-tofu init
-tofu apply
-```
-
-This uses the `infra-*` modules which deploy official images directly (no operators required).
-
----
-
 ## Why Modular Charts?
 
 1. **Independent lifecycle** — Upgrade databases without redeploying apps
@@ -196,7 +182,7 @@ For cloud infrastructure provisioning, angzarr provides OpenTofu modules support
 
 See **[OpenTofu](/tooling/opentofu)** for complete deployment guides including:
 - Standalone mode
-- Local Kubernetes (Kind/k3s)
+- Local Kubernetes (Kind)
 - GCP Cloud Run
 - GCP GKE
 - AWS Fargate
@@ -205,9 +191,6 @@ See **[OpenTofu](/tooling/opentofu)** for complete deployment guides including:
 ### Quick Reference
 
 ```bash title="illustrative - OpenTofu environments"
-# Local k3s
-cd deploy/tofu/environments/k3s && tofu apply
-
 # GCP Cloud Run
 cd deploy/tofu/environments/gcp && tofu apply
 

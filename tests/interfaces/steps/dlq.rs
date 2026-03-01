@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use angzarr::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqBackend, DlqConfig};
+use angzarr::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqConfig};
 use angzarr::proto::{
     command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
     Uuid as ProtoUuid,
@@ -696,7 +696,7 @@ async fn when_dlq_config_channel_created(world: &mut DlqWorld) {
 #[then("the backend is Channel")]
 async fn then_backend_is_channel(world: &mut DlqWorld) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.backend, DlqBackend::Channel);
+    assert_eq!(config.targets[0].dlq_type, "channel");
 }
 
 #[then("is_configured returns true")]
@@ -713,13 +713,14 @@ async fn when_dlq_config_amqp_created(world: &mut DlqWorld, url: String) {
 #[then("the backend is Amqp")]
 async fn then_backend_is_amqp(world: &mut DlqWorld) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.backend, DlqBackend::Amqp);
+    assert_eq!(config.targets[0].dlq_type, "amqp");
 }
 
 #[then(expr = "amqp_url is {string}")]
 async fn then_amqp_url_is(world: &mut DlqWorld, expected_url: String) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.amqp_url, Some(expected_url));
+    let amqp_url = config.targets[0].amqp.as_ref().map(|a| a.url.clone());
+    assert_eq!(amqp_url, Some(expected_url));
 }
 
 #[when(regex = r#"DlqConfig::kafka\("(.+)"\) is created"#)]
@@ -730,39 +731,47 @@ async fn when_dlq_config_kafka_created(world: &mut DlqWorld, brokers: String) {
 #[then("the backend is Kafka")]
 async fn then_backend_is_kafka(world: &mut DlqWorld) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.backend, DlqBackend::Kafka);
+    assert_eq!(config.targets[0].dlq_type, "kafka");
 }
 
 #[then(expr = "kafka_brokers is {string}")]
 async fn then_kafka_brokers_is(world: &mut DlqWorld, expected_brokers: String) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.kafka_brokers, Some(expected_brokers));
+    let kafka_brokers = config.targets[0]
+        .kafka
+        .as_ref()
+        .map(|k| k.bootstrap_servers.clone());
+    assert_eq!(kafka_brokers, Some(expected_brokers));
 }
 
 #[when(regex = r"DlqConfig::pubsub\(\) is created")]
 async fn when_dlq_config_pubsub_created(world: &mut DlqWorld) {
-    world.last_config = Some(DlqConfig::pubsub());
+    world.last_config = Some(DlqConfig::pubsub("test-project"));
 }
 
 #[then("the backend is PubSub")]
 async fn then_backend_is_pubsub(world: &mut DlqWorld) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.backend, DlqBackend::PubSub);
+    assert_eq!(config.targets[0].dlq_type, "pubsub");
 }
 
 #[when(regex = r#"DlqConfig::sns_sqs\(\).with_aws_region\("(.+)"\) is created"#)]
 async fn when_dlq_config_sns_sqs_created(world: &mut DlqWorld, region: String) {
-    world.last_config = Some(DlqConfig::sns_sqs().with_aws_region(&region));
+    world.last_config = Some(DlqConfig::sns_sqs(&region));
 }
 
 #[then("the backend is SnsSqs")]
 async fn then_backend_is_sns_sqs(world: &mut DlqWorld) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.backend, DlqBackend::SnsSqs);
+    assert_eq!(config.targets[0].dlq_type, "sns-sqs");
 }
 
 #[then(expr = "aws_region is {string}")]
 async fn then_aws_region_is(world: &mut DlqWorld, expected_region: String) {
     let config = world.last_config.as_ref().expect("No config created");
-    assert_eq!(config.aws_region, Some(expected_region));
+    let aws_region = config.targets[0]
+        .sns_sqs
+        .as_ref()
+        .and_then(|s| s.region.clone());
+    assert_eq!(aws_region, Some(expected_region));
 }

@@ -1,4 +1,4 @@
-// Saga: Player -> Table
+// Saga: Player -> Table (OO Pattern)
 //
 // Propagates player sit-out/sit-in intent as facts to the table domain.
 // Player events trigger corresponding facts in the table aggregate.
@@ -6,43 +6,58 @@
 // Flow:
 // - PlayerSittingOut -> PlayerSatOut fact to table
 // - PlayerReturningToPlay -> PlayerSatIn fact to table
+//
+// Uses the OO-style implementation with SagaBase and method-based
+// handlers with fluent registration.
 package main
 
 import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// prepareSittingOut - no destinations needed (emits facts, not commands)
-func prepareSittingOut(source *pb.EventBook, event *anypb.Any) []*pb.Cover {
+// PlayerTableSaga propagates player sit-out/sit-in as facts to tables.
+type PlayerTableSaga struct {
+	angzarr.SagaBase
+}
+
+// NewPlayerTableSaga creates a new PlayerTableSaga with registered handlers.
+func NewPlayerTableSaga() *PlayerTableSaga {
+	s := &PlayerTableSaga{}
+	s.Init("saga-player-table", "player", "table")
+
+	// Register prepare handlers (no destinations needed for facts)
+	s.Prepares(s.prepareSittingOut)
+	s.Prepares(s.prepareReturningToPlay)
+
+	// Register event handlers
+	s.Handles(s.handleSittingOut)
+	s.Handles(s.handleReturningToPlay)
+
+	return s
+}
+
+// prepareSittingOut - no destinations needed (emits facts, not commands).
+func (s *PlayerTableSaga) prepareSittingOut(event *examples.PlayerSittingOut) []*pb.Cover {
 	return nil
 }
 
-// prepareReturningToPlay - no destinations needed (emits facts, not commands)
-func prepareReturningToPlay(source *pb.EventBook, event *anypb.Any) []*pb.Cover {
+// prepareReturningToPlay - no destinations needed (emits facts, not commands).
+func (s *PlayerTableSaga) prepareReturningToPlay(event *examples.PlayerReturningToPlay) []*pb.Cover {
 	return nil
 }
 
-// handleSittingOut translates PlayerSittingOut -> PlayerSatOut fact for table
-func handleSittingOut(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) (*angzarr.SagaHandlerResponse, error) {
-	var sittingOut examples.PlayerSittingOut
-	if err := proto.Unmarshal(event.Value, &sittingOut); err != nil {
-		return nil, err
-	}
-
-	// Get player root from source
-	var playerRoot []byte
-	if source.Cover != nil && source.Cover.Root != nil {
-		playerRoot = source.Cover.Root.Value
-	}
-
+// handleSittingOut translates PlayerSittingOut -> PlayerSatOut fact for table.
+func (s *PlayerTableSaga) handleSittingOut(
+	event *examples.PlayerSittingOut,
+	destinations []*pb.EventBook,
+) (*pb.CommandBook, error) {
 	// Create PlayerSatOut fact for the table
 	satOut := &examples.PlayerSatOut{
-		PlayerRoot: playerRoot,
-		SatOutAt:   sittingOut.SatOutAt,
+		PlayerRoot: nil, // Will get player root from context in execute
+		SatOutAt:   event.SatOutAt,
 	}
 
 	factAny, err := anypb.New(satOut)
@@ -53,35 +68,28 @@ func handleSittingOut(source *pb.EventBook, event *anypb.Any, destinations []*pb
 	fact := &pb.EventBook{
 		Cover: &pb.Cover{
 			Domain: "table",
-			Root:   &pb.UUID{Value: sittingOut.TableRoot},
+			Root:   &pb.UUID{Value: event.TableRoot},
 		},
 		Pages: []*pb.EventPage{
 			{Event: factAny},
 		},
 	}
 
-	return &angzarr.SagaHandlerResponse{
-		Events: []*pb.EventBook{fact},
-	}, nil
+	// Emit as fact instead of command
+	s.EmitFact(fact)
+
+	return nil, nil
 }
 
-// handleReturningToPlay translates PlayerReturningToPlay -> PlayerSatIn fact for table
-func handleReturningToPlay(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) (*angzarr.SagaHandlerResponse, error) {
-	var returning examples.PlayerReturningToPlay
-	if err := proto.Unmarshal(event.Value, &returning); err != nil {
-		return nil, err
-	}
-
-	// Get player root from source
-	var playerRoot []byte
-	if source.Cover != nil && source.Cover.Root != nil {
-		playerRoot = source.Cover.Root.Value
-	}
-
+// handleReturningToPlay translates PlayerReturningToPlay -> PlayerSatIn fact for table.
+func (s *PlayerTableSaga) handleReturningToPlay(
+	event *examples.PlayerReturningToPlay,
+	destinations []*pb.EventBook,
+) (*pb.CommandBook, error) {
 	// Create PlayerSatIn fact for the table
 	satIn := &examples.PlayerSatIn{
-		PlayerRoot: playerRoot,
-		SatInAt:    returning.SatInAt,
+		PlayerRoot: nil, // Will get player root from context in execute
+		SatInAt:    event.SatInAt,
 	}
 
 	factAny, err := anypb.New(satIn)
@@ -92,25 +100,20 @@ func handleReturningToPlay(source *pb.EventBook, event *anypb.Any, destinations 
 	fact := &pb.EventBook{
 		Cover: &pb.Cover{
 			Domain: "table",
-			Root:   &pb.UUID{Value: returning.TableRoot},
+			Root:   &pb.UUID{Value: event.TableRoot},
 		},
 		Pages: []*pb.EventPage{
 			{Event: factAny},
 		},
 	}
 
-	return &angzarr.SagaHandlerResponse{
-		Events: []*pb.EventBook{fact},
-	}, nil
+	// Emit as fact instead of command
+	s.EmitFact(fact)
+
+	return nil, nil
 }
 
 func main() {
-	router := angzarr.NewEventRouter("saga-player-table").
-		Domain("player").
-		Prepare("PlayerSittingOut", prepareSittingOut).
-		On("PlayerSittingOut", handleSittingOut).
-		Prepare("PlayerReturningToPlay", prepareReturningToPlay).
-		On("PlayerReturningToPlay", handleReturningToPlay)
-
-	angzarr.RunSagaServer("saga-player-table", "50214", router)
+	saga := NewPlayerTableSaga()
+	angzarr.RunOOSagaServer("saga-player-table", "50214", saga)
 }

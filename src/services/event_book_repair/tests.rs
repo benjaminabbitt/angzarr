@@ -296,13 +296,13 @@ fn test_extract_identity_preserves_domain() {
 #[test]
 fn test_repair_error_missing_cover_display() {
     let err = RepairError::MissingCover;
-    assert!(err.to_string().contains("missing cover"));
+    assert_eq!(err.to_string(), errmsg::MISSING_COVER);
 }
 
 #[test]
 fn test_repair_error_missing_root_display() {
     let err = RepairError::MissingRoot;
-    assert!(err.to_string().contains("missing root"));
+    assert_eq!(err.to_string(), errmsg::MISSING_ROOT);
 }
 
 #[test]
@@ -311,27 +311,30 @@ fn test_repair_error_invalid_uuid_display() {
     let bad_bytes: [u8; 5] = [1, 2, 3, 4, 5];
     let uuid_err = Uuid::from_slice(&bad_bytes).unwrap_err();
     let err = RepairError::InvalidUuid(uuid_err);
-    assert!(err.to_string().contains("Invalid UUID"));
+    assert!(err
+        .to_string()
+        .starts_with(errmsg::INVALID_UUID.trim_end_matches(": ")));
 }
 
 #[test]
 fn test_repair_error_grpc_display() {
     let status = tonic::Status::internal("test error");
     let err: RepairError = status.into();
-    assert!(err.to_string().contains("gRPC error"));
+    assert!(err
+        .to_string()
+        .starts_with(errmsg::GRPC_ERROR.trim_end_matches(": ")));
 }
 
 #[test]
 fn test_repair_error_invalid_uri_display() {
     let err = RepairError::InvalidUri("bad://uri".to_string());
-    assert!(err.to_string().contains("Invalid URI"));
-    assert!(err.to_string().contains("bad://uri"));
+    assert_eq!(err.to_string(), format!("{}bad://uri", errmsg::INVALID_URI));
 }
 
 #[test]
 fn test_repair_error_no_event_book_display() {
     let err = RepairError::NoEventBookReturned;
-    assert!(err.to_string().contains("No EventBook"));
+    assert_eq!(err.to_string(), errmsg::NO_EVENT_BOOK_RETURNED);
 }
 
 #[test]

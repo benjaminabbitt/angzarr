@@ -44,6 +44,7 @@ mod bus_backend;
 mod steps;
 
 use cucumber::World;
+use steps::aggregate_handler::AggregateHandlerWorld;
 use steps::dlq::DlqWorld;
 use steps::editions::EditionWorld;
 use steps::event_bus::EventBusWorld;
@@ -54,6 +55,7 @@ use steps::notification::NotificationWorld;
 use steps::payload_offloading::PayloadWorld;
 use steps::position_store::PositionStoreWorld;
 use steps::snapshot_store::SnapshotStoreWorld;
+use steps::speculative::SpeculativeWorld;
 use steps::sync_modes::SyncModeWorld;
 use steps::upcasting::UpcasterWorld;
 
@@ -141,5 +143,19 @@ async fn main() {
     DlqWorld::cucumber()
         .fail_on_skipped()
         .run("tests/interfaces/features/dlq.feature")
+        .await;
+
+    // Run Speculative Execution tests
+    println!("\n=== Running Speculative Execution Interface Tests ===\n");
+    SpeculativeWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/speculative_execution.feature")
+        .await;
+
+    // Run AggregateHandler tests
+    println!("\n=== Running AggregateHandler Interface Tests ===\n");
+    AggregateHandlerWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/aggregate_handler.feature")
         .await;
 }

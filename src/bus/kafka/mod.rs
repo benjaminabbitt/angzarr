@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use futures::future::BoxFuture;
 use prost::Message;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
@@ -15,9 +16,92 @@ use rdkafka::ClientConfig;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn, Instrument};
 
-use super::{BusError, EventBus, EventHandler, PublishResult, Result};
+use super::config::{EventBusMode, KafkaConfig, MessagingConfig};
+use super::error::{BusError, Result};
+use super::factory::BusBackend;
+use super::traits::{EventBus, EventHandler, PublishResult};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    BusBackend {
+        try_create: |config, mode| Box::pin(try_create(config, mode)),
+    }
+}
+
+async fn try_create(
+    config: &MessagingConfig,
+    mode: EventBusMode,
+) -> Option<Result<Arc<dyn EventBus>>> {
+    if config.messaging_type != "kafka" {
+        return None;
+    }
+
+    let kafka_config = match mode {
+        EventBusMode::Publisher => {
+            let mut cfg = KafkaEventBusConfig::publisher(&config.kafka.bootstrap_servers)
+                .with_topic_prefix(&config.kafka.topic_prefix);
+            cfg = apply_kafka_security(cfg, &config.kafka);
+            cfg
+        }
+        EventBusMode::Subscriber { queue, domain } => {
+            let mut cfg = KafkaEventBusConfig::subscriber(
+                &config.kafka.bootstrap_servers,
+                queue,
+                vec![domain],
+            )
+            .with_topic_prefix(&config.kafka.topic_prefix);
+            cfg = apply_kafka_security(cfg, &config.kafka);
+            cfg
+        }
+        EventBusMode::SubscriberAll { queue } => {
+            let domains = config.kafka.domains.clone().unwrap_or_default();
+            let mut cfg = if domains.is_empty() {
+                KafkaEventBusConfig::subscriber_all(&config.kafka.bootstrap_servers, queue)
+            } else {
+                KafkaEventBusConfig::subscriber(&config.kafka.bootstrap_servers, queue, domains)
+            };
+            cfg = cfg.with_topic_prefix(&config.kafka.topic_prefix);
+            cfg = apply_kafka_security(cfg, &config.kafka);
+            cfg
+        }
+    };
+
+    match KafkaEventBus::new(kafka_config).await {
+        Ok(bus) => {
+            info!(messaging_type = "kafka", "Event bus initialized");
+            Some(Ok(Arc::new(bus)))
+        }
+        Err(e) => Some(Err(e)),
+    }
+}
+
+fn apply_kafka_security(
+    mut cfg: KafkaEventBusConfig,
+    kafka_cfg: &KafkaConfig,
+) -> KafkaEventBusConfig {
+    if let (Some(ref user), Some(ref pass), Some(ref mechanism)) = (
+        &kafka_cfg.sasl_username,
+        &kafka_cfg.sasl_password,
+        &kafka_cfg.sasl_mechanism,
+    ) {
+        cfg = cfg.with_sasl(user, pass, mechanism);
+    }
+
+    if let Some(ref protocol) = kafka_cfg.security_protocol {
+        cfg = cfg.with_security_protocol(protocol);
+    }
+
+    if let Some(ref ca) = kafka_cfg.ssl_ca_location {
+        cfg = cfg.with_ssl_ca(ca);
+    }
+
+    cfg
+}
 
 /// Configuration for Kafka connection.
 #[derive(Clone, Debug)]

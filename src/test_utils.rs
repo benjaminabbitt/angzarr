@@ -104,6 +104,39 @@ pub fn make_empty_event_book(domain: &str) -> EventBook {
     make_event_book(domain, vec![])
 }
 
+/// Create an `EventBook` with domain, random root, correlation ID, and provided pages.
+pub fn make_event_book_with_correlation(
+    domain: &str,
+    correlation_id: &str,
+    pages: Vec<EventPage>,
+) -> EventBook {
+    EventBook {
+        cover: Some(make_cover_full(domain, Uuid::new_v4(), correlation_id)),
+        pages,
+        snapshot: None,
+        ..Default::default()
+    }
+}
+
+/// Create an `EventBook` with a single test event page and correlation ID.
+/// Convenience helper for subscription/streaming tests.
+pub fn make_test_event_book(correlation_id: &str) -> EventBook {
+    make_event_book_with_correlation(
+        "test",
+        correlation_id,
+        vec![make_event_page_typed(0, "test.Event")],
+    )
+}
+
+/// Create an `EventBook` with multiple pages and correlation ID.
+/// Convenience helper for multi-page event tests.
+pub fn make_multi_page_event_book(correlation_id: &str, page_count: usize) -> EventBook {
+    let pages = (0..page_count)
+        .map(|i| make_event_page_typed(i as u32, &format!("type.googleapis.com/test.Event{}", i)))
+        .collect();
+    make_event_book_with_correlation("test", correlation_id, pages)
+}
+
 /// Create a `CommandBook` with domain, specific root, and a test command.
 pub fn make_command_book(domain: &str, root: Uuid) -> CommandBook {
     make_command_book_with_sequence(domain, root, 0)

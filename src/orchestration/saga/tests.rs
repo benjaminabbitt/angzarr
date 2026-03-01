@@ -19,7 +19,7 @@ impl SagaRetryContext for AlwaysSucceeds {
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(vec![])
     }
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         _destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
@@ -41,7 +41,7 @@ impl SagaRetryContext for RetryingSagaContext {
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(vec![])
     }
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         _destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
@@ -67,7 +67,7 @@ impl SagaRetryContext for AlwaysRejects {
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(vec![])
     }
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         _destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
@@ -291,7 +291,7 @@ impl SagaRetryContext for CachedStateContext {
             external_id: String::new(),
         }])
     }
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         _destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {

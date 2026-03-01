@@ -8,7 +8,7 @@ mod limits;
 mod server;
 
 pub use client::{
-    ProcessManagerConfig, SagaCompensationConfig, ServiceEndpoint, TimeoutConfig,
+    ProcessManagerClientConfig, SagaCompensationConfig, ServiceEndpoint, TimeoutConfig,
     DEFAULT_SAGA_FALLBACK_DOMAIN,
 };
 pub use limits::ResourceLimits;
@@ -103,7 +103,7 @@ pub struct Config {
     /// Saga endpoints.
     pub sagas: Option<Vec<ServiceEndpoint>>,
     /// Process manager configurations.
-    pub process_managers: Option<Vec<ProcessManagerConfig>>,
+    pub process_managers: Option<Vec<ProcessManagerClientConfig>>,
     /// Saga compensation configuration.
     pub saga_compensation: Option<SagaCompensationConfig>,
     /// Standalone mode configuration (services, gateway).

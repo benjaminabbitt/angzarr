@@ -34,7 +34,7 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
 #[test]
 fn test_messaging_config_default() {
     let config = MessagingConfig::default();
-    assert_eq!(config.messaging_type, MessagingType::Amqp);
+    assert_eq!(config.messaging_type, "channel");
     assert_eq!(config.amqp.url, "amqp://localhost:5672");
 }
 
@@ -124,6 +124,69 @@ fn test_any_target_matches_none() {
         },
     ];
     assert!(!any_target_matches(&book, &targets));
+}
+
+// ============================================================================
+// domain_matches_any tests
+// ============================================================================
+
+#[test]
+fn test_domain_matches_any_empty_patterns_matches_all() {
+    assert!(domain_matches_any("anything", &[]));
+    assert!(domain_matches_any("order", &[]));
+    assert!(domain_matches_any("deep.nested.domain", &[]));
+}
+
+#[test]
+fn test_domain_matches_any_wildcard_matches_all() {
+    let patterns = vec!["*".to_string()];
+    assert!(domain_matches_any("order", &patterns));
+    assert!(domain_matches_any("inventory", &patterns));
+    assert!(domain_matches_any("any.domain", &patterns));
+}
+
+#[test]
+fn test_domain_matches_any_exact_match() {
+    let patterns = vec!["order".to_string()];
+    assert!(domain_matches_any("order", &patterns));
+    assert!(!domain_matches_any("orders", &patterns));
+    assert!(!domain_matches_any("order.sub", &patterns));
+}
+
+#[test]
+fn test_domain_matches_any_hierarchical_prefix() {
+    let patterns = vec!["game.*".to_string()];
+
+    // Should match subdomains (domain.subdomain format)
+    assert!(domain_matches_any("game.player", &patterns));
+    assert!(domain_matches_any("game.table", &patterns));
+    assert!(domain_matches_any("game.x", &patterns));
+
+    // Should not match exact domain (needs subdomain)
+    assert!(!domain_matches_any("game", &patterns));
+
+    // Should not match unrelated domains
+    assert!(!domain_matches_any("other", &patterns));
+
+    // Should not match domains that just start with prefix (no dot separator)
+    assert!(!domain_matches_any("gameplay", &patterns));
+    assert!(!domain_matches_any("gamer", &patterns));
+}
+
+#[test]
+fn test_domain_matches_any_multiple_patterns() {
+    let patterns = vec!["order".to_string(), "inventory.*".to_string()];
+
+    assert!(domain_matches_any("order", &patterns));
+    assert!(domain_matches_any("inventory.stock", &patterns));
+    assert!(!domain_matches_any("shipping", &patterns));
+}
+
+#[test]
+fn test_domain_matches_any_no_match() {
+    let patterns = vec!["order".to_string(), "inventory".to_string()];
+    assert!(!domain_matches_any("shipping", &patterns));
+    assert!(!domain_matches_any("customer", &patterns));
 }
 
 // ============================================================================

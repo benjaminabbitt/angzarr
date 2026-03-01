@@ -30,7 +30,7 @@ post-commit:
         - "Containerfile"
         - "examples/rust/**"
         - "deploy/k8s/**"
-        - "deploy/k3s/**"
+        - "deploy/kind/**"
 
 pre-commit:
   parallel: false

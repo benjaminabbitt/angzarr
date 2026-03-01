@@ -17,6 +17,14 @@
 //! - Partition Key: `pk` (String) - Format: `{handler}#{domain}#{edition}#{root_hex}`
 //! - Attributes: `sequence` (Number)
 
+use std::sync::Arc;
+
+use serde::Deserialize;
+use tracing::info;
+
+use super::factory::{PositionBackend, StoresBackend};
+use super::{EventStore, PositionStore, SnapshotStore};
+
 mod event_store;
 mod position_store;
 mod snapshot_store;
@@ -24,8 +32,6 @@ mod snapshot_store;
 pub use event_store::DynamoEventStore;
 pub use position_store::DynamoPositionStore;
 pub use snapshot_store::DynamoSnapshotStore;
-
-use serde::Deserialize;
 
 /// DynamoDB configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -52,5 +58,83 @@ impl Default for DynamoConfig {
             positions_table: "angzarr-positions".to_string(),
             endpoint_url: None,
         }
+    }
+}
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    StoresBackend {
+        try_create: |config| {
+            let storage_type = config.storage_type.clone();
+            let dynamo_config = config.dynamo.clone();
+            Box::pin(async move {
+                if storage_type != "dynamo" {
+                    return None;
+                }
+
+                info!(
+                    "Storage: dynamodb tables={}/{}/{}",
+                    dynamo_config.events_table,
+                    dynamo_config.snapshots_table,
+                    dynamo_config.positions_table
+                );
+
+                let event_store = match DynamoEventStore::new(
+                    &dynamo_config.events_table,
+                    dynamo_config.endpoint_url.as_deref(),
+                )
+                .await
+                {
+                    Ok(store) => Arc::new(store) as Arc<dyn EventStore>,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                let snapshot_store = match DynamoSnapshotStore::new(
+                    &dynamo_config.snapshots_table,
+                    dynamo_config.endpoint_url.as_deref(),
+                )
+                .await
+                {
+                    Ok(store) => Arc::new(store) as Arc<dyn SnapshotStore>,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                Some(Ok((event_store, snapshot_store)))
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PositionBackend {
+        try_create: |config| {
+            let storage_type = config.storage_type.clone();
+            let dynamo_config = config.dynamo.clone();
+            Box::pin(async move {
+                if storage_type != "dynamo" {
+                    return None;
+                }
+
+                info!(
+                    "PositionStore: dynamodb table={}",
+                    dynamo_config.positions_table
+                );
+
+                let position_store = match DynamoPositionStore::new(
+                    &dynamo_config.positions_table,
+                    dynamo_config.endpoint_url.as_deref(),
+                )
+                .await
+                {
+                    Ok(store) => Arc::new(store) as Arc<dyn PositionStore>,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                Some(Ok(position_store))
+            })
+        },
     }
 }

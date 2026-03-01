@@ -16,28 +16,39 @@ use crate::proto_ext::EventPageExt;
 /// Result type for repair operations.
 pub type Result<T> = std::result::Result<T, RepairError>;
 
+/// Error message constants for repair operations.
+pub mod errmsg {
+    pub const MISSING_COVER: &str = "EventBook missing cover";
+    pub const MISSING_ROOT: &str = "EventBook missing root UUID";
+    pub const INVALID_UUID: &str = "Invalid UUID: ";
+    pub const GRPC_ERROR: &str = "gRPC error: ";
+    pub const TRANSPORT_ERROR: &str = "Transport error: ";
+    pub const INVALID_URI: &str = "Invalid URI: ";
+    pub const NO_EVENT_BOOK_RETURNED: &str = "No EventBook returned from query";
+}
+
 /// Errors that can occur during EventBook repair.
 #[derive(Debug, thiserror::Error)]
 pub enum RepairError {
-    #[error("EventBook missing cover")]
+    #[error("{}", errmsg::MISSING_COVER)]
     MissingCover,
 
-    #[error("EventBook missing root UUID")]
+    #[error("{}", errmsg::MISSING_ROOT)]
     MissingRoot,
 
-    #[error("Invalid UUID: {0}")]
+    #[error("{}{}", errmsg::INVALID_UUID, .0)]
     InvalidUuid(#[from] uuid::Error),
 
-    #[error("gRPC error: {0}")]
+    #[error("{}{}", errmsg::GRPC_ERROR, .0)]
     Grpc(Box<tonic::Status>),
 
-    #[error("Transport error: {0}")]
+    #[error("{}{}", errmsg::TRANSPORT_ERROR, .0)]
     Transport(#[from] tonic::transport::Error),
 
-    #[error("Invalid URI: {0}")]
+    #[error("{}{}", errmsg::INVALID_URI, .0)]
     InvalidUri(String),
 
-    #[error("No EventBook returned from query")]
+    #[error("{}", errmsg::NO_EVENT_BOOK_RETURNED)]
     NoEventBookReturned,
 }
 

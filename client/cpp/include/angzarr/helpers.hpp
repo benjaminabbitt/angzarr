@@ -112,5 +112,19 @@ EventBook new_event_book(const Events&... events) {
     return book;
 }
 
+/**
+ * Create a new EventBook with a single event and sequence number.
+ * Used by CommandHandlerBase for handler dispatch.
+ */
+template <typename Event>
+EventBook new_event_book(const Event& event, int seq) {
+    EventBook book;
+    auto* page = book.add_pages();
+    page->set_sequence(seq);
+    page->mutable_event()->PackFrom(event, "type.googleapis.com/");
+    *page->mutable_created_at() = now();
+    return book;
+}
+
 }  // namespace helpers
 }  // namespace angzarr

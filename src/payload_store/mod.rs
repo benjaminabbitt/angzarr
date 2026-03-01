@@ -52,25 +52,35 @@ use thiserror::Error;
 
 use crate::proto::{PayloadReference, PayloadStorageType};
 
+/// Error message constants for payload store operations.
+pub mod errmsg {
+    pub const STORE_FAILED: &str = "Failed to store payload: ";
+    pub const RETRIEVE_FAILED: &str = "Failed to retrieve payload: ";
+    pub const NOT_FOUND: &str = "Payload not found: ";
+    pub const INTEGRITY_FAILED: &str = "Integrity check failed: ";
+    pub const IO_ERROR: &str = "IO error: ";
+    pub const INVALID_URI: &str = "Invalid URI: ";
+}
+
 /// Errors that can occur during payload store operations.
 #[derive(Debug, Error)]
 pub enum PayloadStoreError {
-    #[error("Failed to store payload: {0}")]
+    #[error("{}{}", errmsg::STORE_FAILED, .0)]
     StoreFailed(String),
 
-    #[error("Failed to retrieve payload: {0}")]
+    #[error("{}{}", errmsg::RETRIEVE_FAILED, .0)]
     RetrieveFailed(String),
 
-    #[error("Payload not found: {0}")]
+    #[error("{}{}", errmsg::NOT_FOUND, .0)]
     NotFound(String),
 
-    #[error("Integrity check failed: expected {expected}, got {actual}")]
+    #[error("{}expected {expected}, got {actual}", errmsg::INTEGRITY_FAILED)]
     IntegrityFailed { expected: String, actual: String },
 
-    #[error("IO error: {0}")]
+    #[error("{}{}", errmsg::IO_ERROR, .0)]
     Io(#[from] std::io::Error),
 
-    #[error("Invalid URI: {0}")]
+    #[error("{}{}", errmsg::INVALID_URI, .0)]
     InvalidUri(String),
 }
 

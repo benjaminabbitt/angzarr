@@ -7,8 +7,9 @@ metadata:
 # Usage: skaffold build -f skaffold-base.yaml --file-output=base-build.json
 
 build:
+  # Git-based tags - unique per commit, no registry checks during tag computation
   tagPolicy:
-    inputDigest: {}
+    gitCommit: {}
   local:
     push: false
     useBuildkit: true

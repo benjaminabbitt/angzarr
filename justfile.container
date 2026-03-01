@@ -99,25 +99,215 @@ clean:
     cargo clean
 
 # === Coverage ===
+# Uses cargo-llvm-cov for accurate line/branch coverage.
+# Excludes: proto generated code, build.rs, main.rs binaries.
 
-# Run full workspace coverage (unit + integration tests)
-cov:
-    cargo llvm-cov --workspace --features sqlite --ignore-filename-regex "(proto/|build\.rs|main\.rs)"
+COV_IGNORE := "--ignore-filename-regex '(proto/|build\\.rs|main\\.rs)'"
+COV_FEATURES := "--features 'sqlite test-utils'"
 
-# Run coverage for acceptance/Gherkin tests only
+# Run unit tests with coverage
+cov-unit:
+    cargo llvm-cov --lib {{COV_FEATURES}} {{COV_IGNORE}}
+
+# Run standalone integration tests with coverage
+cov-integration:
+    cargo llvm-cov --test standalone_integration {{COV_FEATURES}} {{COV_IGNORE}}
+
+# Run interface/Gherkin tests with coverage
 cov-gherkin:
-    cargo llvm-cov --test interfaces --features sqlite --ignore-filename-regex "(proto/|build\.rs)"
+    cargo llvm-cov --test interfaces {{COV_FEATURES}} {{COV_IGNORE}}
 
-# Generate HTML coverage report and open it
-cov-html:
-    cargo llvm-cov --workspace --features sqlite --html --ignore-filename-regex "(proto/|build\.rs|main\.rs)"
-    @echo "Coverage report generated at target/llvm-cov/html/index.html"
+# Run all local tests with coverage (unit + integration + gherkin + client)
+cov:
+    cargo llvm-cov \
+        --workspace \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        {{COV_FEATURES}} \
+        {{COV_IGNORE}}
 
-# Quick terminal summary of coverage
+# Quick terminal summary of coverage (all local tests)
 cov-summary:
-    cargo llvm-cov --workspace --features sqlite --ignore-filename-regex "(proto/|build\.rs|main\.rs)" --summary-only
+    cargo llvm-cov \
+        --workspace \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        {{COV_FEATURES}} \
+        {{COV_IGNORE}} \
+        --summary-only
+
+# Generate HTML coverage report (all local tests)
+cov-html:
+    cargo llvm-cov \
+        --workspace \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        {{COV_FEATURES}} \
+        {{COV_IGNORE}} \
+        --html
+    @echo "Coverage report generated at target/llvm-cov/html/index.html"
 
 # Generate LCOV format for CI integration
 cov-lcov:
-    cargo llvm-cov --workspace --features sqlite --lcov --output-path target/llvm-cov/lcov.info --ignore-filename-regex "(proto/|build\.rs|main\.rs)"
+    cargo llvm-cov \
+        --workspace \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        {{COV_FEATURES}} \
+        {{COV_IGNORE}} \
+        --lcov --output-path target/llvm-cov/lcov.info
+
+# === Contract Test Coverage (requires testcontainers/docker socket) ===
+
+# Run PostgreSQL contract tests with coverage
+cov-contract-postgres:
+    cargo llvm-cov --test interfaces --features "postgres test-utils" {{COV_IGNORE}}
+
+# Run Redis contract tests with coverage
+cov-contract-redis:
+    cargo llvm-cov --test interfaces --features "redis test-utils" {{COV_IGNORE}}
+
+# Run AMQP bus contract tests with coverage
+cov-contract-amqp:
+    cargo llvm-cov --test bus_amqp --features amqp {{COV_IGNORE}} -- --test-threads=1
+
+# Run Kafka bus contract tests with coverage
+cov-contract-kafka:
+    cargo llvm-cov --test bus_kafka --features kafka {{COV_IGNORE}} -- --test-threads=1
+
+# Run all contract tests with combined coverage (requires docker socket)
+cov-contracts:
+    cargo llvm-cov \
+        --test interfaces \
+        --test bus_amqp \
+        --features "postgres test-utils amqp" \
+        {{COV_IGNORE}} \
+        -- --test-threads=1
+
+# === Full Coverage (all test types) ===
+
+# Run all tests with combined coverage (local + contracts, requires docker socket)
+cov-full:
+    cargo llvm-cov \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        --test bus_amqp \
+        --features "sqlite postgres test-utils amqp" \
+        {{COV_IGNORE}}
+
+# Full coverage with HTML report (requires docker socket)
+cov-full-html:
+    cargo llvm-cov \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        --test bus_amqp \
+        --features "sqlite postgres test-utils amqp" \
+        {{COV_IGNORE}} \
+        --html
+    @echo "Full coverage report generated at target/llvm-cov/html/index.html"
+
+# Full coverage summary (requires docker socket)
+cov-full-summary:
+    cargo llvm-cov \
+        --lib \
+        --test standalone_integration \
+        --test interfaces \
+        --test bus_amqp \
+        --features "sqlite postgres test-utils amqp" \
+        {{COV_IGNORE}} \
+        --summary-only
+
+# === Mutation Testing ===
+# Uses cargo-mutants to verify test quality by introducing mutations.
+# Mutations that aren't caught by tests indicate weak test coverage.
+# Output: mutants.out/ (gitignored)
+#
+# Uses --in-place to avoid copying the entire workspace (saves ~200GB disk).
+# Safe because mutations are reverted after each test.
+
+MUTANTS_TIMEOUT := "120"
+MUTANTS_FEATURES := "--features 'sqlite test-utils'"
+
+# Run mutation tests on a specific file
+mutants FILE:
+    cargo mutants \
+        --in-place \
+        --timeout {{MUTANTS_TIMEOUT}} \
+        -f {{FILE}} \
+        -- {{MUTANTS_FEATURES}}
+
+# Run mutation tests on handlers/core (aggregate, projector, saga, PM)
+mutants-core:
+    cargo mutants \
+        --in-place \
+        --timeout {{MUTANTS_TIMEOUT}} \
+        -f src/handlers/core/aggregate.rs \
+        -f src/handlers/core/projector.rs \
+        -f src/handlers/core/saga.rs \
+        -f src/handlers/core/process_manager.rs \
+        -- {{MUTANTS_FEATURES}}
+    @just mutants-summary
+
+# Alias for backwards compatibility
+mutants-handlers: mutants-core
+
+# Run mutation tests on bus module (event routing)
+mutants-bus:
+    cargo mutants \
+        --in-place \
+        --timeout {{MUTANTS_TIMEOUT}} \
+        -f src/bus/traits.rs \
+        -f src/bus/mod.rs \
+        -- {{MUTANTS_FEATURES}}
+
+# Run mutation tests on orchestration (saga, aggregate, PM)
+mutants-orchestration:
+    cargo mutants \
+        --in-place \
+        --timeout {{MUTANTS_TIMEOUT}} \
+        -f src/orchestration/saga/mod.rs \
+        -f src/orchestration/aggregate/mod.rs \
+        -f src/orchestration/process_manager/mod.rs \
+        -- {{MUTANTS_FEATURES}}
+
+# Show mutation testing summary
+mutants-summary:
+    @if [ -f mutants.out/outcomes.json ]; then \
+        caught=$$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants.out/outcomes.json); \
+        missed=$$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants.out/outcomes.json); \
+        unviable=$$(jq '[.outcomes[] | select(.summary == "Unviable")] | length' mutants.out/outcomes.json); \
+        total=$$((caught + missed)); \
+        if [ $$total -gt 0 ]; then \
+            rate=$$((100 * caught / total)); \
+        else \
+            rate=0; \
+        fi; \
+        echo ""; \
+        echo "=== Mutation Testing Summary ==="; \
+        echo "Caught (killed): $$caught"; \
+        echo "Missed (survived): $$missed"; \
+        echo "Unviable (won't compile): $$unviable"; \
+        echo "Kill rate: $$rate% ($$caught/$$total viable)"; \
+        echo ""; \
+        if [ $$missed -gt 0 ]; then \
+            echo "=== Surviving Mutants ==="; \
+            jq -r '.outcomes[] | select(.summary == "MissedMutant") | .scenario' mutants.out/outcomes.json; \
+        fi; \
+    else \
+        echo "No mutation results found. Run 'just mutants-core' first."; \
+    fi
+
+# List surviving mutants (mutations not caught by tests)
+mutants-survivors:
+    @if [ -f mutants.out/outcomes.json ]; then \
+        jq -r '.outcomes[] | select(.summary == "MissedMutant") | .scenario' mutants.out/outcomes.json; \
+    else \
+        echo "No mutation results found. Run 'just mutants-core' first."; \
+    fi
 

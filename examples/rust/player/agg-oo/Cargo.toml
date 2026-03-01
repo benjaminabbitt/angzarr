@@ -1,0 +1,19 @@
+[package]
+name = "agg-player-oo"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "agg-player-oo"
+path = "src/main.rs"
+
+[dependencies]
+angzarr-client.workspace = true
+angzarr-macros.workspace = true
+tokio.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+tonic.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+hex.workspace = true

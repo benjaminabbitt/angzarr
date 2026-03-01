@@ -5,7 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Player.Agg;
 
 /// <summary>
-/// Player aggregate gRPC server entry point.
+/// Player aggregate gRPC server entry point (functional pattern).
+///
+/// Uses CommandRouter with standalone functional handlers following
+/// the guard/validate/compute pattern.
 /// </summary>
 public class Program
 {
@@ -16,7 +19,6 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddGrpc();
         builder.Services.AddSingleton(_ => PlayerRouter.Create());
-        builder.Services.AddSingleton<PlayerAggregate>();
 
         builder.WebHost.ConfigureKestrel(options =>
         {

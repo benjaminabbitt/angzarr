@@ -6,7 +6,8 @@
 # Provides: Python 3.11, pip, uv, grpcio-tools
 # Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
+# BASE_IMAGE must be provided via build arg (no default to avoid registry lookups)
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 ARG UV_VERSION=0.10.0

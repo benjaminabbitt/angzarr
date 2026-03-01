@@ -67,7 +67,7 @@ default = ["standalone"]
 # standalone: Local dev, no external deps
 standalone = ["sqlite", "channel"]
 # k8s: Generic Kubernetes with Postgres + RabbitMQ
-k8s = ["postgres", "amqp", "otel"]
+k8s = ["postgres", "amqp", "otel", "dep:kube", "dep:k8s-openapi"]
 # gcp-cloudrun: GCP serverless with Cloud SQL + Pub/Sub + GCS
 gcp-cloudrun = ["postgres", "pubsub", "gcs", "otel"]
 # gcp-k8s: GCP Kubernetes with Bigtable + Pub/Sub + GCS
@@ -157,6 +157,7 @@ futures = "0.3"
 chrono = "0.4"
 hex = "0.4"
 serde_json = "1"
+inventory = "0.3"
 
 # Protobuf reflection (for logging projector)
 prost-reflect = { version = "0.14", features = ["serde"] }
@@ -220,12 +221,10 @@ bigtable_rs = { version = "0.2", optional = true }
 # Random (for lossy testing bus)
 rand = { version = "0.9", optional = true }
 
-# Kubernetes API (for gateway service discovery)
-kube = { version = "0.98", features = ["runtime", "client"] }
-k8s-openapi = { version = "0.24", features = ["v1_29"] }
+# Kubernetes API (for gateway service discovery) - optional, k8s feature only
+kube = { version = "0.98", features = ["runtime", "client"], optional = true }
+k8s-openapi = { version = "0.24", features = ["v1_29"], optional = true }
 
-# DNS resolution (for SRV-based service discovery)
-hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
 sha2 = "0.10.9"
 
 # Unix process management (for standalone orchestrator)

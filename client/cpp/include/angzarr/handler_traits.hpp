@@ -14,6 +14,25 @@
 namespace angzarr {
 
 // ============================================================================
+// Type Extraction for Handler Registration
+// ============================================================================
+
+namespace handler_traits {
+
+/**
+ * Extract type suffix from a protobuf message type.
+ * Uses protobuf's descriptor to get the simple type name.
+ *
+ * Example: examples::PlayerRegistered -> "PlayerRegistered"
+ */
+template <typename T>
+std::string type_suffix() {
+    return T::descriptor()->name();
+}
+
+}  // namespace handler_traits
+
+// ============================================================================
 // Common Types
 // ============================================================================
 
@@ -506,6 +525,14 @@ class ProcessManagerDomainHandler {
         return RejectionHandlerResponse::empty();
     }
 };
+
+// ============================================================================
+// Backward Compatibility Aliases
+// ============================================================================
+
+/// @deprecated Use CommandHandlerDomainHandler instead
+template <typename S>
+using AggregateDomainHandler = CommandHandlerDomainHandler<S>;
 
 // ============================================================================
 // Projector Handler Trait

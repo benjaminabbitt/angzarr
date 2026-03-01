@@ -1,10 +1,11 @@
 """Process manager for hand flow orchestration."""
 
 import asyncio
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum, auto
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -13,6 +14,9 @@ from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.proto.examples import table_pb2 as table
+
+if TYPE_CHECKING:
+    pass  # HandProcess is defined below in this file
 
 
 class HandPhase(Enum):
@@ -27,6 +31,136 @@ class HandPhase(Enum):
     SHOWDOWN = auto()
     AWARDING_POT = auto()
     COMPLETE = auto()
+
+
+# =============================================================================
+# Game Variant Strategy Pattern
+# =============================================================================
+
+
+class GameVariantStrategy(ABC):
+    """Strategy for game variant-specific phase advancement.
+
+    Different poker variants have different betting structures:
+    - Hold'em/Omaha: PREFLOP -> FLOP -> TURN -> RIVER -> SHOWDOWN
+    - Five Card Draw: PREFLOP -> DRAW -> POST_DRAW_BETTING -> SHOWDOWN
+
+    Each strategy implements the phase transitions for its variant.
+    """
+
+    @abstractmethod
+    def advance_phase(
+        self,
+        process: "HandProcess",
+        active_count: int,
+        build_deal_community_cmd: Callable[["HandProcess", int], types.CommandBook],
+        build_showdown_cmd: Callable[["HandProcess"], Optional[types.CommandBook]],
+        start_betting: Callable[["HandProcess"], None],
+    ) -> Optional[types.CommandBook]:
+        """Advance to the next phase and return the command to execute.
+
+        Args:
+            process: Current hand process state
+            active_count: Number of active (not folded, not all-in) players
+            build_deal_community_cmd: Function to build DealCommunityCards command
+            build_showdown_cmd: Function to build StartShowdown command
+            start_betting: Function to start a new betting round
+
+        Returns:
+            Command to execute for the next phase, or None if waiting for player action
+        """
+        pass
+
+
+class HoldemStrategy(GameVariantStrategy):
+    """Phase advancement for Texas Hold'em and Omaha.
+
+    Betting structure:
+    - PREFLOP: After blinds, deal 3 community cards (flop)
+    - FLOP: Deal 1 card (turn)
+    - TURN: Deal 1 card (river)
+    - RIVER: Go to showdown
+    """
+
+    def advance_phase(
+        self,
+        process: "HandProcess",
+        active_count: int,
+        build_deal_community_cmd: Callable[["HandProcess", int], types.CommandBook],
+        build_showdown_cmd: Callable[["HandProcess"], Optional[types.CommandBook]],
+        start_betting: Callable[["HandProcess"], None],
+    ) -> Optional[types.CommandBook]:
+        if process.betting_phase == poker_types.PREFLOP:
+            process.phase = HandPhase.DEALING_COMMUNITY
+            return build_deal_community_cmd(process, 3)  # Flop
+        elif process.betting_phase == poker_types.FLOP:
+            process.phase = HandPhase.DEALING_COMMUNITY
+            return build_deal_community_cmd(process, 1)  # Turn
+        elif process.betting_phase == poker_types.TURN:
+            process.phase = HandPhase.DEALING_COMMUNITY
+            return build_deal_community_cmd(process, 1)  # River
+        elif process.betting_phase == poker_types.RIVER:
+            return build_showdown_cmd(process)
+        return None
+
+
+class DrawStrategy(GameVariantStrategy):
+    """Phase advancement for Five Card Draw.
+
+    Betting structure:
+    - PREFLOP: After initial betting, enter DRAW phase
+    - DRAW: After draws complete, enter final betting (betting_phase=DRAW)
+    - After final betting: Go to showdown
+    """
+
+    def advance_phase(
+        self,
+        process: "HandProcess",
+        active_count: int,
+        build_deal_community_cmd: Callable[["HandProcess", int], types.CommandBook],
+        build_showdown_cmd: Callable[["HandProcess"], Optional[types.CommandBook]],
+        start_betting: Callable[["HandProcess"], None],
+    ) -> Optional[types.CommandBook]:
+        if process.betting_phase == poker_types.PREFLOP:
+            process.phase = HandPhase.DRAW
+            # Draw phase handled by player commands
+            return None
+        elif process.betting_phase == poker_types.DRAW:
+            if process.phase == HandPhase.DRAW:
+                # Coming from draw phase, start final betting
+                process.betting_phase = poker_types.DRAW
+                start_betting(process)
+                return None
+            else:
+                # Coming from final betting, go to showdown
+                return build_showdown_cmd(process)
+        return None
+
+
+# Strategy factory
+_VARIANT_STRATEGIES: dict[int, GameVariantStrategy] = {
+    poker_types.TEXAS_HOLDEM: HoldemStrategy(),
+    poker_types.OMAHA: HoldemStrategy(),  # Same structure as Hold'em
+    poker_types.FIVE_CARD_DRAW: DrawStrategy(),
+}
+
+
+def get_game_strategy(game_variant: int) -> GameVariantStrategy:
+    """Get the strategy for a game variant.
+
+    Args:
+        game_variant: The poker_types game variant constant
+
+    Returns:
+        The appropriate GameVariantStrategy
+
+    Raises:
+        ValueError: If the game variant is not supported
+    """
+    strategy = _VARIANT_STRATEGIES.get(game_variant)
+    if strategy is None:
+        raise ValueError(f"Unsupported game variant: {game_variant}")
+    return strategy
 
 
 @dataclass
@@ -449,56 +583,15 @@ class HandProcessManager:
         if len(players_in_hand) == 1:
             return self._build_award_pot_command(process, players_in_hand[0])
 
-        # Determine next phase based on game variant
-        if process.game_variant == poker_types.TEXAS_HOLDEM:
-            return self._advance_holdem_phase_cmd(process, len(active_players))
-        elif process.game_variant == poker_types.OMAHA:
-            return self._advance_holdem_phase_cmd(process, len(active_players))
-        elif process.game_variant == poker_types.FIVE_CARD_DRAW:
-            return self._advance_draw_phase_cmd(process, len(active_players))
-        return None
-
-    def _advance_holdem_phase_cmd(
-        self, process: HandProcess, active_count: int
-    ) -> Optional[types.CommandBook]:
-        """Advance to next phase for Hold'em/Omaha and return command."""
-        if process.betting_phase == poker_types.PREFLOP:
-            process.phase = HandPhase.DEALING_COMMUNITY
-            return self._build_deal_community_command(process, 3)  # Flop
-        elif process.betting_phase == poker_types.FLOP:
-            process.phase = HandPhase.DEALING_COMMUNITY
-            return self._build_deal_community_command(process, 1)  # Turn
-        elif process.betting_phase == poker_types.TURN:
-            process.phase = HandPhase.DEALING_COMMUNITY
-            return self._build_deal_community_command(process, 1)  # River
-        elif process.betting_phase == poker_types.RIVER:
-            return self._build_start_showdown_command(process)
-        return None
-
-    def _advance_draw_phase_cmd(
-        self, process: HandProcess, active_count: int
-    ) -> Optional[types.CommandBook]:
-        """Advance to next phase for draw games.
-
-        Five Card Draw structure:
-        1. PREFLOP betting -> DRAW phase
-        2. After draws -> Final betting with betting_phase=DRAW
-        3. After final betting -> SHOWDOWN
-        """
-        if process.betting_phase == poker_types.PREFLOP:
-            process.phase = HandPhase.DRAW
-            # Draw phase handled by player commands
-            return None
-        elif process.betting_phase == poker_types.DRAW:
-            if process.phase == HandPhase.DRAW:
-                # Coming from draw phase, start final betting
-                process.betting_phase = poker_types.DRAW
-                self._start_betting(process)
-                return None
-            else:
-                # Coming from final betting, go to showdown
-                return self._build_start_showdown_command(process)
-        return None
+        # Use strategy pattern for game variant-specific phase advancement
+        strategy = get_game_strategy(process.game_variant)
+        return strategy.advance_phase(
+            process,
+            len(active_players),
+            self._build_deal_community_command,
+            self._build_start_showdown_command,
+            self._start_betting,
+        )
 
     def _build_deal_community_command(
         self, process: HandProcess, count: int

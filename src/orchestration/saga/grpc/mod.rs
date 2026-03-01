@@ -84,7 +84,7 @@ impl SagaRetryContext for GrpcSagaContext {
         Ok(covers)
     }
 
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {

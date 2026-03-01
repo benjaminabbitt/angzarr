@@ -1,37 +1,35 @@
-"""Player bounded context gRPC server.
+"""Player bounded context gRPC server - functional pattern.
 
-Uses the functional router pattern with @command_handler decorators.
+This module demonstrates the functional/imperative pattern using:
+- CommandRouter for command dispatch
+- StateRouter for state reconstruction
+- @command_handler decorated functions
+
+Contrasts with the OO pattern in player/agg/ which uses:
+- CommandHandler[StateT] base class
+- @handles and @applies decorators on class methods
 """
 
-import sys
-from pathlib import Path
-
 import structlog
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "angzarr"))
-
-from handlers.state import PlayerState, build_state
-
-from angzarr_client import CommandRouter, run_command_handler_server
-from angzarr_client.proto.examples import player_pb2 as player
-from handlers import (
-    handle_deposit_funds,
-    handle_register_player,
-    handle_release_funds,
-    handle_request_action,
-    handle_reserve_funds,
-    handle_withdraw_funds,
+from state import (
+    PlayerState,
+    apply_deposited,
+    apply_registered,
+    apply_released,
+    apply_reserved,
+    apply_transferred,
+    apply_withdrawn,
 )
 
-
-def state_from_event_book(event_book):
-    """Build state from EventBook - extracts Any-wrapped events and applies them."""
-    state = PlayerState()
-    if event_book is None:
-        return state
-    events = [page.event for page in event_book.pages if page.event]
-    return build_state(state, events)
-
+from angzarr_client import CommandRouter, StateRouter, run_command_handler_server
+from angzarr_client.proto.examples import player_pb2 as player
+from handlers import (
+    handle_deposit,
+    handle_register,
+    handle_release,
+    handle_reserve,
+    handle_withdraw,
+)
 
 structlog.configure(
     processors=[
@@ -46,19 +44,28 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-# docs:start:command_router
-# Use proto class directly - router extracts full_name (examples.RegisterPlayer)
-router = (
-    CommandRouter("player", state_from_event_book)
-    .on(player.RegisterPlayer, handle_register_player)
-    .on(player.DepositFunds, handle_deposit_funds)
-    .on(player.WithdrawFunds, handle_withdraw_funds)
-    .on(player.ReserveFunds, handle_reserve_funds)
-    .on(player.ReleaseFunds, handle_release_funds)
-    .on(player.RequestAction, handle_request_action)
+# State router for event-to-state application
+state_router = (
+    StateRouter(PlayerState)
+    .on(player.PlayerRegistered, apply_registered)
+    .on(player.FundsDeposited, apply_deposited)
+    .on(player.FundsWithdrawn, apply_withdrawn)
+    .on(player.FundsReserved, apply_reserved)
+    .on(player.FundsReleased, apply_released)
+    .on(player.FundsTransferred, apply_transferred)
 )
-# docs:end:command_router
+
+# Command router with state composition
+router = (
+    CommandRouter[PlayerState]("player")
+    .with_state(state_router)
+    .on(player.RegisterPlayer, handle_register)
+    .on(player.DepositFunds, handle_deposit)
+    .on(player.WithdrawFunds, handle_withdraw)
+    .on(player.ReserveFunds, handle_reserve)
+    .on(player.ReleaseFunds, handle_release)
+)
 
 
 if __name__ == "__main__":
-    run_command_handler_server(router, "50401", logger=logger)
+    run_command_handler_server("player", "50402", router, logger=logger)

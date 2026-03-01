@@ -27,9 +27,40 @@ use async_trait::async_trait;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info};
 
-use super::{CommandBus, CommandHandler, EventBus, EventHandler, PublishResult, Result};
+use super::config::EventBusMode;
+use super::error::Result;
+use super::factory::BusBackend;
+use super::traits::{CommandBus, CommandHandler, EventBus, EventHandler, PublishResult};
 use crate::proto::{CommandBook, EventBook};
 use crate::proto_ext::CoverExt;
+
+// ============================================================================
+// Self-Registration
+// ============================================================================
+
+inventory::submit! {
+    BusBackend {
+        try_create: |config, mode| {
+            // Clone what we need before creating the 'static future
+            let messaging_type = config.messaging_type.clone();
+            Box::pin(async move {
+                if messaging_type != "channel" {
+                    return None;
+                }
+
+                let channel_config = match mode {
+                    EventBusMode::Publisher => ChannelConfig::publisher(),
+                    EventBusMode::Subscriber { domain, .. } => ChannelConfig::subscriber(domain),
+                    EventBusMode::SubscriberAll { .. } => ChannelConfig::subscriber_all(),
+                };
+
+                let bus = ChannelEventBus::new(channel_config);
+                info!(messaging_type = "channel", "Event bus initialized");
+                Some(Ok(Arc::new(bus) as Arc<dyn EventBus>))
+            })
+        },
+    }
+}
 
 /// Channel capacity for broadcast.
 const CHANNEL_CAPACITY: usize = 1024;
@@ -184,7 +215,7 @@ impl ChannelEventBus {
                         );
 
                         // Call all handlers
-                        super::dispatch_to_handlers(&handlers, &book).await;
+                        super::dispatch::dispatch_to_handlers(&handlers, &book).await;
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         error!(skipped = n, "Channel consumer lagged, skipped messages");

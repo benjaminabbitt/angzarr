@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "player/agg",
+    "player/agg-oo",
     "player/upc",
     "table/agg",
     "table/agg-oo",
@@ -22,6 +23,7 @@ members = [
 
 [workspace.dependencies]
 angzarr-client = { path = "../../client/rust" }
+angzarr-macros = { path = "../../client/rust/angzarr-macros" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 prost = "0.13"
 prost-types = "0.13"

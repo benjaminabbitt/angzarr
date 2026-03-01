@@ -41,7 +41,7 @@ impl SagaHandler for FulfillmentSaga {
         Ok(vec![])
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         _destinations: &[EventBook],
@@ -99,12 +99,12 @@ impl SagaHandler for SagaWrapper {
         self.0.prepare(source).await
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         destinations: &[EventBook],
     ) -> Result<SagaResponse, Status> {
-        self.0.execute(source, destinations).await
+        self.0.handle(source, destinations).await
     }
 }
 
@@ -129,7 +129,7 @@ impl SagaHandler for OrdersToInventorySaga {
         Ok(vec![]) // No destination state needed
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         _destinations: &[EventBook],
@@ -193,7 +193,7 @@ impl SagaHandler for InventoryToShippingSaga {
         Ok(vec![]) // No destination state needed
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         _destinations: &[EventBook],
@@ -248,12 +248,12 @@ impl SagaHandler for OrdersToInventoryWrapper {
         self.0.prepare(source).await
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         destinations: &[EventBook],
     ) -> Result<SagaResponse, Status> {
-        self.0.execute(source, destinations).await
+        self.0.handle(source, destinations).await
     }
 }
 
@@ -265,12 +265,12 @@ impl SagaHandler for InventoryToShippingWrapper {
         self.0.prepare(source).await
     }
 
-    async fn execute(
+    async fn handle(
         &self,
         source: &EventBook,
         destinations: &[EventBook],
     ) -> Result<SagaResponse, Status> {
-        self.0.execute(source, destinations).await
+        self.0.handle(source, destinations).await
     }
 }
 
@@ -658,7 +658,7 @@ async fn test_two_phase_saga_fetches_destinations() {
             }
         }
 
-        async fn execute(
+        async fn handle(
             &self,
             source: &EventBook,
             destinations: &[EventBook],
@@ -837,7 +837,7 @@ async fn test_two_phase_saga_no_destinations_needed() {
             Ok(vec![])
         }
 
-        async fn execute(
+        async fn handle(
             &self,
             source: &EventBook,
             destinations: &[EventBook],
@@ -948,7 +948,7 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
             Ok(vec![])
         }
 
-        async fn execute(
+        async fn handle(
             &self,
             source: &EventBook,
             _destinations: &[EventBook],

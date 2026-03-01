@@ -20,8 +20,7 @@ use crate::orchestration::aggregate::{
 use crate::orchestration::correlation;
 use crate::orchestration::{FactExecutor, FactInjectionError};
 use crate::proto::{
-    business_response, BusinessResponse, CommandBook, CommandResponse, ContextualCommand, Cover,
-    MergeStrategy, Uuid as ProtoUuid,
+    business_response, BusinessResponse, CommandBook, CommandResponse, ContextualCommand,
 };
 use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore};
@@ -129,6 +128,31 @@ impl CommandRouter {
     /// Returns the registered handler if one exists for the domain.
     pub fn get_client_logic(&self, domain: &str) -> Option<Arc<dyn ClientLogic>> {
         self.business.get(domain).cloned()
+    }
+
+    /// Create an aggregate context for command execution.
+    ///
+    /// Handles edition-aware context creation with optional sync mode.
+    fn create_context(
+        &self,
+        storage: &DomainStorage,
+        sync_mode: Option<crate::proto::SyncMode>,
+    ) -> Arc<dyn AggregateContext> {
+        let ctx = match &self.edition_name {
+            Some(_) => {
+                LocalAggregateContext::without_discovery(storage.clone(), self.event_bus.clone())
+            }
+            None => LocalAggregateContext::new(
+                storage.clone(),
+                self.discovery.clone(),
+                self.event_bus.clone(),
+            ),
+        };
+
+        Arc::new(match sync_mode {
+            Some(mode) => ctx.with_sync_mode(mode),
+            None => ctx,
+        })
     }
 
     /// Execute a command and return the response.
@@ -275,14 +299,14 @@ impl CommandRouter {
                     }
                 }
 
-                // Phase 2: Execute - get commands
-                let mut response = match entry.handler.execute(events, &destinations).await {
+                // Phase 2: Handle - get commands
+                let mut response = match entry.handler.handle(events, &destinations).await {
                     Ok(r) => r,
                     Err(e) => {
                         warn!(
                             saga = %entry.name,
                             error = %e,
-                            "Sync saga execute failed"
+                            "Sync saga handle failed"
                         );
                         continue;
                     }
@@ -342,20 +366,7 @@ impl CommandRouter {
         })?;
 
         // CASCADE mode: set sync_mode on context so post_persist skips bus publishing
-        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
-            Some(_) => Arc::new(
-                LocalAggregateContext::without_discovery(storage.clone(), self.event_bus.clone())
-                    .with_sync_mode(crate::proto::SyncMode::Cascade),
-            ),
-            None => Arc::new(
-                LocalAggregateContext::new(
-                    storage.clone(),
-                    self.discovery.clone(),
-                    self.event_bus.clone(),
-                )
-                .with_sync_mode(crate::proto::SyncMode::Cascade),
-            ),
-        };
+        let ctx = self.create_context(storage, Some(crate::proto::SyncMode::Cascade));
 
         let mut response =
             execute_command_with_retry(&*ctx, &**business, command_book, saga_backoff()).await?;
@@ -399,17 +410,7 @@ impl CommandRouter {
             Status::not_found(format!("No storage configured for domain: {domain}"))
         })?;
 
-        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
-            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
-                storage.clone(),
-                self.event_bus.clone(),
-            )),
-            None => Arc::new(LocalAggregateContext::new(
-                storage.clone(),
-                self.discovery.clone(),
-                self.event_bus.clone(),
-            )),
-        };
+        let ctx = self.create_context(storage, None);
 
         let mut response =
             execute_command_with_retry(&*ctx, &**business, command_book, saga_backoff()).await?;
@@ -457,17 +458,7 @@ impl CommandRouter {
             Status::not_found(format!("No storage configured for domain: {domain}"))
         })?;
 
-        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
-            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
-                storage.clone(),
-                self.event_bus.clone(),
-            )),
-            None => Arc::new(LocalAggregateContext::new(
-                storage.clone(),
-                self.discovery.clone(),
-                self.event_bus.clone(),
-            )),
-        };
+        let ctx = self.create_context(storage, None);
 
         execute_command_pipeline(
             &*ctx,
@@ -506,17 +497,7 @@ impl CommandRouter {
             Status::not_found(format!("No storage configured for domain: {domain}"))
         })?;
 
-        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
-            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
-                storage.clone(),
-                self.event_bus.clone(),
-            )),
-            None => Arc::new(LocalAggregateContext::new(
-                storage.clone(),
-                self.discovery.clone(),
-                self.event_bus.clone(),
-            )),
-        };
+        let ctx = self.create_context(storage, None);
 
         let edition = command_book.edition().to_string();
 
@@ -583,18 +564,7 @@ impl CommandRouter {
             None
         };
 
-        // Create context using LocalAggregateContext
-        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
-            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
-                storage.clone(),
-                self.event_bus.clone(),
-            )),
-            None => Arc::new(LocalAggregateContext::new(
-                storage.clone(),
-                self.discovery.clone(),
-                self.event_bus.clone(),
-            )),
-        };
+        let ctx = self.create_context(storage, None);
 
         // Execute fact pipeline
         execute_fact_pipeline(ctx.as_ref(), client_logic.as_deref(), fact_events).await
@@ -633,8 +603,11 @@ impl FactExecutor for CommandRouter {
     }
 }
 
-/// Helper to create a command book.
-#[allow(dead_code)]
+#[cfg(test)]
+use crate::proto::{Cover, MergeStrategy, Uuid as ProtoUuid};
+
+/// Helper to create a command book for tests.
+#[cfg(test)]
 pub fn create_command_book(
     domain: &str,
     root: Uuid,

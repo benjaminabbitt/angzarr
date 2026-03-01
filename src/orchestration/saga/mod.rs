@@ -91,7 +91,7 @@ pub trait SagaRetryContext: Send + Sync {
 
     /// Re-invoke the saga's execute phase with fresh destination state.
     /// Returns commands to execute and events (facts) to inject.
-    async fn re_execute_saga(
+    async fn handle(
         &self,
         destinations: Vec<EventBook>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>>;
@@ -226,7 +226,7 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         }
     }
 
-    async fn prepare_for_retry(&mut self, _failure: &Self::Failure) -> Result<(), Self::Failure> {
+    async fn prepare_for_retry(&mut self) -> Result<(), Self::Failure> {
         // Record retry metric
         #[cfg(feature = "otel")]
         {
@@ -289,7 +289,7 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         // to force saga authors to engage with destination state.
         let response = self
             .context
-            .re_execute_saga(destinations)
+            .handle(destinations)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -450,7 +450,7 @@ pub async fn orchestrate_saga(
     // Phase 3: Execute saga with source + destinations
     // Saga handler must set correct sequences on commands from destination.next_sequence()
     let saga_response = ctx
-        .re_execute_saga(destinations.clone())
+        .handle(destinations.clone())
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
 

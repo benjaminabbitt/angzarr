@@ -1,30 +1,44 @@
 #pragma once
 
 /**
- * Macros for handler registration in C++ aggregates, sagas, etc.
+ * @file macros.hpp
+ * @brief Convenience macros for handler registration.
  *
- * These macros provide a similar feel to Python's decorators by generating
- * static registration code at compile time.
+ * RECOMMENDED: Use the CRTP-based CommandHandlerBase with constructor registration
+ * instead of these macros. The CRTP pattern is type-safe and similar to Go:
  *
- * Usage:
- *   class Player : public Aggregate<PlayerState> {
+ * @code
+ *   class Player : public CommandHandlerBase<PlayerState, Player> {
  *   public:
- *       ANGZARR_AGGREGATE("player")
+ *       static constexpr const char* kDomain = "player";
  *
- *       ANGZARR_HANDLES(RegisterPlayer)
- *       PlayerRegistered handle_register(const RegisterPlayer& cmd) {
- *           if (exists()) throw CommandRejectedError("Already exists");
- *           return PlayerRegistered{};
+ *       Player(const EventBook* events = nullptr) {
+ *           init(events, []() { return PlayerState{}; });
+ *           set_domain(kDomain);
+ *
+ *           // Type-safe registration (types inferred from method signature)
+ *           handles(&Player::register_player);
+ *           handles(&Player::deposit_funds);
+ *           applies(&Player::apply_registered);
+ *           applies(&Player::apply_deposited);
+ *           handles_rejection("table", "JoinTable", &Player::handle_join_rejected);
  *       }
  *
- *       ANGZARR_APPLIES(PlayerRegistered)
- *       void apply_registered(PlayerState& state, const PlayerRegistered& event) {
- *           state.set_status("active");
- *       }
+ *       // Command handlers: Event handler(const Command& cmd)
+ *       PlayerRegistered register_player(const RegisterPlayer& cmd);
+ *       FundsDeposited deposit_funds(const DepositFunds& cmd);
  *
- *   protected:
- *       PlayerState create_empty_state() override { return PlayerState{}; }
+ *       // Event appliers: void applier(State& state, const Event& event)
+ *       void apply_registered(PlayerState& state, const PlayerRegistered& event);
+ *       void apply_deposited(PlayerState& state, const FundsDeposited& event);
+ *
+ *       // Rejection handlers: EventBook handler(const Notification&)
+ *       EventBook handle_join_rejected(const Notification& notification);
  *   };
+ * @endcode
+ *
+ * The macros below are provided for backward compatibility and simple cases.
+ * They require passing the class name explicitly to avoid `decltype(this)` issues.
  */
 
 // Helper to extract type suffix from proto type
@@ -51,14 +65,47 @@
     std::string output_domain() const override { return kOutputDomain; }
 
 /**
- * Register a command handler method.
- * The next method definition handles commands of type T.
+ * Register handler registration calls for the constructor.
+ * Use with CommandHandlerBase CRTP pattern.
+ *
+ * Usage in constructor:
+ *   ANGZARR_REGISTER_HANDLERS(Player,
+ *       handles(&Player::register_player),
+ *       handles(&Player::deposit_funds),
+ *       applies(&Player::apply_registered),
+ *       handles_rejection("table", "JoinTable", &Player::handle_join_rejected)
+ *   )
  */
-#define ANGZARR_HANDLES(T)                                                                    \
+#define ANGZARR_REGISTER_HANDLERS(Class, ...) __VA_ARGS__
+
+/**
+ * Initialize CommandHandlerBase in constructor.
+ * Combines init(), set_domain(), and handler registration.
+ *
+ * Usage:
+ *   Player(const EventBook* events = nullptr) {
+ *       ANGZARR_INIT_HANDLER(Player, "player", PlayerState, events);
+ *       handles(&Player::register_player);
+ *       applies(&Player::apply_registered);
+ *   }
+ */
+#define ANGZARR_INIT_HANDLER(Class, domain_name, StateType, events) \
+    init(events, []() { return StateType{}; });                     \
+    set_domain(domain_name)
+
+// =============================================================================
+// Legacy macros (deprecated - require explicit class name)
+// =============================================================================
+
+/**
+ * @deprecated Use CommandHandlerBase with constructor registration instead.
+ *
+ * Register a command handler method with explicit class name.
+ * Works around `decltype(this)` issue at class scope.
+ */
+#define ANGZARR_HANDLES_FOR(Class, T)                                                         \
     static inline const bool _handles_##T##_registered =                                      \
-        (register_handler(ANGZARR_TYPE_SUFFIX(T),                                             \
-                          &std::remove_pointer_t<decltype(this)>::_dispatch_##T),             \
-         true);                                                                               \
+        (register_handler(ANGZARR_TYPE_SUFFIX(T), &Class::_dispatch_##T), true);              \
     template <typename Self>                                                                  \
     static ::angzarr::EventBook _dispatch_##T(Self* self, const ::google::protobuf::Any& any, \
                                               int seq) {                                      \
@@ -70,14 +117,13 @@
     /* User implements: */ auto handle_##T
 
 /**
- * Register an event applier method.
- * The next method definition applies events of type T.
+ * @deprecated Use CommandHandlerBase with constructor registration instead.
+ *
+ * Register an event applier method with explicit class name.
  */
-#define ANGZARR_APPLIES(T)                                                                 \
+#define ANGZARR_APPLIES_FOR(Class, T)                                                      \
     static inline const bool _applies_##T##_registered =                                   \
-        (register_applier(ANGZARR_TYPE_SUFFIX(T),                                          \
-                          &std::remove_pointer_t<decltype(this)>::_apply_##T),             \
-         true);                                                                            \
+        (register_applier(ANGZARR_TYPE_SUFFIX(T), &Class::_apply_##T), true);              \
     template <typename Self, typename State>                                               \
     static void _apply_##T(Self* self, State& state, const ::google::protobuf::Any& any) { \
         T event;                                                                           \
@@ -87,64 +133,34 @@
     /* User implements: */ void apply_##T
 
 /**
- * Register an event handler for sagas.
- * The next method definition handles events of type T.
+ * @deprecated Use CommandHandlerBase with constructor registration instead.
+ *
+ * Register a rejection handler with explicit class name.
  */
-#define ANGZARR_REACTS_TO(T)                                                          \
-    static inline const bool _reacts_##T##_registered =                               \
-        (register_event_handler(ANGZARR_TYPE_SUFFIX(T),                               \
-                                &std::remove_pointer_t<decltype(this)>::_react_##T),  \
-         true);                                                                       \
-    template <typename Self>                                                          \
-    static std::vector<::angzarr::CommandBook> _react_##T(                            \
-        Self* self, const ::google::protobuf::Any& any, const std::string& corr_id) { \
-        T event;                                                                      \
-        any.UnpackTo(&event);                                                         \
-        auto result = self->handle_##T(event);                                        \
-        return self->pack_commands(result, corr_id);                                  \
-    }                                                                                 \
-    /* User implements: */ auto handle_##T
-
-/**
- * Register a prepare handler for two-phase protocol.
- */
-#define ANGZARR_PREPARES(T)                                                                 \
-    static inline const bool _prepares_##T##_registered =                                   \
-        (register_prepare_handler(ANGZARR_TYPE_SUFFIX(T),                                   \
-                                  &std::remove_pointer_t<decltype(this)>::_prepare_##T),    \
-         true);                                                                             \
-    template <typename Self>                                                                \
-    static std::vector<::angzarr::Cover> _prepare_##T(Self* self,                           \
-                                                      const ::google::protobuf::Any& any) { \
-        T event;                                                                            \
-        any.UnpackTo(&event);                                                               \
-        return self->prepare_##T(event);                                                    \
-    }                                                                                       \
-    /* User implements: */ std::vector<::angzarr::Cover> prepare_##T
-
-/**
- * Register a projector handler.
- */
-#define ANGZARR_PROJECTS(T)                                                                     \
-    static inline const bool _projects_##T##_registered =                                       \
-        (register_projector_handler(ANGZARR_TYPE_SUFFIX(T),                                     \
-                                    &std::remove_pointer_t<decltype(this)>::_project_##T),      \
-         true);                                                                                 \
-    template <typename Self>                                                                    \
-    static ::angzarr::Projection _project_##T(Self* self, const ::google::protobuf::Any& any) { \
-        T event;                                                                                \
-        any.UnpackTo(&event);                                                                   \
-        return self->project_##T(event);                                                        \
-    }                                                                                           \
-    /* User implements: */ ::angzarr::Projection project_##T
-
-/**
- * Register a rejection handler for compensation.
- */
-#define ANGZARR_REJECTED(target_domain, command_type)                                 \
-    static inline const bool _rejected_##command_type##_registered =                  \
-        (register_rejection_handler(                                                  \
-             target_domain "/" ANGZARR_TYPE_SUFFIX(command_type),                     \
-             &std::remove_pointer_t<decltype(this)>::handle_rejected_##command_type), \
-         true);                                                                       \
+#define ANGZARR_REJECTED_FOR(Class, target_domain, command_type)      \
+    static inline const bool _rejected_##command_type##_registered =  \
+        (register_rejection_handler(                                  \
+             target_domain "/" ANGZARR_TYPE_SUFFIX(command_type),     \
+             &Class::handle_rejected_##command_type),                 \
+         true);                                                       \
     /* User implements: */ auto handle_rejected_##command_type
+
+// =============================================================================
+// Broken legacy macros (kept for documentation, DO NOT USE)
+// =============================================================================
+
+// NOTE: The following macros use `decltype(this)` which is invalid at class
+// scope in C++. They are kept here as documentation of what NOT to do.
+// Use ANGZARR_HANDLES_FOR(ClassName, Type) instead, or better yet, use
+// the CommandHandlerBase CRTP pattern with constructor registration.
+
+#if 0  // DISABLED - these macros do not compile
+
+#define ANGZARR_HANDLES(T)  // BROKEN: uses decltype(this) at class scope
+#define ANGZARR_APPLIES(T)  // BROKEN: uses decltype(this) at class scope
+#define ANGZARR_REACTS_TO(T)  // BROKEN: uses decltype(this) at class scope
+#define ANGZARR_PREPARES(T)  // BROKEN: uses decltype(this) at class scope
+#define ANGZARR_PROJECTS(T)  // BROKEN: uses decltype(this) at class scope
+#define ANGZARR_REJECTED(domain, cmd)  // BROKEN: uses decltype(this) at class scope
+
+#endif

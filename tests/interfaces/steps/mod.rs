@@ -1,5 +1,6 @@
 //! Cucumber step definitions for interface tests.
 
+pub mod aggregate_handler;
 pub mod dlq;
 pub mod editions;
 pub mod event_bus;
@@ -10,5 +11,6 @@ pub mod notification;
 pub mod payload_offloading;
 pub mod position_store;
 pub mod snapshot_store;
+pub mod speculative;
 pub mod sync_modes;
 pub mod upcasting;
