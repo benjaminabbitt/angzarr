@@ -168,7 +168,48 @@ fn create_projection_event_book(
     correlation_id: &str,
     source_edition: Option<crate::proto::Edition>,
 ) -> EventBook {
-    Default::default() /* ~ changed by cargo-mutants ~ */
+    let projector_name = projection.projector.clone();
+
+    // Create a cover with special projection domain
+    let cover = projection.cover.clone().map(|mut c| {
+        c.domain = format!("{PROJECTION_DOMAIN_PREFIX}.{}.{}", projector_name, c.domain);
+        c
+    });
+
+    // Serialize the projection as the event payload
+    let projection_bytes = projection.encode_to_vec();
+
+    // Ensure correlation_id is set on cover
+    let cover = match cover {
+        Some(mut c) => {
+            if c.correlation_id.is_empty() {
+                c.correlation_id = correlation_id.to_string();
+            }
+            Some(c)
+        }
+        None => Some(crate::proto::Cover {
+            domain: format!("{PROJECTION_DOMAIN_PREFIX}.{}", projector_name),
+            root: None,
+            correlation_id: correlation_id.to_string(),
+            edition: source_edition,
+            external_id: String::new(),
+        }),
+    };
+
+    EventBook {
+        cover,
+        pages: vec![crate::proto::EventPage {
+            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(
+                projection.sequence,
+            )),
+            payload: Some(crate::proto::event_page::Payload::Event(Any {
+                type_url: PROJECTION_TYPE_URL.to_string(),
+                value: projection_bytes,
+            })),
+            created_at: None,
+        }],
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]
@@ -342,7 +383,10 @@ mod tests {
 
         // Should be publishable because projection.is_some()
         let should_publish = projection.projection.is_some() || !projection.projector.is_empty();
-        assert!(should_publish, "Projection with content should be publishable");
+        assert!(
+            should_publish,
+            "Projection with content should be publishable"
+        );
     }
 
     #[test]
@@ -357,7 +401,10 @@ mod tests {
 
         // Should be publishable because projector is not empty
         let should_publish = projection.projection.is_some() || !projection.projector.is_empty();
-        assert!(should_publish, "Projection with projector name should be publishable");
+        assert!(
+            should_publish,
+            "Projection with projector name should be publishable"
+        );
     }
 
     #[test]
@@ -372,7 +419,10 @@ mod tests {
 
         // Should NOT be publishable
         let should_publish = projection.projection.is_some() || !projection.projector.is_empty();
-        assert!(!should_publish, "Empty projection should not be publishable");
+        assert!(
+            !should_publish,
+            "Empty projection should not be publishable"
+        );
     }
 
     #[test]
@@ -556,42 +606,57 @@ mod tests {
     async fn handler_with_empty_domains_handles_any_event() {
         // When domains is empty, no filtering occurs
         let mock = Arc::new(MockProjectorHandler::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_domains(vec![]); // Empty domain filter
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_domains(vec![]); // Empty domain filter
 
         let book = Arc::new(make_event_book("any-domain"));
         let result = handler.handle(book).await;
 
         assert!(result.is_ok());
-        assert_eq!(mock.calls(), 1, "Handler should be called when domains is empty");
+        assert_eq!(
+            mock.calls(),
+            1,
+            "Handler should be called when domains is empty"
+        );
     }
 
     #[tokio::test]
     async fn handler_with_matching_domain_handles_event() {
         // When domains contains the event's domain, event is handled
         let mock = Arc::new(MockProjectorHandler::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_domains(vec!["orders".to_string(), "inventory".to_string()]);
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_domains(vec!["orders".to_string(), "inventory".to_string()]);
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
 
         assert!(result.is_ok());
-        assert_eq!(mock.calls(), 1, "Handler should be called when domain matches");
+        assert_eq!(
+            mock.calls(),
+            1,
+            "Handler should be called when domain matches"
+        );
     }
 
     #[tokio::test]
     async fn handler_with_non_matching_domain_skips_event() {
         // When domains does NOT contain the event's domain, event is skipped
         let mock = Arc::new(MockProjectorHandler::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_domains(vec!["orders".to_string(), "inventory".to_string()]);
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_domains(vec!["orders".to_string(), "inventory".to_string()]);
 
         let book = Arc::new(make_event_book("fulfillment")); // Not in the domain list
         let result = handler.handle(book).await;
 
         assert!(result.is_ok());
-        assert_eq!(mock.calls(), 0, "Handler should NOT be called when domain doesn't match");
+        assert_eq!(
+            mock.calls(),
+            0,
+            "Handler should NOT be called when domain doesn't match"
+        );
     }
 
     #[tokio::test]
@@ -602,8 +667,9 @@ mod tests {
         // - "orders" != "inventory" is true
         // With any(), d != routing_key would match "inventory" first, incorrectly allowing
         let mock = Arc::new(MockProjectorHandler::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_domains(vec!["orders".to_string()]);
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_domains(vec!["orders".to_string()]);
 
         let book = Arc::new(make_event_book("orders")); // Exact match
         let result = handler.handle(book).await;
@@ -613,8 +679,9 @@ mod tests {
 
         // Reset by creating new mock
         let mock2 = Arc::new(MockProjectorHandler::new());
-        let handler2 = ProjectorEventHandler::from_handler(mock2.clone(), "test-projector".to_string())
-            .with_domains(vec!["orders".to_string()]);
+        let handler2 =
+            ProjectorEventHandler::from_handler(mock2.clone(), "test-projector".to_string())
+                .with_domains(vec!["orders".to_string()]);
 
         let book2 = Arc::new(make_event_book("not-orders")); // No match
         let result2 = handler2.handle(book2).await;
@@ -629,8 +696,9 @@ mod tests {
         // If we didn't negate, an empty domains list would enter the filter block
         // and incorrectly skip events (because any() on empty list is false)
         let mock = Arc::new(MockProjectorHandler::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_domains(vec![]); // Empty - should NOT enter filter block
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_domains(vec![]); // Empty - should NOT enter filter block
 
         let book = Arc::new(make_event_book("any-domain"));
         let result = handler.handle(book).await;
@@ -640,7 +708,11 @@ mod tests {
         // would enter the filter block, then any() on empty vec = false,
         // then !false = true (with correct negation) or false (without)
         // This test catches that by verifying events pass through
-        assert_eq!(mock.calls(), 1, "Empty domains list should not filter events");
+        assert_eq!(
+            mock.calls(),
+            1,
+            "Empty domains list should not filter events"
+        );
     }
 
     #[tokio::test]
@@ -648,15 +720,17 @@ mod tests {
         // Tests the !self.domains.iter().any(...) negation
         // If ! was removed, we'd SKIP matching domains and HANDLE non-matching ones
         let mock_match = Arc::new(MockProjectorHandler::new());
-        let handler_match = ProjectorEventHandler::from_handler(mock_match.clone(), "test".to_string())
-            .with_domains(vec!["orders".to_string()]);
+        let handler_match =
+            ProjectorEventHandler::from_handler(mock_match.clone(), "test".to_string())
+                .with_domains(vec!["orders".to_string()]);
 
         let book_match = Arc::new(make_event_book("orders")); // DOES match
         handler_match.handle(book_match).await.unwrap();
 
         let mock_nomatch = Arc::new(MockProjectorHandler::new());
-        let handler_nomatch = ProjectorEventHandler::from_handler(mock_nomatch.clone(), "test".to_string())
-            .with_domains(vec!["orders".to_string()]);
+        let handler_nomatch =
+            ProjectorEventHandler::from_handler(mock_nomatch.clone(), "test".to_string())
+                .with_domains(vec!["orders".to_string()]);
 
         let book_nomatch = Arc::new(make_event_book("inventory")); // Does NOT match
         handler_nomatch.handle(book_nomatch).await.unwrap();
@@ -668,7 +742,11 @@ mod tests {
         // - matching domain: any() = true, skip → handler not called (WRONG)
         // - non-matching domain: any() = false, don't skip → handler called (WRONG)
         assert_eq!(mock_match.calls(), 1, "Matching domain should be handled");
-        assert_eq!(mock_nomatch.calls(), 0, "Non-matching domain should be skipped");
+        assert_eq!(
+            mock_nomatch.calls(),
+            0,
+            "Non-matching domain should be skipped"
+        );
     }
 
     // === Tests for publishing condition (line 125) ===
@@ -679,14 +757,19 @@ mod tests {
         // projection.is_some() = true, so publish regardless of projector name
         let mock = Arc::new(MockProjectorHandler::with_response("", true)); // has projection content
         let publisher = Arc::new(MockEventBus::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_publisher(publisher.clone());
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_publisher(publisher.clone());
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
 
         assert!(result.is_ok());
-        assert_eq!(publisher.publish_calls(), 1, "Should publish when projection has content");
+        assert_eq!(
+            publisher.publish_calls(),
+            1,
+            "Should publish when projection has content"
+        );
     }
 
     #[tokio::test]
@@ -694,14 +777,19 @@ mod tests {
         // projection.is_none() but projector name is non-empty, so should publish
         let mock = Arc::new(MockProjectorHandler::with_response("order-summary", false));
         let publisher = Arc::new(MockEventBus::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_publisher(publisher.clone());
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_publisher(publisher.clone());
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
 
         assert!(result.is_ok());
-        assert_eq!(publisher.publish_calls(), 1, "Should publish when projector name is non-empty");
+        assert_eq!(
+            publisher.publish_calls(),
+            1,
+            "Should publish when projector name is non-empty"
+        );
     }
 
     #[tokio::test]
@@ -709,14 +797,19 @@ mod tests {
         // projection.is_none() AND projector name is empty, so should NOT publish
         let mock = Arc::new(MockProjectorHandler::with_response("", false)); // empty projector, no projection
         let publisher = Arc::new(MockEventBus::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_publisher(publisher.clone());
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_publisher(publisher.clone());
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
 
         assert!(result.is_ok());
-        assert_eq!(publisher.publish_calls(), 0, "Should NOT publish when projection is empty");
+        assert_eq!(
+            publisher.publish_calls(),
+            0,
+            "Should NOT publish when projection is empty"
+        );
     }
 
     #[tokio::test]
@@ -727,8 +820,9 @@ mod tests {
         // Test case: has projection content but empty projector name
         let mock = Arc::new(MockProjectorHandler::with_response("", true)); // projection is_some, projector empty
         let publisher = Arc::new(MockEventBus::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_publisher(publisher.clone());
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_publisher(publisher.clone());
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
@@ -736,7 +830,11 @@ mod tests {
         // With ||: true || false = true → publish
         // With &&: true && false = false → don't publish
         assert!(result.is_ok());
-        assert_eq!(publisher.publish_calls(), 1, "Should use OR logic (publish if either is true)");
+        assert_eq!(
+            publisher.publish_calls(),
+            1,
+            "Should use OR logic (publish if either is true)"
+        );
     }
 
     #[tokio::test]
@@ -745,8 +843,9 @@ mod tests {
         // Test case: has non-empty projector name but no projection content
         let mock = Arc::new(MockProjectorHandler::with_response("order-summary", false));
         let publisher = Arc::new(MockEventBus::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_publisher(publisher.clone());
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_publisher(publisher.clone());
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
@@ -755,13 +854,18 @@ mod tests {
         // Without negation: is_empty() = false → condition is false → don't publish (WRONG)
         // With negation: !is_empty() = true → condition is true → publish (CORRECT)
         assert!(result.is_ok());
-        assert_eq!(publisher.publish_calls(), 1, "Should publish when projector name is non-empty");
+        assert_eq!(
+            publisher.publish_calls(),
+            1,
+            "Should publish when projector name is non-empty"
+        );
 
         // Also test empty projector with no projection
         let mock2 = Arc::new(MockProjectorHandler::with_response("", false)); // empty projector, no projection
         let publisher2 = Arc::new(MockEventBus::new());
-        let handler2 = ProjectorEventHandler::from_handler(mock2.clone(), "test-projector".to_string())
-            .with_publisher(publisher2.clone());
+        let handler2 =
+            ProjectorEventHandler::from_handler(mock2.clone(), "test-projector".to_string())
+                .with_publisher(publisher2.clone());
 
         let book2 = Arc::new(make_event_book("orders"));
         let result2 = handler2.handle(book2).await;
@@ -769,7 +873,11 @@ mod tests {
         // Without negation: is_empty() = true → condition is true → publish (WRONG)
         // With negation: !is_empty() = false → condition is false → don't publish (CORRECT)
         assert!(result2.is_ok());
-        assert_eq!(publisher2.publish_calls(), 0, "Should NOT publish when projector name is empty");
+        assert_eq!(
+            publisher2.publish_calls(),
+            0,
+            "Should NOT publish when projector name is empty"
+        );
     }
 
     #[tokio::test]
@@ -777,8 +885,9 @@ mod tests {
         // Verifies that the created EventBook has snapshot = None
         let mock = Arc::new(MockProjectorHandler::with_response("order-summary", false));
         let publisher = Arc::new(MockEventBus::new());
-        let handler = ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
-            .with_publisher(publisher.clone());
+        let handler =
+            ProjectorEventHandler::from_handler(mock.clone(), "test-projector".to_string())
+                .with_publisher(publisher.clone());
 
         let book = Arc::new(make_event_book("orders"));
         let result = handler.handle(book).await;
@@ -788,6 +897,9 @@ mod tests {
 
         let published = publisher.get_published_books().await;
         assert_eq!(published.len(), 1);
-        assert!(published[0].snapshot.is_none(), "Published EventBook should have no snapshot");
+        assert!(
+            published[0].snapshot.is_none(),
+            "Published EventBook should have no snapshot"
+        );
     }
 }
