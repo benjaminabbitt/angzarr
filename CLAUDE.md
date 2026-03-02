@@ -163,6 +163,104 @@ No external dependencies. Tests interact only with the system under test. Mock p
 - Run with: `cargo test --lib` or `just test`
 - **Execution**: Continuous via bacon, pre-commit hooks
 
+### Test Documentation: Always Explain WHY
+
+Every test must document WHY it exists, not just WHAT it tests. A test without context is maintenance burden waiting to happen.
+
+**Structure for test modules:**
+
+```rust
+#[cfg(test)]
+mod tests {
+    //! Module-level doc explaining the feature being tested and why it matters.
+    //!
+    //! Example: "Correlation IDs enable cross-domain tracing in saga and PM flows.
+    //! Without proper propagation, observability breaks and PMs cannot correlate
+    //! related events."
+
+    /// Test-level doc explaining the specific scenario.
+    ///
+    /// Good: "Commands with empty correlation_id should receive the propagated
+    /// value. This is the primary use case: saga/PM produces commands without
+    /// setting correlation_id, and the framework fills it from the triggering event."
+    ///
+    /// Bad: "Test that fill_correlation_id fills empty correlation_id"
+    #[test]
+    fn test_fill_correlation_id_fills_empty() { ... }
+}
+```
+
+**What to include:**
+- Business context: What capability does this test protect?
+- Failure mode: What breaks if this test fails?
+- Edge case rationale: Why does this specific scenario matter?
+
+**Section headers for large test files:**
+
+```rust
+// ============================================================================
+// Selection::Sequences Tests
+// ============================================================================
+
+/// Projectors and sagas sometimes need specific events rather than a range...
+#[test]
+fn test_sequences_returns_sparse_events() { ... }
+
+// ============================================================================
+// Missing Cover Validation Tests
+// ============================================================================
+
+/// The cover contains domain and root_id which identify the aggregate...
+#[test]
+fn test_missing_cover_rejected() { ... }
+```
+
+### What to Test vs What to Skip
+
+**Test with unit tests (pure logic):**
+- Validation functions (`validate_domain`, `fill_correlation_id`)
+- Data transformation functions (`base64_encode`, `extract_event_type`)
+- State calculations and business rules
+- Error message formatting
+
+**Skip unit tests, rely on integration tests:**
+- gRPC trait implementations (thin wrappers, need full stack)
+- Database operations (need real connections)
+- File I/O operations (need file system)
+- Code that primarily orchestrates other components
+
+**Rule of thumb:** If you need to mock more than one dependency, it's probably integration test territory.
+
+### Mutation Testing Learnings
+
+After running `cargo mutants`, you'll see patterns:
+
+**Mutations that SHOULD be caught by unit tests:**
+- Pure function return values (`replace X -> Y with Default::default()`)
+- Conditional branches (`replace X != Y with true`)
+- Iterator operations (`replace with vec![]`)
+
+**Mutations that WON'T be caught without integration tests:**
+- Async functions that call external services
+- Functions that only log/trace (side-effect only)
+- Trait implementations delegating to inner types
+
+**Expected kill rates by code type:**
+
+| Code Type | Target Kill Rate | Notes |
+|-----------|------------------|-------|
+| Pure utility functions | 80%+ | Should be near-perfect |
+| Validation/guard logic | 70%+ | May miss some error paths |
+| Trait contracts | 70%+ | Via Gherkin contract tests |
+| Orchestration glue | 50-60% | Integration test territory |
+| gRPC handlers | 30-40% | Thin wrappers, rely on integration |
+
+**What to do with missed mutations:**
+1. If pure logic: Add test to catch it
+2. If needs mocking: Consider if integration test covers it
+3. If side-effect only (logging): Accept the miss
+4. If framework glue: Verify integration tests exercise the path
+
 ### Contract Tests
 
 Verify that storage and bus implementations correctly fulfill their trait contracts. Uses **testcontainers** to provision real databases/message brokers in Docker containers.
