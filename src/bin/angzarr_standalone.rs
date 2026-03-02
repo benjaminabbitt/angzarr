@@ -701,11 +701,10 @@ async fn spawn_external_service(
     name: &str,
     svc: &ExternalServiceConfig,
 ) -> Result<ManagedChild, Box<dyn std::error::Error>> {
-    if svc.command.is_empty() {
-        return Err(format!("External service '{}' has empty command array", name).into());
-    }
-
-    let executable = &svc.command[0];
+    let executable = svc
+        .command
+        .first()
+        .ok_or_else(|| format!("External service '{}' has empty command array", name))?;
     let args = &svc.command[1..];
 
     info!(

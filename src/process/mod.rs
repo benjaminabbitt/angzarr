@@ -94,11 +94,7 @@ impl ManagedProcess {
         env: &ProcessEnv,
         extra_env: Option<&HashMap<String, String>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        if command.is_empty() {
-            return Err("Command array cannot be empty".into());
-        }
-
-        let executable = &command[0];
+        let executable = command.first().ok_or("Command array cannot be empty")?;
         let args = &command[1..];
 
         info!(executable = %executable, ?args, "Spawning client logic process");

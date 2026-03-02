@@ -212,23 +212,44 @@ impl FileOutput {
 
 impl LogOutput for FileOutput {
     fn write_event(&self, event: &DecodedEvent) {
-        let mut writer = self.writer.lock().unwrap();
+        let mut writer = match self.writer.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                // Mutex was poisoned by a panic in another thread.
+                // Recover the guard and continue - logging shouldn't bring down the system.
+                eprintln!(
+                    "FileOutput: mutex poisoned, recovering: {}:{}",
+                    event.domain, event.sequence
+                );
+                poisoned.into_inner()
+            }
+        };
 
-        let _ = writeln!(writer);
-        let _ = writeln!(writer, "{}", "─".repeat(60));
-        let _ = writeln!(
-            writer,
-            "{}:{}:{:010}",
-            event.domain, event.root_id, event.sequence
-        );
-        let _ = writeln!(writer, "{}", event.type_name);
-        let _ = writeln!(writer, "{}", "─".repeat(60));
+        // Log I/O errors to stderr rather than silently ignoring them
+        let write_result = (|| -> std::io::Result<()> {
+            writeln!(writer)?;
+            writeln!(writer, "{}", "─".repeat(60))?;
+            writeln!(
+                writer,
+                "{}:{}:{:010}",
+                event.domain, event.root_id, event.sequence
+            )?;
+            writeln!(writer, "{}", event.type_name)?;
+            writeln!(writer, "{}", "─".repeat(60))?;
 
-        for line in event.content.lines() {
-            let _ = writeln!(writer, "  {line}");
+            for line in event.content.lines() {
+                writeln!(writer, "  {line}")?;
+            }
+
+            writer.flush()
+        })();
+
+        if let Err(e) = write_result {
+            eprintln!(
+                "FileOutput: failed to write event {}:{}: {}",
+                event.domain, event.sequence, e
+            );
         }
-
-        let _ = writer.flush();
     }
 }
 

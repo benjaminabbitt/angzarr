@@ -313,13 +313,21 @@ impl super::ServiceDiscovery for StaticServiceDiscovery {
                     .trim_start_matches("http://")
                     .trim_start_matches("https://");
                 if let Some((h, p)) = without_scheme.rsplit_once(':') {
-                    (h.to_string(), p.parse().unwrap_or(80))
+                    let port = p.parse().unwrap_or_else(|_| {
+                        warn!(port_str = %p, address = %addr, "Failed to parse port, defaulting to 80");
+                        80
+                    });
+                    (h.to_string(), port)
                 } else {
                     (without_scheme.to_string(), 80)
                 }
             } else if let Some((h, p)) = addr.rsplit_once(':') {
                 // host:port format
-                (h.to_string(), p.parse().unwrap_or(80))
+                let port = p.parse().unwrap_or_else(|_| {
+                    warn!(port_str = %p, address = %addr, "Failed to parse port, defaulting to 80");
+                    80
+                });
+                (h.to_string(), port)
             } else {
                 // Just host, default port
                 (addr, 80)
