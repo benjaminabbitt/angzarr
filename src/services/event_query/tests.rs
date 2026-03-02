@@ -666,3 +666,103 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
         "EventQuery should not include snapshots"
     );
 }
+
+// ============================================================================
+// Selection::Sequences Tests
+// ============================================================================
+
+/// Verify that Selection::Sequences returns only the requested event sequences.
+///
+/// Projectors and sagas sometimes need specific events rather than a range or
+/// full history. The Sequences selection type enables fetching a sparse set of
+/// events by their exact sequence numbers.
+#[tokio::test]
+async fn test_get_event_book_with_sequences() {
+    let (service, event_store, _) = create_default_test_service();
+    let root = uuid::Uuid::new_v4();
+
+    for i in 0..5 {
+        let events = vec![EventPage {
+            sequence_type: Some(event_page::SequenceType::Sequence(i)),
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: format!("test.Event{}", i),
+                value: vec![],
+            })),
+            created_at: None,
+        }];
+        event_store
+            .add("orders", DEFAULT_EDITION, root, events, "")
+            .await
+            .unwrap();
+    }
+
+    let query = Query {
+        cover: Some(crate::proto::Cover {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        selection: Some(Selection::Sequences(crate::proto::SequenceSet {
+            values: vec![1, 3],
+        })),
+    };
+
+    let response = service.get_event_book(Request::new(query)).await;
+
+    assert!(response.is_ok());
+    let book = response.unwrap().into_inner();
+    assert_eq!(
+        book.pages.len(),
+        2,
+        "Should return exactly sequences 1 and 3"
+    );
+}
+
+// ============================================================================
+// Missing Cover Validation Tests
+// ============================================================================
+
+/// Verify that get_event_book rejects queries without a cover when no
+/// correlation_id is provided.
+///
+/// The cover contains domain and root_id which identify the aggregate.
+/// Without either a cover or correlation_id, we cannot locate events.
+#[tokio::test]
+async fn test_get_event_book_missing_cover() {
+    let (service, _, _) = create_default_test_service();
+
+    let query = Query {
+        cover: None,
+        selection: None,
+    };
+
+    let response = service.get_event_book(Request::new(query)).await;
+
+    assert!(response.is_err());
+    let status = response.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
+
+/// Verify that get_events (streaming) also rejects queries without a cover.
+///
+/// Same validation as get_event_book — both endpoints need either a cover
+/// with domain/root or a correlation_id to locate events.
+#[tokio::test]
+async fn test_get_events_missing_cover() {
+    let (service, _, _) = create_default_test_service();
+
+    let query = Query {
+        cover: None,
+        selection: None,
+    };
+
+    let response = service.get_events(Request::new(query)).await;
+
+    assert!(response.is_err());
+    let status = response.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
