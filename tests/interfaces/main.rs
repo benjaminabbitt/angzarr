@@ -46,6 +46,7 @@ mod steps;
 use cucumber::World;
 use steps::aggregate_handler::AggregateHandlerWorld;
 use steps::dlq::DlqWorld;
+use steps::dlq_publishers::DlqPublisherWorld;
 use steps::editions::EditionWorld;
 use steps::event_bus::EventBusWorld;
 use steps::event_query_service::EventQueryServiceWorld;
@@ -143,6 +144,13 @@ async fn main() {
     DlqWorld::cucumber()
         .fail_on_skipped()
         .run("tests/interfaces/features/dlq.feature")
+        .await;
+
+    // Run DLQ Publisher tests
+    println!("\n=== Running DLQ Publisher Contract Tests ===\n");
+    DlqPublisherWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/dlq_publishers.feature")
         .await;
 
     // Run Speculative Execution tests

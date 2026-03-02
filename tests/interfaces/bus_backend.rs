@@ -810,3 +810,284 @@ impl DlqContext {
         panic!("SNS/SQS feature not enabled. Build with --features sns-sqs");
     }
 }
+
+// ============================================================================
+// DLQ Backend (separate from Bus Backend for persistence tests)
+// ============================================================================
+
+/// DLQ backend type for persistence testing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DlqBackend {
+    /// Channel backend (in-memory, default)
+    Channel,
+    /// SQLite database backend
+    #[cfg(feature = "sqlite")]
+    Sqlite,
+    /// Filesystem backend
+    Filesystem,
+    /// Logging backend
+    Logging,
+    /// Offload filesystem backend
+    OffloadFilesystem,
+}
+
+impl DlqBackend {
+    /// Select DLQ backend from DLQ_BACKEND environment variable.
+    pub fn from_env() -> Self {
+        match env::var("DLQ_BACKEND")
+            .unwrap_or_else(|_| "channel".to_string())
+            .to_lowercase()
+            .as_str()
+        {
+            #[cfg(feature = "sqlite")]
+            "sqlite" | "database" => DlqBackend::Sqlite,
+            "filesystem" => DlqBackend::Filesystem,
+            "logging" => DlqBackend::Logging,
+            "offload-filesystem" | "offload_filesystem" => DlqBackend::OffloadFilesystem,
+            _ => DlqBackend::Channel,
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            DlqBackend::Channel => "channel",
+            #[cfg(feature = "sqlite")]
+            DlqBackend::Sqlite => "sqlite",
+            DlqBackend::Filesystem => "filesystem",
+            DlqBackend::Logging => "logging",
+            DlqBackend::OffloadFilesystem => "offload-filesystem",
+        }
+    }
+}
+
+/// Extended DLQ context with persistence verification capabilities.
+pub struct DlqPublisherContext {
+    /// Publisher for sending dead letters.
+    pub publisher: Arc<dyn DeadLetterPublisher>,
+    /// Receiver for channel backend (None for persistent backends).
+    pub receiver: Option<mpsc::UnboundedReceiver<AngzarrDeadLetter>>,
+    /// SQLite pool for database verification.
+    #[cfg(feature = "sqlite")]
+    pub sqlite_pool: Option<sqlx::SqlitePool>,
+    /// Filesystem path for file verification.
+    pub filesystem_path: Option<std::path::PathBuf>,
+    /// Backend type for conditional assertions.
+    pub backend: DlqBackend,
+}
+
+impl std::fmt::Debug for DlqPublisherContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DlqPublisherContext")
+            .field("publisher", &"<dyn DeadLetterPublisher>")
+            .field("receiver", &self.receiver.is_some())
+            .field("backend", &self.backend)
+            .finish()
+    }
+}
+
+impl DlqPublisherContext {
+    /// Create a DLQ publisher context for the configured backend.
+    pub async fn new(backend: DlqBackend) -> Self {
+        match backend {
+            DlqBackend::Channel => Self::create_channel().await,
+            #[cfg(feature = "sqlite")]
+            DlqBackend::Sqlite => Self::create_sqlite().await,
+            DlqBackend::Filesystem => Self::create_filesystem().await,
+            DlqBackend::Logging => Self::create_logging().await,
+            DlqBackend::OffloadFilesystem => Self::create_offload_filesystem().await,
+        }
+    }
+
+    #[cfg(feature = "channel")]
+    async fn create_channel() -> Self {
+        let (publisher, receiver) = ChannelDeadLetterPublisher::new();
+        DlqPublisherContext {
+            publisher: Arc::new(publisher),
+            receiver: Some(receiver),
+            #[cfg(feature = "sqlite")]
+            sqlite_pool: None,
+            filesystem_path: None,
+            backend: DlqBackend::Channel,
+        }
+    }
+
+    #[cfg(not(feature = "channel"))]
+    async fn create_channel() -> Self {
+        panic!("Channel feature not enabled. Build with --features channel");
+    }
+
+    #[cfg(feature = "sqlite")]
+    async fn create_sqlite() -> Self {
+        use angzarr::dlq::SqliteDlqPublisher;
+
+        // Create a unique in-memory database with shared cache for verification
+        let db_id = uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string();
+        let uri = format!("file:dlq_test_{}?mode=memory&cache=shared", db_id);
+
+        let publisher = SqliteDlqPublisher::new(&uri)
+            .await
+            .expect("Failed to create SQLite DLQ publisher");
+
+        // Open a second connection for verification
+        let pool = sqlx::SqlitePool::connect(&uri)
+            .await
+            .expect("Failed to create SQLite pool for verification");
+
+        DlqPublisherContext {
+            publisher: Arc::new(publisher),
+            receiver: None,
+            sqlite_pool: Some(pool),
+            filesystem_path: None,
+            backend: DlqBackend::Sqlite,
+        }
+    }
+
+    #[cfg(not(feature = "sqlite"))]
+    async fn create_sqlite() -> Self {
+        panic!("SQLite feature not enabled. Build with --features sqlite");
+    }
+
+    async fn create_filesystem() -> Self {
+        use angzarr::dlq::config::FilesystemDlqConfig;
+        use angzarr::dlq::FilesystemDeadLetterPublisher;
+
+        // Create temp directory for test
+        let temp_dir = std::env::temp_dir().join(format!(
+            "dlq_test_{}",
+            uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+        ));
+
+        let config = FilesystemDlqConfig {
+            path: temp_dir.to_string_lossy().to_string(),
+            format: "json".to_string(),
+            max_files: 0,
+        };
+
+        let publisher = FilesystemDeadLetterPublisher::new(&config)
+            .await
+            .expect("Failed to create filesystem DLQ publisher");
+
+        DlqPublisherContext {
+            publisher: Arc::new(publisher),
+            receiver: None,
+            #[cfg(feature = "sqlite")]
+            sqlite_pool: None,
+            filesystem_path: Some(temp_dir),
+            backend: DlqBackend::Filesystem,
+        }
+    }
+
+    async fn create_logging() -> Self {
+        use angzarr::dlq::LoggingDeadLetterPublisher;
+
+        DlqPublisherContext {
+            publisher: Arc::new(LoggingDeadLetterPublisher),
+            receiver: None,
+            #[cfg(feature = "sqlite")]
+            sqlite_pool: None,
+            filesystem_path: None,
+            backend: DlqBackend::Logging,
+        }
+    }
+
+    async fn create_offload_filesystem() -> Self {
+        use angzarr::dlq::config::OffloadFilesystemDlqConfig;
+        use angzarr::dlq::OffloadFilesystemDlqPublisher;
+
+        // Create temp directory for test
+        let temp_dir = std::env::temp_dir().join(format!(
+            "dlq_offload_test_{}",
+            uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+        ));
+
+        let config = OffloadFilesystemDlqConfig {
+            base_path: temp_dir.to_string_lossy().to_string(),
+            prefix: "dlq/".to_string(),
+        };
+
+        let publisher = OffloadFilesystemDlqPublisher::new(&config)
+            .await
+            .expect("Failed to create offload filesystem DLQ publisher");
+
+        DlqPublisherContext {
+            publisher: Arc::new(publisher),
+            receiver: None,
+            #[cfg(feature = "sqlite")]
+            sqlite_pool: None,
+            filesystem_path: Some(temp_dir),
+            backend: DlqBackend::OffloadFilesystem,
+        }
+    }
+
+    /// Verify entry count in SQLite database.
+    #[cfg(feature = "sqlite")]
+    pub async fn count_sqlite_entries(&self, domain: &str) -> i64 {
+        if let Some(ref pool) = self.sqlite_pool {
+            let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM dlq_entries WHERE domain = ?")
+                .bind(domain)
+                .fetch_one(pool)
+                .await
+                .expect("Failed to count DLQ entries");
+            row.0
+        } else {
+            0
+        }
+    }
+
+    /// Get the latest DLQ entry from SQLite.
+    #[cfg(feature = "sqlite")]
+    pub async fn get_latest_sqlite_entry(&self, domain: &str) -> Option<SqliteDlqEntry> {
+        if let Some(ref pool) = self.sqlite_pool {
+            sqlx::query_as::<_, SqliteDlqEntry>(
+                "SELECT id, domain, correlation_id, rejection_reason, rejection_type, source_component, source_component_type, occurred_at FROM dlq_entries WHERE domain = ? ORDER BY id DESC LIMIT 1"
+            )
+                .bind(domain)
+                .fetch_optional(pool)
+                .await
+                .expect("Failed to get latest DLQ entry")
+        } else {
+            None
+        }
+    }
+
+    /// Count files in filesystem DLQ directory.
+    pub async fn count_filesystem_files(&self) -> usize {
+        if let Some(ref path) = self.filesystem_path {
+            count_files_recursive(path).await
+        } else {
+            0
+        }
+    }
+}
+
+/// SQLite DLQ entry for verification.
+#[cfg(feature = "sqlite")]
+#[derive(Debug, sqlx::FromRow)]
+pub struct SqliteDlqEntry {
+    pub id: i64,
+    pub domain: String,
+    pub correlation_id: Option<String>,
+    pub rejection_reason: String,
+    pub rejection_type: String,
+    pub source_component: String,
+    pub source_component_type: String,
+    pub occurred_at: String,
+}
+
+/// Recursively count files in a directory.
+async fn count_files_recursive(path: &std::path::Path) -> usize {
+    use tokio::fs;
+
+    let mut count = 0;
+    if let Ok(mut entries) = fs::read_dir(path).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.is_dir() {
+                count += Box::pin(count_files_recursive(&path)).await;
+            } else {
+                count += 1;
+            }
+        }
+    }
+    count
+}

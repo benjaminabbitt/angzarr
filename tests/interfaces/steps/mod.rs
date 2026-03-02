@@ -2,6 +2,7 @@
 
 pub mod aggregate_handler;
 pub mod dlq;
+pub mod dlq_publishers;
 pub mod editions;
 pub mod event_bus;
 pub mod event_query_service;

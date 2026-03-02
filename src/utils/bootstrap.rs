@@ -261,10 +261,164 @@ pub fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
 /// Looks for `--config` or `-c` followed by a path.
 pub fn parse_config_path() -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
+    parse_config_path_from_args(&args)
+}
+
+/// Internal: parse config path from a given args list (testable).
+fn parse_config_path_from_args(args: &[String]) -> Option<String> {
     for i in 0..args.len() {
         if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
             return Some(args[i + 1].clone());
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ============================================================================
+    // parse_static_endpoints Tests
+    // ============================================================================
+
+    #[test]
+    fn test_parse_static_endpoints_single() {
+        let result = parse_static_endpoints("orders=/tmp/orders.sock");
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[0],
+            ("orders".to_string(), "/tmp/orders.sock".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_static_endpoints_multiple() {
+        let result =
+            parse_static_endpoints("orders=/tmp/orders.sock,inventory=/tmp/inventory.sock");
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result[0],
+            ("orders".to_string(), "/tmp/orders.sock".to_string())
+        );
+        assert_eq!(
+            result[1],
+            ("inventory".to_string(), "/tmp/inventory.sock".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_static_endpoints_with_spaces() {
+        let result =
+            parse_static_endpoints("orders = /tmp/orders.sock , inventory = /tmp/inventory.sock");
+        // After trim, "orders = /tmp/orders.sock" splits into ["orders ", " /tmp/orders.sock"]
+        // The current impl doesn't trim the values, just the pair
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_static_endpoints_empty() {
+        let result = parse_static_endpoints("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_static_endpoints_invalid_entry() {
+        // Missing = sign
+        let result = parse_static_endpoints("orders,inventory=/tmp/inventory.sock");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "inventory");
+    }
+
+    #[test]
+    fn test_parse_static_endpoints_value_with_equals() {
+        // Value containing = should be preserved
+        let result = parse_static_endpoints("orders=http://localhost:8080?key=value");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "orders");
+        assert_eq!(result[0].1, "http://localhost:8080?key=value");
+    }
+
+    #[test]
+    fn test_parse_static_endpoints_whitespace_trimmed() {
+        let result = parse_static_endpoints("  orders=/tmp/orders.sock  ");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "orders");
+    }
+
+    // ============================================================================
+    // parse_config_path_from_args Tests
+    // ============================================================================
+
+    #[test]
+    fn test_parse_config_path_long_flag() {
+        let args: Vec<String> = vec![
+            "program".to_string(),
+            "--config".to_string(),
+            "/path/to/config.yaml".to_string(),
+        ];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, Some("/path/to/config.yaml".to_string()));
+    }
+
+    #[test]
+    fn test_parse_config_path_short_flag() {
+        let args: Vec<String> = vec![
+            "program".to_string(),
+            "-c".to_string(),
+            "/path/to/config.yaml".to_string(),
+        ];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, Some("/path/to/config.yaml".to_string()));
+    }
+
+    #[test]
+    fn test_parse_config_path_not_present() {
+        let args: Vec<String> = vec![
+            "program".to_string(),
+            "--other".to_string(),
+            "value".to_string(),
+        ];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_config_path_flag_without_value() {
+        let args: Vec<String> = vec![
+            "program".to_string(),
+            "--config".to_string(),
+            // No value follows
+        ];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_config_path_among_other_args() {
+        let args: Vec<String> = vec![
+            "program".to_string(),
+            "--verbose".to_string(),
+            "--config".to_string(),
+            "/path/to/config.yaml".to_string(),
+            "--port".to_string(),
+            "8080".to_string(),
+        ];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, Some("/path/to/config.yaml".to_string()));
+    }
+
+    #[test]
+    fn test_parse_config_path_empty_args() {
+        let args: Vec<String> = vec![];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_config_path_only_program_name() {
+        let args: Vec<String> = vec!["program".to_string()];
+        let result = parse_config_path_from_args(&args);
+        assert_eq!(result, None);
+    }
 }
