@@ -159,12 +159,62 @@ impl EscalationHandler for DefaultEscalationHandler {
             return Ok(());
         };
 
-        info!(
-            saga = %context.saga_origin.saga_name,
-            webhook = %webhook_url,
-            "Sending notification (not yet implemented)"
-        );
-        // TODO: Implement HTTP webhook call
+        // Build webhook payload
+        let triggering_aggregate = context.saga_origin.triggering_aggregate.as_ref();
+        let payload = serde_json::json!({
+            "saga_name": context.saga_origin.saga_name,
+            "triggering_domain": triggering_aggregate.map(|c| &c.domain),
+            "triggering_root_id": triggering_aggregate
+                .and_then(|c| c.root.as_ref())
+                .map(|u| hex::encode(&u.value)),
+            "triggering_event_sequence": context.saga_origin.triggering_event_sequence,
+            "rejection_reason": context.rejection_reason,
+            "compensation_reason": reason,
+            "correlation_id": context.correlation_id,
+            "occurred_at": chrono::Utc::now().to_rfc3339(),
+        });
+
+        // POST to webhook (best-effort, don't fail on errors)
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| {
+                error!(error = %e, "Failed to create HTTP client for webhook");
+                CompensationError::EscalationFailed(format!("HTTP client error: {}", e))
+            })?;
+
+        match client
+            .post(webhook_url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => {
+                info!(
+                    saga = %context.saga_origin.saga_name,
+                    webhook = %webhook_url,
+                    status = %response.status(),
+                    "Webhook notification sent successfully"
+                );
+            }
+            Ok(response) => {
+                warn!(
+                    saga = %context.saga_origin.saga_name,
+                    webhook = %webhook_url,
+                    status = %response.status(),
+                    "Webhook returned non-success status"
+                );
+            }
+            Err(e) => {
+                error!(
+                    saga = %context.saga_origin.saga_name,
+                    webhook = %webhook_url,
+                    error = %e,
+                    "Failed to send webhook notification"
+                );
+            }
+        }
 
         Ok(())
     }
