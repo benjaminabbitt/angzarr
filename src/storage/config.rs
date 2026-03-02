@@ -177,6 +177,19 @@ mod tests {
         assert_eq!(config.uri(), "sqlite:/tmp/test.db");
     }
 
+    /// Empty path string treated as in-memory (not empty file path).
+    ///
+    /// Edge case: config deserialization may produce `Some("")` rather than
+    /// `None`. The uri() method treats this as in-memory to avoid creating
+    /// a database at the current directory with no name.
+    #[test]
+    fn test_sqlite_uri_empty_string_is_memory() {
+        let config = SqliteConfig {
+            path: Some(String::new()),
+        };
+        assert_eq!(config.uri(), "sqlite::memory:");
+    }
+
     #[test]
     fn test_snapshots_enable_config_default() {
         let config = SnapshotsEnableConfig::default();
