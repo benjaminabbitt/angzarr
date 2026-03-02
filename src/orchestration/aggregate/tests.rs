@@ -208,3 +208,391 @@ fn test_merge_strategy_empty_pages_defaults_to_commutative() {
     // Empty pages should default to Commutative
     assert_eq!(command.merge_strategy(), MergeStrategy::MergeCommutative);
 }
+
+// ============================================================================
+// Commutative Merge Helper Tests - Catch mutations in field extraction
+// ============================================================================
+
+#[test]
+fn test_extract_command_fields_field_a() {
+    let root = Uuid::new_v4();
+    let command = CommandBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![CommandPage {
+            sequence: 0,
+            payload: Some(command_page::Payload::Command(Any {
+                type_url: "test.UpdateFieldA".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
+        saga_origin: None,
+    };
+
+    let fields = extract_command_fields(&command);
+    assert!(fields.contains("field_a"));
+    assert!(!fields.contains("field_b"));
+    assert!(!fields.contains("*"));
+}
+
+#[test]
+fn test_extract_command_fields_field_b() {
+    let root = Uuid::new_v4();
+    let command = CommandBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![CommandPage {
+            sequence: 0,
+            payload: Some(command_page::Payload::Command(Any {
+                type_url: "test.UpdateFieldB".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
+        saga_origin: None,
+    };
+
+    let fields = extract_command_fields(&command);
+    assert!(!fields.contains("field_a"));
+    assert!(fields.contains("field_b"));
+    assert!(!fields.contains("*"));
+}
+
+#[test]
+fn test_extract_command_fields_update_both() {
+    let root = Uuid::new_v4();
+    let command = CommandBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![CommandPage {
+            sequence: 0,
+            payload: Some(command_page::Payload::Command(Any {
+                type_url: "test.UpdateBoth".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
+        saga_origin: None,
+    };
+
+    let fields = extract_command_fields(&command);
+    assert!(fields.contains("field_a"));
+    assert!(fields.contains("field_b"));
+    assert!(!fields.contains("*"));
+}
+
+#[test]
+fn test_extract_command_fields_unknown_returns_wildcard() {
+    let root = Uuid::new_v4();
+    let command = CommandBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![CommandPage {
+            sequence: 0,
+            payload: Some(command_page::Payload::Command(Any {
+                type_url: "test.UnknownCommand".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
+        saga_origin: None,
+    };
+
+    let fields = extract_command_fields(&command);
+    assert!(
+        fields.contains("*"),
+        "unknown command should return wildcard"
+    );
+}
+
+#[test]
+fn test_extract_command_fields_empty_pages() {
+    let command = CommandBook {
+        cover: None,
+        pages: vec![],
+        saga_origin: None,
+    };
+
+    let fields = extract_command_fields(&command);
+    assert!(fields.is_empty(), "empty pages should return empty set");
+}
+
+// ============================================================================
+// Event Filtering Tests
+// ============================================================================
+
+#[test]
+fn test_build_events_up_to_sequence_filters_correctly() {
+    let root = Uuid::new_v4();
+    let events = EventBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![
+            crate::proto::EventPage {
+                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                payload: None,
+                created_at: None,
+            },
+            crate::proto::EventPage {
+                sequence_type: Some(event_page::SequenceType::Sequence(1)),
+                payload: None,
+                created_at: None,
+            },
+            crate::proto::EventPage {
+                sequence_type: Some(event_page::SequenceType::Sequence(2)),
+                payload: None,
+                created_at: None,
+            },
+            crate::proto::EventPage {
+                sequence_type: Some(event_page::SequenceType::Sequence(3)),
+                payload: None,
+                created_at: None,
+            },
+        ],
+        snapshot: None,
+        next_sequence: 4,
+    };
+
+    let filtered = build_events_up_to_sequence(&events, 2);
+    assert_eq!(filtered.pages.len(), 2, "should have events 0 and 1");
+    assert_eq!(filtered.next_sequence, 2);
+}
+
+#[test]
+fn test_build_events_up_to_sequence_zero_returns_empty() {
+    let root = Uuid::new_v4();
+    let events = EventBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![crate::proto::EventPage {
+            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            payload: None,
+            created_at: None,
+        }],
+        snapshot: None,
+        next_sequence: 1,
+    };
+
+    let filtered = build_events_up_to_sequence(&events, 0);
+    assert!(filtered.pages.is_empty(), "up_to 0 should return empty");
+}
+
+// ============================================================================
+// Test State Parsing - Catch mutations in diff logic
+// ============================================================================
+
+#[test]
+fn test_parse_test_state_fields_simple() {
+    let fields = parse_test_state_fields(r#"{"field_a":100,"field_b":"hello"}"#);
+    assert_eq!(fields.get("field_a"), Some(&"100".to_string()));
+    assert_eq!(fields.get("field_b"), Some(&"\"hello\"".to_string()));
+}
+
+#[test]
+fn test_parse_test_state_fields_empty() {
+    let fields = parse_test_state_fields("{}");
+    assert!(fields.is_empty());
+}
+
+#[test]
+fn test_diff_test_state_fields_identical() {
+    let before = r#"{"field_a":100}"#.as_bytes();
+    let after = r#"{"field_a":100}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert!(
+        changed.is_empty(),
+        "identical states should have no changes"
+    );
+}
+
+#[test]
+fn test_diff_test_state_fields_single_change() {
+    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+    let after = r#"{"field_a":100,"field_b":300}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert_eq!(changed.len(), 1);
+    assert!(changed.contains("field_b"));
+    assert!(!changed.contains("field_a"));
+}
+
+#[test]
+fn test_diff_test_state_fields_multiple_changes() {
+    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+    let after = r#"{"field_a":999,"field_b":888}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert_eq!(changed.len(), 2);
+    assert!(changed.contains("field_a"));
+    assert!(changed.contains("field_b"));
+}
+
+#[test]
+fn test_diff_test_state_fields_field_added() {
+    let before = r#"{"field_a":100}"#.as_bytes();
+    let after = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert!(changed.contains("field_b"), "new field should be detected");
+}
+
+#[test]
+fn test_diff_test_state_fields_field_removed() {
+    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+    let after = r#"{"field_a":100}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert!(
+        changed.contains("field_b"),
+        "removed field should be detected"
+    );
+}
+
+// ============================================================================
+// Type URL Diff Tests - Catch mutations in diff_state_fields
+// ============================================================================
+
+#[test]
+fn test_diff_state_fields_different_types() {
+    let before = Any {
+        type_url: "type.a".to_string(),
+        value: vec![1, 2, 3],
+    };
+    let after = Any {
+        type_url: "type.b".to_string(),
+        value: vec![1, 2, 3],
+    };
+
+    let changed = diff_state_fields(&before, &after);
+    assert!(
+        changed.contains("*"),
+        "different types should return wildcard"
+    );
+}
+
+#[test]
+fn test_diff_state_fields_same_bytes() {
+    let before = Any {
+        type_url: "test.Unknown".to_string(),
+        value: vec![1, 2, 3],
+    };
+    let after = Any {
+        type_url: "test.Unknown".to_string(),
+        value: vec![1, 2, 3],
+    };
+
+    let changed = diff_state_fields(&before, &after);
+    assert!(
+        changed.is_empty(),
+        "identical bytes should return empty set"
+    );
+}
+
+#[test]
+fn test_diff_state_fields_different_bytes_unknown_type() {
+    let before = Any {
+        type_url: "test.Unknown".to_string(),
+        value: vec![1, 2, 3],
+    };
+    let after = Any {
+        type_url: "test.Unknown".to_string(),
+        value: vec![4, 5, 6],
+    };
+
+    let changed = diff_state_fields(&before, &after);
+    assert!(
+        changed.contains("*"),
+        "different bytes with unknown type should return wildcard"
+    );
+}
+
+// ============================================================================
+// Fact Pipeline Parsing Tests
+// ============================================================================
+
+#[test]
+fn test_parse_event_cover_valid() {
+    let root = Uuid::new_v4();
+    let event = make_event_book("inventory", root, Some(0));
+
+    let (domain, parsed_root) = parse_event_cover(&event).unwrap();
+
+    assert_eq!(domain, "inventory");
+    assert_eq!(parsed_root, root);
+}
+
+#[test]
+fn test_parse_event_cover_missing_cover() {
+    let event = EventBook {
+        cover: None,
+        pages: vec![],
+        snapshot: None,
+        next_sequence: 0,
+    };
+
+    let result = parse_event_cover(&event);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_parse_event_cover_missing_root() {
+    let event = EventBook {
+        cover: Some(Cover {
+            domain: "test".to_string(),
+            root: None,
+            correlation_id: String::new(),
+            edition: None,
+            external_id: String::new(),
+        }),
+        pages: vec![],
+        snapshot: None,
+        next_sequence: 0,
+    };
+
+    let result = parse_event_cover(&event);
+    assert!(result.is_err());
+}

@@ -1261,4 +1261,160 @@ mod sqlite_tests {
         let result = outbox.create_subscriber("test", Some("orders")).await;
         assert!(matches!(result, Err(BusError::SubscribeNotSupported)));
     }
+
+    // ========================================================================
+    // Recovery Boundary Tests - Catch mutations on 30-second threshold and batch limit
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_recover_boundary_29_seconds_not_recovered() {
+        let pool = create_test_pool().await;
+        let inner = Arc::new(MockEventBus::new());
+        let config = OutboxConfig::default();
+
+        let outbox = Arc::new(SqliteOutboxEventBus::new(
+            inner.clone(),
+            pool.clone(),
+            config,
+        ));
+        outbox.init().await.unwrap();
+
+        let book = make_test_event_book("orders", uuid::Uuid::new_v4());
+        let event_data = book.encode_to_vec();
+
+        // Insert event at 29 seconds (just under 30 second threshold)
+        insert_orphaned_event(&pool, "boundary-29", "orders", &event_data, 29, 0).await;
+
+        let recovered = outbox.recover_orphaned().await.unwrap();
+
+        assert_eq!(
+            recovered, 0,
+            "event at 29 seconds should NOT be recovered (under 30s threshold)"
+        );
+        assert_eq!(count_outbox_entries(&pool).await, 1, "event should remain");
+    }
+
+    #[tokio::test]
+    async fn test_recover_boundary_31_seconds_is_recovered() {
+        let pool = create_test_pool().await;
+        let inner = Arc::new(MockEventBus::new());
+        let config = OutboxConfig::default();
+
+        let outbox = Arc::new(SqliteOutboxEventBus::new(
+            inner.clone(),
+            pool.clone(),
+            config,
+        ));
+        outbox.init().await.unwrap();
+
+        let book = make_test_event_book("orders", uuid::Uuid::new_v4());
+        let event_data = book.encode_to_vec();
+
+        // Insert event at 31 seconds (just over 30 second threshold)
+        insert_orphaned_event(&pool, "boundary-31", "orders", &event_data, 31, 0).await;
+
+        let recovered = outbox.recover_orphaned().await.unwrap();
+
+        assert_eq!(
+            recovered, 1,
+            "event at 31 seconds SHOULD be recovered (over 30s threshold)"
+        );
+        assert_eq!(
+            count_outbox_entries(&pool).await,
+            0,
+            "event should be removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_recover_respects_batch_limit_of_100() {
+        let pool = create_test_pool().await;
+        let inner = Arc::new(MockEventBus::new());
+        let config = OutboxConfig::default();
+
+        let outbox = Arc::new(SqliteOutboxEventBus::new(
+            inner.clone(),
+            pool.clone(),
+            config,
+        ));
+        outbox.init().await.unwrap();
+
+        // Insert 150 orphaned events (exceeds 100 batch limit)
+        for i in 0..150 {
+            let book = make_test_event_book("orders", uuid::Uuid::new_v4());
+            let event_data = book.encode_to_vec();
+            insert_orphaned_event(
+                &pool,
+                &format!("batch-limit-{}", i),
+                "orders",
+                &event_data,
+                60,
+                0,
+            )
+            .await;
+        }
+
+        assert_eq!(count_outbox_entries(&pool).await, 150);
+
+        // First recovery should process exactly 100 (the batch limit)
+        let recovered = outbox.recover_orphaned().await.unwrap();
+
+        assert_eq!(
+            recovered, 100,
+            "should recover exactly 100 events (batch limit)"
+        );
+        assert_eq!(
+            count_outbox_entries(&pool).await,
+            50,
+            "50 events should remain for next batch"
+        );
+
+        // Second recovery should process the remaining 50
+        let recovered2 = outbox.recover_orphaned().await.unwrap();
+        assert_eq!(recovered2, 50, "should recover remaining 50 events");
+        assert_eq!(count_outbox_entries(&pool).await, 0, "all events recovered");
+    }
+
+    #[tokio::test]
+    async fn test_recover_max_retries_boundary() {
+        let pool = create_test_pool().await;
+        let inner = Arc::new(MockEventBus::new());
+        let config = OutboxConfig {
+            max_retries: 5,
+            ..Default::default()
+        };
+
+        let outbox = Arc::new(SqliteOutboxEventBus::new(
+            inner.clone(),
+            pool.clone(),
+            config,
+        ));
+        outbox.init().await.unwrap();
+
+        let book = make_test_event_book("orders", uuid::Uuid::new_v4());
+        let event_data = book.encode_to_vec();
+
+        // Insert event at retry_count = 4 (just under max_retries=5)
+        insert_orphaned_event(&pool, "under-max", "orders", &event_data, 60, 4).await;
+
+        // Insert event at retry_count = 5 (at max_retries)
+        insert_orphaned_event(&pool, "at-max", "orders", &event_data, 60, 5).await;
+
+        let recovered = outbox.recover_orphaned().await.unwrap();
+
+        // Only the one under max_retries should be attempted
+        assert_eq!(
+            recovered, 1,
+            "only event under max_retries should be recovered"
+        );
+        assert_eq!(
+            count_outbox_entries(&pool).await,
+            1,
+            "event at max_retries should remain"
+        );
+
+        // Verify the remaining event is the one at max_retries
+        let entry = get_outbox_entry(&pool, "at-max").await;
+        assert!(entry.is_some(), "event at max_retries should still exist");
+    }
 }
