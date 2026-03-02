@@ -29,7 +29,34 @@ All other domains use object oriented.
 - Tests must actually execute (not just exist as specifications)
 - For Gherkin features: step definitions must be implemented and the test runner must pass
 - "Tests pass" means running the actual test command, not just writing test files
-- Mark todo items as "completed" only after tests run green 
+- Mark todo items as "completed" only after tests run green
+
+### Mutation Testing Validation
+**Run mutation testing after EVERY new test is added.** Tests must catch mutations to be meaningful. A test that doesn't kill any mutants is a waste of code.
+
+Workflow:
+1. Write a test
+2. Run mutation testing on the file
+3. Verify the test kills at least one mutant
+4. If no mutants killed, the test is not meaningful — improve it or delete it
+5. Repeat for each new test
+
+```bash
+# Run mutation testing on the modified file
+cargo mutants --in-place --timeout 120 -f <file> -- --features "sqlite test-utils"
+```
+
+**Exclusions:**
+- Do NOT test gRPC/proto generated code (`src/proto/` or `*.pb.rs` files)
+- DO test extension traits on proto types (`src/proto_ext/`)
+- DO test any hand-written code that uses proto types
+
+Target kill rates:
+- Trait contracts (storage, bus, DLQ): 70%+
+- Orchestration/framework code: 60%+
+- Utility functions: 70%+
+
+**Do not mark work complete until mutation testing validates the tests are meaningful.** 
 
 ### Enums
 ese enum names, not integer representations, in code
@@ -140,10 +167,15 @@ No external dependencies. Tests interact only with the system under test. Mock p
 
 Verify that storage and bus implementations correctly fulfill their trait contracts. Uses **testcontainers** to provision real databases/message brokers in Docker containers.
 
-- Storage: `tests/storage_postgres.rs`, `tests/storage_redis.rs`, `tests/storage_immudb.rs`, etc.
-- Bus: `tests/bus_nats.rs`, `tests/bus_amqp.rs`, `tests/bus_kafka.rs`, etc.
-- Interface tests (Gherkin): `tests/interfaces/` — same contracts, BDD-style
+**Full-support backends** (SQLite, PostgreSQL) use Gherkin interface tests:
+- Location: `tests/interfaces/` — human-readable BDD-style specifications
 - Run with: `just test-interfaces` (SQLite, fast) or `just test-interfaces-postgres` (containers)
+
+**Partial-support backends** use direct macro tests:
+- Storage: `tests/storage_redis.rs` (SnapshotStore only), `tests/storage_immudb.rs` (EventStore only), `tests/storage_nats.rs` (EventStore only)
+- Bus: `tests/bus_nats.rs`, `tests/bus_amqp.rs`, `tests/bus_kafka.rs`, etc.
+- Shared test suites: `tests/storage/*_tests.rs` define reusable test macros
+
 - **Execution**: CI/CD only (containers are slow), but runnable locally via just targets
 
 ### Integration Tests

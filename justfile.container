@@ -32,11 +32,8 @@ test:
 # These tests verify that storage and bus implementations correctly fulfill their trait contracts.
 
 # --- Direct Contract Tests (macro-based) ---
-# Fast verification of specific backend implementations.
-
-# Run PostgreSQL storage contract tests (requires podman socket)
-test-contract-postgres:
-    cargo test --test storage_postgres --features postgres -- --nocapture
+# For backends with partial storage support (not all three stores).
+# Full-support backends (SQLite, Postgres) use Gherkin interface tests instead.
 
 # Run Redis storage contract tests (requires podman socket)
 test-contract-redis:

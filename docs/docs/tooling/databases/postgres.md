@@ -122,8 +122,8 @@ postgres:
 ## Testing
 
 ```bash
-# Run PostgreSQL tests (requires testcontainers)
-cargo test --test storage_postgres --features postgres
+# Run PostgreSQL interface tests (requires testcontainers)
+STORAGE_BACKEND=postgres cargo test --test interfaces --features "postgres test-utils"
 
 # Requires podman socket
 systemctl --user start podman.socket

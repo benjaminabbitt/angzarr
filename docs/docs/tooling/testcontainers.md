@@ -160,13 +160,36 @@ async fn start_rabbitmq() -> (ContainerAsync<GenericImage>, String) {
 
 ## Running Tests
 
-```bash
-# PostgreSQL tests (requires podman/docker)
-cargo test --test storage_postgres --features postgres
+### Full-Support Backends (SQLite, PostgreSQL)
 
-# Redis tests
+Backends supporting all storage traits use Gherkin interface tests:
+
+```bash
+# SQLite (in-memory, no containers)
+cargo test --test interfaces --features "sqlite test-utils"
+
+# PostgreSQL (requires podman/docker)
+STORAGE_BACKEND=postgres cargo test --test interfaces --features "postgres test-utils"
+```
+
+### Partial-Support Backends
+
+Backends with partial storage support use direct macro tests:
+
+```bash
+# Redis (SnapshotStore only)
 cargo test --test storage_redis --features redis
 
+# immudb (EventStore only)
+cargo test --test storage_immudb --features immudb
+
+# NATS (EventStore only)
+cargo test --test storage_nats --features nats
+```
+
+### Bus Tests
+
+```bash
 # AMQP tests
 cargo test --test bus_amqp --features amqp
 ```
@@ -179,9 +202,25 @@ systemctl --user start podman.socket
 
 ---
 
-## Shared Test Macros
+## Test Architecture
 
-All storage backends implement the same traits. Test macros define cases once:
+### Gherkin Interface Tests (Preferred)
+
+For backends supporting all three storage traits (EventStore, SnapshotStore, PositionStore),
+use the Gherkin interface tests. These provide human-readable contract specifications:
+
+```gherkin
+# tests/interfaces/features/event_store.feature
+Scenario: First event in an aggregate's history starts at sequence 0
+  Given an aggregate "player" with no events
+  When I add 1 event to the aggregate
+  Then the aggregate should have 1 event
+  And the first event should have sequence 0
+```
+
+### Shared Test Macros (Partial Support)
+
+For backends with partial storage support, shared test macros ensure consistent behavior:
 
 ```rust
 // tests/storage/event_store_tests.rs
@@ -195,17 +234,16 @@ macro_rules! run_event_store_tests {
 }
 ```
 
-Each backend invokes the macros:
+Each partial-support backend invokes the macros:
 
 ```rust
-// tests/storage_postgres.rs
+// tests/storage_redis.rs (SnapshotStore only)
 #[tokio::test]
-async fn test_postgres_event_store() {
-    let (_container, url) = start_postgres().await;
-    let pool = connect_and_migrate(&url).await;
-    let store = PostgresEventStore::new(pool);
+async fn test_redis_snapshot_store() {
+    let (_container, url) = start_redis().await;
+    let store = RedisSnapshotStore::new(&url, None).await.unwrap();
 
-    run_event_store_tests!(&store);
+    run_snapshot_store_tests!(&store);
 }
 ```
 

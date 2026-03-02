@@ -294,14 +294,6 @@ name = "storage_redis"
 required-features = ["redis"]
 
 [[test]]
-name = "storage_postgres"
-required-features = ["postgres"]
-
-[[test]]
-name = "storage_sqlite"
-required-features = ["sqlite"]
-
-[[test]]
 name = "storage_immudb"
 required-features = ["immudb"]
 

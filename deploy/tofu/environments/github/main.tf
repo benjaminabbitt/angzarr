@@ -67,7 +67,6 @@ module "repository" {
           "clippy",
           "test-unit",
           "test-integration",
-          "test-unit-backends (postgres, storage_postgres, postgres)",
           "test-unit-backends (redis, storage_redis, redis)",
           "test-unit-backends (nats, bus_nats, nats)",
           "test-interface-bus (channel, channel, sqlite,channel)",

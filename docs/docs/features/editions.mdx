@@ -157,6 +157,41 @@ Production continues normally while you experiment.
 
 ---
 
+## Regulated Industry Considerations
+
+While edition isolation guarantees prevent experimental data from affecting the main timeline, running experiments on production infrastructure may still raise concerns in regulated environments—auditors may require complete separation of test and production systems regardless of software guarantees.
+
+For these situations, duplicate the event storage and run editions in an isolated environment:
+
+```text title="illustrative - isolated experimentation"
+Production Environment          Isolated Environment
+┌─────────────────────┐         ┌─────────────────────┐
+│ Event Store (main)  │ ──copy──▶ Event Store (copy) │
+│ - orders            │         │ - orders            │
+│ - inventory         │         │ - inventory         │
+└─────────────────────┘         └─────────────────────┘
+                                         │
+                                         ▼
+                                ┌─────────────────────┐
+                                │ Run editions here   │
+                                │ - backtests         │
+                                │ - what-if analysis  │
+                                │ - ML training       │
+                                └─────────────────────┘
+```
+
+This provides the same analytical capabilities while satisfying regulatory requirements for environment separation.
+
+:::note Future: PII Stripping Hooks
+
+A planned feature will add advice hooks for stripping personally identifiable information during event export, similar to the [upcasting](../sdks/upcasting) pattern. This will enable copying production events to isolated environments with automatic anonymization.
+
+See [Roadmap](../roadmap#pii-stripping-hooks) for details.
+
+:::
+
+---
+
 ## See Also
 
 - [ML training patterns](./ml-training) — Using editions for model training
