@@ -401,6 +401,9 @@ impl ProjectorCoordinatorService for EventService {
 }
 
 /// Wrapper to share EventService across async contexts.
+///
+/// Required due to Rust's orphan rule: cannot implement foreign trait
+/// (ProjectorCoordinatorService) for foreign type (Arc<T>).
 #[derive(Clone)]
 pub struct EventServiceHandle(pub Arc<EventService>);
 

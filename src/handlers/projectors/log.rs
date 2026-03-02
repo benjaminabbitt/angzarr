@@ -149,36 +149,10 @@ impl Default for LogService {
     }
 }
 
-#[tonic::async_trait]
-impl ProjectorCoordinatorService for LogService {
-    async fn handle_sync(
-        &self,
-        request: Request<EventRequest>,
-    ) -> Result<Response<Projection>, Status> {
-        if let Some(book) = request.into_inner().events {
-            self.handle(&book);
-        }
-        Ok(Response::new(Projection::default()))
-    }
-
-    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
-        let book = request.into_inner();
-        self.handle(&book);
-        Ok(Response::new(()))
-    }
-
-    async fn handle_speculative(
-        &self,
-        request: Request<SpeculateProjectorRequest>,
-    ) -> Result<Response<Projection>, Status> {
-        if let Some(book) = request.into_inner().events {
-            self.handle(&book);
-        }
-        Ok(Response::new(Projection::default()))
-    }
-}
-
 /// Wrapper to share LogService across async contexts.
+///
+/// Required due to Rust's orphan rule: cannot implement foreign trait
+/// (ProjectorCoordinatorService) for foreign type (Arc<T>).
 #[derive(Clone)]
 pub struct LogServiceHandle(pub Arc<LogService>);
 
@@ -207,5 +181,34 @@ impl ProjectorCoordinatorService for LogServiceHandle {
         request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
         ProjectorCoordinatorService::handle_speculative(&*self.0, request).await
+    }
+}
+
+#[tonic::async_trait]
+impl ProjectorCoordinatorService for LogService {
+    async fn handle_sync(
+        &self,
+        request: Request<EventRequest>,
+    ) -> Result<Response<Projection>, Status> {
+        if let Some(book) = request.into_inner().events {
+            self.handle(&book);
+        }
+        Ok(Response::new(Projection::default()))
+    }
+
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
+        let book = request.into_inner();
+        self.handle(&book);
+        Ok(Response::new(()))
+    }
+
+    async fn handle_speculative(
+        &self,
+        request: Request<SpeculateProjectorRequest>,
+    ) -> Result<Response<Projection>, Status> {
+        if let Some(book) = request.into_inner().events {
+            self.handle(&book);
+        }
+        Ok(Response::new(Projection::default()))
     }
 }
