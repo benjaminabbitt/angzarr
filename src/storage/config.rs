@@ -152,8 +152,27 @@ impl Default for SnapshotsEnableConfig {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for storage configuration types.
+    //!
+    //! Storage config is a discriminated union supporting multiple backends:
+    //! PostgreSQL (default), SQLite, Redis, Bigtable, DynamoDB, NATS.
+    //! Each backend has its own sub-configuration.
+    //!
+    //! Key behaviors verified:
+    //! - Default storage type is postgres (production-ready default)
+    //! - SQLite URI handling (in-memory vs file paths)
+    //! - Snapshot enable flags for debugging/troubleshooting
+
     use super::*;
 
+    // ============================================================================
+    // StorageConfig Tests
+    // ============================================================================
+
+    /// Default storage config targets PostgreSQL with standard connection string.
+    ///
+    /// PostgreSQL is the default because it's the most commonly deployed
+    /// production database with full ACID guarantees.
     #[test]
     fn test_storage_config_default() {
         let storage = StorageConfig::default();
@@ -163,12 +182,21 @@ mod tests {
         assert!(storage.snapshots_enable.write);
     }
 
+    // ============================================================================
+    // SqliteConfig Tests
+    // ============================================================================
+
+    /// Default SQLite config uses in-memory database.
+    ///
+    /// In-memory is safest for testing—no file cleanup needed.
+    /// Production deployments should configure explicit path.
     #[test]
     fn test_sqlite_uri_memory() {
         let config = SqliteConfig::default();
         assert_eq!(config.uri(), "sqlite::memory:");
     }
 
+    /// File path SQLite config generates correct URI.
     #[test]
     fn test_sqlite_uri_file() {
         let config = SqliteConfig {
@@ -190,6 +218,16 @@ mod tests {
         assert_eq!(config.uri(), "sqlite::memory:");
     }
 
+    // ============================================================================
+    // SnapshotsEnableConfig Tests
+    // ============================================================================
+
+    /// Default snapshot config enables both read and write.
+    ///
+    /// Snapshots improve performance by avoiding full event replay.
+    /// Both flags are enabled by default; disable for debugging:
+    /// - read=false: Force full event replay (verify replay correctness)
+    /// - write=false: Pure event sourcing mode (no snapshot storage)
     #[test]
     fn test_snapshots_enable_config_default() {
         let config = SnapshotsEnableConfig::default();
