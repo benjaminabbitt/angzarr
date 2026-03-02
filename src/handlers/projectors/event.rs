@@ -451,8 +451,26 @@ pub async fn connect_pool(database_url: &str) -> Result<Pool, sqlx::Error> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for the generic Event projector.
+    //!
+    //! The Event projector writes all events as JSON to a database table,
+    //! enabling ad-hoc querying and debugging. These tests verify:
+    //! - Base64 encoding for binary fallback when descriptors unavailable
+    //! - Event type extraction from fully-qualified type URLs
+    //! - SQL query building with proper escaping (SQL injection prevention)
+    //!
+    //! Database integration tests are in Gherkin interface tests.
+
     use super::*;
 
+    // ============================================================================
+    // Base64 Encoding Tests
+    // ============================================================================
+
+    /// Base64 encoding for binary event fallback.
+    ///
+    /// When protobuf descriptors aren't available to decode events to JSON,
+    /// we store the binary as base64. Standard test vectors from RFC 4648.
     #[test]
     fn test_base64_encode() {
         assert_eq!(base64_encode(b""), "");
@@ -464,6 +482,14 @@ mod tests {
         assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
     }
 
+    // ============================================================================
+    // Type URL Parsing Tests
+    // ============================================================================
+
+    /// Event type extraction strips URL prefix.
+    ///
+    /// Protobuf Any messages use URLs like "type.googleapis.com/orders.OrderCreated".
+    /// For storage and querying, we want just "orders.OrderCreated".
     #[test]
     fn test_extract_event_type() {
         assert_eq!(
@@ -476,6 +502,14 @@ mod tests {
         );
     }
 
+    // ============================================================================
+    // SQL Query Building Tests
+    // ============================================================================
+
+    /// INSERT statement includes all event fields.
+    ///
+    /// Verifies sea-query builds valid SQL with all required columns.
+    /// Uses ON CONFLICT DO NOTHING for idempotent inserts.
     #[test]
     fn test_event_record_build_insert() {
         let record = EventRecord {
@@ -499,6 +533,11 @@ mod tests {
         assert!(sql.contains("OrderCreated"));
     }
 
+    /// SQL injection in domain name is safely escaped.
+    ///
+    /// Critical security test: untrusted input in domain/root_id/event_json
+    /// must not allow SQL injection. Sea-query escapes appropriately per
+    /// backend (Postgres backslash, SQLite double-quote).
     #[test]
     fn test_event_record_escapes_special_characters() {
         let record = EventRecord {

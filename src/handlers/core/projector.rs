@@ -214,9 +214,27 @@ fn create_projection_event_book(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for projector event handler and projection streaming.
+    //!
+    //! The projector event handler bridges the event bus to projector services:
+    //! 1. Receives events from the bus
+    //! 2. Filters by domain (if configured)
+    //! 3. Calls projector handler to generate Projection
+    //! 4. Publishes Projection as synthetic EventBook for streaming
+    //!
+    //! Key scenarios tested:
+    //! - Projection EventBook creation (domain prefixing, correlation ID)
+    //! - Domain filtering (include list, infrastructure exclusion)
+    //! - Publishing conditions (projection content or projector name required)
+    //! - Edition preservation through the projection pipeline
+
     use super::*;
     use crate::proto::{Cover, Edition, Projection};
     use crate::proto_ext::CoverExt;
+
+    // ============================================================================
+    // Test Helpers
+    // ============================================================================
 
     fn make_cover(domain: &str) -> Cover {
         Cover {
@@ -237,6 +255,14 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Projection EventBook Creation Tests
+    // ============================================================================
+
+    /// Projection domain uses special prefix for routing.
+    ///
+    /// Projections are routed separately from domain events. The prefix
+    /// "_projection.{projector}.{domain}" enables filtering and subscription.
     #[test]
     fn create_projection_event_book_sets_projection_domain_prefix() {
         let projection = make_projection("order-summary", 5);
@@ -248,6 +274,10 @@ mod tests {
         assert!(domain.contains("orders"));
     }
 
+    /// Correlation ID preserved for cross-domain tracing.
+    ///
+    /// The original correlation ID flows through projections, enabling
+    /// end-to-end request tracing from command to projection output.
     #[test]
     fn create_projection_event_book_preserves_correlation_id() {
         let projection = make_projection("order-summary", 5);
@@ -256,6 +286,10 @@ mod tests {
         assert_eq!(event_book.correlation_id(), "my-correlation");
     }
 
+    /// Projection sequence matches source projection.
+    ///
+    /// The sequence number identifies the projection version and enables
+    /// clients to track projection freshness.
     #[test]
     fn create_projection_event_book_sets_sequence() {
         let projection = make_projection("order-summary", 42);
@@ -271,6 +305,10 @@ mod tests {
         }
     }
 
+    /// Projection type URL is fixed for deserialization.
+    ///
+    /// Clients know to deserialize the payload as Projection proto
+    /// based on the type URL.
     #[test]
     fn create_projection_event_book_sets_correct_type_url() {
         let projection = make_projection("order-summary", 5);
@@ -285,6 +323,10 @@ mod tests {
         assert_eq!(any.type_url, PROJECTION_TYPE_URL);
     }
 
+    /// Projection roundtrip: serialize → deserialize preserves data.
+    ///
+    /// Verifies the serialized Projection can be decoded back to the
+    /// original values.
     #[test]
     fn create_projection_event_book_deserializes_correctly() {
         let original = make_projection("order-summary", 5);
@@ -301,6 +343,10 @@ mod tests {
         assert_eq!(decoded.sequence, 5);
     }
 
+    /// Missing projection cover gets minimal cover with correlation ID.
+    ///
+    /// Projections without a cover (rare but valid) still get routable
+    /// metadata from the request context.
     #[test]
     fn create_projection_event_book_without_cover_creates_minimal_cover() {
         let projection = Projection {
@@ -317,6 +363,14 @@ mod tests {
         assert_eq!(cover.correlation_id, "corr-123");
     }
 
+    // ============================================================================
+    // Edition Preservation Tests
+    // ============================================================================
+
+    /// Source edition used when projection has no cover.
+    ///
+    /// Editions track schema versions. When projection lacks cover,
+    /// we inherit edition from the source event.
     #[test]
     fn create_projection_event_book_uses_source_edition_when_no_cover() {
         // When projection has no cover, source_edition is used
@@ -336,6 +390,10 @@ mod tests {
         assert_eq!(cover.edition.as_ref().unwrap().name, "v2");
     }
 
+    /// Projection's own edition takes precedence over source edition.
+    ///
+    /// When projection has its own cover with edition, that edition is
+    /// preserved even if source had a different edition.
     #[test]
     fn create_projection_event_book_preserves_projection_cover_edition() {
         // When projection has a cover with edition, that edition is preserved
@@ -356,6 +414,9 @@ mod tests {
         assert_eq!(cover.edition.as_ref().unwrap().name, "v3");
     }
 
+    /// Projection EventBooks never have snapshots.
+    ///
+    /// Snapshots are for aggregate state, not projection output.
     #[test]
     fn create_projection_event_book_has_no_snapshot() {
         let projection = make_projection("order-summary", 5);
@@ -365,9 +426,14 @@ mod tests {
         assert!(event_book.snapshot.is_none());
     }
 
-    // === Tests for projection publishing conditions ===
-    // These test the condition: projection.projection.is_some() || !projection.projector.is_empty()
+    // ============================================================================
+    // Publishing Condition Tests
+    // ============================================================================
+    //
+    // Projections are published if: projection.is_some() || !projector.is_empty()
+    // These tests verify both conditions and their OR relationship.
 
+    /// Projection with content is publishable (even with empty projector name).
     #[test]
     fn projection_with_content_should_be_publishable() {
         // Has projection content
@@ -389,6 +455,7 @@ mod tests {
         );
     }
 
+    /// Projection with projector name is publishable (even without content).
     #[test]
     fn projection_with_projector_name_should_be_publishable() {
         // Has projector name but no content
@@ -407,6 +474,10 @@ mod tests {
         );
     }
 
+    /// Empty projection (no content, no name) is not publishable.
+    ///
+    /// Projections must have either content or at least a projector name
+    /// to be worth publishing.
     #[test]
     fn empty_projection_should_not_be_publishable() {
         // No content AND no projector name
@@ -425,6 +496,10 @@ mod tests {
         );
     }
 
+    /// Publishing uses OR logic, not AND.
+    ///
+    /// Either condition being true triggers publish. Mutation testing
+    /// catches if someone changes || to &&.
     #[test]
     fn projection_publishing_condition_requires_or_not_and() {
         // Test that verifies || behavior (not &&)
@@ -443,6 +518,9 @@ mod tests {
         assert!(should_publish, "Should use OR logic, not AND");
     }
 
+    /// !is_empty negation is required for correct publishing.
+    ///
+    /// Mutation testing catches if someone removes the negation.
     #[test]
     fn projection_publishing_requires_negation_on_is_empty() {
         // Test that verifies we check !is_empty (not is_empty)
@@ -473,12 +551,12 @@ mod tests {
         );
     }
 
-    // === Tests for domain filtering logic in handle() ===
-    // These test the conditions at lines 91-93:
-    // if !self.domains.is_empty() {
-    //     let routing_key = book.routing_key();
-    //     if !self.domains.iter().any(|d| d == &routing_key) {
-    //         return Box::pin(async { Ok(()) });
+    // ============================================================================
+    // Domain Filtering Tests
+    // ============================================================================
+    //
+    // Projectors can filter events by domain. Empty list = handle all.
+    // Infrastructure domains (underscore prefix) are excluded by default.
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Mutex as TokioMutex;
@@ -602,6 +680,7 @@ mod tests {
         }
     }
 
+    /// Empty domain filter handles all events (no filtering).
     #[tokio::test]
     async fn handler_with_empty_domains_handles_any_event() {
         // When domains is empty, no filtering occurs
@@ -621,6 +700,7 @@ mod tests {
         );
     }
 
+    /// Matching domain in filter list is handled.
     #[tokio::test]
     async fn handler_with_matching_domain_handles_event() {
         // When domains contains the event's domain, event is handled
@@ -640,6 +720,7 @@ mod tests {
         );
     }
 
+    /// Non-matching domain is skipped silently.
     #[tokio::test]
     async fn handler_with_non_matching_domain_skips_event() {
         // When domains does NOT contain the event's domain, event is skipped

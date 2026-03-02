@@ -640,6 +640,20 @@ pub fn create_command_book(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for standalone command router.
+    //!
+    //! The command router dispatches commands to registered aggregate handlers:
+    //! - Routes commands by domain to appropriate client logic
+    //! - Manages per-domain storage isolation
+    //! - Supports sync projectors and sagas for CASCADE mode
+    //! - Provides speculative execution for "what-if" scenarios
+    //!
+    //! Key behaviors verified:
+    //! - Test helper creates valid CommandBook structures
+    //! - Router tracks registered domains correctly
+    //! - Storage lookup returns correct per-domain stores
+    //! - DomainStorage and SyncProjectorEntry are Clone/Send
+
     use super::*;
     use crate::proto_ext::CommandPageExt;
 
@@ -647,6 +661,7 @@ mod tests {
     // Helper Construction Tests
     // ============================================================================
 
+    /// create_command_book helper produces valid structure.
     #[test]
     fn test_create_command_book_basic() {
         let root = Uuid::new_v4();
@@ -658,6 +673,7 @@ mod tests {
         assert!(cover.edition.is_none());
     }
 
+    /// Pages contain command payload with correct type and data.
     #[test]
     fn test_create_command_book_pages() {
         let root = Uuid::new_v4();
@@ -676,6 +692,7 @@ mod tests {
         }
     }
 
+    /// Root UUID is correctly encoded in cover.
     #[test]
     fn test_create_command_book_root_uuid() {
         let root = Uuid::new_v4();
@@ -687,6 +704,7 @@ mod tests {
         assert_eq!(extracted_root, root);
     }
 
+    /// Empty command data is valid (some commands have no payload).
     #[test]
     fn test_create_command_book_empty_data() {
         let root = Uuid::new_v4();
@@ -700,6 +718,7 @@ mod tests {
         }
     }
 
+    /// Commands created directly (not from saga) have no saga_origin.
     #[test]
     fn test_create_command_book_no_saga_origin() {
         let root = Uuid::new_v4();
@@ -712,6 +731,7 @@ mod tests {
     // DomainStorage Tests
     // ============================================================================
 
+    /// DomainStorage must be Clone for router construction.
     #[test]
     fn test_domain_storage_clone() {
         // DomainStorage must be Clone for router construction
@@ -723,6 +743,8 @@ mod tests {
     // ============================================================================
     // CommandRouter Construction Tests
     // ============================================================================
+    //
+    // Router construction tests verify domain registration and lookup.
 
     mod router_construction {
         use super::*;
@@ -794,12 +816,14 @@ mod tests {
             )
         }
 
+        /// Empty router has no registered domains.
         #[test]
         fn test_router_empty_construction() {
             let router = make_router_empty();
             assert!(router.domains().is_empty());
         }
 
+        /// domains() returns all registered domain names.
         #[test]
         fn test_router_domains_returned() {
             let router = make_router_with_domains(&["orders", "inventory", "fulfillment"]);
@@ -811,6 +835,7 @@ mod tests {
             assert!(domains.contains(&"fulfillment"));
         }
 
+        /// has_handler returns true for registered domains.
         #[test]
         fn test_router_has_handler_true() {
             let router = make_router_with_domains(&["orders", "inventory"]);
@@ -819,6 +844,7 @@ mod tests {
             assert!(router.has_handler("inventory"));
         }
 
+        /// has_handler returns false for unregistered domains.
         #[test]
         fn test_router_has_handler_false() {
             let router = make_router_with_domains(&["orders"]);
@@ -827,6 +853,7 @@ mod tests {
             assert!(!router.has_handler("inventory"));
         }
 
+        /// get_storage succeeds for registered domains.
         #[test]
         fn test_router_get_storage_success() {
             let router = make_router_with_domains(&["orders"]);
@@ -835,6 +862,7 @@ mod tests {
             assert!(result.is_ok());
         }
 
+        /// get_storage returns NotFound for unregistered domains.
         #[test]
         fn test_router_get_storage_not_found() {
             let router = make_router_with_domains(&["orders"]);
@@ -843,6 +871,7 @@ mod tests {
             assert!(result.is_err());
         }
 
+        /// get_storage error message includes the missing domain name.
         #[test]
         fn test_router_get_storage_error_message() {
             let router = make_router_with_domains(&["orders"]);
@@ -858,6 +887,7 @@ mod tests {
             }
         }
 
+        /// Router can be constructed with edition name for edition isolation.
         #[test]
         fn test_router_with_edition() {
             let business = HashMap::new();
@@ -888,6 +918,7 @@ mod tests {
     mod sync_projector_tests {
         use super::*;
 
+        /// SyncProjectorEntry must be Send for async execution.
         #[test]
         fn test_sync_projector_entry_name() {
             // SyncProjectorEntry should hold a name and handler

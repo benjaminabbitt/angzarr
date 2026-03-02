@@ -213,8 +213,25 @@ pub async fn wait_for_ready(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for process management utilities.
+    //!
+    //! Process management handles spawning child processes for business logic:
+    //! - ProcessEnv converts transport config to environment variables
+    //! - ManagedProcess wraps child process lifecycle
+    //! - wait_for_ready polls until a service accepts connections
+    //!
+    //! Key behaviors verified:
+    //! - UDS transport produces correct env vars (TRANSPORT_TYPE, UDS_BASE_PATH)
+    //! - TCP transport produces PORT instead of UDS_BASE_PATH
+    //! - Domain and service name are always included
+
     use super::*;
 
+    // ============================================================================
+    // ProcessEnv Conversion Tests
+    // ============================================================================
+
+    /// UDS transport produces TRANSPORT_TYPE=uds and UDS_BASE_PATH.
     #[test]
     fn test_process_env_to_env_vars() {
         let env = ProcessEnv {
@@ -232,6 +249,7 @@ mod tests {
         assert_eq!(vars.get("DOMAIN"), Some(&"customer".to_string()));
     }
 
+    /// TCP transport produces TRANSPORT_TYPE=tcp and PORT, omits UDS_BASE_PATH.
     #[test]
     fn test_process_env_tcp() {
         let env = ProcessEnv {

@@ -379,6 +379,20 @@ impl DeadLetterPublisher for OffloadS3DlqPublisher {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for offload storage DLQ publishers.
+    //!
+    //! Offload publishers store entire dead letters to remote storage (filesystem,
+    //! GCS, S3). Unlike the regular filesystem publisher (which formats as JSON),
+    //! these store protobuf for efficient recovery and replay.
+    //!
+    //! Key behaviors:
+    //! - Date-based path structure for easy browsing/cleanup
+    //! - Domain included in path for filtering
+    //! - UUID suffix prevents collisions
+    //!
+    //! Basic publish tests covered by Gherkin contracts. Implementation-specific
+    //! path format tests remain here.
+
     use super::*;
     use crate::dlq::{AngzarrDeadLetter, DeadLetterPayload, DeadLetterPublisher};
     use crate::proto::{
@@ -426,10 +440,13 @@ mod tests {
         }
     }
 
-    // NOTE: is_configured() and basic publish() tests are covered by
-    // tests/interfaces/features/dlq_publishers.feature (Gherkin contract tests).
-    // Only implementation-specific tests (path format, date structure, etc.) remain here.
+    // ============================================================================
+    // Filesystem Offload Tests
+    // ============================================================================
 
+    /// Domain directory created under base path.
+    ///
+    /// Files organized by domain for easy filtering during manual recovery.
     #[tokio::test]
     async fn test_offload_filesystem_file_path_includes_domain() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -457,6 +474,7 @@ mod tests {
         );
     }
 
+    /// Key format: prefix/domain/YYYY/MM/DD/timestamp_uuid.pb
     #[test]
     fn test_generate_key_format() {
         let publisher = OffloadFilesystemDlqPublisher {
@@ -479,6 +497,10 @@ mod tests {
         assert!(key.ends_with(".pb"), "Key should end with .pb: {}", key);
     }
 
+    /// Date structure enables time-based retention policies.
+    ///
+    /// Paths like dlq/orders/2024/01/15/ allow simple lifecycle rules
+    /// (e.g., delete everything older than 30 days).
     #[test]
     fn test_generate_key_includes_date_structure() {
         let publisher = OffloadFilesystemDlqPublisher {

@@ -1,3 +1,15 @@
+//! Tests for mock storage implementations.
+//!
+//! Mock stores are in-memory implementations for testing without real databases.
+//! They implement the same traits (EventStore, SnapshotStore) as production
+//! backends, making them suitable for unit and integration tests.
+//!
+//! Key behaviors verified:
+//! - Event persistence and retrieval by domain/root
+//! - Correlation ID queries (cross-domain event aggregation)
+//! - Timestamp-based queries (as-of queries for temporal consistency)
+//! - Snapshot storage and retrieval
+
 use uuid::Uuid;
 
 use crate::proto::{EventPage, Snapshot};
@@ -5,6 +17,14 @@ use crate::storage::{EventStore, SnapshotStore};
 
 use super::*;
 
+// ============================================================================
+// MockEventStore Basic Operations
+// ============================================================================
+
+/// Events can be added and retrieved by domain/root.
+///
+/// This is the fundamental EventStore contract: add events, get them back.
+/// Verifies the mock correctly stores and retrieves events.
 #[tokio::test]
 async fn test_mock_event_store_add_and_get() {
     let store = MockEventStore::new();
@@ -28,6 +48,15 @@ async fn test_mock_event_store_add_and_get() {
     assert_eq!(retrieved.len(), 1);
 }
 
+// ============================================================================
+// Correlation ID Queries
+// ============================================================================
+
+/// Events can be queried by correlation ID across domains.
+///
+/// Correlation ID links events across domains in a saga/PM flow.
+/// get_by_correlation returns EventBooks grouped by (domain, root),
+/// enabling process managers to see all related events regardless of domain.
 #[tokio::test]
 async fn test_mock_event_store_get_by_correlation() {
     let store = MockEventStore::new();
@@ -71,6 +100,16 @@ async fn test_mock_event_store_get_by_correlation() {
     assert!(empty.is_empty());
 }
 
+// ============================================================================
+// Timestamp-Based Queries (As-Of)
+// ============================================================================
+
+/// Events can be filtered by created_at timestamp (as-of queries).
+///
+/// Temporal queries enable:
+/// - Point-in-time aggregate reconstruction ("what was state at X?")
+/// - Debugging by replaying to a specific moment
+/// - Regulatory requirements for historical state audits
 #[tokio::test]
 async fn test_get_until_timestamp_filters_by_created_at() {
     let store = MockEventStore::new();
@@ -142,6 +181,11 @@ async fn test_get_until_timestamp_filters_by_created_at() {
     assert_eq!(result.len(), 3);
 }
 
+/// Events without timestamps are excluded from timestamp queries.
+///
+/// If an event lacks created_at, it cannot be compared to the cutoff.
+/// Excluding them is safer than guessing—ensures query semantics are
+/// clear and predictable.
 #[tokio::test]
 async fn test_get_until_timestamp_excludes_events_without_timestamp() {
     let store = MockEventStore::new();
@@ -164,6 +208,10 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
     assert!(result.is_empty());
 }
 
+/// Invalid timestamp format returns error, not empty results.
+///
+/// User typos should fail loudly rather than returning misleading
+/// empty result sets.
 #[tokio::test]
 async fn test_get_until_timestamp_invalid_format() {
     let store = MockEventStore::new();
@@ -175,6 +223,14 @@ async fn test_get_until_timestamp_invalid_format() {
     assert!(result.is_err());
 }
 
+// ============================================================================
+// MockSnapshotStore Tests
+// ============================================================================
+
+/// Snapshots can be stored and retrieved.
+///
+/// Snapshots optimize aggregate loading by avoiding full event replay.
+/// The mock store verifies the SnapshotStore trait contract is satisfied.
 #[tokio::test]
 async fn test_mock_snapshot_store() {
     let store = MockSnapshotStore::new();

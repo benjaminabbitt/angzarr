@@ -58,6 +58,18 @@ impl EventBus for MockEventBus {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for the mock event bus.
+    //!
+    //! MockEventBus is a test double that captures published events without
+    //! actual transport. It verifies:
+    //!
+    //! - Events are captured for assertion
+    //! - Configurable publish failures for error path testing
+    //! - Subscribe operations return appropriate errors (not supported)
+    //!
+    //! Used extensively in unit tests to verify publish behavior without
+    //! setting up real bus infrastructure.
+
     use super::*;
     use crate::proto::{Cover, Uuid as ProtoUuid};
     use uuid::Uuid;
@@ -90,6 +102,7 @@ mod tests {
         }
     }
 
+    /// Published events are captured for later assertion.
     #[tokio::test]
     async fn test_mock_event_bus_publish() {
         let bus = MockEventBus::new();
@@ -100,6 +113,7 @@ mod tests {
         assert_eq!(bus.published_count().await, 1);
     }
 
+    /// Configurable failure enables testing error handling paths.
     #[tokio::test]
     async fn test_mock_event_bus_fail_on_publish() {
         let bus = MockEventBus::new();
@@ -111,6 +125,10 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Subscribe returns error — mock bus is publish-only.
+    ///
+    /// Subscribe requires consumer infrastructure. Tests that need subscription
+    /// behavior should use ChannelEventBus instead.
     #[tokio::test]
     async fn test_mock_event_bus_subscribe_not_supported() {
         let bus = MockEventBus::new();

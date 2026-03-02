@@ -81,6 +81,15 @@ impl DeadLetterPublisher for LoggingDeadLetterPublisher {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for logging-based DLQ publisher.
+    //!
+    //! The logging publisher is a last-resort fallback that logs dead letters
+    //! at WARN level. Unlike NoopDeadLetterPublisher, it reports is_configured()
+    //! true because it actively logs (observability value).
+    //!
+    //! Basic publish/is_configured tests are covered by Gherkin contract tests.
+    //! Only edge cases remain here.
+
     use super::*;
     use crate::dlq::{AngzarrDeadLetter, DeadLetterPayload};
     use crate::proto::{
@@ -127,10 +136,10 @@ mod tests {
         }
     }
 
-    // NOTE: is_configured() and basic publish() tests are covered by
-    // tests/interfaces/features/dlq_publishers.feature (Gherkin contract tests).
-    // Only implementation-specific edge cases remain here.
-
+    /// Missing cover handled gracefully — logs with empty correlation ID.
+    ///
+    /// Dead letters may come from malformed commands. The publisher shouldn't
+    /// crash on edge cases.
     #[tokio::test]
     async fn test_logging_publisher_handles_missing_correlation() {
         let publisher = LoggingDeadLetterPublisher;

@@ -215,6 +215,12 @@ impl ProjectorCoordinatorService for LogService {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for the logging projector's hex dump functionality.
+    //!
+    //! The logging projector pretty-prints events for debugging. When protobuf
+    //! descriptors aren't available, events are displayed as hex dumps.
+    //! These tests verify hex formatting handles edge cases correctly.
+
     use super::*;
 
     // ============================================================================

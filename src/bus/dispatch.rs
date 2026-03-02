@@ -133,9 +133,26 @@ pub async fn process_message(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for event dispatch to registered handlers.
+    //!
+    //! Dispatch utilities route EventBooks to all registered handlers. The
+    //! dispatch contract is critical for reliability:
+    //!
+    //! - All handlers are called, even if earlier handlers fail
+    //! - Return value indicates whether all handlers succeeded
+    //! - Decode errors are distinguishable from handler failures (affects ack)
+    //!
+    //! These behaviors ensure partial failures don't prevent delivery to
+    //! healthy handlers while enabling correct retry/DLQ decisions.
+
     use super::*;
     use futures::future::BoxFuture;
 
+    // ============================================================================
+    // Test Doubles
+    // ============================================================================
+
+    /// Handler that always succeeds.
     struct SuccessHandler;
     impl EventHandler for SuccessHandler {
         fn handle(&self, _book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
@@ -143,6 +160,7 @@ mod tests {
         }
     }
 
+    /// Handler that always fails — simulates business logic errors.
     struct FailHandler;
     impl EventHandler for FailHandler {
         fn handle(&self, _book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
@@ -155,6 +173,11 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Dispatch Tests
+    // ============================================================================
+
+    /// All handlers succeed → dispatch returns true.
     #[tokio::test]
     async fn test_dispatch_success() {
         let handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>> =
@@ -164,6 +187,10 @@ mod tests {
         assert!(dispatch_to_handlers(&handlers, &book).await);
     }
 
+    /// Handler failure → dispatch returns false.
+    ///
+    /// Caller uses return value to decide ack/nack. False means event
+    /// should be retried or sent to DLQ.
     #[tokio::test]
     async fn test_dispatch_failure() {
         let handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>> =
@@ -173,6 +200,10 @@ mod tests {
         assert!(!dispatch_to_handlers(&handlers, &book).await);
     }
 
+    /// Mixed success/failure → all handlers called, returns false.
+    ///
+    /// One failing handler must not prevent other handlers from executing.
+    /// Event may be partially processed — caller decides retry strategy.
     #[tokio::test]
     async fn test_dispatch_mixed() {
         let handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>> = Arc::new(RwLock::new(vec![
@@ -186,6 +217,14 @@ mod tests {
         assert!(!dispatch_to_handlers(&handlers, &book).await);
     }
 
+    // ============================================================================
+    // DispatchResult Tests
+    // ============================================================================
+
+    /// Ack decision: success and decode errors should ack.
+    ///
+    /// Decode errors are not retryable — the message is malformed and will
+    /// never succeed. Acking prevents infinite redelivery.
     #[tokio::test]
     async fn test_dispatch_result_should_ack() {
         assert!(DispatchResult::Success.should_ack());
@@ -193,6 +232,7 @@ mod tests {
         assert!(!DispatchResult::HandlerFailed.should_ack());
     }
 
+    /// Invalid protobuf returns DecodeError — should ack to prevent redelivery.
     #[tokio::test]
     async fn test_process_message_decode_error() {
         let handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>> =
@@ -202,6 +242,7 @@ mod tests {
         assert_eq!(result, DispatchResult::DecodeError);
     }
 
+    /// Valid protobuf with successful handler returns Success.
     #[tokio::test]
     async fn test_process_message_success() {
         use prost::Message;

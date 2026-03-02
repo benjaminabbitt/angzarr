@@ -540,9 +540,24 @@ impl<T: PositionStore> PositionStore for Instrumented<T> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for metrics instrumentation wrapper.
+    //!
+    //! The Instrumented wrapper adds OpenTelemetry metrics to storage operations:
+    //! - Duration histograms for all operations
+    //! - Event/snapshot counters by domain and storage type
+    //! - Position update counters by handler
+    //!
+    //! Key behaviors verified:
+    //! - Wrapper delegates to inner implementation
+    //! - Errors propagate unchanged
+    //!
+    //! Note: Metric emission tests require integration tests with OTel collector.
+    //! These unit tests verify the wrapper doesn't break storage behavior.
+
     use super::*;
     use crate::storage::MockEventStore;
 
+    /// Instrumented wrapper delegates to inner storage.
     #[tokio::test]
     async fn test_instrumented_delegates_to_inner() {
         let inner = MockEventStore::new();
@@ -555,6 +570,7 @@ mod tests {
         assert!(events.is_empty());
     }
 
+    /// Errors from inner storage propagate through wrapper.
     #[tokio::test]
     async fn test_instrumented_preserves_errors() {
         let inner = MockEventStore::new();

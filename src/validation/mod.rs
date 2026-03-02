@@ -251,11 +251,31 @@ pub fn validate_command_book(book: &CommandBook, limits: &ResourceLimits) -> Res
 
 #[cfg(test)]
 mod tests {
+    //! Tests for input validation functions.
+    //!
+    //! All data crossing trust boundaries (gRPC inputs, config values) must
+    //! be validated. These functions enforce consistent rules across the system.
+    //!
+    //! Validation categories:
+    //! - Domain names: lowercase, alphanumeric + underscore/hyphen
+    //! - Correlation IDs: alphanumeric + underscore/hyphen (allows uppercase)
+    //! - Component names: lowercase, alphanumeric + underscore/hyphen
+    //! - Edition names: lowercase, alphanumeric + underscore/hyphen
+    //! - Resource limits: pages per book, payload size
+
     use super::*;
 
+    // ============================================================================
+    // Domain Validation Tests
+    // ============================================================================
+
     mod domain_validation {
+        //! Domain names identify bounded contexts (e.g., "order", "inventory").
+        //! Must start with lowercase letter (or underscore for internal domains).
+
         use super::*;
 
+        /// Valid domain names are accepted.
         #[test]
         fn test_valid_domains() {
             assert!(validate_domain("order").is_ok());
@@ -267,6 +287,7 @@ mod tests {
             assert!(validate_domain("_angzarr").is_ok()); // internal domain
         }
 
+        /// Empty domain is rejected.
         #[test]
         fn test_empty_domain() {
             let result = validate_domain("");
@@ -274,6 +295,7 @@ mod tests {
             assert!(result.unwrap_err().message().contains("empty"));
         }
 
+        /// Domain exceeding 64 chars is rejected.
         #[test]
         fn test_domain_too_long() {
             let long_domain = "a".repeat(65);
@@ -282,12 +304,14 @@ mod tests {
             assert!(result.unwrap_err().message().contains("exceeds"));
         }
 
+        /// Domain at exactly 64 chars is accepted.
         #[test]
         fn test_domain_max_length() {
             let max_domain = "a".repeat(64);
             assert!(validate_domain(&max_domain).is_ok());
         }
 
+        /// Domain not starting with lowercase letter is rejected.
         #[test]
         fn test_domain_invalid_start() {
             assert!(validate_domain("1order").is_err());
@@ -295,6 +319,7 @@ mod tests {
             assert!(validate_domain("Order").is_err());
         }
 
+        /// Domain with invalid characters is rejected.
         #[test]
         fn test_domain_invalid_chars() {
             assert!(validate_domain("order.fulfillment").is_err());
@@ -304,9 +329,17 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Correlation ID Validation Tests
+    // ============================================================================
+
     mod correlation_id_validation {
+        //! Correlation IDs link events across domains in a workflow.
+        //! More permissive than domains: allows uppercase (for UUIDs, etc.).
+
         use super::*;
 
+        /// Valid correlation IDs are accepted (including empty).
         #[test]
         fn test_valid_correlation_ids() {
             assert!(validate_correlation_id("").is_ok()); // empty is allowed
@@ -317,6 +350,7 @@ mod tests {
             assert!(validate_correlation_id("OrderFulfillment123").is_ok());
         }
 
+        /// Correlation ID exceeding 128 chars is rejected.
         #[test]
         fn test_correlation_id_too_long() {
             let long_id = "a".repeat(129);
@@ -325,12 +359,14 @@ mod tests {
             assert!(result.unwrap_err().message().contains("exceeds"));
         }
 
+        /// Correlation ID at exactly 128 chars is accepted.
         #[test]
         fn test_correlation_id_max_length() {
             let max_id = "a".repeat(128);
             assert!(validate_correlation_id(&max_id).is_ok());
         }
 
+        /// Correlation ID with invalid characters is rejected.
         #[test]
         fn test_correlation_id_invalid_chars() {
             assert!(validate_correlation_id("order.123").is_err());
@@ -340,9 +376,17 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Component Name Validation Tests
+    // ============================================================================
+
     mod component_name_validation {
+        //! Component names identify sagas, projectors, and process managers.
+        //! Same rules as domains except no underscore prefix allowed.
+
         use super::*;
 
+        /// Valid component names are accepted.
         #[test]
         fn test_valid_component_names() {
             assert!(validate_component_name("inventory").is_ok());
@@ -351,6 +395,7 @@ mod tests {
             assert!(validate_component_name("agg123").is_ok());
         }
 
+        /// Empty component name is rejected.
         #[test]
         fn test_empty_component_name() {
             let result = validate_component_name("");
@@ -358,6 +403,7 @@ mod tests {
             assert!(result.unwrap_err().message().contains("empty"));
         }
 
+        /// Component name exceeding 128 chars is rejected.
         #[test]
         fn test_component_name_too_long() {
             let long_name = "a".repeat(129);
@@ -365,12 +411,14 @@ mod tests {
             assert!(result.is_err());
         }
 
+        /// Component name at exactly 128 chars is accepted.
         #[test]
         fn test_component_name_max_length() {
             let max_name = "a".repeat(128);
             assert!(validate_component_name(&max_name).is_ok());
         }
 
+        /// Component name not starting with lowercase letter is rejected.
         #[test]
         fn test_component_name_invalid_start() {
             assert!(validate_component_name("1saga").is_err());
@@ -379,6 +427,7 @@ mod tests {
             assert!(validate_component_name("_saga").is_err()); // unlike domain, no underscore prefix
         }
 
+        /// Component name with invalid characters is rejected.
         #[test]
         fn test_component_name_invalid_chars() {
             assert!(validate_component_name("saga.order").is_err());
@@ -387,9 +436,17 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Edition Validation Tests
+    // ============================================================================
+
     mod edition_validation {
+        //! Edition names identify diverged timelines (branched histories).
+        //! Empty = main timeline ("angzarr").
+
         use super::*;
 
+        /// Valid edition names are accepted (including empty).
         #[test]
         fn test_valid_editions() {
             assert!(validate_edition("").is_ok()); // empty is allowed (defaults to "angzarr")
@@ -399,6 +456,7 @@ mod tests {
             assert!(validate_edition("edition_123").is_ok());
         }
 
+        /// Edition exceeding 64 chars is rejected.
         #[test]
         fn test_edition_too_long() {
             let long_edition = "a".repeat(65);
@@ -406,12 +464,14 @@ mod tests {
             assert!(result.is_err());
         }
 
+        /// Edition at exactly 64 chars is accepted.
         #[test]
         fn test_edition_max_length() {
             let max_edition = "a".repeat(64);
             assert!(validate_edition(&max_edition).is_ok());
         }
 
+        /// Edition not starting with lowercase letter is rejected.
         #[test]
         fn test_edition_invalid_start() {
             assert!(validate_edition("1edition").is_err());
@@ -419,6 +479,7 @@ mod tests {
             assert!(validate_edition("Edition").is_err());
         }
 
+        /// Edition with invalid characters is rejected.
         #[test]
         fn test_edition_invalid_chars() {
             assert!(validate_edition("edition.v2").is_err());
@@ -426,7 +487,14 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Resource Limits Validation Tests
+    // ============================================================================
+
     mod resource_limits_validation {
+        //! Resource limits prevent unbounded memory usage and ensure messages
+        //! fit within bus constraints. Tests verify validation against limits.
+
         use super::*;
         use crate::proto::{command_page, CommandPage, Cover, MergeStrategy};
         use prost_types::Any;
@@ -456,6 +524,7 @@ mod tests {
             }
         }
 
+        /// Empty command book is valid.
         #[test]
         fn test_empty_command_book() {
             let book = make_command_book(vec![]);
@@ -463,6 +532,7 @@ mod tests {
             assert!(validate_command_book(&book, &limits).is_ok());
         }
 
+        /// Command book within limits is valid.
         #[test]
         fn test_command_book_within_limits() {
             let pages: Vec<_> = (0..10).map(|_| make_page_with_payload(1024)).collect();
@@ -471,6 +541,7 @@ mod tests {
             assert!(validate_command_book(&book, &limits).is_ok());
         }
 
+        /// Command book at exactly max pages (100) is valid.
         #[test]
         fn test_command_book_at_max_pages() {
             let pages: Vec<_> = (0..100).map(|_| make_page_with_payload(64)).collect();
@@ -479,6 +550,7 @@ mod tests {
             assert!(validate_command_book(&book, &limits).is_ok());
         }
 
+        /// Command book exceeding max pages is rejected.
         #[test]
         fn test_command_book_too_many_pages() {
             let pages: Vec<_> = (0..101).map(|_| make_page_with_payload(64)).collect();
@@ -492,6 +564,7 @@ mod tests {
                 .contains("exceeds maximum pages"));
         }
 
+        /// Command book at exactly max payload (256 KB) is valid.
         #[test]
         fn test_command_book_at_max_payload() {
             let pages = vec![make_page_with_payload(256 * 1024)]; // exactly 256 KB
@@ -500,6 +573,7 @@ mod tests {
             assert!(validate_command_book(&book, &limits).is_ok());
         }
 
+        /// Command book with payload exceeding 256 KB is rejected.
         #[test]
         fn test_command_book_payload_too_large() {
             let pages = vec![make_page_with_payload(256 * 1024 + 1)]; // 256 KB + 1
@@ -513,6 +587,7 @@ mod tests {
                 .contains("exceeds maximum size"));
         }
 
+        /// Custom limits (IPC: 10 MB) allow larger payloads.
         #[test]
         fn test_command_book_with_custom_limits() {
             // Test with IPC limits (10 MB)

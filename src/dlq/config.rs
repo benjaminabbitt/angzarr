@@ -392,8 +392,23 @@ impl Default for OffloadS3DlqConfig {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for DLQ configuration parsing and factory methods.
+    //!
+    //! DLQ is configured as a priority list of targets. These tests verify:
+    //! - Default config is empty (no DLQ)
+    //! - Factory methods create correct single-target configs
+    //! - Backend-specific config defaults are sensible
+    //!
+    //! Configuration correctness is critical — misconfigured DLQ silently
+    //! drops dead letters, making debugging impossible.
+
     use super::*;
 
+    // ============================================================================
+    // DlqConfig Tests
+    // ============================================================================
+
+    /// Default config has no targets — DLQ disabled.
     #[test]
     fn test_dlq_config_default_not_configured() {
         let config = DlqConfig::default();
@@ -401,6 +416,7 @@ mod tests {
         assert!(config.targets.is_empty());
     }
 
+    /// Channel backend for standalone mode.
     #[test]
     fn test_dlq_config_channel_configured() {
         let config = DlqConfig::channel();
@@ -409,6 +425,7 @@ mod tests {
         assert_eq!(config.targets[0].dlq_type, "channel");
     }
 
+    /// AMQP backend with custom URL.
     #[test]
     fn test_dlq_config_amqp_configured() {
         let config = DlqConfig::amqp("amqp://rabbitmq:5672");
@@ -421,6 +438,7 @@ mod tests {
         );
     }
 
+    /// Kafka backend with custom brokers.
     #[test]
     fn test_dlq_config_kafka_configured() {
         let config = DlqConfig::kafka("kafka:9092");
@@ -433,6 +451,7 @@ mod tests {
         );
     }
 
+    /// Logging backend — last resort, always available.
     #[test]
     fn test_dlq_config_logging_configured() {
         let config = DlqConfig::logging();
@@ -441,6 +460,11 @@ mod tests {
         assert_eq!(config.targets[0].dlq_type, "logging");
     }
 
+    // ============================================================================
+    // Backend Config Defaults Tests
+    // ============================================================================
+
+    /// Target config defaults have empty type and no backend configs.
     #[test]
     fn test_dlq_target_config_default() {
         let target = DlqTargetConfig::default();
@@ -454,6 +478,7 @@ mod tests {
         assert!(target.offload_s3.is_none());
     }
 
+    /// Database backend defaults to PostgreSQL.
     #[test]
     fn test_database_dlq_config_default() {
         let config = DatabaseDlqConfig::default();
@@ -461,6 +486,7 @@ mod tests {
         assert!(config.postgres.uri.contains("postgres"));
     }
 
+    /// Filesystem backend uses sensible default path.
     #[test]
     fn test_filesystem_dlq_config_default() {
         let config = FilesystemDlqConfig::default();
@@ -469,6 +495,7 @@ mod tests {
         assert_eq!(config.max_files, 0);
     }
 
+    /// Filesystem offload backend uses different path than regular filesystem.
     #[test]
     fn test_offload_filesystem_dlq_config_default() {
         let config = OffloadFilesystemDlqConfig::default();
@@ -476,6 +503,7 @@ mod tests {
         assert_eq!(config.prefix, "dlq/");
     }
 
+    /// GCS offload backend requires bucket configuration.
     #[test]
     fn test_offload_gcs_dlq_config_default() {
         let config = OffloadGcsDlqConfig::default();
@@ -483,6 +511,7 @@ mod tests {
         assert_eq!(config.prefix, "dlq/");
     }
 
+    /// S3 offload backend requires bucket configuration.
     #[test]
     fn test_offload_s3_dlq_config_default() {
         let config = OffloadS3DlqConfig::default();

@@ -571,15 +571,31 @@ impl CommandBuilder {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for standalone in-process clients.
+    //!
+    //! Standalone clients provide the same interface as distributed gRPC clients
+    //! but route commands directly within the process. This enables:
+    //! - Unit testing without network overhead
+    //! - Local development with full functionality
+    //!
+    //! Key behaviors verified:
+    //! - Temporal parameter extraction (sequence/timestamp for as-of queries)
+    //! - CommandBuilder field setting (domain, root, correlation_id, edition)
+    //! - Edition deletion guards (protect main timeline)
+
     use super::*;
     use crate::proto::command_page;
     use crate::proto::temporal_query::PointInTime;
     use crate::proto::TemporalQuery;
 
     // ========================================================================
-    // extract_temporal_params Tests - Catch mutations on lines 401-417
+    // extract_temporal_params Tests
     // ========================================================================
 
+    /// No temporal query → (None, None).
+    ///
+    /// When speculative execution has no temporal constraint,
+    /// use current state.
     #[test]
     fn test_extract_temporal_params_none_returns_none_none() {
         let result = extract_temporal_params(&None).unwrap();
@@ -587,6 +603,7 @@ mod tests {
         assert!(result.1.is_none(), "timestamp should be None");
     }
 
+    /// TemporalQuery present but no point_in_time → (None, None).
     #[test]
     fn test_extract_temporal_params_some_with_no_point_in_time_returns_none_none() {
         let temporal = TemporalQuery {
@@ -597,6 +614,9 @@ mod tests {
         assert!(result.1.is_none(), "timestamp should be None");
     }
 
+    /// AsOfSequence extracts the sequence number.
+    ///
+    /// Sequence-based temporal queries reconstruct state from events 0..=seq.
     #[test]
     fn test_extract_temporal_params_as_of_sequence_returns_some_sequence() {
         let temporal = TemporalQuery {
@@ -607,6 +627,7 @@ mod tests {
         assert!(result.1.is_none(), "timestamp should be None");
     }
 
+    /// Sequence 0 is a valid temporal point (initial state before any events).
     #[test]
     fn test_extract_temporal_params_as_of_sequence_zero() {
         let temporal = TemporalQuery {
@@ -617,6 +638,9 @@ mod tests {
         assert!(result.1.is_none(), "timestamp should be None");
     }
 
+    /// AsOfTime converts Timestamp to RFC3339 string.
+    ///
+    /// Timestamp-based queries are useful for "what was state at this moment?"
     #[test]
     fn test_extract_temporal_params_as_of_time_returns_some_timestamp() {
         use prost_types::Timestamp;
@@ -639,9 +663,12 @@ mod tests {
     }
 
     // ========================================================================
-    // CommandBuilder::build Tests - Catch mutations on line 509
+    // CommandBuilder Tests
     // ========================================================================
 
+    /// CommandBuilder sets domain in the Cover.
+    ///
+    /// Domain routes the command to the correct aggregate handler.
     #[test]
     fn test_command_builder_build_sets_domain() {
         // Cannot test full build without router, but test command structure manually
@@ -671,6 +698,9 @@ mod tests {
         assert_eq!(cover.domain, "test-domain");
     }
 
+    /// CommandBuilder sets root ID in the Cover.
+    ///
+    /// Root ID identifies the aggregate instance.
     #[test]
     fn test_command_builder_build_sets_root() {
         let root = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
@@ -694,6 +724,7 @@ mod tests {
         assert_eq!(parsed, root);
     }
 
+    /// CommandBuilder sets correlation ID for cross-domain tracing.
     #[test]
     fn test_command_builder_build_sets_correlation_id() {
         let root = Uuid::new_v4();
@@ -715,6 +746,7 @@ mod tests {
         assert_eq!(cover.correlation_id, "corr-123");
     }
 
+    /// CommandBuilder sets edition for diverged timeline targeting.
     #[test]
     fn test_command_builder_build_sets_edition() {
         let root = Uuid::new_v4();
@@ -740,6 +772,7 @@ mod tests {
         assert_eq!(edition.name, "test-edition");
     }
 
+    /// CommandBuilder sets command type URL and payload data.
     #[test]
     fn test_command_builder_build_sets_command_type_and_data() {
         let command = CommandBook {
@@ -774,9 +807,10 @@ mod tests {
     }
 
     // ========================================================================
-    // StandaloneQueryClient Tests - delete_edition_events validation
+    // StandaloneQueryClient Tests
     // ========================================================================
 
+    /// QueryClient stores domain storage map on construction.
     #[test]
     fn test_query_client_new_stores_domain_stores() {
         let stores = HashMap::new();
@@ -785,6 +819,9 @@ mod tests {
         assert!(client.domain_stores.is_empty());
     }
 
+    /// Empty edition string is rejected (main timeline protection).
+    ///
+    /// Empty string is equivalent to main timeline—cannot delete.
     #[tokio::test]
     async fn test_delete_edition_events_rejects_empty_edition() {
         let client = StandaloneQueryClient::new(HashMap::new());
@@ -794,6 +831,9 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
+    /// Main timeline edition name is rejected.
+    ///
+    /// "angzarr" is the canonical main timeline name—immutable by design.
     #[tokio::test]
     async fn test_delete_edition_events_rejects_main_timeline() {
         let client = StandaloneQueryClient::new(HashMap::new());
@@ -805,6 +845,7 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
+    /// Unknown domain returns NotFound error.
     #[tokio::test]
     async fn test_delete_edition_events_rejects_unknown_domain() {
         let client = StandaloneQueryClient::new(HashMap::new());

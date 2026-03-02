@@ -249,8 +249,26 @@ impl PayloadStore for GcsPayloadStore {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for GCS payload store.
+    //!
+    //! GCS payload store uses content-addressable storage in GCS buckets:
+    //! - Object path: {prefix}/{hash[0:2]}/{hash}
+    //! - URI format: gs://{bucket}/{path}
+    //!
+    //! Key behaviors verified:
+    //! - Object naming uses hash-based directory sharding
+    //! - URI format follows gs:// scheme
+    //!
+    //! Note: Full GCS integration requires credentials and a real bucket.
+    //! Unit tests verify path/URI construction logic only.
+
     use super::*;
 
+    // ============================================================================
+    // Object Path Tests
+    // ============================================================================
+
+    /// Object name uses first 2 chars of hash as subdirectory.
     #[test]
     fn test_object_name_without_prefix() {
         // We can't easily test the full store without GCS, but we can test helpers
@@ -266,6 +284,7 @@ mod tests {
         assert!(expected.starts_with(&hex[0..2]));
     }
 
+    /// URI format uses gs:// scheme with bucket and object path.
     #[test]
     fn test_uri_format() {
         // Verify URI format is correct

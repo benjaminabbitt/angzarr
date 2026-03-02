@@ -214,8 +214,28 @@ where
 
 #[cfg(test)]
 mod tests {
+    //! Tests for gRPC error classification and retry semantics.
+    //!
+    //! The retry system distinguishes between:
+    //! - **Retryable errors** (FailedPrecondition): Sequence mismatches where
+    //!   the client can fetch fresh state and retry with correct sequence.
+    //! - **Non-retryable errors** (Aborted, InvalidArgument, etc.): Either
+    //!   business rejections or errors requiring human intervention.
+    //!
+    //! Correct classification is critical — retrying non-retryable errors
+    //! wastes resources, while failing to retry transient errors causes
+    //! unnecessary failures.
+
     use super::*;
 
+    /// FailedPrecondition is retryable — client fetches fresh state and retries.
+    ///
+    /// Sequence mismatches with STRICT or COMMUTATIVE merge strategy return
+    /// FailedPrecondition. The fix is: fetch current aggregate state, rebuild
+    /// command with correct sequence, and retry.
+    ///
+    /// Aborted is NOT retryable — it signals MERGE_MANUAL conflicts that
+    /// require human review via DLQ.
     #[test]
     fn test_is_retryable_status() {
         // Sequence mismatch (STRICT/COMMUTATIVE) is retryable - client fetches fresh state

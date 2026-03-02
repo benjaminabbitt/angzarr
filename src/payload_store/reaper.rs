@@ -79,6 +79,22 @@ impl<S: PayloadStore + 'static> TtlReaper<S> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for TTL-based payload cleanup.
+    //!
+    //! TtlReaper runs as a background task deleting expired payloads:
+    //! - Configurable retention duration
+    //! - Configurable cleanup interval
+    //! - run_once() for manual/test invocation
+    //! - spawn() for background execution
+    //!
+    //! Key behaviors verified:
+    //! - Default interval is 1 hour
+    //! - with_interval() changes cleanup frequency
+    //! - run_once() deletes files older than retention
+    //! - spawn() runs periodic cleanup until aborted
+    //! - Zero retention deletes everything immediately
+    //! - Idempotent: repeated runs don't fail on empty store
+
     use super::*;
     use crate::payload_store::FilesystemPayloadStore;
     use std::time::SystemTime;
@@ -88,6 +104,7 @@ mod tests {
     // Construction Tests
     // ============================================================================
 
+    /// Default cleanup interval is 1 hour.
     #[tokio::test]
     async fn test_reaper_new_default_interval() {
         let temp_dir = TempDir::new().unwrap();
@@ -99,6 +116,7 @@ mod tests {
         assert_eq!(reaper.interval, Duration::from_secs(3600));
     }
 
+    /// Retention duration is stored in reaper.
     #[tokio::test]
     async fn test_reaper_retention_stored() {
         let temp_dir = TempDir::new().unwrap();
@@ -110,6 +128,7 @@ mod tests {
         assert_eq!(reaper.retention, retention);
     }
 
+    /// with_interval() sets custom cleanup frequency.
     #[tokio::test]
     async fn test_reaper_with_custom_interval() {
         let temp_dir = TempDir::new().unwrap();
@@ -121,6 +140,7 @@ mod tests {
         assert_eq!(reaper.interval, Duration::from_secs(60));
     }
 
+    /// Multiple with_interval() calls use last value.
     #[tokio::test]
     async fn test_reaper_with_interval_chaining() {
         let temp_dir = TempDir::new().unwrap();
@@ -137,6 +157,7 @@ mod tests {
     // Run Once Tests
     // ============================================================================
 
+    /// run_once() deletes files older than retention.
     #[tokio::test]
     async fn test_reaper_run_once() {
         let temp_dir = TempDir::new().unwrap();
@@ -170,6 +191,7 @@ mod tests {
         assert!(!path.exists());
     }
 
+    /// run_once() on empty store returns 0 deleted.
     #[tokio::test]
     async fn test_reaper_run_once_empty_store() {
         let temp_dir = TempDir::new().unwrap();
@@ -182,6 +204,7 @@ mod tests {
         assert_eq!(deleted, 0);
     }
 
+    /// run_once() deletes only files older than threshold.
     #[tokio::test]
     async fn test_reaper_run_once_multiple_files() {
         let temp_dir = TempDir::new().unwrap();
@@ -226,6 +249,7 @@ mod tests {
         assert!(!path3.exists());
     }
 
+    /// Boundary condition: file exactly at retention age.
     #[tokio::test]
     async fn test_reaper_run_once_at_boundary() {
         let temp_dir = TempDir::new().unwrap();
@@ -256,6 +280,7 @@ mod tests {
     // Spawn and Lifecycle Tests
     // ============================================================================
 
+    /// spawn() returns handle that can be aborted.
     #[tokio::test]
     async fn test_reaper_spawn_and_abort() {
         let temp_dir = TempDir::new().unwrap();
@@ -277,6 +302,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Spawned reaper actually deletes expired files.
     #[tokio::test]
     async fn test_reaper_spawn_runs_cleanup() {
         let temp_dir = TempDir::new().unwrap();
@@ -312,6 +338,7 @@ mod tests {
         handle.abort();
     }
 
+    /// Multiple cleanup cycles work correctly.
     #[tokio::test]
     async fn test_reaper_multiple_spawn_cycles() {
         let temp_dir = TempDir::new().unwrap();
@@ -350,6 +377,7 @@ mod tests {
     // Edge Cases
     // ============================================================================
 
+    /// Zero retention deletes everything immediately.
     #[tokio::test]
     async fn test_reaper_zero_retention() {
         let temp_dir = TempDir::new().unwrap();
@@ -366,6 +394,7 @@ mod tests {
         assert!(!path.exists());
     }
 
+    /// Very long retention (365 days) keeps new files.
     #[tokio::test]
     async fn test_reaper_very_long_retention() {
         let temp_dir = TempDir::new().unwrap();
@@ -382,6 +411,7 @@ mod tests {
         assert!(path.exists());
     }
 
+    /// Multiple run_once() calls are idempotent.
     #[tokio::test]
     async fn test_reaper_idempotent_run() {
         let temp_dir = TempDir::new().unwrap();

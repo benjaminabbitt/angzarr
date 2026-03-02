@@ -178,15 +178,34 @@ impl PayloadStore for FilesystemPayloadStore {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for filesystem payload store.
+    //!
+    //! Filesystem store uses content-addressable files:
+    //! - Path: {base_path}/{hash[0:2]}/{hash}.bin
+    //! - URI format: file://{path}
+    //!
+    //! Key behaviors verified:
+    //! - Put/get roundtrip stores and retrieves payloads
+    //! - Deduplication: same content = same file (content-addressable)
+    //! - Integrity verification: corrupted hash detected on get
+    //! - Age-based cleanup: delete_older_than removes old files
+    //! - Invalid URI handling: wrong scheme rejected
+
     use super::*;
     use tempfile::TempDir;
 
+    /// Helper to create a temporary store for testing.
     async fn create_temp_store() -> (FilesystemPayloadStore, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let store = FilesystemPayloadStore::new(temp_dir.path()).await.unwrap();
         (store, temp_dir)
     }
 
+    // ============================================================================
+    // Basic CRUD Tests
+    // ============================================================================
+
+    /// Put stores payload and get retrieves it.
     #[tokio::test]
     async fn test_put_and_get() {
         let (store, _temp) = create_temp_store().await;
@@ -206,6 +225,11 @@ mod tests {
         assert_eq!(retrieved, payload);
     }
 
+    // ============================================================================
+    // Deduplication Tests
+    // ============================================================================
+
+    /// Same content produces same reference (content-addressable).
     #[tokio::test]
     async fn test_deduplication() {
         let (store, _temp) = create_temp_store().await;
@@ -219,6 +243,7 @@ mod tests {
         assert_eq!(ref1.content_hash, ref2.content_hash);
     }
 
+    /// Different content produces different references.
     #[tokio::test]
     async fn test_different_payloads() {
         let (store, _temp) = create_temp_store().await;
@@ -230,6 +255,11 @@ mod tests {
         assert_ne!(ref1.content_hash, ref2.content_hash);
     }
 
+    // ============================================================================
+    // Error Handling Tests
+    // ============================================================================
+
+    /// Get returns NotFound for non-existent payload.
     #[tokio::test]
     async fn test_get_not_found() {
         let (store, _temp) = create_temp_store().await;
@@ -246,6 +276,7 @@ mod tests {
         assert!(matches!(result, Err(PayloadStoreError::NotFound(_))));
     }
 
+    /// Corrupted hash causes IntegrityFailed error.
     #[tokio::test]
     async fn test_integrity_check() {
         let (store, _temp) = create_temp_store().await;
@@ -263,6 +294,11 @@ mod tests {
         ));
     }
 
+    // ============================================================================
+    // Cleanup Tests
+    // ============================================================================
+
+    /// delete_older_than removes files older than the threshold.
     #[tokio::test]
     async fn test_delete_older_than() {
         let (store, _temp) = create_temp_store().await;
@@ -301,6 +337,7 @@ mod tests {
         assert!(!path.exists());
     }
 
+    /// Wrong URI scheme (gs:// instead of file://) rejected.
     #[tokio::test]
     async fn test_invalid_uri() {
         let (store, _temp) = create_temp_store().await;

@@ -96,8 +96,20 @@ pub struct TimeoutConfig {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for client and service configuration types.
+    //!
+    //! These configs define how angzarr connects to client logic services
+    //! (aggregates, sagas, projectors) and handles saga compensation.
+    //! Defaults are verified to be safe and explicit configuration required
+    //! for optional features.
+
     use super::*;
 
+    // ============================================================================
+    // ServiceEndpoint Tests
+    // ============================================================================
+
+    /// Service endpoint defaults to empty (requires explicit config).
     #[test]
     fn test_service_endpoint_default() {
         let endpoint = ServiceEndpoint::default();
@@ -105,6 +117,15 @@ mod tests {
         assert_eq!(endpoint.address, "");
     }
 
+    // ============================================================================
+    // SagaCompensationConfig Tests
+    // ============================================================================
+
+    /// Saga compensation defaults emit system revocation but don't escalate.
+    ///
+    /// Conservative default: log compensation failures and emit events for
+    /// observability, but don't send to DLQ or trigger alerts without
+    /// explicit configuration.
     #[test]
     fn test_saga_compensation_config_default() {
         let config = SagaCompensationConfig::default();
@@ -116,6 +137,11 @@ mod tests {
         assert!(!config.fallback_escalate);
     }
 
+    // ============================================================================
+    // ProcessManagerClientConfig Tests
+    // ============================================================================
+
+    /// Process manager config defaults to empty (requires explicit config).
     #[test]
     fn test_process_manager_client_config_default() {
         let config = ProcessManagerClientConfig::default();
@@ -125,6 +151,10 @@ mod tests {
         assert_eq!(config.domain(), "");
     }
 
+    /// Process manager domain equals its name.
+    ///
+    /// PMs store state in their own domain, keyed by correlation ID.
+    /// The name is both the identifier and the storage domain.
     #[test]
     fn test_process_manager_client_config_domain() {
         let config = ProcessManagerClientConfig {

@@ -1,3 +1,17 @@
+//! Tests for saga orchestration and retry logic.
+//!
+//! Sagas are stateless domain translators that bridge events from one domain to
+//! commands in another. They must handle sequence conflicts gracefully because
+//! multiple sagas may target the same aggregate concurrently. The retry mechanism
+//! ensures eventual consistency without manual intervention.
+//!
+//! Key behaviors tested:
+//! - Command execution succeeds on first attempt (happy path)
+//! - Sequence conflicts trigger automatic retry with exponential backoff
+//! - Non-retryable rejections (business rule violations) invoke rejection handler
+//! - Retry exhaustion is bounded to prevent infinite loops
+//! - Cached state from conflict responses avoids redundant fetches
+
 use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -10,6 +24,11 @@ use crate::proto_ext::CoverExt;
 use super::super::command::CommandExecutor;
 use super::super::destination::DestinationFetcher;
 
+// ============================================================================
+// Test Doubles
+// ============================================================================
+
+/// Minimal saga context for testing happy path — always succeeds with no commands.
 struct AlwaysSucceeds;
 
 #[async_trait]
@@ -31,7 +50,10 @@ impl SagaRetryContext for AlwaysSucceeds {
     }
 }
 
-/// Context that always re-produces a single command on retry.
+/// Saga context that produces a command on every handle() call.
+///
+/// Used to test retry behavior — each retry re-invokes handle() and should
+/// produce fresh commands based on current destination state.
 struct RetryingSagaContext;
 
 #[async_trait]
@@ -56,6 +78,10 @@ impl SagaRetryContext for RetryingSagaContext {
     }
 }
 
+/// Saga context that tracks rejection callback invocations.
+///
+/// Used to verify that non-retryable rejections properly invoke the rejection
+/// handler, allowing sagas to emit compensation events or log failures.
 struct AlwaysRejects {
     rejection_count: AtomicU32,
 }
@@ -81,7 +107,11 @@ impl SagaRetryContext for AlwaysRejects {
     }
 }
 
-/// Executor that always succeeds.
+// ============================================================================
+// Command Executors
+// ============================================================================
+
+/// Executor that always succeeds — simulates no contention.
 struct SuccessExecutor;
 
 #[async_trait]
@@ -91,7 +121,10 @@ impl CommandExecutor for SuccessExecutor {
     }
 }
 
-/// Executor that tracks call count and fails N times before succeeding.
+/// Executor that fails N times with retryable errors before succeeding.
+///
+/// Simulates sequence conflicts from concurrent writes. The saga retry loop
+/// should re-fetch state and retry until success or exhaustion.
 struct CountingExecutor {
     failures_remaining: AtomicU32,
     execute_count: AtomicU32,
@@ -114,7 +147,10 @@ impl CommandExecutor for CountingExecutor {
     }
 }
 
-/// Executor that always rejects.
+/// Executor that always returns non-retryable rejection.
+///
+/// Simulates business rule violations that cannot be resolved by retry —
+/// saga must invoke rejection handler and stop processing this command.
 struct RejectingExecutor;
 
 #[async_trait]
@@ -124,6 +160,7 @@ impl CommandExecutor for RejectingExecutor {
     }
 }
 
+/// Test-friendly backoff: minimal delays, bounded retries.
 fn fast_backoff() -> ExponentialBuilder {
     ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(1))
@@ -131,6 +168,14 @@ fn fast_backoff() -> ExponentialBuilder {
         .with_max_times(5)
 }
 
+// ============================================================================
+// Saga Retry Builder Tests
+// ============================================================================
+
+/// Command execution succeeds on first attempt — no retry needed.
+///
+/// Happy path: most saga commands complete without contention. The retry loop
+/// should exit immediately after success without unnecessary delay or re-fetch.
 #[tokio::test]
 async fn test_execute_success_no_retry() {
     let ctx = AlwaysSucceeds;
@@ -143,6 +188,10 @@ async fn test_execute_success_no_retry() {
         .await;
 }
 
+/// Empty command list should complete immediately without error.
+///
+/// Sagas may legitimately produce zero commands (e.g., event doesn't require
+/// translation to target domain). The executor must handle this gracefully.
 #[tokio::test]
 async fn test_execute_empty_commands_noop() {
     let ctx = AlwaysSucceeds;
@@ -153,6 +202,11 @@ async fn test_execute_empty_commands_noop() {
         .await;
 }
 
+/// Sequence conflicts trigger retry until success.
+///
+/// Concurrent aggregates may cause sequence mismatches. The saga must
+/// re-fetch destination state and rebuild the command with correct sequence.
+/// This test verifies retry count: initial + 2 failures = 3 total executions.
 #[tokio::test]
 async fn test_execute_retries_then_succeeds() {
     let ctx = RetryingSagaContext;
@@ -171,6 +225,11 @@ async fn test_execute_retries_then_succeeds() {
     assert_eq!(executor.execute_count.load(Ordering::SeqCst), 3);
 }
 
+/// Non-retryable rejection invokes the saga's rejection callback.
+///
+/// Business rule violations (e.g., "insufficient funds") cannot be resolved
+/// by retry. The saga must be notified so it can emit compensation events
+/// or log the failure for manual intervention.
 #[tokio::test]
 async fn test_execute_non_retryable_calls_rejection_handler() {
     let ctx = AlwaysRejects {
@@ -187,6 +246,11 @@ async fn test_execute_non_retryable_calls_rejection_handler() {
     assert_eq!(ctx.rejection_count.load(Ordering::SeqCst), 1);
 }
 
+/// Retry exhaustion stops execution and reports failure.
+///
+/// Unbounded retries would consume resources indefinitely. The backoff
+/// builder's max_times bounds total attempts. After exhaustion, the saga
+/// should stop and the event goes to DLQ for manual review.
 #[tokio::test]
 async fn test_execute_exhausts_retries() {
     let ctx = RetryingSagaContext;
@@ -209,6 +273,11 @@ async fn test_execute_exhausts_retries() {
     assert_eq!(executor.execute_count.load(Ordering::SeqCst), 4);
 }
 
+/// Domain validator prevents commands to forbidden domains.
+///
+/// Some deployments restrict which domains a saga can target (e.g., security
+/// boundaries, tenant isolation). The validator rejects commands before
+/// execution, preventing unauthorized cross-domain access.
 #[tokio::test]
 async fn test_orchestrate_saga_with_domain_validator() {
     let ctx = AlwaysSucceeds;
@@ -237,8 +306,15 @@ async fn test_orchestrate_saga_with_domain_validator() {
     assert!(result.is_ok());
 }
 
-/// Executor that returns state with retryable error, then succeeds.
-/// Used to test the cached state optimization.
+// ============================================================================
+// Cached State Optimization Tests
+// ============================================================================
+
+/// Executor that returns current state alongside retryable error.
+///
+/// When an aggregate rejects a command due to sequence conflict, it returns
+/// the current state. The retry loop can use this cached state instead of
+/// making a separate fetch call — reduces round trips under contention.
 struct RetryableWithStateExecutor {
     failures_remaining: AtomicU32,
 }
@@ -273,7 +349,10 @@ impl CommandExecutor for RetryableWithStateExecutor {
     }
 }
 
-/// Context for cached state test — prepares destinations for retry.
+/// Saga context that declares destination requirements for retry.
+///
+/// On retry, prepare_destinations() returns covers needed for command
+/// reconstruction. The retry loop should use cached state when available.
 struct CachedStateContext;
 
 #[async_trait]
@@ -306,7 +385,9 @@ impl SagaRetryContext for CachedStateContext {
     }
 }
 
-/// Fetcher that tracks fetch count.
+/// Destination fetcher that counts fetch calls.
+///
+/// Used to verify that cached state from conflict responses reduces fetches.
 struct TrackingFetcher {
     fetch_count: AtomicU32,
 }
@@ -326,10 +407,13 @@ impl DestinationFetcher for TrackingFetcher {
     }
 }
 
+/// Retryable error with current_state avoids redundant fetch.
+///
+/// When aggregate returns state with the conflict, the saga can skip fetching
+/// that domain's state on retry. This optimization reduces latency and load
+/// under high contention. The fetch count should be minimized.
 #[tokio::test]
 async fn test_execute_uses_cached_state_from_conflict() {
-    // Verify that when a Retryable error includes current_state,
-    // subsequent retry uses that state instead of fetching
     let ctx = CachedStateContext;
     let executor = RetryableWithStateExecutor {
         failures_remaining: AtomicU32::new(1),

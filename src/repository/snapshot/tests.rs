@@ -1,8 +1,23 @@
+//! Tests for Snapshot repository.
+//!
+//! The snapshot repository provides aggregate state checkpoints:
+//! - Store/retrieve snapshots by domain + edition + root
+//! - Replace existing snapshots (latest wins)
+//! - Delete snapshots
+//! - Configurable write enable/disable
+//!
+//! Key behaviors verified:
+//! - Basic CRUD: get/put/delete roundtrips
+//! - Domain and root isolation (snapshots keyed by all three)
+//! - Write disable mode (read-only operation)
+//! - Idempotent deletes (deleting nonexistent succeeds)
+
 use super::*;
 use crate::proto::SnapshotRetention;
 use crate::storage::mock::MockSnapshotStore;
 use prost_types::Any;
 
+/// Helper to create test snapshots with given sequence.
 fn test_snapshot(sequence: u32) -> Snapshot {
     Snapshot {
         sequence,
@@ -14,6 +29,11 @@ fn test_snapshot(sequence: u32) -> Snapshot {
     }
 }
 
+// ============================================================================
+// Basic CRUD Tests
+// ============================================================================
+
+/// Get returns None for non-existent aggregate.
 #[tokio::test]
 async fn test_get_returns_none_for_nonexistent() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -24,6 +44,7 @@ async fn test_get_returns_none_for_nonexistent() {
     assert!(result.is_none());
 }
 
+/// Put followed by get retrieves the snapshot.
 #[tokio::test]
 async fn test_put_and_get_roundtrip() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -41,6 +62,7 @@ async fn test_put_and_get_roundtrip() {
     assert_eq!(retrieved.unwrap().sequence, 5);
 }
 
+/// Put replaces existing snapshot (latest wins).
 #[tokio::test]
 async fn test_put_replaces_existing() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -59,6 +81,7 @@ async fn test_put_replaces_existing() {
     assert_eq!(retrieved.unwrap().sequence, 7);
 }
 
+/// Delete removes the snapshot for the aggregate.
 #[tokio::test]
 async fn test_delete_removes_snapshot() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -75,6 +98,7 @@ async fn test_delete_removes_snapshot() {
     assert!(retrieved.is_none());
 }
 
+/// Delete on non-existent aggregate succeeds (idempotent).
 #[tokio::test]
 async fn test_delete_nonexistent_succeeds() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -85,6 +109,11 @@ async fn test_delete_nonexistent_succeeds() {
     assert!(result.is_ok());
 }
 
+// ============================================================================
+// Isolation Tests
+// ============================================================================
+
+/// Snapshots are isolated by domain.
 #[tokio::test]
 async fn test_domain_isolation() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -100,6 +129,7 @@ async fn test_domain_isolation() {
     assert!(other_domain.is_none());
 }
 
+/// Snapshots are isolated by aggregate root.
 #[tokio::test]
 async fn test_root_isolation() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -116,6 +146,11 @@ async fn test_root_isolation() {
     assert!(other_root.is_none());
 }
 
+// ============================================================================
+// Write Configuration Tests
+// ============================================================================
+
+/// Write disabled: put is no-op, get returns None.
 #[tokio::test]
 async fn test_with_config_write_disabled_skips_put() {
     let store = Arc::new(MockSnapshotStore::new());
@@ -133,6 +168,7 @@ async fn test_with_config_write_disabled_skips_put() {
     assert!(retrieved.is_none());
 }
 
+/// Write enabled (default): put persists snapshot.
 #[tokio::test]
 async fn test_with_config_write_enabled_writes() {
     let store = Arc::new(MockSnapshotStore::new());

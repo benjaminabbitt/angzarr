@@ -236,7 +236,23 @@ impl<T: ProcessManagerHandler> ProcessManagerHandler for InstrumentedPMHandler<T
 
 #[cfg(test)]
 mod tests {
+    //! Tests for handler instrumentation wrappers.
+    //!
+    //! Handler wrappers add metrics to projector, saga, and PM handlers:
+    //! - Duration histograms by component, name, domain, outcome
+    //! - No overhead when otel feature is disabled
+    //!
+    //! Key behaviors verified:
+    //! - Wrappers delegate to inner handlers
+    //! - Results pass through unchanged
+    //!
+    //! Note: Metric emission tests require integration tests with OTel collector.
+
     use super::*;
+
+    // ============================================================================
+    // Projector Handler Tests
+    // ============================================================================
 
     struct MockProjectorHandler;
 
@@ -251,6 +267,7 @@ mod tests {
         }
     }
 
+    /// InstrumentedProjectorHandler delegates to inner handler.
     #[tokio::test]
     async fn test_instrumented_projector_delegates() {
         let inner = MockProjectorHandler;
@@ -260,6 +277,10 @@ mod tests {
         let result = handler.handle(&events, ProjectionMode::Execute).await;
         assert!(result.is_ok());
     }
+
+    // ============================================================================
+    // Saga Handler Tests
+    // ============================================================================
 
     struct MockSagaHandler;
 
@@ -278,6 +299,7 @@ mod tests {
         }
     }
 
+    /// InstrumentedSagaHandler delegates to inner handler.
     #[tokio::test]
     async fn test_instrumented_saga_delegates() {
         let inner = MockSagaHandler;
@@ -287,6 +309,10 @@ mod tests {
         let result = handler.handle(&source, &[]).await;
         assert!(result.is_ok());
     }
+
+    // ============================================================================
+    // Process Manager Handler Tests
+    // ============================================================================
 
     struct MockPMHandler;
 
@@ -305,6 +331,7 @@ mod tests {
         }
     }
 
+    /// InstrumentedPMHandler delegates to inner handler.
     #[test]
     fn test_instrumented_pm_delegates() {
         let inner = MockPMHandler;

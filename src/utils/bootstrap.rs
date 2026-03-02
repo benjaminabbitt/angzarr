@@ -276,12 +276,24 @@ fn parse_config_path_from_args(args: &[String]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for bootstrap utility functions.
+    //!
+    //! These utilities are used by all angzarr binaries during startup:
+    //! - Static endpoint parsing for discovery
+    //! - Config file path extraction from CLI args
+    //!
+    //! Correctness is critical — parsing errors cause runtime failures.
+
     use super::*;
 
     // ============================================================================
     // parse_static_endpoints Tests
     // ============================================================================
+    //
+    // Static endpoints configure domain-to-address mappings without discovery.
+    // Format: "domain=address,domain=address,..."
 
+    /// Single endpoint parses correctly.
     #[test]
     fn test_parse_static_endpoints_single() {
         let result = parse_static_endpoints("orders=/tmp/orders.sock");
@@ -292,6 +304,7 @@ mod tests {
         );
     }
 
+    /// Multiple endpoints separated by commas.
     #[test]
     fn test_parse_static_endpoints_multiple() {
         let result =
@@ -307,6 +320,7 @@ mod tests {
         );
     }
 
+    /// Whitespace around pairs is trimmed.
     #[test]
     fn test_parse_static_endpoints_with_spaces() {
         let result =
@@ -316,12 +330,14 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
+    /// Empty string produces empty list.
     #[test]
     fn test_parse_static_endpoints_empty() {
         let result = parse_static_endpoints("");
         assert!(result.is_empty());
     }
 
+    /// Malformed entries (missing =) are skipped.
     #[test]
     fn test_parse_static_endpoints_invalid_entry() {
         // Missing = sign
@@ -330,6 +346,7 @@ mod tests {
         assert_eq!(result[0].0, "inventory");
     }
 
+    /// Values containing = are preserved (e.g., query strings).
     #[test]
     fn test_parse_static_endpoints_value_with_equals() {
         // Value containing = should be preserved
@@ -339,6 +356,7 @@ mod tests {
         assert_eq!(result[0].1, "http://localhost:8080?key=value");
     }
 
+    /// Whitespace around individual entries is trimmed.
     #[test]
     fn test_parse_static_endpoints_whitespace_trimmed() {
         let result = parse_static_endpoints("  orders=/tmp/orders.sock  ");
@@ -349,7 +367,11 @@ mod tests {
     // ============================================================================
     // parse_config_path_from_args Tests
     // ============================================================================
+    //
+    // Config path is extracted from CLI args for YAML config loading.
+    // Supports both --config and -c flags.
 
+    /// --config flag extracts path.
     #[test]
     fn test_parse_config_path_long_flag() {
         let args: Vec<String> = vec![
@@ -361,6 +383,7 @@ mod tests {
         assert_eq!(result, Some("/path/to/config.yaml".to_string()));
     }
 
+    /// -c flag extracts path (shorthand).
     #[test]
     fn test_parse_config_path_short_flag() {
         let args: Vec<String> = vec![
@@ -372,6 +395,7 @@ mod tests {
         assert_eq!(result, Some("/path/to/config.yaml".to_string()));
     }
 
+    /// Missing flag returns None.
     #[test]
     fn test_parse_config_path_not_present() {
         let args: Vec<String> = vec![
@@ -383,6 +407,7 @@ mod tests {
         assert_eq!(result, None);
     }
 
+    /// Flag at end without value returns None.
     #[test]
     fn test_parse_config_path_flag_without_value() {
         let args: Vec<String> = vec![
@@ -394,6 +419,7 @@ mod tests {
         assert_eq!(result, None);
     }
 
+    /// Config path extracted from middle of arg list.
     #[test]
     fn test_parse_config_path_among_other_args() {
         let args: Vec<String> = vec![
@@ -408,6 +434,7 @@ mod tests {
         assert_eq!(result, Some("/path/to/config.yaml".to_string()));
     }
 
+    /// Empty args returns None.
     #[test]
     fn test_parse_config_path_empty_args() {
         let args: Vec<String> = vec![];
@@ -415,6 +442,7 @@ mod tests {
         assert_eq!(result, None);
     }
 
+    /// Only program name returns None.
     #[test]
     fn test_parse_config_path_only_program_name() {
         let args: Vec<String> = vec!["program".to_string()];

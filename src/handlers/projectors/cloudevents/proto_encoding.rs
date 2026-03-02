@@ -120,9 +120,26 @@ pub fn encode_proto_batch(events: &[CloudEventEnvelope]) -> Result<Vec<u8>, Sink
 
 #[cfg(test)]
 mod tests {
+    //! Tests for CloudEvents protobuf encoding.
+    //!
+    //! CloudEvents can be serialized to protobuf format (io.cloudevents.v1).
+    //! This enables efficient binary transmission for high-throughput sinks.
+    //!
+    //! Key behaviors verified:
+    //! - Single event encodes to CloudEvent message
+    //! - Batch encodes to CloudEventBatch message
+    //! - Data (JSON/text/binary) is preserved
+    //! - Extensions are encoded as attributes
+    //! - Empty batch is valid (empty repeated field)
+
     use super::*;
     use cloudevents::{EventBuilder, EventBuilderV10};
 
+    // ============================================================================
+    // Single Event Encoding Tests
+    // ============================================================================
+
+    /// Single event encodes to CloudEvent protobuf message.
     #[test]
     fn test_encode_single() {
         let event = EventBuilderV10::new()
@@ -141,6 +158,11 @@ mod tests {
         assert_eq!(proto_event.spec_version, "1.0");
     }
 
+    // ============================================================================
+    // Batch Encoding Tests
+    // ============================================================================
+
+    /// Empty batch produces valid (empty) CloudEventBatch.
     #[test]
     fn test_encode_empty_batch() {
         let events: Vec<CloudEventEnvelope> = vec![];
@@ -152,6 +174,7 @@ mod tests {
         assert!(batch.events.is_empty());
     }
 
+    /// Single event in batch preserves all required fields.
     #[test]
     fn test_encode_single_event() {
         let event = EventBuilderV10::new()
@@ -172,6 +195,7 @@ mod tests {
         assert_eq!(proto_event.spec_version, "1.0");
     }
 
+    /// JSON data is encoded as TextData in protobuf.
     #[test]
     fn test_encode_event_with_data() {
         let event = EventBuilderV10::new()
@@ -196,6 +220,7 @@ mod tests {
         }
     }
 
+    /// Extensions are encoded as typed attributes.
     #[test]
     fn test_encode_event_with_extensions() {
         let event = EventBuilderV10::new()
@@ -227,6 +252,7 @@ mod tests {
         }
     }
 
+    /// Multiple events encode to batch with correct count.
     #[test]
     fn test_encode_multiple_events() {
         let events: Vec<CloudEventEnvelope> = (0..3)

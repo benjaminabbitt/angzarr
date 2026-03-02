@@ -99,8 +99,18 @@ pub async fn init_dlq_publisher(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for DLQ publisher factory.
+    //!
+    //! The factory uses self-registration (inventory crate) to discover available
+    //! DLQ backends at compile time. This enables modular backend support without
+    //! explicit registration.
+
     use super::*;
 
+    /// Empty config returns noop publisher.
+    ///
+    /// No DLQ configured means dead letters are silently discarded.
+    /// is_configured() returns false to signal this to callers.
     #[tokio::test]
     async fn test_init_dlq_publisher_empty_config() {
         let config = DlqConfig::default();

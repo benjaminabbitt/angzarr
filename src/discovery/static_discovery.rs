@@ -497,9 +497,26 @@ fn parse_url(url: &str) -> Option<(String, u16)> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for static service discovery.
+    //!
+    //! Static discovery provides service lookup without K8s dependencies:
+    //! - Services registered manually or via environment variables
+    //! - No background watching (unlike K8s discovery)
+    //! - Suitable for local development, Cloud Run, VMs
+    //!
+    //! Key behaviors verified:
+    //! - URL parsing handles UDS paths, HTTP/HTTPS, host:port formats
+    //! - Registration adds services to the appropriate cache
+    //! - Sync and async registration both work
+
     use super::*;
     use crate::discovery::ServiceDiscovery;
 
+    // ============================================================================
+    // URL Parsing Tests
+    // ============================================================================
+
+    /// UDS paths are recognized and parsed with port=0.
     #[test]
     fn test_parse_url_uds() {
         let (addr, port) = parse_url("/tmp/angzarr/test.sock").unwrap();
@@ -507,6 +524,7 @@ mod tests {
         assert_eq!(port, 0);
     }
 
+    /// HTTP URLs are parsed correctly.
     #[test]
     fn test_parse_url_http() {
         let (addr, port) = parse_url("http://localhost:8080").unwrap();
@@ -514,6 +532,7 @@ mod tests {
         assert_eq!(port, 8080);
     }
 
+    /// HTTPS URLs default to port 443.
     #[test]
     fn test_parse_url_https() {
         let (addr, port) = parse_url("https://order-coordinator.run.app").unwrap();
@@ -521,6 +540,7 @@ mod tests {
         assert_eq!(port, 443);
     }
 
+    /// HTTPS URLs with explicit port override default 443.
     #[test]
     fn test_parse_url_https_with_port() {
         let (addr, port) = parse_url("https://order-coordinator.run.app:8443").unwrap();
@@ -528,6 +548,7 @@ mod tests {
         assert_eq!(port, 8443);
     }
 
+    /// Plain host:port format is parsed correctly.
     #[test]
     fn test_parse_url_host_port() {
         let (addr, port) = parse_url("localhost:50051").unwrap();
@@ -535,6 +556,7 @@ mod tests {
         assert_eq!(port, 50051);
     }
 
+    /// URL paths are stripped (only host:port used for gRPC).
     #[test]
     fn test_parse_url_with_path() {
         let (addr, port) = parse_url("https://order-coordinator.run.app/api/v1").unwrap();
@@ -542,6 +564,11 @@ mod tests {
         assert_eq!(port, 443);
     }
 
+    // ============================================================================
+    // Registration Tests
+    // ============================================================================
+
+    /// Aggregate registration adds service and updates has_aggregates().
     #[tokio::test]
     async fn test_static_discovery_register_aggregate() {
         let discovery = StaticServiceDiscovery::new();
@@ -554,6 +581,7 @@ mod tests {
         assert_eq!(domains, vec!["order"]);
     }
 
+    /// Projector registration adds service and updates has_projectors().
     #[tokio::test]
     async fn test_static_discovery_register_projector() {
         let discovery = StaticServiceDiscovery::new();
@@ -564,6 +592,7 @@ mod tests {
         assert!(discovery.has_projectors().await);
     }
 
+    /// Sync registration works for use in constructors (no async runtime).
     #[test]
     fn test_static_discovery_sync_registration() {
         let discovery = StaticServiceDiscovery::new();

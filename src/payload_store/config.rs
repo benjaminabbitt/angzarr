@@ -172,8 +172,27 @@ impl Default for S3StoreConfig {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for payload store configuration.
+    //!
+    //! Payload offloading is the claim check pattern: when payloads exceed
+    //! message bus size limits, store them externally and pass references.
+    //!
+    //! Key behaviors verified:
+    //! - Default config is disabled (opt-in feature)
+    //! - Threshold = 0 means use bus default
+    //! - Duration helpers convert hours/seconds correctly
+    //! - YAML deserialization works with full and minimal configs
+
     use super::*;
 
+    // ============================================================================
+    // PayloadOffloadConfig Tests
+    // ============================================================================
+
+    /// Default config has offloading disabled.
+    ///
+    /// Payload offloading requires external storage setup. Disabled by default
+    /// so the system works out-of-box without additional infrastructure.
     #[test]
     fn test_payload_offload_config_default() {
         let config = PayloadOffloadConfig::default();
@@ -185,6 +204,10 @@ mod tests {
         assert_eq!(config.cleanup_interval_secs, 3600);
     }
 
+    /// Zero threshold means use the bus's max_message_size.
+    ///
+    /// Different buses have different limits (SQS: 256KB, Kafka: 1MB, etc.).
+    /// Setting threshold=0 defers to the bus, avoiding misconfiguration.
     #[test]
     fn test_payload_offload_config_threshold() {
         let mut config = PayloadOffloadConfig::default();
@@ -197,6 +220,7 @@ mod tests {
         assert_eq!(config.threshold(), Some(1024));
     }
 
+    /// Retention converts hours to Duration.
     #[test]
     fn test_payload_offload_config_retention() {
         let config = PayloadOffloadConfig {
@@ -207,6 +231,7 @@ mod tests {
         assert_eq!(config.retention(), Duration::from_secs(48 * 3600));
     }
 
+    /// Cleanup interval converts seconds to Duration.
     #[test]
     fn test_payload_offload_config_cleanup_interval() {
         let config = PayloadOffloadConfig {
@@ -217,6 +242,11 @@ mod tests {
         assert_eq!(config.cleanup_interval(), Duration::from_secs(300));
     }
 
+    // ============================================================================
+    // FilesystemStoreConfig Tests
+    // ============================================================================
+
+    /// Default filesystem path is /var/angzarr/payloads.
     #[test]
     fn test_filesystem_store_config_default() {
         let config = FilesystemStoreConfig::default();
@@ -224,6 +254,11 @@ mod tests {
         assert_eq!(config.base_path, PathBuf::from("/var/angzarr/payloads"));
     }
 
+    // ============================================================================
+    // YAML Deserialization Tests
+    // ============================================================================
+
+    /// Full YAML config deserializes all fields correctly.
     #[test]
     fn test_payload_offload_config_deserialize_yaml() {
         let yaml = r#"
@@ -246,6 +281,7 @@ mod tests {
         assert_eq!(config.filesystem.base_path, PathBuf::from("/tmp/payloads"));
     }
 
+    /// Minimal YAML config uses defaults for unspecified fields.
     #[test]
     fn test_payload_offload_config_deserialize_minimal_yaml() {
         let yaml = r#"
@@ -260,6 +296,7 @@ mod tests {
         assert_eq!(config.retention_hours, 24);
     }
 
+    /// Store type enum deserializes from lowercase strings.
     #[test]
     fn test_payload_store_type_deserialize() {
         let yaml = "filesystem";

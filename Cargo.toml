@@ -283,27 +283,86 @@ testcontainers = "0.27"
 hex = "0.4"
 rand = "0.9"
 
+# =============================================================================
+# Contract Test Binaries
+# =============================================================================
+# These tests verify that storage and bus implementations correctly fulfill
+# their trait contracts. Each backend gets its own test binary with the
+# required feature flag, ensuring:
+#   1. Tests only compile when the backend is available
+#   2. Clear error messages when running without required features
+#   3. Isolated test runs per backend for CI parallelization
+#
+# Storage tests verify: EventStore, SnapshotStore, PositionStore traits
+# Bus tests verify: EventBus trait (publish, subscribe, ack/nack, DLQ)
+# =============================================================================
+
+# --- Interface Tests (Gherkin/Cucumber) ---
+
 [[test]]
 name = "interfaces"
+# Gherkin/Cucumber BDD specifications that verify storage and bus implementations
+# fulfill their contracts. Human-readable scenarios define expected behavior;
+# step definitions wire scenarios to actual implementations. The canonical source
+# of truth for "correct behavior" - if interfaces pass, the contract is satisfied.
+# Supports multiple backends via STORAGE_BACKEND and BUS_BACKEND env vars.
 path = "tests/interfaces/main.rs"
 harness = false
 required-features = ["test-utils"]
 
+# --- Storage Contract Tests (Direct/Macro-based) ---
+# For backends with partial storage support or specialized testing needs.
+# Full-support backends (SQLite, PostgreSQL) prefer Gherkin interface tests.
+
 [[test]]
 name = "storage_redis"
+# Redis provides high-performance caching for snapshots. Testing ensures
+# snapshot store/restore works correctly with Redis's eventual consistency model.
 required-features = ["redis"]
 
 [[test]]
 name = "storage_immudb"
+# ImmuDB provides cryptographically verifiable event storage. Testing ensures
+# events persist correctly via the PostgreSQL wire protocol adapter.
 required-features = ["immudb"]
 
 [[test]]
 name = "storage_nats"
+# NATS JetStream provides distributed event storage with replay. Testing ensures
+# events, snapshots, and positions persist correctly in the JetStream KV store.
 required-features = ["nats"]
+
+# --- Bus Contract Tests ---
 
 [[test]]
 name = "bus_nats"
+# NATS JetStream as event bus. Testing ensures publish/subscribe semantics,
+# consumer groups, and message acknowledgment work correctly.
 required-features = ["nats"]
+
+[[test]]
+name = "bus_amqp"
+# RabbitMQ/AMQP as event bus. Testing ensures exchange/queue bindings,
+# message routing, acknowledgment, and dead-letter queue handling work correctly.
+required-features = ["amqp"]
+
+[[test]]
+name = "bus_kafka"
+# Apache Kafka as event bus. Testing ensures topic partitioning, consumer groups,
+# offset management, and at-least-once delivery semantics work correctly.
+required-features = ["kafka"]
+
+[[test]]
+name = "bus_pubsub"
+# Google Cloud Pub/Sub as event bus. Testing ensures topic/subscription management,
+# message ordering, and acknowledgment deadlines work correctly with the emulator.
+required-features = ["pubsub"]
+
+[[test]]
+name = "bus_sns_sqs"
+# AWS SNS/SQS as event bus. Testing ensures SNS fan-out to SQS queues,
+# message attributes, and visibility timeout handling work correctly with LocalStack.
+required-features = ["sns-sqs"]
 
 # === Build Profiles ===
 

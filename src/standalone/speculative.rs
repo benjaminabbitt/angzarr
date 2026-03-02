@@ -456,6 +456,22 @@ impl SpeculativeExecutor {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for speculative execution.
+    //!
+    //! Speculative execution runs handler logic without side effects:
+    //! - No events persisted
+    //! - No commands executed
+    //! - No messages published
+    //!
+    //! Useful for "what-if" queries, previewing command effects, and testing.
+    //! The same handler instances are reused—only framework behavior changes.
+    //!
+    //! Key behaviors verified:
+    //! - DomainStateSpec variants (Current, AtSequence, AtTimestamp, Explicit)
+    //! - PmSpeculativeResult structure
+    //! - EventBook construction helpers
+    //! - Domain-based routing for projectors, sagas, and PMs
+
     use super::*;
     use crate::proto::event_page;
     use crate::proto_ext::EventPageExt;

@@ -1,9 +1,28 @@
+//! Tests for aggregate orchestration utilities.
+//!
+//! Aggregates are the core of domain logic — they accept commands, validate them
+//! against current state, and emit events. This module tests the parsing and
+//! validation utilities that support aggregate orchestration:
+//!
+//! - Cover parsing: Extract domain and root_id from commands/events
+//! - Sequence handling: Track aggregate version for optimistic concurrency
+//! - Merge strategies: Determine how concurrent commands are handled
+//! - Field extraction: Identify which state fields a command modifies (commutative merge)
+//! - State diffing: Compare before/after state to detect field changes
+//!
+//! These utilities are framework plumbing — business logic uses higher-level
+//! aggregate traits. Tests here ensure the plumbing is correct.
+
 use super::*;
 use crate::proto::{
     command_page, event_page, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, EventBookExt};
 use prost_types::Any;
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
 
 fn make_command_book(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
     make_command_book_with_strategy(domain, root, sequence, MergeStrategy::MergeCommutative)
@@ -71,6 +90,14 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
     book
 }
 
+// ============================================================================
+// Cover Parsing Tests
+// ============================================================================
+//
+// The cover contains domain and root_id which identify the aggregate instance.
+// Parsing must be strict — malformed covers cause routing failures downstream.
+
+/// Valid cover parses to domain and root_id.
 #[test]
 fn test_parse_command_cover_valid() {
     let root = Uuid::new_v4();
@@ -82,6 +109,10 @@ fn test_parse_command_cover_valid() {
     assert_eq!(parsed_root, root);
 }
 
+/// Missing cover returns error — commands must identify their target.
+///
+/// Commands without covers cannot be routed. Early rejection with clear error
+/// helps clients debug integration issues.
 #[test]
 fn test_parse_command_cover_missing_cover() {
     let command = CommandBook {
@@ -95,6 +126,10 @@ fn test_parse_command_cover_missing_cover() {
     assert!(result.unwrap_err().message().contains("cover"));
 }
 
+/// Missing root returns error — aggregate instance must be specified.
+///
+/// Domain alone is insufficient; root_id identifies the specific aggregate
+/// instance. Without it, the framework can't load or persist state.
 #[test]
 fn test_parse_command_cover_missing_root() {
     let command = CommandBook {
@@ -114,6 +149,15 @@ fn test_parse_command_cover_missing_root() {
     assert!(result.unwrap_err().message().contains("root"));
 }
 
+// ============================================================================
+// Sequence Handling Tests
+// ============================================================================
+//
+// Sequences provide optimistic concurrency control. Each event has a sequence
+// number; commands must target the next expected sequence. Mismatches indicate
+// concurrent modification.
+
+/// Command sequence extracted from first page.
 #[test]
 fn test_extract_command_sequence() {
     let root = Uuid::new_v4();
@@ -122,6 +166,7 @@ fn test_extract_command_sequence() {
     assert_eq!(extract_command_sequence(&command), 5);
 }
 
+/// Empty pages default to sequence 0 — new aggregate creation.
 #[test]
 fn test_extract_command_sequence_empty_pages() {
     let command = CommandBook {
@@ -133,6 +178,7 @@ fn test_extract_command_sequence_empty_pages() {
     assert_eq!(extract_command_sequence(&command), 0);
 }
 
+/// Next sequence is last event sequence + 1.
 #[test]
 fn test_next_sequence_from_events() {
     let root = Uuid::new_v4();
@@ -141,6 +187,7 @@ fn test_next_sequence_from_events() {
     assert_eq!(events.next_sequence(), 5);
 }
 
+/// Empty event stream has next_sequence 0.
 #[test]
 fn test_next_sequence_empty_events() {
     let root = Uuid::new_v4();
@@ -149,6 +196,11 @@ fn test_next_sequence_empty_events() {
     assert_eq!(events.next_sequence(), 0);
 }
 
+/// Snapshot sequence takes precedence over event pages.
+///
+/// Snapshots capture aggregate state at a point in time. When present,
+/// next_sequence is snapshot.sequence + 1 (events since snapshot are
+/// in pages, but snapshot establishes the baseline).
 #[test]
 fn test_next_sequence_from_snapshot() {
     use crate::proto::{Snapshot, SnapshotRetention};
@@ -168,7 +220,16 @@ fn test_next_sequence_from_snapshot() {
 // ============================================================================
 // Merge Strategy Tests
 // ============================================================================
+//
+// Merge strategies control how the framework handles concurrent commands:
+// - MergeStrict: Reject if sequence mismatch (traditional optimistic locking)
+// - MergeCommutative: Allow if commands modify disjoint fields
+// - MergeAggregateHandles: Delegate conflict resolution to aggregate
 
+/// Default merge strategy is commutative — maximizes throughput.
+///
+/// Commutative merging allows concurrent commands that touch different fields
+/// to succeed without conflict. This is the common case for most domains.
 #[test]
 fn test_merge_strategy_default_is_commutative() {
     let root = Uuid::new_v4();
@@ -177,6 +238,10 @@ fn test_merge_strategy_default_is_commutative() {
     assert_eq!(command.merge_strategy(), MergeStrategy::MergeCommutative);
 }
 
+/// Strict strategy requires exact sequence match.
+///
+/// Used when any concurrent modification is unsafe — all fields are coupled.
+/// Example: financial transactions where partial state is dangerous.
 #[test]
 fn test_merge_strategy_strict() {
     let root = Uuid::new_v4();
@@ -185,6 +250,11 @@ fn test_merge_strategy_strict() {
     assert_eq!(command.merge_strategy(), MergeStrategy::MergeStrict);
 }
 
+/// Aggregate-handles strategy delegates conflict resolution.
+///
+/// The aggregate receives both the command and current state, allowing it to
+/// implement domain-specific merge logic (e.g., last-writer-wins for certain
+/// fields, reject for others).
 #[test]
 fn test_merge_strategy_aggregate_handles() {
     let root = Uuid::new_v4();
@@ -197,6 +267,7 @@ fn test_merge_strategy_aggregate_handles() {
     );
 }
 
+/// Empty pages default to commutative — safe default for malformed commands.
 #[test]
 fn test_merge_strategy_empty_pages_defaults_to_commutative() {
     let command = CommandBook {
@@ -210,9 +281,14 @@ fn test_merge_strategy_empty_pages_defaults_to_commutative() {
 }
 
 // ============================================================================
-// Commutative Merge Helper Tests - Catch mutations in field extraction
+// Commutative Merge Field Extraction Tests
 // ============================================================================
+//
+// Commutative merge requires knowing which fields each command modifies.
+// The framework extracts field sets from command type URLs and uses them
+// to detect conflicts. Only overlapping field modifications conflict.
 
+/// UpdateFieldA command modifies only field_a.
 #[test]
 fn test_extract_command_fields_field_a() {
     let root = Uuid::new_v4();
@@ -243,6 +319,7 @@ fn test_extract_command_fields_field_a() {
     assert!(!fields.contains("*"));
 }
 
+/// UpdateFieldB command modifies only field_b.
 #[test]
 fn test_extract_command_fields_field_b() {
     let root = Uuid::new_v4();
@@ -273,6 +350,7 @@ fn test_extract_command_fields_field_b() {
     assert!(!fields.contains("*"));
 }
 
+/// UpdateBoth modifies both fields — conflicts with either single-field update.
 #[test]
 fn test_extract_command_fields_update_both() {
     let root = Uuid::new_v4();
@@ -303,6 +381,11 @@ fn test_extract_command_fields_update_both() {
     assert!(!fields.contains("*"));
 }
 
+/// Unknown command types return wildcard — conservative fallback.
+///
+/// If the framework doesn't recognize a command type, it assumes the command
+/// could modify any field. This prevents silent corruption but reduces
+/// concurrency for unregistered command types.
 #[test]
 fn test_extract_command_fields_unknown_returns_wildcard() {
     let root = Uuid::new_v4();
@@ -334,6 +417,7 @@ fn test_extract_command_fields_unknown_returns_wildcard() {
     );
 }
 
+/// Empty pages return empty field set — no fields modified.
 #[test]
 fn test_extract_command_fields_empty_pages() {
     let command = CommandBook {
@@ -349,7 +433,12 @@ fn test_extract_command_fields_empty_pages() {
 // ============================================================================
 // Event Filtering Tests
 // ============================================================================
+//
+// When a command targets sequence N, the aggregate should only see events
+// 0..N-1. Events N+ represent concurrent modifications the command doesn't
+// know about. Filtering ensures consistent "as of" views.
 
+/// Events filtered to sequence N excludes events >= N.
 #[test]
 fn test_build_events_up_to_sequence_filters_correctly() {
     let root = Uuid::new_v4();
@@ -394,6 +483,7 @@ fn test_build_events_up_to_sequence_filters_correctly() {
     assert_eq!(filtered.next_sequence, 2);
 }
 
+/// Sequence 0 means "create new aggregate" — no prior events.
 #[test]
 fn test_build_events_up_to_sequence_zero_returns_empty() {
     let root = Uuid::new_v4();
@@ -421,9 +511,14 @@ fn test_build_events_up_to_sequence_zero_returns_empty() {
 }
 
 // ============================================================================
-// Test State Parsing - Catch mutations in diff logic
+// Test State Parsing Tests
 // ============================================================================
+//
+// These test the JSON-based state diffing used for commutative merge conflict
+// detection. The framework compares before/after state to determine which
+// fields changed, enabling fine-grained conflict detection.
 
+/// Simple JSON parses to field map.
 #[test]
 fn test_parse_test_state_fields_simple() {
     let fields = parse_test_state_fields(r#"{"field_a":100,"field_b":"hello"}"#);
@@ -431,12 +526,14 @@ fn test_parse_test_state_fields_simple() {
     assert_eq!(fields.get("field_b"), Some(&"\"hello\"".to_string()));
 }
 
+/// Empty JSON parses to empty map.
 #[test]
 fn test_parse_test_state_fields_empty() {
     let fields = parse_test_state_fields("{}");
     assert!(fields.is_empty());
 }
 
+/// Identical states produce empty change set — no conflict possible.
 #[test]
 fn test_diff_test_state_fields_identical() {
     let before = r#"{"field_a":100}"#.as_bytes();
@@ -449,6 +546,7 @@ fn test_diff_test_state_fields_identical() {
     );
 }
 
+/// Single field change returns that field only.
 #[test]
 fn test_diff_test_state_fields_single_change() {
     let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
@@ -460,6 +558,7 @@ fn test_diff_test_state_fields_single_change() {
     assert!(!changed.contains("field_a"));
 }
 
+/// Multiple field changes returns all changed fields.
 #[test]
 fn test_diff_test_state_fields_multiple_changes() {
     let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
@@ -471,6 +570,7 @@ fn test_diff_test_state_fields_multiple_changes() {
     assert!(changed.contains("field_b"));
 }
 
+/// Field addition detected as change.
 #[test]
 fn test_diff_test_state_fields_field_added() {
     let before = r#"{"field_a":100}"#.as_bytes();
@@ -480,6 +580,7 @@ fn test_diff_test_state_fields_field_added() {
     assert!(changed.contains("field_b"), "new field should be detected");
 }
 
+/// Field removal detected as change.
 #[test]
 fn test_diff_test_state_fields_field_removed() {
     let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
@@ -493,9 +594,17 @@ fn test_diff_test_state_fields_field_removed() {
 }
 
 // ============================================================================
-// Type URL Diff Tests - Catch mutations in diff_state_fields
+// Type URL Diff Tests
 // ============================================================================
+//
+// State diffing must handle type URL mismatches (schema evolution) and
+// unknown types (unregistered aggregates). These tests verify fallback
+// behavior.
 
+/// Different type URLs return wildcard — incomparable states.
+///
+/// Schema evolution may change type URLs. When before/after have different
+/// types, field-level comparison is meaningless — treat as total conflict.
 #[test]
 fn test_diff_state_fields_different_types() {
     let before = Any {
@@ -514,6 +623,7 @@ fn test_diff_state_fields_different_types() {
     );
 }
 
+/// Identical bytes return empty change set.
 #[test]
 fn test_diff_state_fields_same_bytes() {
     let before = Any {
@@ -532,6 +642,10 @@ fn test_diff_state_fields_same_bytes() {
     );
 }
 
+/// Unknown type with different bytes returns wildcard — conservative fallback.
+///
+/// When the framework can't parse state (unregistered type), it can't determine
+/// which fields changed. Wildcard ensures no silent corruption.
 #[test]
 fn test_diff_state_fields_different_bytes_unknown_type() {
     let before = Any {
@@ -553,7 +667,12 @@ fn test_diff_state_fields_different_bytes_unknown_type() {
 // ============================================================================
 // Fact Pipeline Parsing Tests
 // ============================================================================
+//
+// Facts are events injected directly into aggregates, bypassing command
+// validation. They represent external realities the aggregate must accept.
+// Parsing validates the cover before injection.
 
+/// Valid event cover parses to domain and root.
 #[test]
 fn test_parse_event_cover_valid() {
     let root = Uuid::new_v4();
@@ -565,6 +684,7 @@ fn test_parse_event_cover_valid() {
     assert_eq!(parsed_root, root);
 }
 
+/// Missing cover returns error — facts must identify their target.
 #[test]
 fn test_parse_event_cover_missing_cover() {
     let event = EventBook {
@@ -578,6 +698,7 @@ fn test_parse_event_cover_missing_cover() {
     assert!(result.is_err());
 }
 
+/// Missing root returns error — aggregate instance must be specified.
 #[test]
 fn test_parse_event_cover_missing_root() {
     let event = EventBook {

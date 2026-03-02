@@ -1,3 +1,15 @@
+//! Tests for process manager orchestration and persistence.
+//!
+//! Process managers coordinate workflows across multiple domains using correlation
+//! IDs as their aggregate root. Unlike sagas (stateless translators), PMs maintain
+//! state to track workflow progress and make decisions based on accumulated events.
+//!
+//! Key behaviors tested:
+//! - PM state persistence with optimistic concurrency (sequence conflicts)
+//! - Retry logic for PM event persistence under contention
+//! - Retry exhaustion produces error (event goes to DLQ)
+//! - Empty responses handled gracefully (no-op workflows)
+
 use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -6,7 +18,11 @@ use backon::ExponentialBuilder;
 
 use crate::proto::{CommandResponse, SyncMode};
 
-/// PM context that always succeeds with no commands or PM events.
+// ============================================================================
+// Test Doubles
+// ============================================================================
+
+/// PM context that produces no commands or PM events — tests empty response handling.
 struct EmptyPm;
 
 #[async_trait]
@@ -41,7 +57,10 @@ impl ProcessManagerContext for EmptyPm {
     }
 }
 
-/// PM context that returns PM events that need persisting.
+/// PM context that produces events requiring persistence.
+///
+/// PM events track workflow state transitions. This context simulates a PM that
+/// updates its state, allowing tests to verify persistence retries under contention.
 struct PmWithEvents {
     persist_attempts: AtomicU32,
     fail_persist_times: u32,
@@ -93,7 +112,7 @@ impl ProcessManagerContext for PmWithEvents {
     }
 }
 
-/// Destination fetcher that always returns None.
+/// Destination fetcher that returns no state — simulates missing aggregates.
 struct NoOpFetcher;
 
 #[async_trait]
@@ -110,7 +129,7 @@ impl DestinationFetcher for NoOpFetcher {
     }
 }
 
-/// Command executor that always succeeds.
+/// Command executor that always succeeds — no contention.
 struct NoOpExecutor;
 
 #[async_trait]
@@ -120,6 +139,7 @@ impl CommandExecutor for NoOpExecutor {
     }
 }
 
+/// Test-friendly backoff: minimal delays, bounded retries.
 fn fast_backoff() -> ExponentialBuilder {
     ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(1))
@@ -127,6 +147,9 @@ fn fast_backoff() -> ExponentialBuilder {
         .with_max_times(5)
 }
 
+/// Creates a trigger event with correlation ID for PM testing.
+///
+/// PMs require correlation_id to identify the workflow instance.
 fn trigger_event() -> EventBook {
     use crate::proto::Cover;
     EventBook {
@@ -143,6 +166,14 @@ fn trigger_event() -> EventBook {
     }
 }
 
+// ============================================================================
+// PM Orchestration Tests
+// ============================================================================
+
+/// PM that produces no commands or state changes completes successfully.
+///
+/// Some events don't require PM action (e.g., informational events in workflow).
+/// The PM should acknowledge receipt without error.
 #[tokio::test]
 async fn test_orchestrate_pm_empty_response() {
     let ctx = EmptyPm;
@@ -167,6 +198,11 @@ async fn test_orchestrate_pm_empty_response() {
     assert!(result.is_ok());
 }
 
+/// PM events are persisted to track workflow state.
+///
+/// Unlike sagas (stateless), PMs maintain state. Each state transition must be
+/// persisted before emitting commands to ensure crash recovery resumes from
+/// the correct workflow step.
 #[tokio::test]
 async fn test_orchestrate_pm_persists_events() {
     let ctx = PmWithEvents {
@@ -195,6 +231,11 @@ async fn test_orchestrate_pm_persists_events() {
     assert_eq!(ctx.persist_attempts.load(Ordering::SeqCst), 1);
 }
 
+/// Sequence conflicts during PM persistence trigger automatic retry.
+///
+/// Multiple events with the same correlation_id may arrive concurrently, causing
+/// sequence conflicts when persisting PM state. The retry loop resolves this by
+/// re-fetching current PM state and reprocessing.
 #[tokio::test]
 async fn test_orchestrate_pm_retries_on_sequence_conflict() {
     let ctx = PmWithEvents {
@@ -224,6 +265,11 @@ async fn test_orchestrate_pm_retries_on_sequence_conflict() {
     assert_eq!(ctx.persist_attempts.load(Ordering::SeqCst), 3);
 }
 
+/// Retry exhaustion returns error — event goes to DLQ.
+///
+/// Persistent contention shouldn't block the PM indefinitely. After exhausting
+/// retries, the event is considered failed and routed to DLQ for manual review.
+/// This prevents resource exhaustion from pathological contention patterns.
 #[tokio::test]
 async fn test_orchestrate_pm_exhausts_retries() {
     let ctx = PmWithEvents {

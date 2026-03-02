@@ -1,9 +1,28 @@
+//! Tests for EventBook repository.
+//!
+//! The repository combines event store and snapshot store operations:
+//! - Optimized loading with snapshot + events-after-snapshot
+//! - Temporal queries (by time, by sequence)
+//! - Sparse sequence queries
+//!
+//! Key behaviors verified:
+//! - New aggregates return empty EventBooks
+//! - Snapshot loading starts from snapshot.sequence + 1
+//! - Snapshot reading can be disabled for debugging/migration
+//! - Temporal queries ignore snapshots (full replay required)
+//! - Sparse queries filter to requested sequences
+
 use super::*;
 use crate::proto::{event_page, EventPage, Snapshot, SnapshotRetention};
 use crate::proto_ext::EventPageExt;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use crate::test_utils::{make_event_book_with_root, make_event_page};
 
+// ============================================================================
+// Basic CRUD Tests
+// ============================================================================
+
+/// New aggregate returns empty EventBook.
 #[tokio::test]
 async fn test_get_returns_empty_book_for_new_aggregate() {
     let event_store = Arc::new(MockEventStore::new());
@@ -18,6 +37,7 @@ async fn test_get_returns_empty_book_for_new_aggregate() {
     assert_eq!(book.cover.as_ref().unwrap().domain, "orders");
 }
 
+/// Put + get roundtrip preserves events.
 #[tokio::test]
 async fn test_put_and_get_roundtrip() {
     let event_store = Arc::new(MockEventStore::new());
@@ -34,6 +54,14 @@ async fn test_put_and_get_roundtrip() {
     assert_eq!(retrieved.pages.len(), 2);
 }
 
+// ============================================================================
+// Snapshot Loading Tests
+// ============================================================================
+
+/// Loading with snapshot only returns events AFTER snapshot sequence.
+///
+/// Snapshot.sequence is the last event baked into the snapshot.
+/// We start loading from snapshot.sequence + 1 to avoid double-apply.
 #[tokio::test]
 async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
     let event_store = Arc::new(MockEventStore::new());
@@ -77,6 +105,11 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
     assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
 }
 
+// ============================================================================
+// Range Query Tests
+// ============================================================================
+
+/// get_from_to returns events in the specified range.
 #[tokio::test]
 async fn test_get_from_to_returns_range() {
     let event_store = Arc::new(MockEventStore::new());
@@ -105,6 +138,11 @@ async fn test_get_from_to_returns_range() {
     assert!(book.snapshot.is_none()); // Range query doesn't include snapshot
 }
 
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+/// Put with missing cover returns error.
 #[tokio::test]
 async fn test_put_missing_cover_returns_error() {
     let event_store = Arc::new(MockEventStore::new());
@@ -123,6 +161,7 @@ async fn test_put_missing_cover_returns_error() {
     assert!(result.is_err());
 }
 
+/// Put with missing root UUID returns error.
 #[tokio::test]
 async fn test_put_missing_root_returns_error() {
     let event_store = Arc::new(MockEventStore::new());
@@ -147,6 +186,7 @@ async fn test_put_missing_root_returns_error() {
     assert!(result.is_err());
 }
 
+/// Put with invalid UUID bytes returns error.
 #[tokio::test]
 async fn test_put_invalid_uuid_returns_error() {
     let event_store = Arc::new(MockEventStore::new());
@@ -173,6 +213,7 @@ async fn test_put_invalid_uuid_returns_error() {
     assert!(result.is_err());
 }
 
+/// Get propagates errors from underlying event store.
 #[tokio::test]
 async fn test_get_propagates_store_error() {
     let event_store = Arc::new(MockEventStore::new());
@@ -185,6 +226,7 @@ async fn test_get_propagates_store_error() {
     assert!(result.is_err());
 }
 
+/// Put propagates errors from underlying event store.
 #[tokio::test]
 async fn test_put_propagates_store_error() {
     let event_store = Arc::new(MockEventStore::new());
@@ -200,6 +242,13 @@ async fn test_put_propagates_store_error() {
     assert!(result.is_err());
 }
 
+// ============================================================================
+// Snapshot Enable/Disable Tests
+// ============================================================================
+
+/// With snapshot reading disabled, all events are loaded from beginning.
+///
+/// Useful for: debugging, migration, snapshot regeneration after bug fix.
 #[tokio::test]
 async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
     let event_store = Arc::new(MockEventStore::new());
@@ -242,6 +291,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
     assert!(book.snapshot.is_none());
 }
 
+/// With snapshot reading enabled, events are loaded after snapshot.
 #[tokio::test]
 async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
     let event_store = Arc::new(MockEventStore::new());
@@ -285,6 +335,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
     assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
 }
 
+/// with_config(true) behaves identically to new().
 #[tokio::test]
 async fn test_with_config_defaults_match_new_constructor() {
     let event_store = Arc::new(MockEventStore::new());
@@ -329,7 +380,17 @@ async fn test_with_config_defaults_match_new_constructor() {
     assert_eq!(book_new.snapshot.is_some(), book_config.snapshot.is_some());
 }
 
+// ============================================================================
+// Temporal and Sparse Query Tests
+// ============================================================================
+
 mod mock_integration {
+    //! Tests for temporal queries and sparse sequence queries.
+    //!
+    //! Temporal queries skip snapshots because snapshot state may not
+    //! correspond to the requested point in time. Full replay ensures
+    //! correctness for "what was state at time X?" queries.
+
     use super::*;
     use crate::storage::mock::{MockEventStore, MockSnapshotStore};
     use prost_types::{Any, Timestamp};
@@ -375,6 +436,7 @@ mod mock_integration {
     // - Temporal queries (by time, by sequence)
     // - Sparse sequence queries (get_sequences)
 
+    /// Temporal by-time query ignores snapshots and replays from beginning.
     #[tokio::test]
     async fn test_get_temporal_by_time_skips_snapshots() {
         let (repo, event_store, snapshot_store) = setup_shared();
@@ -418,6 +480,7 @@ mod mock_integration {
         assert_eq!(book.pages.len(), 3); // Events 0, 1, 2
     }
 
+    /// Temporal by-sequence query ignores snapshots and replays from beginning.
     #[tokio::test]
     async fn test_get_temporal_by_sequence_skips_snapshots() {
         let (repo, event_store, snapshot_store) = setup_shared();
@@ -462,6 +525,7 @@ mod mock_integration {
         assert_eq!(book.pages[2].sequence_num(), 2);
     }
 
+    /// Temporal query with sequence 0 returns only the first event.
     #[tokio::test]
     async fn test_get_temporal_by_sequence_zero() {
         let (repo, event_store, _) = setup_shared();
@@ -492,9 +556,10 @@ mod mock_integration {
     }
 
     // ============================================================================
-    // get_sequences tests
+    // get_sequences Tests (Sparse Queries)
     // ============================================================================
 
+    /// Sparse sequence query returns only requested events.
     #[tokio::test]
     async fn test_get_sequences_sparse() {
         let (repo, event_store, _) = setup_shared();
@@ -531,6 +596,7 @@ mod mock_integration {
         assert_eq!(book.pages[1].sequence_num(), 3);
     }
 
+    /// Contiguous sequences are optimized to a range query.
     #[tokio::test]
     async fn test_get_sequences_contiguous_uses_range() {
         let (repo, event_store, _) = setup_shared();
@@ -568,6 +634,7 @@ mod mock_integration {
         assert_eq!(book.pages[2].sequence_num(), 3);
     }
 
+    /// Empty sequence list returns empty EventBook.
     #[tokio::test]
     async fn test_get_sequences_empty_returns_empty() {
         let (repo, event_store, _) = setup_shared();
@@ -593,6 +660,7 @@ mod mock_integration {
         assert!(book.pages.is_empty());
     }
 
+    /// Single sequence request works correctly.
     #[tokio::test]
     async fn test_get_sequences_single() {
         let (repo, event_store, _) = setup_shared();
@@ -626,6 +694,7 @@ mod mock_integration {
         assert_eq!(book.pages[0].sequence_num(), 2);
     }
 
+    /// Non-existent sequences are filtered out (no error).
     #[tokio::test]
     async fn test_get_sequences_nonexistent_filtered_out() {
         let (repo, event_store, _) = setup_shared();
@@ -656,6 +725,7 @@ mod mock_integration {
         assert_eq!(book.pages[0].sequence_num(), 0);
     }
 
+    /// Results are ordered by sequence, regardless of request order.
     #[tokio::test]
     async fn test_get_sequences_preserves_order() {
         let (repo, event_store, _) = setup_shared();

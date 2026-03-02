@@ -286,74 +286,88 @@ lint:
 test:
     just _container test
 
-# === Contract Tests ===
-# Verify storage and bus implementations fulfill their trait contracts.
+# === Storage Contract Tests ===
+# =============================================================================
+# Storage contract tests verify that storage implementations correctly fulfill
+# their trait contracts (EventStore, SnapshotStore, PositionStore).
+#
+# WHY: Each backend has different consistency models, failure modes, and APIs.
+# A passing contract test means the backend can be swapped transparently.
+#
+# Usage:
+#   just storage test              # All backends
+#   just storage sqlite test       # SQLite only (no containers)
+#   just storage postgres test     # PostgreSQL only (testcontainers)
+#   just storage redis test        # Redis only (testcontainers)
+#   just storage immudb test       # ImmuDB only (testcontainers)
+#   just storage nats test         # NATS JetStream only (testcontainers)
+# =============================================================================
 
-# --- Direct Contract Tests (macro-based, fast) ---
+# Storage contract tests - run all backends or a specific one
+storage *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args="{{ARGS}}"
+    if [[ "$args" == "test" ]] || [[ -z "$args" ]]; then
+        # All backends - needs dind for testcontainers
+        just _container-dind storage test
+    elif [[ "$args" == "sqlite test" ]]; then
+        # SQLite doesn't need containers
+        just _container storage sqlite test
+    else
+        # Other backends need testcontainers
+        just _container-dind storage $args
+    fi
 
-# Run PostgreSQL storage contract tests (uses testcontainers)
-test-contract-postgres:
-    just _container-dind test-contract-postgres
+# === Bus Contract Tests ===
+# =============================================================================
+# Bus contract tests verify that event bus implementations correctly fulfill
+# the EventBus trait contract: publish, subscribe, acknowledge, nack, and DLQ.
+#
+# WHY: Event buses are the nervous system of the distributed architecture.
+# Different backends have wildly different delivery semantics and failure modes.
+# A passing contract test means the backend can be swapped transparently.
+#
+# Usage:
+#   just bus test                  # All backends
+#   just bus channel test          # Channel only (no containers)
+#   just bus amqp test             # RabbitMQ only (testcontainers)
+#   just bus kafka test            # Kafka only (testcontainers)
+#   just bus pubsub test           # GCP Pub/Sub only (testcontainers)
+#   just bus sns-sqs test          # AWS SNS/SQS only (testcontainers)
+#   just bus nats test             # NATS JetStream only (testcontainers)
+# =============================================================================
 
-# Run Redis storage contract tests (uses testcontainers)
-test-contract-redis:
-    just _container-dind test-contract-redis
+# Bus contract tests - run all backends or a specific one
+bus *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args="{{ARGS}}"
+    if [[ "$args" == "test" ]] || [[ -z "$args" ]]; then
+        # All backends - needs dind for testcontainers
+        just _container-dind bus test
+    elif [[ "$args" == "channel test" ]]; then
+        # Channel doesn't need containers
+        just _container bus channel test
+    else
+        # Other backends need testcontainers
+        just _container-dind bus $args
+    fi
 
-# Run NATS storage contract tests (uses testcontainers)
-test-contract-nats-storage:
-    just _container-dind test-contract-nats-storage
+# === Aggregate Contract Tests ===
 
-# Run NATS bus contract tests (uses testcontainers)
-test-contract-nats-bus:
-    just _container-dind test-contract-nats-bus
-
-# --- Interface Contract Tests (Gherkin, comprehensive) ---
-
-# Run interface contract tests (SQLite - no containers needed)
-test-interfaces:
-    just _container test-interfaces
-
-# Run interface contract tests against PostgreSQL (uses testcontainers)
-test-interfaces-postgres:
-    just _container-dind test-interfaces-postgres
-
-# Run interface contract tests against Redis (uses testcontainers)
-test-interfaces-redis:
-    just _container-dind test-interfaces-redis
-
-# Run interface contract tests against all backends
-test-interfaces-all:
-    just _container test-interfaces
-    just _container-dind test-interfaces-postgres
-    just _container-dind test-interfaces-redis
-
-# --- Bus Contract Tests ---
-
-# Run AMQP/RabbitMQ bus contract tests (uses testcontainers)
-test-bus-amqp:
-    just _container-dind test-bus-amqp
-
-# Run Kafka bus contract tests (uses testcontainers)
-test-bus-kafka:
-    just _container-dind test-bus-kafka
-
-# Run GCP Pub/Sub bus contract tests (uses testcontainers)
-test-bus-pubsub:
-    just _container-dind test-bus-pubsub
-
-# Run AWS SNS/SQS bus contract tests (uses testcontainers)
-test-bus-sns-sqs:
-    just _container-dind test-bus-sns-sqs
-
-# Run all bus contract tests
-test-bus-all:
-    just _container-dind test-bus-amqp
-    just _container-dind test-bus-kafka
-    just _container-dind test-bus-pubsub
-    just _container-dind test-bus-sns-sqs
+# Run all contract tests (storage + bus)
+# WHY: Complete validation before release. The "did we break anything?" check.
+test-contract:
+    just _container-dind test-contract
 
 # Run all local tests (no running K8s cluster required)
-# Includes: core unit tests, interface tests, client libraries, examples unit tests
+# =============================================================================
+# Fast validation suite using in-memory backends (no containers needed).
+# Includes: unit tests, storage (SQLite), bus (channel), clients, examples.
+#
+# WHY: Quick feedback loop during development. Run this before committing.
+# =============================================================================
 test-local:
     @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== Core Unit Tests ==="
@@ -361,9 +375,14 @@ test-local:
     just test
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Interface Contract Tests (SQLite) ==="
+    @echo "=== Storage Contract Tests (SQLite) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
-    just test-interfaces
+    just storage sqlite test
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Bus Contract Tests (Channel) ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just bus channel test
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== Client Library Tests ==="
@@ -380,26 +399,24 @@ test-local:
     @echo "═══════════════════════════════════════════════════════════════════"
 
 # Run all local tests including testcontainers (requires podman socket)
-# Includes everything in test-local plus PostgreSQL, Redis, and bus tests
-test-local-full: test-local
+# =============================================================================
+# Complete validation suite testing ALL storage and bus backends.
+#
+# WHY: Pre-merge validation. Ensures changes haven't broken any backend.
+# Takes longer but provides confidence across all deployment targets.
+#
+# Storage: SQLite, PostgreSQL, Redis, ImmuDB, NATS
+# Bus: Channel, AMQP, Kafka, Pub/Sub, SNS/SQS, NATS
+# =============================================================================
+test-full: test-local
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Contract Tests - PostgreSQL (testcontainers) ==="
+    @echo "=== All Contract Tests (testcontainers) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
-    just test-interfaces-postgres
+    just test-contract
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Contract Tests - Redis (testcontainers) ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    just test-interfaces-redis
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Contract Tests - Bus Backends (testcontainers) ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    just test-bus-all
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== All Local Tests (Full) Complete ==="
+    @echo "=== All Tests Complete ==="
     @echo "═══════════════════════════════════════════════════════════════════"
 
 # === Cross-Language Client Tests ===

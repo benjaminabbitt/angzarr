@@ -1,8 +1,25 @@
+//! Tests for outbound CloudEvents and gRPC streaming.
+//!
+//! The outbound service bridges angzarr events to external systems:
+//! 1. **CloudEvents sinks** - HTTP/Kafka/etc. delivery in CloudEvents format
+//! 2. **gRPC streaming** - Real-time event streams filtered by correlation ID
+//!
+//! Key scenarios tested:
+//! - Subscription lifecycle (create, deliver, cleanup on disconnect)
+//! - Multi-subscriber fanout (same correlation ID)
+//! - CloudEvent attribute mapping (type, source, extensions)
+//! - Multi-page EventBook expansion (one CloudEvent per page)
+//! - Content type parsing (JSON vs Protobuf)
+
 use super::*;
 use crate::handlers::projectors::cloudevents::sink::NullSink;
 use crate::proto::{Cover, EventPage, Uuid as ProtoUuid};
 use cloudevents::event::AttributesReader;
 use tokio_stream::StreamExt;
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
 
 fn make_test_event_book(correlation_id: &str) -> EventBook {
     EventBook {
@@ -56,6 +73,14 @@ fn make_multi_page_event_book(correlation_id: &str, page_count: usize) -> EventB
     }
 }
 
+// ============================================================================
+// gRPC Subscription Tests
+// ============================================================================
+
+/// Subscribe creates a subscription keyed by correlation ID.
+///
+/// Clients subscribe to receive events matching a correlation ID.
+/// The subscription is stored until the client disconnects.
 #[tokio::test]
 async fn test_subscribe_creates_subscription() {
     let service = OutboundService::new();
@@ -73,6 +98,9 @@ async fn test_subscribe_creates_subscription() {
     assert_eq!(subs.get("test-corr-id").unwrap().len(), 1);
 }
 
+/// Subscribe requires correlation ID — empty string rejected.
+///
+/// Correlation ID is the routing key. Without it, we can't filter events.
 #[tokio::test]
 async fn test_subscribe_requires_correlation_id() {
     let service = OutboundService::new();
@@ -88,6 +116,11 @@ async fn test_subscribe_requires_correlation_id() {
     }
 }
 
+/// Subscription cleanup on client disconnect.
+///
+/// When a gRPC stream is dropped (client disconnects), the subscription
+/// is automatically removed. This prevents memory leaks from abandoned
+/// subscriptions.
 #[tokio::test]
 async fn test_grpc_subscriber_cleanup_on_disconnect() {
     let service = OutboundService::new();
@@ -119,6 +152,14 @@ async fn test_grpc_subscriber_cleanup_on_disconnect() {
     );
 }
 
+// ============================================================================
+// Event Delivery Tests
+// ============================================================================
+
+/// Events delivered to matching gRPC subscribers.
+///
+/// When an event is published with a correlation ID, all subscribers
+/// to that ID receive the event.
 #[tokio::test]
 async fn test_event_delivery_to_grpc_subscriber() {
     let service = Arc::new(OutboundService::new());
@@ -148,6 +189,10 @@ async fn test_event_delivery_to_grpc_subscriber() {
     );
 }
 
+/// Events without subscribers are silently dropped.
+///
+/// Not every event needs a real-time consumer. Events without matching
+/// subscriptions are handled successfully but not delivered anywhere.
 #[tokio::test]
 async fn test_event_dropped_without_subscribers() {
     let service = Arc::new(OutboundService::new());
@@ -165,6 +210,10 @@ async fn test_event_dropped_without_subscribers() {
     assert!(!subs.contains_key("no-subscriber"));
 }
 
+/// Multiple subscribers to same correlation ID all receive events.
+///
+/// Fanout pattern: multiple clients can subscribe to the same correlation
+/// ID and each receives a copy of every matching event.
 #[tokio::test]
 async fn test_multiple_subscribers_same_correlation() {
     let service = Arc::new(OutboundService::new());
@@ -205,6 +254,16 @@ async fn test_multiple_subscribers_same_correlation() {
     assert!(received2.is_some());
 }
 
+// ============================================================================
+// CloudEvents Conversion Tests
+// ============================================================================
+
+/// EventBook wrapped as CloudEvent with proper attributes.
+///
+/// CloudEvents spec requires type, source, id. We map:
+/// - type: "angzarr.{event_type}" prefix for namespace
+/// - source: "angzarr/{domain}"
+/// - correlationid: extension for cross-domain tracing
 #[tokio::test]
 async fn test_wrap_eventbook_as_cloudevent() {
     let book = make_test_event_book("test-corr");
@@ -226,6 +285,10 @@ async fn test_wrap_eventbook_as_cloudevent() {
     );
 }
 
+/// Multi-page EventBook produces one CloudEvent per page.
+///
+/// An EventBook can contain multiple events (batch from aggregate).
+/// Each page becomes a separate CloudEvent for independent delivery.
 #[tokio::test]
 async fn test_multi_page_eventbook_produces_multiple_cloudevents() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -265,6 +328,13 @@ async fn test_multi_page_eventbook_produces_multiple_cloudevents() {
     assert_eq!(sink.count.load(Ordering::SeqCst), 5);
 }
 
+// ============================================================================
+// Sink Tests
+// ============================================================================
+
+/// Null sink accepts events without error (test double).
+///
+/// Used in tests when we don't need actual delivery.
 #[tokio::test]
 async fn test_outbound_service_with_null_sink() {
     let sink = Arc::new(NullSink);
@@ -277,6 +347,14 @@ async fn test_outbound_service_with_null_sink() {
     assert!(result.is_ok());
 }
 
+// ============================================================================
+// Utility Tests
+// ============================================================================
+
+/// Base64 encoding for protobuf content.
+///
+/// Standard RFC 4648 test vectors for base64 encoding used in
+/// CloudEvent protobuf content.
 #[test]
 fn test_base64_encode() {
     assert_eq!(base64_encode(b""), "");
@@ -286,6 +364,10 @@ fn test_base64_encode() {
     assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
 }
 
+/// Content type parsing supports multiple aliases.
+///
+/// Operators can configure content type with various names.
+/// Defaults to JSON for unknown types.
 #[test]
 fn test_content_type_parsing() {
     assert_eq!(ContentType::parse("json"), ContentType::Json);

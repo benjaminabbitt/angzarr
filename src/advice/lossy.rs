@@ -321,6 +321,19 @@ impl EventBus for LossyDynBus {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for lossy event bus wrapper.
+    //!
+    //! The lossy bus simulates unreliable message delivery for resilience testing:
+    //! - Configurable drop rate (0.0-1.0)
+    //! - Statistics tracking (total, dropped, passed)
+    //! - Runtime rate adjustment
+    //!
+    //! Key behaviors verified:
+    //! - Pass-through mode (drop_rate=0.0) publishes all messages
+    //! - Drop-all mode (drop_rate=1.0) drops all messages
+    //! - Partial drop rate approximates configured probability
+    //! - Stats tracking and reset work correctly
+
     use super::*;
     use crate::bus::MockEventBus;
     use crate::test_utils::make_event_book;
@@ -329,6 +342,11 @@ mod tests {
         Arc::new(make_event_book(domain, vec![]))
     }
 
+    // ============================================================================
+    // LossyConfig Tests
+    // ============================================================================
+
+    /// LossyConfig::none() creates pass-through config.
     #[test]
     fn test_lossy_config_none() {
         let config = LossyConfig::none();
@@ -336,6 +354,7 @@ mod tests {
         assert!(!config.is_lossy());
     }
 
+    /// LossyConfig::with_drop_rate() sets the specified rate.
     #[test]
     fn test_lossy_config_with_rate() {
         let config = LossyConfig::with_drop_rate(0.5);
@@ -343,6 +362,7 @@ mod tests {
         assert!(config.is_lossy());
     }
 
+    /// Drop rate is clamped to [0.0, 1.0] range.
     #[test]
     fn test_lossy_config_clamps_rate() {
         let low = LossyConfig::with_drop_rate(-0.5);
@@ -352,6 +372,7 @@ mod tests {
         assert_eq!(high.drop_rate, 1.0);
     }
 
+    /// LossyConfig::drop_all() sets 100% drop rate.
     #[test]
     fn test_lossy_config_drop_all() {
         let config = LossyConfig::drop_all();
@@ -359,6 +380,11 @@ mod tests {
         assert!(config.is_lossy());
     }
 
+    // ============================================================================
+    // LossyBus Publishing Tests
+    // ============================================================================
+
+    /// Pass-through mode publishes all messages without dropping.
     #[tokio::test]
     async fn test_passthrough_publishes_all() {
         let inner = MockEventBus::new();
@@ -374,6 +400,7 @@ mod tests {
         assert_eq!(passed, 10);
     }
 
+    /// Drop-all mode drops every message.
     #[tokio::test]
     async fn test_drop_all_drops_everything() {
         let inner = MockEventBus::new();
@@ -389,6 +416,7 @@ mod tests {
         assert_eq!(passed, 0);
     }
 
+    /// 50% drop rate approximates configured probability (statistical test).
     #[tokio::test]
     async fn test_partial_drop_rate() {
         let inner = MockEventBus::new();
@@ -412,6 +440,11 @@ mod tests {
         );
     }
 
+    // ============================================================================
+    // LossyStats Tests
+    // ============================================================================
+
+    /// Stats can be reset to zero.
     #[tokio::test]
     async fn test_stats_reset() {
         let inner = MockEventBus::new();
@@ -432,6 +465,11 @@ mod tests {
         assert_eq!(passed, 0);
     }
 
+    // ============================================================================
+    // LossyBus Inner Access Tests
+    // ============================================================================
+
+    /// Inner bus can be accessed and recovered.
     #[tokio::test]
     async fn test_inner_access() {
         let inner = MockEventBus::new();
@@ -444,6 +482,7 @@ mod tests {
         let _recovered = lossy.into_inner();
     }
 
+    /// Drop rate can be changed at runtime.
     #[tokio::test]
     async fn test_runtime_rate_change() {
         let inner = MockEventBus::new();
@@ -459,6 +498,7 @@ mod tests {
         assert_eq!(lossy.stats().snapshot().1, 1); // dropped = 1
     }
 
+    /// Subscribe delegates to inner bus (lossy only affects publish).
     #[tokio::test]
     async fn test_lossy_bus_delegates_subscribe() {
         let inner = MockEventBus::new();
@@ -470,6 +510,11 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    // ============================================================================
+    // LossyDynBus Tests
+    // ============================================================================
+
+    /// LossyDynBus wraps Arc<dyn EventBus> with lossy behavior.
     #[tokio::test]
     async fn test_lossy_dyn_bus_drops_messages() {
         let inner = MockEventBus::new();

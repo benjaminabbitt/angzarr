@@ -72,10 +72,26 @@ pub fn normalize_extension_key(key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for CloudEvents types and builders.
+    //!
+    //! CloudEvents is a specification for describing event data in a common way.
+    //! This module provides utilities for building CloudEvents from angzarr metadata.
+    //!
+    //! Key behaviors verified:
+    //! - EventBuilderV10::angzarr() creates valid CloudEvents 1.0
+    //! - Events can include data, subject, time, and extensions
+    //! - Extension keys are normalized to lowercase per spec
+    //! - Events serialize to valid JSON
+
     use super::*;
     use cloudevents::event::AttributesReader;
     use cloudevents::EventBuilder;
 
+    // ============================================================================
+    // Event Builder Tests
+    // ============================================================================
+
+    /// Minimal event has required fields: id, type, source.
     #[test]
     fn test_build_minimal_event() {
         let event =
@@ -89,6 +105,7 @@ mod tests {
         assert_eq!(event.source().to_string(), "angzarr/orders");
     }
 
+    /// Events can include optional time, subject, and data.
     #[test]
     fn test_build_event_with_data() {
         let event =
@@ -104,6 +121,7 @@ mod tests {
         assert!(event.data().is_some());
     }
 
+    /// Events can include custom extensions.
     #[test]
     fn test_build_event_with_extension() {
         use cloudevents::event::ExtensionValue;
@@ -120,6 +138,11 @@ mod tests {
         );
     }
 
+    // ============================================================================
+    // Extension Key Normalization Tests
+    // ============================================================================
+
+    /// Extension keys are normalized to lowercase per CloudEvents spec.
     #[test]
     fn test_normalize_extension_key() {
         assert_eq!(normalize_extension_key("CorrelationID"), "correlationid");
@@ -128,6 +151,11 @@ mod tests {
         assert_eq!(normalize_extension_key("MyCustomExt"), "mycustomext");
     }
 
+    // ============================================================================
+    // Serialization Tests
+    // ============================================================================
+
+    /// Events serialize to valid CloudEvents JSON.
     #[test]
     fn test_event_serializes_to_json() {
         let event = EventBuilderV10::angzarr("test:123:0", "test.Event", "angzarr/test")

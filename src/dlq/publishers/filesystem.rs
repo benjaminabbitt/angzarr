@@ -192,6 +192,17 @@ impl DeadLetterPublisher for FilesystemDeadLetterPublisher {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for filesystem-based DLQ publisher.
+    //!
+    //! The filesystem publisher writes dead letters to files for debugging and
+    //! local persistence. Tests here focus on implementation-specific behaviors:
+    //! - Filename generation (domain, timestamp, sanitized correlation ID)
+    //! - Format-specific output (JSON vs protobuf)
+    //! - Character sanitization in filenames
+    //!
+    //! Basic publish and is_configured() tests are covered by Gherkin contract
+    //! tests in tests/interfaces/features/dlq_publishers.feature.
+
     use super::*;
     use crate::dlq::{AngzarrDeadLetter, DeadLetterPayload};
     use crate::proto::{
@@ -200,6 +211,10 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::TempDir;
     use uuid::Uuid;
+
+    // ============================================================================
+    // Test Helpers
+    // ============================================================================
 
     fn make_test_command(domain: &str, correlation_id: &str) -> CommandBook {
         let root = Uuid::new_v4();
@@ -239,10 +254,11 @@ mod tests {
         }
     }
 
-    // NOTE: is_configured() and basic publish() tests are covered by
-    // tests/interfaces/features/dlq_publishers.feature (Gherkin contract tests).
-    // Only implementation-specific tests (filename format, JSON fields, etc.) remain here.
+    // ============================================================================
+    // Filename Generation Tests
+    // ============================================================================
 
+    /// Filename includes domain for easy filtering/grep.
     #[tokio::test]
     async fn test_filesystem_publisher_filename_includes_domain() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -280,6 +296,11 @@ mod tests {
         );
     }
 
+    // ============================================================================
+    // Format Tests
+    // ============================================================================
+
+    /// JSON format includes all fields needed for debugging/recovery.
     #[tokio::test]
     async fn test_filesystem_publisher_json_format_contains_fields() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -321,6 +342,7 @@ mod tests {
         );
     }
 
+    /// Protobuf format writes binary (not JSON) for compact storage.
     #[tokio::test]
     async fn test_filesystem_publisher_protobuf_format_writes_binary() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -360,6 +382,14 @@ mod tests {
         assert!(!content.is_empty(), "File should not be empty");
     }
 
+    // ============================================================================
+    // Filename Sanitization Tests
+    // ============================================================================
+
+    /// Special characters in correlation ID replaced with underscore.
+    ///
+    /// Prevents path traversal and invalid filenames. Correlation IDs from
+    /// external systems may contain arbitrary characters.
     #[test]
     fn test_generate_filename_sanitizes_correlation_id() {
         let publisher = FilesystemDeadLetterPublisher {
@@ -380,6 +410,7 @@ mod tests {
         assert!(filename.contains(".json"), "Should have .json extension");
     }
 
+    /// Hyphens preserved — common in UUIDs and readable IDs.
     #[test]
     fn test_generate_filename_preserves_hyphens() {
         let publisher = FilesystemDeadLetterPublisher {
@@ -401,6 +432,7 @@ mod tests {
         );
     }
 
+    /// Underscores preserved — common in snake_case IDs.
     #[test]
     fn test_generate_filename_preserves_underscores() {
         let publisher = FilesystemDeadLetterPublisher {
@@ -422,6 +454,11 @@ mod tests {
         );
     }
 
+    // ============================================================================
+    // Extension Tests
+    // ============================================================================
+
+    /// Protobuf format uses .pb extension.
     #[test]
     fn test_generate_filename_protobuf_extension() {
         let publisher = FilesystemDeadLetterPublisher {
@@ -439,6 +476,7 @@ mod tests {
         );
     }
 
+    /// "proto" format alias also uses .pb extension.
     #[test]
     fn test_generate_filename_proto_extension() {
         let publisher = FilesystemDeadLetterPublisher {

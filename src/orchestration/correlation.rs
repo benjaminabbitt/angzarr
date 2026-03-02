@@ -35,6 +35,15 @@ pub fn extract_correlation_id(command_book: &CommandBook) -> Result<String, Stat
 
 #[cfg(test)]
 mod tests {
+    //! Tests for correlation ID extraction from commands.
+    //!
+    //! Correlation IDs are the primary mechanism for cross-domain workflow tracking.
+    //! They enable process managers to correlate events across multiple domains and
+    //! provide end-to-end observability for saga flows. The extraction logic must:
+    //! - Preserve client-provided correlation IDs exactly as given
+    //! - Return empty string when not provided (allowing opt-in tracking)
+    //! - Validate format when non-empty to prevent injection issues
+
     use super::*;
     use crate::proto::{command_page, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid};
     use prost_types::Any;
@@ -66,6 +75,11 @@ mod tests {
         }
     }
 
+    /// Client-provided correlation ID must be extracted verbatim.
+    ///
+    /// The framework must never modify or regenerate correlation IDs — they are
+    /// client-controlled identifiers for cross-domain workflows. Altering them
+    /// would break event correlation in process managers.
     #[test]
     fn test_extract_preserves_existing_id() {
         let command = make_command_book(true);
@@ -73,6 +87,11 @@ mod tests {
         assert_eq!(result, "test-correlation-id");
     }
 
+    /// Missing correlation ID returns empty string, not an error.
+    ///
+    /// Cross-domain tracking is opt-in. Single-domain operations don't need
+    /// correlation IDs, and generating them automatically would pollute PM
+    /// state with unrelated events. Empty correlation_id signals "no PM routing".
     #[test]
     fn test_extract_returns_empty_when_not_provided() {
         let command = make_command_book(false);

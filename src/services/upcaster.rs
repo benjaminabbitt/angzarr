@@ -166,8 +166,15 @@ impl Upcaster {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for upcaster configuration and disabled mode.
+    //!
+    //! The upcaster transforms old event versions to current versions during
+    //! replay. These unit tests verify configuration parsing and passthrough
+    //! behavior when disabled.
+
     use super::*;
 
+    /// Default config is disabled.
     #[test]
     fn test_upcaster_config_default() {
         let config = UpcasterConfig::default();
@@ -175,12 +182,14 @@ mod tests {
         assert!(config.address.is_none());
     }
 
+    /// Disabled upcaster reports is_enabled() false.
     #[test]
     fn test_upcaster_disabled() {
         let upcaster = Upcaster::disabled();
         assert!(!upcaster.is_enabled());
     }
 
+    /// Disabled upcaster returns events unchanged — no transformation.
     #[tokio::test]
     async fn test_upcaster_passthrough_when_disabled() {
         let upcaster = Upcaster::disabled();
@@ -195,6 +204,7 @@ mod tests {
         assert_eq!(result.len(), 1);
     }
 
+    /// Empty event list is passthrough — no server call needed.
     #[tokio::test]
     async fn test_upcaster_passthrough_empty_events() {
         let upcaster = Upcaster::disabled();
@@ -205,6 +215,17 @@ mod tests {
 
 #[cfg(test)]
 mod grpc_tests {
+    //! Integration tests for upcaster gRPC communication.
+    //!
+    //! The upcaster calls a client-provided UpcasterService to transform old
+    //! event versions. These tests verify:
+    //! - V1 → V2 type_url transformation
+    //! - Sequence numbers preserved through transformation
+    //! - Error propagation from upcaster service
+    //! - Connection failure handling
+    //!
+    //! A mock upcaster service simulates the client implementation.
+
     use super::*;
     use crate::proto::event_page;
     use crate::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
@@ -213,6 +234,10 @@ mod grpc_tests {
     use std::sync::atomic::{AtomicU32, Ordering};
     use tonic::transport::Server;
     use tonic::{Request, Response};
+
+    // ============================================================================
+    // Test Doubles
+    // ============================================================================
 
     /// Mock upcaster that transforms event type_urls from V1 to V2.
     struct MockUpcasterService {
@@ -306,6 +331,14 @@ mod grpc_tests {
         }
     }
 
+    // ============================================================================
+    // Transformation Tests
+    // ============================================================================
+
+    /// V1 type_urls transformed to V2 by upcaster service.
+    ///
+    /// Primary use case: schema evolution. Old events with CustomerCreatedV1
+    /// are transformed to CustomerCreatedV2 with migrated field values.
     #[tokio::test]
     async fn test_upcaster_transforms_events() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
@@ -340,6 +373,10 @@ mod grpc_tests {
         assert_eq!(event1.value, vec![4, 5, 6, 0xFF]);
     }
 
+    /// Non-V1 events pass through with value modification only.
+    ///
+    /// The mock adds a migration marker even for non-V1 events to simulate
+    /// field migration. In production, no-op transformation is valid.
     #[tokio::test]
     async fn test_upcaster_preserves_non_v1_events() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
@@ -361,6 +398,10 @@ mod grpc_tests {
         assert_eq!(event.value, vec![1, 2, 0xFF]); // But value still gets marker
     }
 
+    /// Sequence numbers preserved through transformation.
+    ///
+    /// Critical invariant: upcasting transforms content, not identity.
+    /// Sequence numbers identify event positions in the stream.
     #[tokio::test]
     async fn test_upcaster_preserves_sequence_numbers() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
@@ -381,6 +422,7 @@ mod grpc_tests {
         assert_eq!(result[2].sequence_num(), 7);
     }
 
+    /// Empty events short-circuit without calling server.
     #[tokio::test]
     async fn test_upcaster_handles_empty_events() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
@@ -392,6 +434,14 @@ mod grpc_tests {
         assert!(result.is_empty());
     }
 
+    // ============================================================================
+    // Error Handling Tests
+    // ============================================================================
+
+    /// Upcaster service errors propagate as gRPC status.
+    ///
+    /// Transformation failures are fatal — aggregate can't be reconstructed
+    /// without proper upcasting. Error must propagate to caller.
     #[tokio::test]
     async fn test_upcaster_error_propagation() {
         let addr = start_mock_server(MockUpcasterService::failing()).await;
@@ -408,12 +458,21 @@ mod grpc_tests {
         assert!(status.message().contains("Simulated upcaster failure"));
     }
 
+    /// Connection failure returns error during client creation.
     #[tokio::test]
     async fn test_upcaster_connection_failure() {
         let result = Upcaster::from_address("127.0.0.1:1").await;
         assert!(result.is_err());
     }
 
+    // ============================================================================
+    // Channel Sharing Tests
+    // ============================================================================
+
+    /// Upcaster can share channel with client logic.
+    ///
+    /// Both AggregateService and UpcasterService run on same client binary.
+    /// Sharing channel reduces connection overhead.
     #[tokio::test]
     async fn test_upcaster_from_channel() {
         let addr = start_mock_server(MockUpcasterService::new()).await;

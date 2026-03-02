@@ -438,11 +438,26 @@ impl ServiceDiscovery for K8sServiceDiscovery {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for K8s service discovery.
+    //!
+    //! K8s discovery watches Service resources with specific labels:
+    //! - app.kubernetes.io/component: aggregate|projector
+    //! - angzarr.io/domain: {domain-name}
+    //!
+    //! Key behaviors verified:
+    //! - Service extraction parses labels and ports correctly
+    //! - gRPC URL construction for cluster-local DNS
+    //! - Default port fallback when grpc port not specified
+    //!
+    //! Note: Full K8s integration requires a running cluster.
+    //! Unit tests verify parsing logic without K8s API calls.
+
     use super::*;
     use k8s_openapi::api::core::v1::{ServicePort, ServiceSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
     use std::collections::BTreeMap;
 
+    /// Helper to create K8s Service objects for testing.
     fn make_test_service(name: &str, component: &str, domain: Option<&str>, port: i32) -> Service {
         let mut labels = BTreeMap::new();
         labels.insert(COMPONENT_LABEL.to_string(), component.to_string());
@@ -469,6 +484,11 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Service Extraction Tests
+    // ============================================================================
+
+    /// Aggregate service extraction parses labels and builds cluster DNS.
     #[test]
     fn test_extract_aggregate_service() {
         let svc = make_test_service("cart-agg", COMPONENT_AGGREGATE, Some("cart"), 50051);
@@ -484,6 +504,7 @@ mod tests {
         assert_eq!(discovered.domain, Some("cart".to_string()));
     }
 
+    /// Projector service extraction works similarly.
     #[test]
     fn test_extract_projector_service() {
         let svc = make_test_service("cart-proj", COMPONENT_PROJECTOR, Some("cart"), 50052);
@@ -494,6 +515,11 @@ mod tests {
         assert_eq!(discovered.domain, Some("cart".to_string()));
     }
 
+    // ============================================================================
+    // URL Construction Tests
+    // ============================================================================
+
+    /// grpc_url() builds correct HTTP URL for gRPC connections.
     #[test]
     fn test_grpc_url() {
         let service = DiscoveredService {
@@ -509,6 +535,7 @@ mod tests {
         );
     }
 
+    /// Missing grpc port falls back to DEFAULT_GRPC_PORT.
     #[test]
     fn test_extract_service_without_grpc_port_uses_default() {
         let svc = Service {

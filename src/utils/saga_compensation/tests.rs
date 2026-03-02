@@ -1,6 +1,29 @@
+//! Tests for saga compensation handling.
+//!
+//! Saga compensation handles command rejections in cross-domain workflows:
+//! 1. Saga sends command to target domain
+//! 2. Target rejects command (business validation fails)
+//! 3. Framework must notify source domain of rejection
+//! 4. Source domain may need to compensate (undo prior actions)
+//!
+//! This is critical for maintaining consistency across bounded contexts.
+//! Without proper compensation routing, rejected cross-domain commands
+//! would leave systems in inconsistent states.
+//!
+//! Key scenarios tested:
+//! - Compensation context creation from rejected commands
+//! - Rejection notification building
+//! - Business response handling (events, revocations, errors)
+//! - Escalation via DLQ or notifications
+//! - Fallback behavior when business logic is unavailable
+
 use super::*;
 use crate::config::DEFAULT_SAGA_FALLBACK_DOMAIN;
 use crate::proto::{command_page, event_page, CommandPage, MergeStrategy};
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
 
 fn make_saga_origin() -> SagaCommandOrigin {
     SagaCommandOrigin {
@@ -50,6 +73,15 @@ fn make_context() -> CompensationContext {
     }
 }
 
+// ============================================================================
+// Compensation Context Tests
+// ============================================================================
+
+/// Saga command creates compensation context with origin info.
+///
+/// When a saga-originated command is rejected, we extract the saga origin
+/// to route the rejection back to the source aggregate. The context
+/// captures everything needed for compensation routing.
 #[test]
 fn test_compensation_context_from_saga_command() {
     let command = make_test_command();
@@ -62,6 +94,10 @@ fn test_compensation_context_from_saga_command() {
     assert_eq!(ctx.rejection_reason, "rejection reason");
 }
 
+/// Non-saga command produces no compensation context.
+///
+/// Direct API commands (not from sagas) don't need compensation routing.
+/// The rejection is returned directly to the caller via gRPC status.
 #[test]
 fn test_compensation_context_from_non_saga_command() {
     let mut command = make_test_command();
@@ -73,6 +109,15 @@ fn test_compensation_context_from_non_saga_command() {
     assert!(context.is_none());
 }
 
+// ============================================================================
+// Notification Building Tests
+// ============================================================================
+
+/// Rejection notification includes saga origin and rejected command.
+///
+/// The notification carries full context: which saga, which event triggered
+/// the command, why it was rejected, and the original command itself. This
+/// enables the source aggregate to decide how to compensate.
 #[test]
 fn test_build_rejection_notification() {
     let context = make_context();
@@ -84,6 +129,11 @@ fn test_build_rejection_notification() {
     assert!(notification.rejected_command.is_some());
 }
 
+/// Notification command book targets the triggering aggregate's domain.
+///
+/// The notification routes back to the original domain (not the target
+/// that rejected). This is how the source aggregate learns of rejection.
+/// No saga_origin on the notification — it's terminal, not part of a chain.
 #[test]
 fn test_build_notification_command_book() {
     let context = make_context();
@@ -95,6 +145,10 @@ fn test_build_notification_command_book() {
     assert!(command_book.saga_origin.is_none());
 }
 
+/// Missing triggering aggregate prevents notification routing.
+///
+/// If saga origin doesn't include the triggering aggregate, we can't
+/// route the notification. This is a configuration error in the saga.
 #[test]
 fn test_build_notification_command_book_missing_aggregate() {
     let mut context = make_context();
@@ -107,6 +161,16 @@ fn test_build_notification_command_book_missing_aggregate() {
     ));
 }
 
+// ============================================================================
+// Compensation Failed Event Tests
+// ============================================================================
+
+/// Compensation failed event captures both rejection and failure reasons.
+///
+/// Two distinct failure modes:
+/// 1. Original rejection: why the target rejected the command
+/// 2. Compensation failure: why compensation itself failed
+/// Both are recorded for debugging and audit.
 #[test]
 fn test_build_compensation_failed_event() {
     let context = make_context();
@@ -119,6 +183,11 @@ fn test_build_compensation_failed_event() {
     assert!(event.occurred_at.is_some());
 }
 
+/// Compensation failed event book goes to fallback domain with correlation.
+///
+/// Failed compensations must be recorded somewhere. The fallback domain
+/// is a system-level aggregate that collects failures. Correlation ID
+/// is preserved for tracing.
 #[test]
 fn test_build_compensation_failed_event_book() {
     let context = make_context();
@@ -132,6 +201,15 @@ fn test_build_compensation_failed_event_book() {
     assert_eq!(cover.correlation_id, "corr-123");
 }
 
+// ============================================================================
+// Business Response Handling Tests
+// ============================================================================
+
+/// Business logic provides compensation events — events outcome.
+///
+/// Happy path: source aggregate receives rejection notification, emits
+/// compensation events (e.g., "OrderCompensated"). These events are
+/// persisted and published normally.
 #[tokio::test]
 async fn test_handle_business_response_with_events() {
     let context = make_context();
@@ -166,6 +244,11 @@ async fn test_handle_business_response_with_events() {
     assert!(matches!(outcome, CompensationOutcome::Events(_)));
 }
 
+/// Empty event response triggers fallback to system revocation.
+///
+/// If business logic returns empty events (acknowledging but not acting),
+/// and fallback is configured, we emit a system-level revocation event
+/// to record that compensation was handled.
 #[tokio::test]
 async fn test_handle_business_response_empty_events_uses_fallback() {
     let context = make_context();
@@ -193,6 +276,11 @@ async fn test_handle_business_response_empty_events_uses_fallback() {
     ));
 }
 
+/// Revocation with emit_system_revocation flag emits system event.
+///
+/// Business logic can explicitly request a system-level revocation event
+/// instead of handling compensation internally. This is useful when the
+/// aggregate acknowledges the rejection but defers handling.
 #[tokio::test]
 async fn test_handle_business_response_revocation_emit() {
     let context = make_context();
@@ -218,6 +306,11 @@ async fn test_handle_business_response_revocation_emit() {
     ));
 }
 
+/// Revocation with abort flag causes compensation error.
+///
+/// Critical failures where compensation cannot proceed and the system
+/// should halt. This is the nuclear option — used when continuing would
+/// cause data corruption or other serious issues.
 #[tokio::test]
 async fn test_handle_business_response_revocation_abort() {
     let context = make_context();
@@ -238,6 +331,11 @@ async fn test_handle_business_response_revocation_abort() {
     assert!(matches!(result, Err(CompensationError::Aborted(_))));
 }
 
+/// Revocation with no flags is a silent decline.
+///
+/// Business logic acknowledges the rejection but takes no action. This is
+/// valid for idempotent scenarios where the system is already in the
+/// correct state (e.g., "this order was already cancelled").
 #[tokio::test]
 async fn test_handle_business_response_revocation_declined() {
     let context = make_context();
@@ -260,6 +358,11 @@ async fn test_handle_business_response_revocation_declined() {
     assert!(matches!(outcome, CompensationOutcome::Declined { .. }));
 }
 
+/// gRPC error triggers fallback when configured.
+///
+/// If the business logic service is unavailable, we can't get a proper
+/// response. With fallback configured, we emit a system revocation to
+/// record the compensation attempt and failure.
 #[tokio::test]
 async fn test_handle_business_response_grpc_error_uses_fallback() {
     let context = make_context();
@@ -280,6 +383,14 @@ async fn test_handle_business_response_grpc_error_uses_fallback() {
     ));
 }
 
+// ============================================================================
+// Escalation Handler Tests
+// ============================================================================
+
+/// Noop escalation handler quarantine always succeeds (logs only).
+///
+/// Used in tests and as a fallback. In production, quarantine would
+/// send to DLQ or alerting system.
 #[tokio::test]
 async fn test_noop_escalation_handler_quarantine() {
     let context = make_context();
@@ -290,6 +401,9 @@ async fn test_noop_escalation_handler_quarantine() {
     assert!(result.is_ok());
 }
 
+/// Noop escalation handler notify always succeeds (logs only).
+///
+/// Used in tests. In production, would send Slack/PagerDuty/etc. alerts.
 #[tokio::test]
 async fn test_noop_escalation_handler_notify() {
     let context = make_context();
@@ -300,6 +414,15 @@ async fn test_noop_escalation_handler_notify() {
     assert!(result.is_ok());
 }
 
+// ============================================================================
+// Escalation Flag Tests
+// ============================================================================
+
+/// Escalate flag triggers notification alongside other actions.
+///
+/// The escalate flag adds alerting to whatever other action is taken.
+/// Here, emit_system_revocation is also set, so we get both: an alert
+/// AND a system revocation event.
 #[tokio::test]
 async fn test_handle_business_response_with_notify_flag() {
     let context = make_context();
@@ -327,6 +450,11 @@ async fn test_handle_business_response_with_notify_flag() {
     ));
 }
 
+/// DLQ flag triggers quarantine alongside decline.
+///
+/// The send_to_dead_letter_queue flag routes to DLQ for manual review.
+/// Without emit_system_revocation, the outcome is Declined (no system
+/// event), but the DLQ quarantine still happens.
 #[tokio::test]
 async fn test_handle_business_response_with_quarantine_flag() {
     let context = make_context();

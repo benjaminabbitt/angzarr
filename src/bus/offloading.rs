@@ -292,11 +292,31 @@ impl<S: PayloadStore + 'static> EventHandler for ResolvingHandler<S> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for the payload offloading event bus wrapper.
+    //!
+    //! The offloading bus implements the "claim check" pattern: large event
+    //! payloads are stored externally and replaced with references. This
+    //! enables bus transports with size limits (e.g., Kafka's 1MB default)
+    //! to handle arbitrarily large events.
+    //!
+    //! Key behaviors:
+    //! - Small payloads pass through unchanged (no storage overhead)
+    //! - Large payloads are offloaded and replaced with External references
+    //! - References are resolved back to inline events on receive
+    //! - The offloading is transparent to handlers
+    //!
+    //! Without offloading, large aggregates (e.g., with embedded documents)
+    //! would fail to publish, breaking event sourcing entirely.
+
     use super::*;
     use crate::bus::MockEventBus;
     use crate::payload_store::FilesystemPayloadStore;
     use crate::proto::event_page;
     use tempfile::TempDir;
+
+    // ============================================================================
+    // Test Helpers
+    // ============================================================================
 
     async fn create_test_store() -> (Arc<FilesystemPayloadStore>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -320,6 +340,14 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // Offloading Tests
+    // ============================================================================
+
+    /// Small payloads below threshold pass through without offloading.
+    ///
+    /// Offloading adds latency (store write) and storage cost. Events that
+    /// fit within bus limits should be sent inline for efficiency.
     #[tokio::test]
     async fn test_small_payload_passes_through() {
         let (store, _temp) = create_test_store().await;
@@ -340,6 +368,10 @@ mod tests {
         ));
     }
 
+    /// Large payloads above threshold are replaced with External references.
+    ///
+    /// The actual payload is stored externally; the bus message contains only
+    /// a URI reference. This keeps bus messages small regardless of event size.
     #[tokio::test]
     async fn test_large_payload_gets_offloaded() {
         let (store, _temp) = create_test_store().await;
@@ -360,6 +392,10 @@ mod tests {
         ));
     }
 
+    /// External references resolve back to original payload.
+    ///
+    /// Round-trip integrity: offload → publish → receive → resolve produces
+    /// the original event. Handlers see fully-resolved EventBooks.
     #[tokio::test]
     async fn test_resolve_external_payload() {
         let (store, _temp) = create_test_store().await;
@@ -392,6 +428,10 @@ mod tests {
         assert_eq!(original_event.value.len(), resolved_event.value.len());
     }
 
+    /// No threshold means no offloading — all events pass through.
+    ///
+    /// When the inner bus has no max_message_size and no explicit threshold
+    /// is configured, offloading is disabled. Used for buses without limits.
     #[tokio::test]
     async fn test_no_threshold_passes_all() {
         let (store, _temp) = create_test_store().await;
@@ -415,6 +455,10 @@ mod tests {
     // ============================================================================
     // ResolvingHandler Tests
     // ============================================================================
+    //
+    // The ResolvingHandler wraps user handlers and transparently resolves
+    // External references before delivery. This makes offloading invisible
+    // to business logic.
 
     /// Test handler that captures received EventBooks for verification.
     struct CapturingHandler {
@@ -446,6 +490,10 @@ mod tests {
         }
     }
 
+    /// External payloads are resolved before handler receives event.
+    ///
+    /// Handler sees inline Event, not External reference. The business logic
+    /// doesn't need to know about offloading — it's transparent.
     #[tokio::test]
     async fn test_resolving_handler_resolves_external_payloads() {
         let (store, _temp) = create_test_store().await;
@@ -500,6 +548,10 @@ mod tests {
         }
     }
 
+    /// Inline events pass through without modification.
+    ///
+    /// Events that were never offloaded (small payloads) should be delivered
+    /// unchanged. Resolution is a no-op for inline events.
     #[tokio::test]
     async fn test_resolving_handler_passes_inline_events_unchanged() {
         let (store, _temp) = create_test_store().await;

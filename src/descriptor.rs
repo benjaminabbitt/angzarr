@@ -100,8 +100,27 @@ pub fn parse_subscriptions(env_value: &str) -> Vec<Target> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for subscription target parsing and matching.
+    //!
+    //! Subscription targets filter which events a component receives:
+    //! - Domain specifies the source bounded context
+    //! - Types list (optional) restricts to specific event types
+    //!
+    //! Format: "domain:Type1,Type2;domain2" parsed from env vars.
+    //! Empty types list means "all events from domain".
+    //!
+    //! Key behaviors verified:
+    //! - Empty types matches all event types
+    //! - Specific types use suffix matching (handles type URL prefixes)
+    //! - Parse handles mixed formats (with/without types)
+
     use super::*;
 
+    // ============================================================================
+    // Target Matching Tests
+    // ============================================================================
+
+    /// Empty types list matches all events from domain.
     #[test]
     fn test_target_matches_all() {
         let target = Target::domain("order");
@@ -110,6 +129,7 @@ mod tests {
         assert!(target.matches_type("anything"));
     }
 
+    /// Specific types use suffix matching for full type URLs.
     #[test]
     fn test_target_matches_specific() {
         let target = Target::new("order", vec!["OrderCreated", "OrderShipped"]);
@@ -118,6 +138,11 @@ mod tests {
         assert!(!target.matches_type("OrderCancelled"));
     }
 
+    // ============================================================================
+    // Subscription Parsing Tests
+    // ============================================================================
+
+    /// Parse format with explicit types: "domain:Type1,Type2".
     #[test]
     fn test_parse_subscriptions_with_types() {
         let subs = parse_subscriptions("order:OrderCreated,OrderShipped;inventory:StockReserved");
@@ -128,6 +153,7 @@ mod tests {
         assert_eq!(subs[1].types, vec!["StockReserved"]);
     }
 
+    /// Parse domain-only format (no colon): matches all types.
     #[test]
     fn test_parse_subscriptions_all_types() {
         let subs = parse_subscriptions("order;inventory");
@@ -138,12 +164,14 @@ mod tests {
         assert!(subs[1].types.is_empty());
     }
 
+    /// Empty string produces empty subscription list.
     #[test]
     fn test_parse_subscriptions_empty() {
         let subs = parse_subscriptions("");
         assert!(subs.is_empty());
     }
 
+    /// Mixed format: some domains with types, some without.
     #[test]
     fn test_parse_subscriptions_mixed() {
         let subs = parse_subscriptions("order:OrderCreated;inventory");

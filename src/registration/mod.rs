@@ -131,8 +131,26 @@ impl RepublishStrategy for ExponentialBackoff {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for republish strategies (backoff algorithms).
+    //!
+    //! Components periodically re-register to handle startup races and
+    //! recovery scenarios. Strategies control the timing:
+    //! - FixedInterval: Constant delay (good for development)
+    //! - ExponentialBackoff: Increasing delay (good for production)
+    //!
+    //! Key behaviors verified:
+    //! - FixedInterval returns constant delay
+    //! - FixedInterval respects max_attempts
+    //! - ExponentialBackoff doubles delay each attempt
+    //! - ExponentialBackoff caps at max delay
+
     use super::*;
 
+    // ============================================================================
+    // FixedInterval Tests
+    // ============================================================================
+
+    /// Fixed interval returns constant delay regardless of attempt number.
     #[test]
     fn test_fixed_interval_constant_delay() {
         let strategy = FixedInterval::new(Duration::from_secs(5));
@@ -142,6 +160,7 @@ mod tests {
         assert_eq!(strategy.next_delay(100), Some(Duration::from_secs(5)));
     }
 
+    /// Fixed interval stops after max_attempts.
     #[test]
     fn test_fixed_interval_with_max_attempts() {
         let strategy = FixedInterval::new(Duration::from_secs(5)).with_max_attempts(3);
@@ -152,6 +171,13 @@ mod tests {
         assert_eq!(strategy.next_delay(4), None);
     }
 
+    // ============================================================================
+    // ExponentialBackoff Tests
+    // ============================================================================
+
+    /// Exponential backoff doubles delay each attempt.
+    ///
+    /// 1s → 2s → 4s → 8s → ... (with default multiplier=2)
     #[test]
     fn test_exponential_backoff_increases() {
         let strategy = ExponentialBackoff::new().with_jitter(false);
@@ -165,6 +191,9 @@ mod tests {
         assert_eq!(d2, Duration::from_secs(4));
     }
 
+    /// Exponential backoff caps delay at configured maximum.
+    ///
+    /// Prevents unbounded delays in long-running failure scenarios.
     #[test]
     fn test_exponential_backoff_caps_at_max() {
         let strategy = ExponentialBackoff::new()

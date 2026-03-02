@@ -243,12 +243,28 @@ pub fn format_any(any: &Any) -> Result<String, ReflectError> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for protobuf reflection utilities.
+    //!
+    //! Proto reflection enables runtime inspection of Any-packed messages:
+    //! - Type URL parsing extracts message type from "type.googleapis.com/pkg.Type"
+    //! - Field diffing identifies changed fields between message versions
+    //! - Disjoint field detection enables commutative merge optimization
+    //!
+    //! Key behaviors verified:
+    //! - Type URL parsing handles various prefix formats
+    //! - Field disjointness correctly identifies non-overlapping changes
+    //! - Map fields use keyed paths like "field[key]" for granular diff
+    //!
+    //! Note: Full diff_fields tests require integration tests with real
+    //! descriptor sets. Unit tests cover parsing and set operations.
+
     use super::*;
 
     // ============================================================================
     // Type URL Parsing Tests
     // ============================================================================
 
+    /// Extract type name from googleapis.com format.
     #[test]
     fn test_extract_type_name_googleapis() {
         let type_url = "type.googleapis.com/examples.PlayerState";
@@ -256,6 +272,7 @@ mod tests {
         assert_eq!(result, "examples.PlayerState");
     }
 
+    /// Extract type name from angzarr.io format.
     #[test]
     fn test_extract_type_name_angzarr() {
         use crate::proto_ext::type_url;
@@ -263,6 +280,7 @@ mod tests {
         assert_eq!(result, "angzarr.SagaCompensationFailed");
     }
 
+    /// Edge case: bare type name without prefix still works.
     #[test]
     fn test_extract_type_name_just_name() {
         // Edge case: no prefix
@@ -274,7 +292,11 @@ mod tests {
     // ============================================================================
     // Field Disjointness Tests
     // ============================================================================
+    //
+    // Disjoint fields enable commutative merge: if two concurrent updates
+    // touch different fields, they can be applied in any order.
 
+    /// Empty field sets are trivially disjoint.
     #[test]
     fn test_fields_are_disjoint_empty() {
         let a: HashSet<String> = HashSet::new();
@@ -282,6 +304,7 @@ mod tests {
         assert!(fields_are_disjoint(&a, &b));
     }
 
+    /// Different scalar fields are disjoint (can merge).
     #[test]
     fn test_fields_are_disjoint_different_fields() {
         let a: HashSet<String> = ["bankroll".to_string()].into_iter().collect();
@@ -289,6 +312,7 @@ mod tests {
         assert!(fields_are_disjoint(&a, &b));
     }
 
+    /// Same field in both sets → conflict (cannot merge).
     #[test]
     fn test_fields_are_disjoint_same_field() {
         let a: HashSet<String> = ["bankroll".to_string()].into_iter().collect();
@@ -296,6 +320,7 @@ mod tests {
         assert!(!fields_are_disjoint(&a, &b));
     }
 
+    /// Different keys in same map → disjoint (key-level granularity).
     #[test]
     fn test_fields_are_disjoint_keyed_different_keys() {
         // Different keys in same map → disjoint
@@ -304,6 +329,7 @@ mod tests {
         assert!(fields_are_disjoint(&a, &b));
     }
 
+    /// Same key in same map → conflict.
     #[test]
     fn test_fields_are_disjoint_keyed_same_key() {
         // Same key → overlap
@@ -312,6 +338,7 @@ mod tests {
         assert!(!fields_are_disjoint(&a, &b));
     }
 
+    /// Mixed scalar and keyed fields: all different → disjoint.
     #[test]
     fn test_fields_are_disjoint_mixed() {
         let a: HashSet<String> = ["bankroll".to_string(), "seats[1]".to_string()]
@@ -323,6 +350,7 @@ mod tests {
         assert!(fields_are_disjoint(&a, &b));
     }
 
+    /// Mixed scalar and keyed fields: one overlap → conflict.
     #[test]
     fn test_fields_are_disjoint_mixed_overlap() {
         let a: HashSet<String> = ["bankroll".to_string(), "seats[1]".to_string()]
@@ -338,6 +366,7 @@ mod tests {
     // Map Key Formatting Tests
     // ============================================================================
 
+    /// String map keys format as-is.
     #[test]
     fn test_format_map_key_string() {
         use prost_reflect::MapKey;
@@ -345,6 +374,7 @@ mod tests {
         assert_eq!(format_map_key(&key), "table_a");
     }
 
+    /// Integer map keys format as decimal strings.
     #[test]
     fn test_format_map_key_i32() {
         use prost_reflect::MapKey;
@@ -352,6 +382,7 @@ mod tests {
         assert_eq!(format_map_key(&key), "42");
     }
 
+    /// Unsigned 64-bit map keys format as decimal strings.
     #[test]
     fn test_format_map_key_u64() {
         use prost_reflect::MapKey;
@@ -363,11 +394,11 @@ mod tests {
     // Pool Initialization Tests
     // ============================================================================
     //
-    // Note: These tests are tricky because of the global static.
-    // In production, pool is initialized once at startup.
-    // Tests that need actual reflection should use integration tests
-    // with proper descriptor set files.
+    // Note: These tests verify error types, not actual initialization.
+    // Global static makes initialization tests unreliable in parallel test runs.
+    // Full reflection tests belong in integration tests with descriptor sets.
 
+    /// NotInitialized error has correct message.
     #[test]
     fn test_pool_not_initialized_error() {
         // In a fresh test process where pool isn't initialized,
@@ -377,12 +408,14 @@ mod tests {
         assert_eq!(err.to_string(), errmsg::NOT_INITIALIZED);
     }
 
+    /// AlreadyInitialized error has correct message.
     #[test]
     fn test_already_initialized_error() {
         let err = ReflectError::AlreadyInitialized;
         assert_eq!(err.to_string(), errmsg::ALREADY_INITIALIZED);
     }
 
+    /// UnknownType error includes the type name.
     #[test]
     fn test_unknown_type_error() {
         let err = ReflectError::UnknownType("foo.Bar".to_string());

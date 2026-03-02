@@ -1,3 +1,14 @@
+//! Tests for response building and event publishing utilities.
+//!
+//! The response builder bridges aggregate business logic and gRPC:
+//! - Extracts events from BusinessResponse (success path)
+//! - Converts revocations to gRPC status (rejection path)
+//! - Publishes events to the event bus
+//! - Preserves correlation IDs through the response path
+//!
+//! Correct response handling is critical — errors here cause lost events
+//! or incorrect rejection status codes.
+
 use super::*;
 use crate::bus::MockEventBus;
 use crate::orchestration::correlation::extract_correlation_id;
@@ -6,6 +17,10 @@ use crate::proto::{
     Uuid as ProtoUuid,
 };
 use prost_types::Any;
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
 
 fn make_command_book(with_correlation: bool) -> CommandBook {
     CommandBook {
@@ -34,6 +49,14 @@ fn make_command_book(with_correlation: bool) -> CommandBook {
     }
 }
 
+// ============================================================================
+// Correlation ID Extraction Tests
+// ============================================================================
+
+/// Existing correlation ID extracted from command cover.
+///
+/// Commands originating from saga/PM flows carry correlation IDs for
+/// cross-domain tracing. The response must preserve this ID.
 #[test]
 fn test_extract_correlation_id_existing() {
     let command = make_command_book(true);
@@ -41,6 +64,10 @@ fn test_extract_correlation_id_existing() {
     assert_eq!(result, "test-correlation-id");
 }
 
+/// Empty correlation ID stays empty — we don't auto-generate.
+///
+/// Direct API calls may not have correlation IDs. The framework propagates
+/// what's given, not inventing IDs for commands that don't need tracing.
 #[test]
 fn test_extract_correlation_id_empty_stays_empty() {
     let command = make_command_book(false);
@@ -48,6 +75,14 @@ fn test_extract_correlation_id_empty_stays_empty() {
     assert!(result.is_empty());
 }
 
+// ============================================================================
+// Event Extraction Tests
+// ============================================================================
+
+/// Events extracted from BusinessResponse and correlation ID set on cover.
+///
+/// The response builder stamps the correlation ID from the command onto
+/// the event book's cover, ensuring traceability through the event store.
 #[test]
 fn test_extract_events_from_response_with_events() {
     let event_book = EventBook {
@@ -76,6 +111,11 @@ fn test_extract_events_from_response_with_events() {
     );
 }
 
+/// Revocation response converted to FailedPrecondition status.
+///
+/// When business logic rejects a command, the revocation reason becomes
+/// the gRPC error message. FailedPrecondition signals business rejection
+/// (not a system error).
 #[test]
 fn test_extract_events_from_response_revocation() {
     let response = BusinessResponse {
@@ -95,6 +135,10 @@ fn test_extract_events_from_response_revocation() {
     assert!(status.message().contains("insufficient funds"));
 }
 
+/// Empty response (no events, no revocation) returns empty EventBook.
+///
+/// Some commands may succeed without producing events (idempotent
+/// operations where state is already correct). This is valid.
 #[test]
 fn test_extract_events_from_response_empty() {
     let response = BusinessResponse { result: None };
@@ -106,6 +150,14 @@ fn test_extract_events_from_response_empty() {
     // No cover means no correlation ID - that's expected for empty responses
 }
 
+// ============================================================================
+// Publish and Build Response Tests
+// ============================================================================
+
+/// Successful publish returns response with events and correlation ID.
+///
+/// After events are persisted, they're published to the event bus and
+/// returned to the caller. The correlation ID is preserved for tracing.
 #[tokio::test]
 async fn test_publish_and_build_response_success() {
     let event_bus: Arc<dyn EventBus> = Arc::new(MockEventBus::new());
@@ -134,6 +186,11 @@ async fn test_publish_and_build_response_success() {
     );
 }
 
+/// Event bus publish failure returns Internal error.
+///
+/// If the event bus fails to publish, the operation fails entirely.
+/// Events are already persisted, but the caller learns of the publish
+/// failure to handle accordingly (e.g., retry or alert).
 #[tokio::test]
 async fn test_publish_and_build_response_bus_failure() {
     let mock_bus = Arc::new(MockEventBus::new());

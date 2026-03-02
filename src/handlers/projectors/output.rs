@@ -306,8 +306,26 @@ impl LogOutput for BoxedLogOutput {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for event colorization and output formatting.
+    //!
+    //! The output system classifies events by category (Success, Progress,
+    //! Info, Failure) and applies ANSI colors for terminal display.
+    //! Classification can be explicit (type name mapping) or pattern-based
+    //! (e.g., "Created" suffix → Success).
+    //!
+    //! Correct classification improves log readability — failures stand out
+    //! in red, successes in green, etc.
+
     use super::*;
 
+    // ============================================================================
+    // Color Configuration Tests
+    // ============================================================================
+
+    /// Exact type name match takes priority over patterns.
+    ///
+    /// When both an explicit mapping and pattern would match, the explicit
+    /// mapping wins. This allows overriding default classifications.
     #[test]
     fn test_event_color_config_exact_match() {
         let config = EventColorConfig::new()
@@ -325,6 +343,10 @@ mod tests {
         assert_eq!(config.get_category("UnknownEvent"), EventCategory::Default);
     }
 
+    /// Simple name extracted from fully-qualified type URL.
+    ///
+    /// Type URLs like "examples.PlayerRegistered" should match config
+    /// entries for just "PlayerRegistered". Simplifies configuration.
     #[test]
     fn test_event_color_config_simple_name_match() {
         let config = EventColorConfig::new().with("PlayerRegistered", EventCategory::Success);
@@ -336,6 +358,13 @@ mod tests {
         );
     }
 
+    /// Default patterns classify events by suffix.
+    ///
+    /// Convention-based classification:
+    /// - "Created", "Completed" → Success (green)
+    /// - "Cancelled", "Failed", "Rejected" → Failure (red)
+    /// - "Added", "Updated", "Applied" → Progress (yellow)
+    /// - "Started", "Initiated" → Info (cyan)
     #[test]
     fn test_event_color_config_default_patterns() {
         let config = EventColorConfig::with_default_patterns();
@@ -362,6 +391,14 @@ mod tests {
         );
     }
 
+    // ============================================================================
+    // Output Implementation Tests
+    // ============================================================================
+
+    /// Stdout output handles event without panic.
+    ///
+    /// Smoke test for stdout output — verifies basic operation without
+    /// crashing on typical input.
     #[test]
     fn test_stdout_output() {
         let output = StdoutOutput;

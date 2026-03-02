@@ -1,9 +1,31 @@
+//! Tests for the EventQueryService gRPC service.
+//!
+//! EventQueryService provides read access to aggregate event histories for:
+//! - Debugging (inspect event stream)
+//! - Analytics (query across aggregates)
+//! - Process manager state reconstruction (query by correlation_id)
+//! - Temporal queries (as-of-time, as-of-sequence)
+//!
+//! Key behaviors:
+//! - Query by domain+root returns full event history
+//! - Query by correlation_id returns events across aggregates in same workflow
+//! - Range/sequence selection enables partial history retrieval
+//! - Temporal queries support point-in-time views
+//! - Missing/invalid parameters return InvalidArgument gRPC status
+//!
+//! Note: EventQuery deliberately ignores snapshots — it's for event inspection,
+//! not aggregate state reconstruction. Use AggregateService for state.
+
 use super::*;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{event_page, EventPage, SequenceRange, TemporalQuery};
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use prost_types::{Any, Timestamp};
 use tokio_stream::StreamExt;
+
+// ============================================================================
+// Test Setup
+// ============================================================================
 
 fn create_test_service_with_mocks(
     event_store: Arc<MockEventStore>,
@@ -25,6 +47,14 @@ fn create_default_test_service() -> (
     (service, event_store, snapshot_store)
 }
 
+// ============================================================================
+// get_event_book Tests - Unary Query
+// ============================================================================
+
+/// Empty aggregate returns empty pages, not error.
+///
+/// Aggregates may not exist yet (pre-creation query) or may have had all
+/// events compacted. Both cases should return successfully with no events.
 #[tokio::test]
 async fn test_get_event_book_empty_aggregate() {
     let (service, _, _) = create_default_test_service();
@@ -50,6 +80,7 @@ async fn test_get_event_book_empty_aggregate() {
     assert!(book.pages.is_empty());
 }
 
+/// Event data returned when aggregate has events.
 #[tokio::test]
 async fn test_get_event_book_with_data() {
     let (service, event_store, _) = create_default_test_service();
@@ -88,6 +119,11 @@ async fn test_get_event_book_with_data() {
     assert_eq!(book.pages.len(), 1);
 }
 
+// ============================================================================
+// Input Validation Tests
+// ============================================================================
+
+/// Missing root returns InvalidArgument — can't locate aggregate.
 #[tokio::test]
 async fn test_get_event_book_missing_root() {
     let (service, _, _) = create_default_test_service();
@@ -110,6 +146,7 @@ async fn test_get_event_book_missing_root() {
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
 }
 
+/// Invalid UUID returns InvalidArgument — malformed identifier.
 #[tokio::test]
 async fn test_get_event_book_invalid_uuid() {
     let (service, _, _) = create_default_test_service();
@@ -134,6 +171,13 @@ async fn test_get_event_book_invalid_uuid() {
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
 }
 
+// ============================================================================
+// Range Selection Tests
+// ============================================================================
+
+/// Range selection returns events within inclusive bounds.
+///
+/// Enables efficient partial history retrieval for large aggregates.
 #[tokio::test]
 async fn test_get_event_book_with_range() {
     let (service, event_store, _) = create_default_test_service();
@@ -179,6 +223,11 @@ async fn test_get_event_book_with_range() {
     assert_eq!(book.pages.len(), 3); // Events 2, 3, 4 (inclusive upper bound)
 }
 
+// ============================================================================
+// get_events Tests - Streaming Query
+// ============================================================================
+
+/// Streaming API returns single empty book for empty aggregate.
 #[tokio::test]
 async fn test_get_events_empty_aggregate() {
     let (service, _, _) = create_default_test_service();
@@ -207,6 +256,7 @@ async fn test_get_events_empty_aggregate() {
     assert!(book.pages.is_empty());
 }
 
+/// Streaming API returns event books.
 #[tokio::test]
 async fn test_get_events_with_data() {
     let (service, event_store, _) = create_default_test_service();
@@ -249,6 +299,7 @@ async fn test_get_events_with_data() {
     assert_eq!(book.pages.len(), 1);
 }
 
+/// Streaming API validates inputs same as unary.
 #[tokio::test]
 async fn test_get_events_missing_root() {
     let (service, _, _) = create_default_test_service();
@@ -295,6 +346,11 @@ async fn test_get_events_invalid_uuid() {
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
 }
 
+// ============================================================================
+// get_aggregate_roots Tests - Discovery
+// ============================================================================
+
+/// Empty system returns no aggregate roots.
 #[tokio::test]
 async fn test_get_aggregate_roots_empty() {
     let (service, _, _) = create_default_test_service();
@@ -307,6 +363,7 @@ async fn test_get_aggregate_roots_empty() {
     assert!(first.is_none()); // No aggregates yet
 }
 
+/// Returns all aggregate roots for debugging/analytics.
 #[tokio::test]
 async fn test_get_aggregate_roots_with_data() {
     let (service, event_store, _) = create_default_test_service();
@@ -331,6 +388,7 @@ async fn test_get_aggregate_roots_with_data() {
     assert_eq!(roots.len(), 2);
 }
 
+/// Returns roots across multiple domains.
 #[tokio::test]
 async fn test_get_aggregate_roots_multiple_domains() {
     let (service, event_store, _) = create_default_test_service();
@@ -358,6 +416,14 @@ async fn test_get_aggregate_roots_multiple_domains() {
     assert_eq!(roots.len(), 2);
 }
 
+// ============================================================================
+// Correlation ID Query Tests
+// ============================================================================
+
+/// Query by correlation_id returns events across aggregates in workflow.
+///
+/// Process managers use correlation_id to track cross-domain workflows.
+/// This enables debugging and state reconstruction for PM flows.
 #[tokio::test]
 async fn test_get_event_book_by_correlation_id() {
     let (service, event_store, _) = create_default_test_service();
@@ -397,6 +463,7 @@ async fn test_get_event_book_by_correlation_id() {
     assert_eq!(book.pages.len(), 1);
 }
 
+/// Non-existent correlation_id returns empty (not error).
 #[tokio::test]
 async fn test_get_event_book_by_correlation_id_not_found() {
     let (service, _, _) = create_default_test_service();
@@ -419,6 +486,10 @@ async fn test_get_event_book_by_correlation_id_not_found() {
     assert!(book.pages.is_empty());
 }
 
+/// Multiple aggregates with same correlation_id all returned.
+///
+/// Workflows span domains — order, inventory, fulfillment may all share
+/// the same correlation_id. Query returns events from all participating aggregates.
 #[tokio::test]
 async fn test_get_events_by_correlation_id_multiple_aggregates() {
     let (service, event_store, _) = create_default_test_service();
@@ -463,6 +534,14 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
     assert_eq!(books.len(), 2);
 }
 
+// ============================================================================
+// Temporal Query Tests
+// ============================================================================
+
+/// as_of_time returns events up to specified timestamp.
+///
+/// Enables point-in-time debugging: "what did this aggregate look like
+/// at 2pm yesterday?" Essential for incident investigation.
 #[tokio::test]
 async fn test_get_event_book_temporal_by_time() {
     let (service, event_store, _) = create_default_test_service();
@@ -535,6 +614,10 @@ async fn test_get_event_book_temporal_by_time() {
     assert!(book.snapshot.is_none());
 }
 
+/// as_of_sequence returns events up to specified sequence.
+///
+/// More precise than time-based queries — sequence is monotonic and
+/// unambiguous. Used when you know the exact event version to inspect.
 #[tokio::test]
 async fn test_get_event_book_temporal_by_sequence() {
     let (service, event_store, _) = create_default_test_service();
@@ -579,6 +662,7 @@ async fn test_get_event_book_temporal_by_sequence() {
     assert!(book.snapshot.is_none());
 }
 
+/// Empty temporal query (no point_in_time) returns InvalidArgument.
 #[tokio::test]
 async fn test_get_event_book_temporal_empty_point_in_time() {
     let (service, _, _) = create_default_test_service();
@@ -605,6 +689,15 @@ async fn test_get_event_book_temporal_empty_point_in_time() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
 }
 
+// ============================================================================
+// Snapshot Handling Tests
+// ============================================================================
+
+/// EventQuery ignores snapshots — returns full event history.
+///
+/// Unlike AggregateService (which uses snapshots for efficiency), EventQuery
+/// is for inspection. Users querying events want to see the actual events,
+/// not a compacted state representation.
 #[tokio::test]
 async fn test_get_event_book_returns_all_events_despite_snapshot() {
     let (service, event_store, snapshot_store) = create_default_test_service();

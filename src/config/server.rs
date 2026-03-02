@@ -427,8 +427,25 @@ impl StandaloneConfig {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for server and networking configuration.
+    //!
+    //! Server config controls how angzarr binds to ports and where services
+    //! connect. ServiceConfig supports both inline definitions and file
+    //! references for modular configuration.
+    //!
+    //! Security: Default host is localhost (127.0.0.1), not 0.0.0.0.
+    //! External access requires explicit configuration.
+
     use super::*;
 
+    // ============================================================================
+    // ServerConfig Tests
+    // ============================================================================
+
+    /// Server defaults to standard ports and localhost binding.
+    ///
+    /// Security: localhost binding prevents accidental network exposure.
+    /// Must explicitly set host = "0.0.0.0" for external access.
     #[test]
     fn test_server_config_default() {
         let server = ServerConfig::default();
@@ -438,6 +455,13 @@ mod tests {
         assert_eq!(server.host, "127.0.0.1");
     }
 
+    // ============================================================================
+    // ServiceConfigRef Tests
+    // ============================================================================
+
+    /// Inline service config parses domain and command.
+    ///
+    /// Most services are defined inline in the main config file.
     #[test]
     fn test_service_config_inline_deserialization() {
         let yaml = r#"
@@ -454,6 +478,10 @@ mod tests {
         }
     }
 
+    /// File reference config supports overrides.
+    ///
+    /// Large service definitions can be extracted to separate files.
+    /// Overrides (like storage) are merged at load time.
     #[test]
     fn test_service_config_file_ref_deserialization() {
         let yaml = r#"
