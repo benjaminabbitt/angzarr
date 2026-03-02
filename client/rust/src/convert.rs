@@ -78,13 +78,13 @@ pub fn try_unpack<T: prost::Message + Default + Name>(any: &Any) -> Option<T> {
 pub fn unpack<T: prost::Message + Default + Name>(any: &Any) -> Result<T> {
     let expected = format!("{}/{}", TYPE_URL_PREFIX, T::full_name());
     if any.type_url != expected {
-        return Err(ClientError::InvalidArgument(format!(
-            "type mismatch: expected {}, got {}",
-            expected, any.type_url
-        )));
+        return Err(ClientError::InvalidArgument {
+            msg: format!("type mismatch: expected {}, got {}", expected, any.type_url),
+        });
     }
-    T::decode(any.value.as_slice())
-        .map_err(|e| ClientError::InvalidArgument(format!("decode error: {}", e)))
+    T::decode(any.value.as_slice()).map_err(|e| ClientError::InvalidArgument {
+        msg: format!("decode error: {}", e),
+    })
 }
 
 /// Get the full type URL for message type T.
@@ -117,8 +117,9 @@ pub fn uuid_to_proto(uuid: Uuid) -> ProtoUuid {
 
 /// Convert a protobuf UUID to a standard UUID.
 pub fn proto_to_uuid(proto: &ProtoUuid) -> Result<Uuid> {
-    Uuid::from_slice(&proto.value)
-        .map_err(|e| ClientError::InvalidArgument(format!("invalid UUID: {}", e)))
+    Uuid::from_slice(&proto.value).map_err(|e| ClientError::InvalidArgument {
+        msg: format!("invalid UUID: {}", e),
+    })
 }
 
 /// Parse an RFC3339 timestamp string into a protobuf Timestamp.
@@ -130,9 +131,9 @@ pub fn proto_to_uuid(proto: &ProtoUuid) -> Result<Uuid> {
 /// assert_eq!(ts.seconds, 1705314600);
 /// ```
 pub fn parse_timestamp(rfc3339: &str) -> Result<Timestamp> {
-    let dt: DateTime<Utc> = rfc3339
-        .parse()
-        .map_err(|e| ClientError::InvalidTimestamp(format!("{}: {}", rfc3339, e)))?;
+    let dt: DateTime<Utc> = rfc3339.parse().map_err(|e| ClientError::InvalidTimestamp {
+        msg: format!("{}: {}", rfc3339, e),
+    })?;
 
     Ok(Timestamp {
         seconds: dt.timestamp(),

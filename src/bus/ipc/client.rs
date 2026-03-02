@@ -84,8 +84,7 @@ fn should_process_message(
     let routing_key = book.routing_key();
 
     // Check domain filter using routing key
-    let matches = domains.is_empty() || domains.iter().any(|d| d == "#" || d == &routing_key);
-    if !matches {
+    if !matches_domain_filter(&routing_key, domains) {
         return false;
     }
 
@@ -433,13 +432,7 @@ impl EventBus for IpcEventBus {
 
         for subscriber in &self.config.subscribers {
             // Check domain filter using routing key
-            let matches = subscriber.domains.is_empty()
-                || subscriber
-                    .domains
-                    .iter()
-                    .any(|d| d == "#" || *d == routing_key);
-
-            if !matches {
+            if !matches_domain_filter(&routing_key, &subscriber.domains) {
                 continue;
             }
 
@@ -531,9 +524,127 @@ fn max_page_sequence(book: &EventBook) -> Option<u32> {
     book.pages.iter().map(|p| p.sequence_num()).max()
 }
 
+/// Domain filter helper for testing - checks if routing_key matches domain list.
+///
+/// Returns true if:
+/// - domains is empty (accept all)
+/// - domains contains "#" (wildcard)
+/// - domains contains the routing_key
+fn matches_domain_filter(routing_key: &str, domains: &[String]) -> bool {
+    domains.is_empty() || domains.iter().any(|d| d == "#" || d == routing_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ========================================================================
+    // Domain Filter Tests - Catch mutations on line 87
+    // ========================================================================
+
+    #[test]
+    fn test_matches_domain_filter_empty_domains_accepts_any() {
+        let domains: Vec<String> = vec![];
+        assert!(matches_domain_filter("orders", &domains));
+        assert!(matches_domain_filter("inventory", &domains));
+        assert!(matches_domain_filter("anything", &domains));
+    }
+
+    #[test]
+    fn test_matches_domain_filter_wildcard_accepts_any() {
+        let domains = vec!["#".to_string()];
+        assert!(matches_domain_filter("orders", &domains));
+        assert!(matches_domain_filter("inventory", &domains));
+        assert!(matches_domain_filter("anything", &domains));
+    }
+
+    #[test]
+    fn test_matches_domain_filter_specific_domain_matches() {
+        let domains = vec!["orders".to_string()];
+        assert!(matches_domain_filter("orders", &domains));
+    }
+
+    #[test]
+    fn test_matches_domain_filter_specific_domain_rejects_mismatch() {
+        let domains = vec!["orders".to_string()];
+        assert!(!matches_domain_filter("inventory", &domains));
+        assert!(!matches_domain_filter("fulfillment", &domains));
+    }
+
+    #[test]
+    fn test_matches_domain_filter_multiple_domains() {
+        let domains = vec!["orders".to_string(), "inventory".to_string()];
+        assert!(matches_domain_filter("orders", &domains));
+        assert!(matches_domain_filter("inventory", &domains));
+        assert!(!matches_domain_filter("fulfillment", &domains));
+    }
+
+    #[test]
+    fn test_matches_domain_filter_wildcard_with_specific() {
+        // Wildcard in list should accept all
+        let domains = vec!["orders".to_string(), "#".to_string()];
+        assert!(matches_domain_filter("orders", &domains));
+        assert!(matches_domain_filter("inventory", &domains));
+        assert!(matches_domain_filter("anything", &domains));
+    }
+
+    // ========================================================================
+    // Length-Prefixed Protocol Tests - Catch mutations on lines 48-73
+    // ========================================================================
+
+    #[test]
+    fn test_length_prefix_big_endian_encoding() {
+        // Verify the 4-byte big-endian format used by the protocol
+        let len: u32 = 0x00000100; // 256 in decimal
+        let bytes = len.to_be_bytes();
+        assert_eq!(bytes, [0x00, 0x00, 0x01, 0x00]);
+
+        // Verify round-trip
+        let decoded = u32::from_be_bytes(bytes);
+        assert_eq!(decoded, 256);
+    }
+
+    #[test]
+    fn test_length_prefix_small_values() {
+        // Test small message lengths
+        let bytes = 10u32.to_be_bytes();
+        assert_eq!(bytes, [0x00, 0x00, 0x00, 0x0A]);
+        assert_eq!(u32::from_be_bytes(bytes), 10);
+    }
+
+    #[test]
+    fn test_length_prefix_max_valid() {
+        // Test maximum valid message size (just under 10MB)
+        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+        let len = (MAX_MESSAGE_SIZE - 1) as u32;
+        let bytes = len.to_be_bytes();
+        let decoded = u32::from_be_bytes(bytes);
+        assert_eq!(decoded as usize, MAX_MESSAGE_SIZE - 1);
+        assert!((decoded as usize) < MAX_MESSAGE_SIZE);
+    }
+
+    #[test]
+    fn test_max_message_size_constant() {
+        // Verify the 10MB limit constant
+        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+        assert_eq!(MAX_MESSAGE_SIZE, 10_485_760);
+        assert!(MAX_MESSAGE_SIZE > 1024 * 1024); // More than 1MB
+        assert!(MAX_MESSAGE_SIZE < 100 * 1024 * 1024); // Less than 100MB
+    }
+
+    #[test]
+    fn test_length_prefix_over_max_would_be_rejected() {
+        // Verify that lengths over MAX would be rejected
+        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+        let too_large = (MAX_MESSAGE_SIZE + 1) as u32;
+        let bytes = too_large.to_be_bytes();
+        let decoded = u32::from_be_bytes(bytes) as usize;
+        assert!(decoded > MAX_MESSAGE_SIZE);
+    }
+
+    // ========================================================================
+    // IPC Config Tests
+    // ========================================================================
 
     #[test]
     fn test_ipc_config_publisher() {

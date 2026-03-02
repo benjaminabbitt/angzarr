@@ -91,16 +91,17 @@ impl EventQueryTrait for EventQueryService {
 
         // Standard query by domain + root
         let cover = cover.ok_or_else(|| {
-            Status::invalid_argument("Query must have a cover with domain/root or correlation_id")
+            Status::invalid_argument(crate::services::errmsg::QUERY_MISSING_COVER_OR_CORRELATION)
         })?;
         let domain = cover.domain.clone();
         validation::validate_domain(&domain)?;
         let root = cover.root.as_ref().ok_or_else(|| {
-            Status::invalid_argument("Query must have a root UUID or correlation_id")
+            Status::invalid_argument(crate::services::errmsg::QUERY_MISSING_ROOT_OR_CORRELATION)
         })?;
 
-        let root_uuid = uuid::Uuid::from_slice(&root.value)
-            .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
+        let root_uuid = uuid::Uuid::from_slice(&root.value).map_err(|e| {
+            Status::invalid_argument(format!("{}{}", crate::services::errmsg::INVALID_UUID, e))
+        })?;
 
         let edition = cover.edition();
         validation::validate_edition(edition)?;
@@ -152,7 +153,7 @@ impl EventQueryTrait for EventQueryService {
                     }
                     None => {
                         return Err(Status::invalid_argument(
-                            "TemporalQuery must specify as_of_time or as_of_sequence",
+                            "crate::services::errmsg::TEMPORAL_QUERY_MISSING_POINT",
                         ));
                     }
                 }
@@ -209,16 +210,17 @@ impl EventQueryTrait for EventQueryService {
 
         // Standard query by domain + root
         let cover = cover.ok_or_else(|| {
-            Status::invalid_argument("Query must have a cover with domain/root or correlation_id")
+            Status::invalid_argument(crate::services::errmsg::QUERY_MISSING_COVER_OR_CORRELATION)
         })?;
         let domain = cover.domain.clone();
         validation::validate_domain(&domain)?;
         let root = cover.root.as_ref().ok_or_else(|| {
-            Status::invalid_argument("Query must have a root UUID or correlation_id")
+            Status::invalid_argument(crate::services::errmsg::QUERY_MISSING_ROOT_OR_CORRELATION)
         })?;
 
-        let root_uuid = uuid::Uuid::from_slice(&root.value)
-            .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
+        let root_uuid = uuid::Uuid::from_slice(&root.value).map_err(|e| {
+            Status::invalid_argument(format!("{}{}", crate::services::errmsg::INVALID_UUID, e))
+        })?;
 
         let event_book_repo = self.event_book_repo.clone();
 
@@ -261,7 +263,9 @@ impl EventQueryTrait for EventQueryService {
                             Some(c) => c,
                             None => {
                                 if tx
-                                    .send(Err(Status::invalid_argument("Query must have a cover")))
+                                    .send(Err(Status::invalid_argument(
+                                        crate::services::errmsg::QUERY_MISSING_COVER,
+                                    )))
                                     .await
                                     .is_err()
                                 {
@@ -280,7 +284,8 @@ impl EventQueryTrait for EventQueryService {
                                     error!(error = %e, "Invalid UUID in synchronize query");
                                     if tx
                                         .send(Err(Status::invalid_argument(format!(
-                                            "Invalid UUID: {e}"
+                                            "{}{e}",
+                                            crate::services::errmsg::INVALID_UUID
                                         ))))
                                         .await
                                         .is_err()
@@ -294,7 +299,7 @@ impl EventQueryTrait for EventQueryService {
                             None => {
                                 if tx
                                     .send(Err(Status::invalid_argument(
-                                        "Query must have a root UUID",
+                                        crate::services::errmsg::QUERY_MISSING_ROOT,
                                     )))
                                     .await
                                     .is_err()
@@ -351,7 +356,7 @@ impl EventQueryTrait for EventQueryService {
                                 None => {
                                     if tx
                                         .send(Err(Status::invalid_argument(
-                                            "TemporalQuery must specify as_of_time or as_of_sequence",
+                                            "crate::services::errmsg::TEMPORAL_QUERY_MISSING_POINT",
                                         )))
                                         .await
                                         .is_err()

@@ -21,6 +21,25 @@
 //! }
 //! ```
 
+/// Error message constants for standalone mode.
+pub mod errmsg {
+    // Re-export common service error messages
+    pub use crate::services::errmsg::{
+        COMMAND_REQUEST_MISSING_COMMAND, EVENT_REQUEST_MISSING_EVENTS, QUERY_MISSING_COVER,
+        QUERY_MISSING_ROOT, SPECULATE_AGG_MISSING_COMMAND,
+    };
+
+    /// Missing command in request.
+    pub const MISSING_COMMAND: &str = "Missing command";
+    /// Empty command pages.
+    pub const EMPTY_COMMAND_PAGES: &str = "Empty command pages";
+    /// Missing command payload.
+    pub const MISSING_COMMAND_PAYLOAD: &str = "Missing command payload";
+    /// SpeculateCommandHandlerRequest missing command.
+    pub const SPECULATE_CMD_MISSING_COMMAND: &str =
+        "SpeculateCommandHandlerRequest must have a command";
+}
+
 mod builder;
 mod client;
 mod dispatcher;

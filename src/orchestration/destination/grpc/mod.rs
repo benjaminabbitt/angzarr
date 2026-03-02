@@ -41,10 +41,9 @@ impl GrpcDestinationFetcher {
     pub async fn fetch_result(&self, cover: &Cover) -> Result<EventBook, tonic::Status> {
         let domain = &cover.domain;
         let correlation_id = &cover.correlation_id;
-        let root = cover
-            .root
-            .as_ref()
-            .ok_or_else(|| tonic::Status::invalid_argument("Cover must have root UUID"))?;
+        let root = cover.root.as_ref().ok_or_else(|| {
+            tonic::Status::invalid_argument(crate::orchestration::errmsg::COVER_MISSING_ROOT)
+        })?;
 
         let client = self.clients.get(domain).ok_or_else(|| {
             tonic::Status::not_found(format!("No EventQuery registered for domain: {}", domain))

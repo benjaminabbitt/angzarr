@@ -30,7 +30,7 @@ async fn create_channel(endpoint: &str) -> Result<Channel> {
         // Unix Domain Socket - use custom connector
         // The URI doesn't matter for UDS, but tonic requires a valid one
         let channel = Endpoint::try_from("http://[::]:50051")
-            .map_err(|e| ClientError::Connection(e.to_string()))?
+            .map_err(|e| ClientError::Connection { msg: e.to_string() })?
             .connect_with_connector(tower::service_fn(move |_: Uri| {
                 let path = path.clone();
                 async move {
@@ -44,7 +44,7 @@ async fn create_channel(endpoint: &str) -> Result<Channel> {
     } else {
         // TCP endpoint
         let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection(e.to_string()))?
+            .map_err(|e| ClientError::Connection { msg: e.to_string() })?
             .connect()
             .await?;
         Ok(channel)

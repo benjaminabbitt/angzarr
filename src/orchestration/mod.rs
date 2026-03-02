@@ -21,11 +21,18 @@ pub mod shared;
 // Fact Injection
 // ============================================================================
 
-/// Error message constants for fact injection operations.
+/// Error message constants for orchestration operations.
 pub mod errmsg {
+    // Fact injection errors
     pub const AGGREGATE_NOT_FOUND: &str = "Target aggregate not found: ";
     pub const REJECTED: &str = "Fact handler rejected: ";
     pub const INTERNAL: &str = "Fact injection failed: ";
+
+    // Command/Event book validation errors
+    pub const COMMAND_BOOK_MISSING_COVER: &str = "CommandBook must have a cover";
+    pub const EVENT_BOOK_MISSING_COVER: &str = "EventBook must have a cover";
+    pub const COVER_MISSING_ROOT: &str = "Cover must have a root UUID";
+    pub const REPLAY_MISSING_STATE: &str = "Replay response missing state";
 }
 
 /// Error type for fact injection failures.

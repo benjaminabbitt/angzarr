@@ -90,7 +90,7 @@ impl ProjectorCoordinatorService for ProjectorCoord {
         let sync_request = request.into_inner();
         let event_book = sync_request
             .events
-            .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::EVENT_REQUEST_MISSING_EVENTS))?;
 
         // Repair EventBook if incomplete
         let event_book = self
@@ -189,9 +189,9 @@ impl ProjectorCoordinatorService for ProjectorCoord {
         request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
         let speculate_request = request.into_inner();
-        let event_book = speculate_request
-            .events
-            .ok_or_else(|| Status::invalid_argument("SpeculateProjectorRequest requires events"))?;
+        let event_book = speculate_request.events.ok_or_else(|| {
+            Status::invalid_argument(super::errmsg::SPECULATE_PROJ_MISSING_EVENTS)
+        })?;
 
         // Repair EventBook if incomplete
         let event_book = self

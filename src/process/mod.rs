@@ -4,6 +4,14 @@
 //! as environment variables, and managing their lifecycle.
 
 use std::collections::HashMap;
+
+/// Error message constants for testing and consistency.
+pub mod errmsg {
+    /// Empty command array.
+    pub const COMMAND_EMPTY: &str = "Command array cannot be empty";
+    /// Timeout waiting for service prefix.
+    pub const TIMEOUT_WAITING: &str = "Timeout waiting for service at ";
+}
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -94,7 +102,7 @@ impl ManagedProcess {
         env: &ProcessEnv,
         extra_env: Option<&HashMap<String, String>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let executable = command.first().ok_or("Command array cannot be empty")?;
+        let executable = command.first().ok_or(errmsg::COMMAND_EMPTY)?;
         let args = &command[1..];
 
         info!(executable = %executable, ?args, "Spawning client logic process");
@@ -194,7 +202,7 @@ pub async fn wait_for_ready(
             Err(e) => {
                 if start.elapsed() > timeout {
                     error!(address = %address, error = %e, "Timeout waiting for service");
-                    return Err(format!("Timeout waiting for service at {}: {}", address, e).into());
+                    return Err(format!("{}{}: {}", errmsg::TIMEOUT_WAITING, address, e).into());
                 }
                 debug!(address = %address, "Service not ready, retrying...");
                 sleep(retry_interval).await;

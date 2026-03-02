@@ -140,9 +140,9 @@ impl CommandHandlerCoordinatorService for AggregateService {
         let sync_request = request.into_inner();
         let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
             .unwrap_or(crate::proto::SyncMode::Async);
-        let command_book = sync_request
-            .command
-            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
+        let command_book = sync_request.command.ok_or_else(|| {
+            Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
+        })?;
 
         // Unspecified = async (fire and forget), otherwise use sync context
         let ctx = if sync_mode == crate::proto::SyncMode::Async {
@@ -165,7 +165,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
     ) -> Result<Response<CommandResponse>, Status> {
         let speculate_req = request.into_inner();
         let command_book = speculate_req.command.ok_or_else(|| {
-            Status::invalid_argument("SpeculateAggregateRequest must have a command")
+            Status::invalid_argument(super::errmsg::SPECULATE_AGG_MISSING_COMMAND)
         })?;
 
         let (as_of_sequence, as_of_timestamp) = match speculate_req.point_in_time {
@@ -211,9 +211,9 @@ impl CommandHandlerCoordinatorService for AggregateService {
         let sync_request = request.into_inner();
         let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
             .unwrap_or(crate::proto::SyncMode::Async);
-        let command_book = sync_request
-            .command
-            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
+        let command_book = sync_request.command.ok_or_else(|| {
+            Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
+        })?;
         let (domain, root_uuid) = parse_command_cover(&command_book)?;
         let edition = command_book.edition().to_string();
         let correlation_id =
@@ -283,7 +283,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
             .unwrap_or(crate::proto::SyncMode::Async);
         let fact_events = sync_event_book
             .events
-            .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::EVENT_REQUEST_MISSING_EVENTS))?;
 
         let ctx = if sync_mode == crate::proto::SyncMode::Async {
             self.create_async_context()

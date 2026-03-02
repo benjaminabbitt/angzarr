@@ -81,9 +81,9 @@ impl CommandHandlerCoordinatorService for StandaloneAggregateService {
         request: Request<CommandRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_cmd = request.into_inner();
-        let command = sync_cmd
-            .command
-            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
+        let command = sync_cmd.command.ok_or_else(|| {
+            Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
+        })?;
         self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
         // Standalone mode doesn't differentiate sync modes - all execution is synchronous
@@ -97,7 +97,7 @@ impl CommandHandlerCoordinatorService for StandaloneAggregateService {
     ) -> Result<Response<CommandResponse>, Status> {
         let speculate_req = request.into_inner();
         let command = speculate_req.command.ok_or_else(|| {
-            Status::invalid_argument("SpeculateCommandHandlerRequest must have a command")
+            Status::invalid_argument(super::errmsg::SPECULATE_CMD_MISSING_COMMAND)
         })?;
         self.validate_domain(&command)?;
 
@@ -127,9 +127,9 @@ impl CommandHandlerCoordinatorService for StandaloneAggregateService {
         request: Request<CommandRequest>,
     ) -> Result<Response<BusinessResponse>, Status> {
         let sync_cmd = request.into_inner();
-        let command = sync_cmd
-            .command
-            .ok_or_else(|| Status::invalid_argument("CommandRequest must have a command"))?;
+        let command = sync_cmd.command.ok_or_else(|| {
+            Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
+        })?;
         self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
         let response = self.router.execute_compensation(command).await?;
@@ -143,7 +143,7 @@ impl CommandHandlerCoordinatorService for StandaloneAggregateService {
         let sync_event_book = request.into_inner();
         let fact_events = sync_event_book
             .events
-            .ok_or_else(|| Status::invalid_argument("EventRequest must have events"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::EVENT_REQUEST_MISSING_EVENTS))?;
 
         // Validate domain matches
         let fact_domain = fact_events
@@ -224,12 +224,12 @@ impl EventQueryTrait for SingleDomainEventQuery {
         let cover = query
             .cover
             .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_COVER))?;
         let edition = cover.edition_opt();
         let root = cover
             .root
             .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_ROOT))?;
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 
@@ -297,12 +297,12 @@ impl EventQueryTrait for SingleDomainEventQuery {
         let cover = query
             .cover
             .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_COVER))?;
         let edition = cover.edition_opt().map(String::from);
         let root = cover
             .root
             .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_ROOT))?;
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 

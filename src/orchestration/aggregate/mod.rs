@@ -289,7 +289,7 @@ impl ClientLogic for GrpcBusinessLogic {
         let response = self.client.lock().await.replay(request).await?.into_inner();
         response
             .state
-            .ok_or_else(|| Status::internal("Replay response missing state"))
+            .ok_or_else(|| Status::internal(crate::orchestration::errmsg::REPLAY_MISSING_STATE))
     }
 }
 
@@ -297,18 +297,16 @@ impl ClientLogic for GrpcBusinessLogic {
 ///
 /// Validates domain format before returning.
 pub fn parse_command_cover(command: &CommandBook) -> Result<(String, Uuid), Status> {
-    let cover = command
-        .cover
-        .as_ref()
-        .ok_or_else(|| Status::invalid_argument("CommandBook must have a cover"))?;
+    let cover = command.cover.as_ref().ok_or_else(|| {
+        Status::invalid_argument(crate::orchestration::errmsg::COMMAND_BOOK_MISSING_COVER)
+    })?;
 
     let domain = cover.domain.clone();
     crate::validation::validate_domain(&domain)?;
 
-    let root = cover
-        .root
-        .as_ref()
-        .ok_or_else(|| Status::invalid_argument("Cover must have a root UUID"))?;
+    let root = cover.root.as_ref().ok_or_else(|| {
+        Status::invalid_argument(crate::orchestration::errmsg::COVER_MISSING_ROOT)
+    })?;
 
     let root_uuid = Uuid::from_slice(&root.value)
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
@@ -884,18 +882,16 @@ pub struct FactResponse {
 
 /// Parse domain and root UUID from an EventBook cover.
 pub fn parse_event_cover(event_book: &EventBook) -> Result<(String, Uuid), Status> {
-    let cover = event_book
-        .cover
-        .as_ref()
-        .ok_or_else(|| Status::invalid_argument("EventBook must have a cover"))?;
+    let cover = event_book.cover.as_ref().ok_or_else(|| {
+        Status::invalid_argument(crate::orchestration::errmsg::EVENT_BOOK_MISSING_COVER)
+    })?;
 
     let domain = cover.domain.clone();
     crate::validation::validate_domain(&domain)?;
 
-    let root = cover
-        .root
-        .as_ref()
-        .ok_or_else(|| Status::invalid_argument("Cover must have a root UUID"))?;
+    let root = cover.root.as_ref().ok_or_else(|| {
+        Status::invalid_argument(crate::orchestration::errmsg::COVER_MISSING_ROOT)
+    })?;
 
     let root_uuid = Uuid::from_slice(&root.value)
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;

@@ -115,14 +115,18 @@ impl ClientLogic for ProcessManagerHandlerAdapter {
         let command_book = cmd
             .command
             .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Missing command"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::MISSING_COMMAND))?;
         let page = command_book
             .pages
             .first()
-            .ok_or_else(|| Status::invalid_argument("Empty command pages"))?;
+            .ok_or_else(|| Status::invalid_argument(super::errmsg::EMPTY_COMMAND_PAGES))?;
         let command_any = match &page.payload {
             Some(crate::proto::command_page::Payload::Command(c)) => c,
-            _ => return Err(Status::invalid_argument("Missing command payload")),
+            _ => {
+                return Err(Status::invalid_argument(
+                    super::errmsg::MISSING_COMMAND_PAYLOAD,
+                ))
+            }
         };
 
         if !command_any.type_url.ends_with(NOTIFICATION_SUFFIX) {

@@ -8,6 +8,7 @@
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
+use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
 use prost_types::Timestamp;
@@ -175,13 +176,9 @@ impl PayloadStore for S3PayloadStore {
             .key(&key)
             .send()
             .await
-            .map_err(|e| {
-                let err_str = e.to_string();
-                if err_str.contains("NoSuchKey") || err_str.contains("404") {
-                    PayloadStoreError::NotFound(reference.uri.clone())
-                } else {
-                    PayloadStoreError::RetrieveFailed(format!("S3 download failed: {}", e))
-                }
+            .map_err(|e| match e.into_service_error() {
+                GetObjectError::NoSuchKey(_) => PayloadStoreError::NotFound(reference.uri.clone()),
+                err => PayloadStoreError::RetrieveFailed(format!("S3 download failed: {}", err)),
             })?;
 
         let payload = response

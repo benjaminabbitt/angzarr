@@ -2,6 +2,16 @@
 
 use std::time::Duration;
 
+/// Error message constants for testing and consistency.
+pub mod errmsg {
+    /// Connection failure prefix.
+    pub const CONNECTION_FAILED: &str = "Connection failed: ";
+    /// Invalid URI prefix.
+    pub const INVALID_URI: &str = "Invalid URI: ";
+    /// Max retries exceeded.
+    pub const MAX_RETRIES_EXCEEDED: &str = "Connection failed after max retries";
+}
+
 use backon::{BackoffBuilder, ExponentialBuilder};
 use tonic::transport::Channel;
 use tracing::warn;
@@ -38,14 +48,14 @@ pub async fn connect_channel(address: &str) -> Result<Channel, String> {
             Ok(endpoint) => match endpoint.connect().await {
                 Ok(channel) => return Ok(channel),
                 Err(e) => {
-                    last_error = Some(format!("Connection failed: {}", e));
+                    last_error = Some(format!("{}{}", errmsg::CONNECTION_FAILED, e));
                 }
             },
             Err(e) => {
-                return Err(format!("Invalid URI: {}", e));
+                return Err(format!("{}{}", errmsg::INVALID_URI, e));
             }
         }
     }
 
-    Err(last_error.unwrap_or_else(|| "Connection failed after max retries".to_string()))
+    Err(last_error.unwrap_or_else(|| errmsg::MAX_RETRIES_EXCEEDED.to_string()))
 }

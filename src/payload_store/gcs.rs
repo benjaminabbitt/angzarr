@@ -14,6 +14,7 @@ use gcloud_storage::http::objects::download::Range;
 use gcloud_storage::http::objects::get::GetObjectRequest;
 use gcloud_storage::http::objects::list::ListObjectsRequest;
 use gcloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
+use gcloud_storage::http::Error as GcsError;
 use prost_types::Timestamp;
 use tracing::{debug, warn};
 
@@ -164,12 +165,11 @@ impl PayloadStore for GcsPayloadStore {
                 &Range::default(),
             )
             .await
-            .map_err(|e| {
-                if e.to_string().contains("404") || e.to_string().contains("Not Found") {
+            .map_err(|e| match e {
+                GcsError::Response(ref err_response) if err_response.code == 404 => {
                     PayloadStoreError::NotFound(reference.uri.clone())
-                } else {
-                    PayloadStoreError::RetrieveFailed(format!("GCS download failed: {}", e))
                 }
+                err => PayloadStoreError::RetrieveFailed(format!("GCS download failed: {}", err)),
             })?;
 
         // Verify integrity

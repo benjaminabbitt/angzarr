@@ -63,11 +63,15 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
         let type_url = self
             .type_url
             .clone()
-            .ok_or_else(|| ClientError::InvalidArgument("command type_url not set".to_string()))?;
+            .ok_or_else(|| ClientError::InvalidArgument {
+                msg: "command type_url not set".to_string(),
+            })?;
         let payload = self
             .payload
             .clone()
-            .ok_or_else(|| ClientError::InvalidArgument("command payload not set".to_string()))?;
+            .ok_or_else(|| ClientError::InvalidArgument {
+                msg: "command payload not set".to_string(),
+            })?;
 
         let correlation_id = self
             .correlation_id

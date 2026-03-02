@@ -712,6 +712,55 @@ mod tests {
         // Without env var set, should respect config
         assert!(!config.enabled);
     }
+
+    // ========================================================================
+    // is_enabled Tests - Catch mutations on lines 134-139
+    // ========================================================================
+
+    #[test]
+    fn test_is_enabled_returns_true_when_enabled() {
+        let config = OutboxConfig {
+            enabled: true,
+            max_retries: 10,
+            recovery_interval_secs: 5,
+        };
+        assert!(config.is_enabled());
+    }
+
+    #[test]
+    fn test_is_enabled_returns_false_when_disabled_and_no_env() {
+        // Clear env var if set
+        std::env::remove_var(OUTBOX_ENABLED_ENV_VAR);
+
+        let config = OutboxConfig {
+            enabled: false,
+            max_retries: 10,
+            recovery_interval_secs: 5,
+        };
+        assert!(!config.is_enabled());
+    }
+
+    #[test]
+    fn test_max_retries_value_is_respected() {
+        let config = OutboxConfig {
+            enabled: false,
+            max_retries: 5,
+            recovery_interval_secs: 10,
+        };
+        assert_eq!(config.max_retries, 5);
+        assert_ne!(config.max_retries, 10); // Not the default
+    }
+
+    #[test]
+    fn test_recovery_interval_value_is_respected() {
+        let config = OutboxConfig {
+            enabled: false,
+            max_retries: 10,
+            recovery_interval_secs: 30,
+        };
+        assert_eq!(config.recovery_interval_secs, 30);
+        assert_ne!(config.recovery_interval_secs, 5); // Not the default
+    }
 }
 
 #[cfg(all(test, feature = "sqlite"))]
