@@ -63,14 +63,7 @@ impl StandaloneAggregateService {
     /// Validate that the command is for this service's domain.
     #[allow(clippy::result_large_err)]
     fn validate_domain(&self, command: &CommandBook) -> Result<(), Status> {
-        let cmd_domain = command.domain();
-        if cmd_domain != self.domain {
-            return Err(Status::invalid_argument(format!(
-                "Command domain '{}' does not match service domain '{}'",
-                cmd_domain, self.domain
-            )));
-        }
-        Ok(())
+        validate_domain_match(command.domain(), &self.domain, "Command")
     }
 }
 
@@ -101,19 +94,8 @@ impl CommandHandlerCoordinatorService for StandaloneAggregateService {
         })?;
         self.validate_domain(&command)?;
 
-        let (as_of_sequence, as_of_timestamp) = match speculate_req.point_in_time {
-            Some(temporal) => match temporal.point_in_time {
-                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
-                    (Some(seq), None)
-                }
-                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
-                    let ts_str = format!("{}.{}", ts.seconds, ts.nanos);
-                    (None, Some(ts_str))
-                }
-                None => (None, None),
-            },
-            None => (None, None),
-        };
+        let (as_of_sequence, as_of_timestamp) =
+            parse_temporal_query(speculate_req.point_in_time.as_ref());
 
         let response = self
             .router
@@ -197,13 +179,7 @@ impl SingleDomainEventQuery {
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("");
-        if query_domain != self.domain {
-            return Err(Status::invalid_argument(format!(
-                "Query domain '{}' does not match service domain '{}'",
-                query_domain, self.domain
-            )));
-        }
-        Ok(())
+        validate_domain_match(query_domain, &self.domain, "Query")
     }
 
     fn get_repo(&self) -> EventBookRepository {
@@ -398,5 +374,134 @@ impl ServerInfo {
     /// Signal the server to shut down.
     pub fn shutdown(self) {
         let _ = self.shutdown_tx.send(());
+    }
+}
+
+// ============================================================================
+// Pure Helper Functions (testable without infrastructure)
+// ============================================================================
+
+/// Validate that actual domain matches expected domain.
+///
+/// Returns an error with context about which component and mismatched values.
+#[allow(clippy::result_large_err)]
+fn validate_domain_match(actual: &str, expected: &str, context: &str) -> Result<(), Status> {
+    if actual != expected {
+        return Err(Status::invalid_argument(format!(
+            "{} domain '{}' does not match service domain '{}'",
+            context, actual, expected
+        )));
+    }
+    Ok(())
+}
+
+/// Parse temporal query into (as_of_sequence, as_of_timestamp) tuple.
+///
+/// Returns (None, None) if no temporal query is specified.
+fn parse_temporal_query(
+    point_in_time: Option<&crate::proto::TemporalQuery>,
+) -> (Option<u32>, Option<String>) {
+    match point_in_time {
+        Some(temporal) => match temporal.point_in_time {
+            Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => (Some(seq), None),
+            Some(crate::proto::temporal_query::PointInTime::AsOfTime(ref ts)) => {
+                let ts_str = format!("{}.{}", ts.seconds, ts.nanos);
+                (None, Some(ts_str))
+            }
+            None => (None, None),
+        },
+        None => (None, None),
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // validate_domain_match Tests
+    // ========================================================================
+
+    #[test]
+    fn test_validate_domain_match_same_domain_succeeds() {
+        let result = validate_domain_match("orders", "orders", "Command");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_domain_match_different_domain_fails() {
+        let result = validate_domain_match("inventory", "orders", "Command");
+        assert!(result.is_err());
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("inventory"));
+        assert!(status.message().contains("orders"));
+    }
+
+    #[test]
+    fn test_validate_domain_match_empty_domain_fails() {
+        let result = validate_domain_match("", "orders", "Query");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_domain_match_context_in_message() {
+        let result = validate_domain_match("a", "b", "Event");
+        let status = result.unwrap_err();
+        assert!(status.message().contains("Event"));
+    }
+
+    // ========================================================================
+    // parse_temporal_query Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_temporal_query_none_returns_none_none() {
+        let (seq, ts) = parse_temporal_query(None);
+        assert!(seq.is_none());
+        assert!(ts.is_none());
+    }
+
+    #[test]
+    fn test_parse_temporal_query_as_of_sequence() {
+        use crate::proto::{temporal_query::PointInTime, TemporalQuery};
+
+        let temporal = TemporalQuery {
+            point_in_time: Some(PointInTime::AsOfSequence(42)),
+        };
+        let (seq, ts) = parse_temporal_query(Some(&temporal));
+        assert_eq!(seq, Some(42));
+        assert!(ts.is_none());
+    }
+
+    #[test]
+    fn test_parse_temporal_query_as_of_time() {
+        use crate::proto::{temporal_query::PointInTime, TemporalQuery};
+
+        let temporal = TemporalQuery {
+            point_in_time: Some(PointInTime::AsOfTime(prost_types::Timestamp {
+                seconds: 1704067200,
+                nanos: 123456789,
+            })),
+        };
+        let (seq, ts) = parse_temporal_query(Some(&temporal));
+        assert!(seq.is_none());
+        assert_eq!(ts, Some("1704067200.123456789".to_string()));
+    }
+
+    #[test]
+    fn test_parse_temporal_query_empty_point_in_time() {
+        use crate::proto::TemporalQuery;
+
+        let temporal = TemporalQuery {
+            point_in_time: None,
+        };
+        let (seq, ts) = parse_temporal_query(Some(&temporal));
+        assert!(seq.is_none());
+        assert!(ts.is_none());
     }
 }
