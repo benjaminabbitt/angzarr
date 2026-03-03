@@ -107,7 +107,10 @@ func (s *TableHandSaga) handleHandStarted(
 // docs:end:saga_handler
 // docs:end:saga_oo
 
+// docs:start:event_router
 func main() {
 	saga := NewTableHandSaga()
 	angzarr.RunOOSagaServer("saga-table-hand", "50211", saga)
 }
+
+// docs:end:event_router

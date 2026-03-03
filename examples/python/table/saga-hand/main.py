@@ -115,6 +115,8 @@ class TableHandSaga(Saga):
 # docs:end:saga_oo
 
 
+# docs:start:event_router
 if __name__ == "__main__":
     handler = SagaHandler(TableHandSaga)
     run_saga_server("saga-table-hand", "50411", handler, logger=logger)
+# docs:end:event_router
