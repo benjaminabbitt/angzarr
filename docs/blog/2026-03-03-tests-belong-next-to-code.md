@@ -244,8 +244,8 @@ Look at the pattern:
 |----------|-------------------|------------|
 | Java | No conditional compilation; classpath-based class loading | Parallel directory trees (`src/main` vs `src/test`) |
 | .NET | Assembly-based deployment; per-project dependencies | Separate projects (`MyApp` vs `MyApp.Tests`) |
-| Rust | *None*—`#[cfg]` eliminates code at compile time | Tests in same file |
-| Go | *None*—`_test.go` convention excludes files from build | Tests in same directory |
+| Rust | *None:* `#[cfg]` eliminates code at compile time | Tests in same file |
+| Go | *None:* `_test.go` convention excludes files from build | Tests in same directory |
 
 Java and .NET adopted physical separation because their toolchains couldn't selectively exclude code. The directory structure *became* the exclusion mechanism. It wasn't a design choice for developer ergonomics; it was the only option available.
 
@@ -310,11 +310,11 @@ mod correlation_unit_tests;
 mod correlation_contract_tests;
 ```
 
-We don't currently use this, and needing it is generally a code smell—if your source file needs multiple test files, the source file is probably doing too much. But the option exists for cases where it's genuinely valuable: separating fast unit tests from slower contract tests, or organizing tests by behavior category when a module legitimately has broad responsibilities.
+We don't currently use this, and needing it is generally a code smell: if your source file needs multiple test files, the source file is probably doing too much. But the option exists for cases where it's genuinely valuable: separating fast unit tests from slower contract tests, or organizing tests by behavior category when a module legitimately has broad responsibilities.
 
 ## When Separation Makes Sense
 
-I'm not absolutist about this. Some testing scenarios benefit from separation—and understanding where tests belong is part of understanding the [testing pyramid](https://martinfowler.com/bliki/TestPyramid.html):
+I'm not absolutist about this. Some testing scenarios benefit from separation, and understanding where tests belong is part of understanding the [testing pyramid](https://martinfowler.com/bliki/TestPyramid.html):
 
 **Integration tests** that exercise multiple modules often belong in a dedicated `tests/` directory. They're not testing one file; they're testing interactions.
 
@@ -359,13 +359,13 @@ For years, I advocated for tests *in the same file*. Rust's `#[cfg(test)] mod te
 
 Then I started working extensively with AI coding assistants.
 
-AI tools operate within context windows—a fixed budget of tokens they can "see" at once. Every line of code loaded into context is a line that competes for attention. When an AI reads a 500-line file where 300 lines are tests, it's spending 60% of its context budget on code that's irrelevant to most tasks.
+AI tools operate within context windows, a fixed budget of tokens they can "see" at once. Every line of code loaded into context is a line that competes for attention. When an AI reads a 500-line file where 300 lines are tests, it's spending 60% of its context budget on code that's irrelevant to most tasks.
 
 **The problem isn't that tests exist. It's that they're in the way.**
 
 When I ask an AI to "understand how UserService handles authentication," it doesn't need to see 47 test cases. It needs the implementation. But if tests are inline, the AI loads them anyway. Context fills up. Important code gets truncated or summarized. The AI's understanding degrades.
 
-Worse, when searching for business logic across a codebase, inline tests create noise. "Find where we validate email addresses" returns hits in test assertions, test fixtures, test helpers—all irrelevant to understanding the production validation logic.
+Worse, when searching for business logic across a codebase, inline tests create noise. "Find where we validate email addresses" returns hits in test assertions, test fixtures, test helpers, all irrelevant to understanding the production validation logic.
 
 ### The New Position: Separate Files, Same Directory
 
@@ -383,7 +383,7 @@ src/
 └── mod.rs
 ```
 
-This preserves colocation—tests are *adjacent*, one directory listing shows them together—while enabling selective loading. An AI (or human) exploring business logic can skip `.test` files entirely. When it's time to maintain tests, they're right there.
+This preserves colocation (tests are *adjacent*, one directory listing shows them together) while enabling selective loading. An AI (or human) exploring business logic can skip `.test` files entirely. When it's time to maintain tests, they're right there.
 
 ### Instructing AI to Skip Test Files
 
@@ -401,7 +401,7 @@ The tests still exist. They're still adjacent. They're still discoverable. But t
 
 Let me be honest about what's lost:
 
-**Inline tests were more visible.** You couldn't miss them—they were right there when you opened the file. Separate files require knowing to look for them.
+**Inline tests were more visible.** You couldn't miss them; they were right there when you opened the file. Separate files require knowing to look for them.
 
 **Inline tests encouraged reading.** Scroll down, see tests, understand usage. With separate files, there's an extra step.
 
@@ -425,7 +425,7 @@ Traditionally, we drew a hard line between unit tests and integration tests:
 - **Unit tests**: Fast, no external dependencies, run anywhere, colocate with code
 - **Integration tests**: Slow, need databases/queues/services, run in CI, separate directory
 
-This separation made sense when "integration test" meant "spin up a full environment." You wouldn't colocate tests that require PostgreSQL next to your repository implementation—they'd fail on every developer's machine without the right setup.
+This separation made sense when "integration test" meant "spin up a full environment." You wouldn't colocate tests that require PostgreSQL next to your repository implementation; they'd fail on every developer's machine without the right setup.
 
 [Testcontainers](https://testcontainers.com/) changed this. (In Rust, we use [testcontainers-rs](https://docs.rs/testcontainers/).)
 
@@ -447,7 +447,7 @@ This test spins up a real PostgreSQL instance in [Docker](https://www.docker.com
 
 **What does this mean for test organization?**
 
-Tests that verify trait implementations—`EventStore`, `SnapshotStore`, `MessageBus`—are no longer "integration tests" in the traditional sense. They're interface contract tests. They verify that a specific implementation correctly fulfills its contract.
+Tests that verify trait implementations (`EventStore`, `SnapshotStore`, `MessageBus`) are no longer "integration tests" in the traditional sense. They're interface contract tests. They verify that a specific implementation correctly fulfills its contract.
 
 These tests *should* live near the implementation:
 
@@ -462,7 +462,7 @@ src/
 
 The "real database" aspect doesn't change where the test belongs. It's still testing one module's behavior. It's still colocated. It just happens to need a container.
 
-**The new distinction isn't unit vs integration—[it's scope](https://martinfowler.com/articles/practical-test-pyramid.html).**
+**The new distinction isn't unit vs integration; [it's scope](https://martinfowler.com/articles/practical-test-pyramid.html).**
 
 | Test Type | What It Tests | Where It Lives |
 |-----------|--------------|----------------|
@@ -488,7 +488,7 @@ fn test_pure_logic() { /* runs always */ }
 fn test_postgres_storage() { /* runs with --features testcontainers */ }
 ```
 
-Local development runs the fast tests continuously. [Pre-commit hooks](https://pre-commit.com/) and CI run everything. The slower tests are still colocated—they're just conditionally executed.
+Local development runs the fast tests continuously. [Pre-commit hooks](https://pre-commit.com/) and CI run everything. The slower tests are still colocated; they're just conditionally executed.
 
 **Mocks are for boundaries, not implementations**
 
@@ -502,11 +502,11 @@ If I *can* test against the real thing cheaply, I should. Testcontainers made "t
 
 ### This Isn't a Reversal
 
-I still believe tests belong *next to* code—same directory, obvious relationship, no parallel tree structure. I still reject the `src/main`/`src/test` split.
+I still believe tests belong *next to* code: same directory, obvious relationship, no parallel tree structure. I still reject the `src/main`/`src/test` split.
 
 What's changed is the file boundary. Tests adjacent in the directory structure, but not inline in the same file. Colocation without conflation.
 
-The principle remains: **tests should be discoverable and contextually related to the code they test**. The implementation adapts to new constraints—specifically, the constraint that every token in an AI's context window has a cost.
+The principle remains: **tests should be discoverable and contextually related to the code they test**. The implementation adapts to new constraints, specifically the constraint that every token in an AI's context window has a cost.
 
 ### This Won't Be the Answer Forever
 
