@@ -308,6 +308,8 @@ After running `cargo mutants`, you'll see patterns:
 
 **Contract tests MUST break the build.** This diverges from Fowler's historical position that contract tests shouldn't fail builds because they test external dependencies outside your control. In the modern paradigm with testcontainers and hermetic builds, we control the dependency versions—contract tests verify our code works with specific, pinned versions of backing services. A failing contract test means real breakage that must be fixed before merge.
 
+**We also diverge from the testcontainers authors**, who classify these as "integration tests." Testcontainers enable **contract/interface testing**—verifying implementations fulfill trait contracts against real backing services. We use this more akin to unit testing: isolated verification of a single implementation against its contract, not full-stack integration. Full integration test suites belong in staging environments that mirror production. Ephemeral full-stack tests have value, but less so—you want your primary integration suite running against something production-like. Testcontainers excel at contract verification, not end-to-end integration.
+
 Verify that storage and bus implementations correctly fulfill their trait contracts. Uses **testcontainers** to provision real databases/message brokers in Docker containers.
 
 **Full-support backends** (SQLite, PostgreSQL) use Gherkin interface tests:
