@@ -219,8 +219,7 @@ impl AggregateContext for GrpcAggregateContext {
         // Check if snapshot changed (compare state bytes)
         let snapshot_changed = match (&prior.snapshot, &received.snapshot) {
             (None, Some(s)) => s.state.is_some(),
-            (Some(_), None) => false, // Client cleared snapshot, don't persist
-            (None, None) => false,
+            (Some(_), None) | (None, None) => false, // No snapshot or client cleared it
             (Some(p), Some(r)) => {
                 let prior_state = p.state.as_ref().map(|s| &s.value);
                 let received_state = r.state.as_ref().map(|s| &s.value);

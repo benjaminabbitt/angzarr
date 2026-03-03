@@ -139,6 +139,132 @@ fn dispatch_to_handlers(
     });
 }
 
+/// Action to take after processing a message.
+#[derive(Debug, PartialEq)]
+enum MessageAction {
+    /// Continue reading from the pipe.
+    Continue,
+    /// Break inner loop, reopen pipe (EOF or recoverable error).
+    Reopen,
+    /// Exit consumer entirely (fatal error).
+    Exit,
+}
+
+/// Process a single read result from the pipe.
+///
+/// Handles message decoding, filtering, and dispatching to handlers.
+/// Returns an action indicating what the consumer loop should do next.
+fn process_read_result(
+    result: ReadResult,
+    pipe_path: &std::path::Path,
+    domains: &[String],
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    checkpoint: &Checkpoint,
+    rt: &tokio::runtime::Handle,
+) -> MessageAction {
+    match result {
+        ReadResult::Message(buf) => {
+            let book = match EventBook::decode(&buf[..]) {
+                Ok(b) => Arc::new(b),
+                Err(e) => {
+                    error!(error = %e, "Failed to decode EventBook");
+                    return MessageAction::Continue;
+                }
+            };
+
+            if !should_process_message(&book, domains, checkpoint, rt) {
+                return MessageAction::Continue;
+            }
+
+            debug!(routing_key = %book.routing_key(), "Received event via pipe");
+            dispatch_to_handlers(book, handlers, checkpoint, rt);
+            MessageAction::Continue
+        }
+        ReadResult::Eof => {
+            rt.block_on(async {
+                if let Err(e) = checkpoint.flush().await {
+                    warn!(error = %e, "Failed to flush checkpoint on pipe EOF");
+                }
+            });
+            debug!(pipe = %pipe_path.display(), "Pipe EOF, reopening");
+            MessageAction::Reopen
+        }
+        ReadResult::TooLarge(len) => {
+            error!(len, "Message too large");
+            MessageAction::Reopen
+        }
+        ReadResult::Error(e) => {
+            error!(error = %e, "Pipe read error");
+            MessageAction::Exit
+        }
+    }
+}
+
+/// Read messages from a pipe connection until EOF or error.
+///
+/// Returns true to continue outer loop (reopen pipe), false to exit entirely.
+fn handle_pipe_connection(
+    file: &mut File,
+    pipe_path: &std::path::Path,
+    domains: &[String],
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    checkpoint: &Checkpoint,
+    rt: &tokio::runtime::Handle,
+) -> bool {
+    loop {
+        let result = read_length_prefixed_message(file);
+        match process_read_result(result, pipe_path, domains, handlers, checkpoint, rt) {
+            MessageAction::Continue => continue,
+            MessageAction::Reopen => return true,
+            MessageAction::Exit => return false,
+        }
+    }
+}
+
+/// Run the IPC consumer loop with reconnection logic.
+///
+/// This is the main consumer loop that:
+/// 1. Opens the pipe (blocks until a writer connects)
+/// 2. Reads messages until EOF
+/// 3. Reopens the pipe and repeats (unless shutdown or fatal error)
+fn run_consumer_loop(
+    pipe_path: &std::path::Path,
+    domains: &[String],
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    checkpoint: &Checkpoint,
+    shutdown: &AtomicBool,
+) {
+    let rt = tokio::runtime::Handle::current();
+
+    loop {
+        if shutdown.load(Ordering::Relaxed) {
+            debug!(pipe = %pipe_path.display(), "IPC consumer shutting down");
+            return;
+        }
+
+        let mut file = match File::open(pipe_path) {
+            Ok(f) => f,
+            Err(e) => {
+                error!(pipe = %pipe_path.display(), error = %e, "Failed to open pipe");
+                return;
+            }
+        };
+
+        // Check shutdown after unblocking from open
+        if shutdown.load(Ordering::Relaxed) {
+            debug!(pipe = %pipe_path.display(), "IPC consumer shutting down");
+            return;
+        }
+
+        info!(pipe = %pipe_path.display(), "IPC consumer connected");
+
+        if !handle_pipe_connection(&mut file, pipe_path, domains, handlers, checkpoint, &rt) {
+            return; // Fatal error, exit entirely
+        }
+        // Otherwise continue loop to reopen pipe
+    }
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -336,76 +462,7 @@ impl IpcEventBus {
 
         // Spawn blocking task for pipe reading (pipes are blocking I/O)
         let handle = tokio::task::spawn_blocking(move || {
-            let rt = tokio::runtime::Handle::current();
-
-            // Outer loop: reopen pipe after EOF (writers may close and reopen)
-            loop {
-                if shutdown.load(Ordering::Relaxed) {
-                    debug!(pipe = %pipe_path.display(), "IPC consumer shutting down");
-                    return;
-                }
-
-                // Open pipe for reading (blocks until writer opens)
-                let mut file = match File::open(&pipe_path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        error!(pipe = %pipe_path.display(), error = %e, "Failed to open pipe");
-                        return;
-                    }
-                };
-
-                // Check shutdown after unblocking from open
-                if shutdown.load(Ordering::Relaxed) {
-                    debug!(pipe = %pipe_path.display(), "IPC consumer shutting down");
-                    return;
-                }
-
-                info!(pipe = %pipe_path.display(), "IPC consumer connected");
-
-                // Inner loop: read messages until EOF
-                loop {
-                    match read_length_prefixed_message(&mut file) {
-                        ReadResult::Message(buf) => {
-                            // Decode EventBook
-                            let book = match EventBook::decode(&buf[..]) {
-                                Ok(b) => Arc::new(b),
-                                Err(e) => {
-                                    error!(error = %e, "Failed to decode EventBook");
-                                    continue;
-                                }
-                            };
-
-                            // Filter and check checkpoint
-                            if !should_process_message(&book, &domains, &checkpoint, &rt) {
-                                continue;
-                            }
-
-                            debug!(routing_key = %book.routing_key(), "Received event via pipe");
-
-                            // Dispatch to handlers
-                            dispatch_to_handlers(book, &handlers, &checkpoint, &rt);
-                        }
-                        ReadResult::Eof => {
-                            // Pipe closed by writers — flush checkpoint before reopening
-                            rt.block_on(async {
-                                if let Err(e) = checkpoint.flush().await {
-                                    warn!(error = %e, "Failed to flush checkpoint on pipe EOF");
-                                }
-                            });
-                            debug!(pipe = %pipe_path.display(), "Pipe EOF, reopening");
-                            break; // Break inner loop, continue outer to reopen
-                        }
-                        ReadResult::TooLarge(len) => {
-                            error!(len, "Message too large");
-                            break;
-                        }
-                        ReadResult::Error(e) => {
-                            error!(error = %e, "Pipe read error");
-                            return; // Fatal error, exit entirely
-                        }
-                    }
-                }
-            }
+            run_consumer_loop(&pipe_path, &domains, &handlers, &checkpoint, &shutdown);
         });
 
         *self.consumer_task.write().await = Some(handle);
@@ -535,211 +592,5 @@ fn matches_domain_filter(routing_key: &str, domains: &[String]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ========================================================================
-    // Domain Filter Tests - Catch mutations on line 87
-    // ========================================================================
-
-    #[test]
-    fn test_matches_domain_filter_empty_domains_accepts_any() {
-        let domains: Vec<String> = vec![];
-        assert!(matches_domain_filter("orders", &domains));
-        assert!(matches_domain_filter("inventory", &domains));
-        assert!(matches_domain_filter("anything", &domains));
-    }
-
-    #[test]
-    fn test_matches_domain_filter_wildcard_accepts_any() {
-        let domains = vec!["#".to_string()];
-        assert!(matches_domain_filter("orders", &domains));
-        assert!(matches_domain_filter("inventory", &domains));
-        assert!(matches_domain_filter("anything", &domains));
-    }
-
-    #[test]
-    fn test_matches_domain_filter_specific_domain_matches() {
-        let domains = vec!["orders".to_string()];
-        assert!(matches_domain_filter("orders", &domains));
-    }
-
-    #[test]
-    fn test_matches_domain_filter_specific_domain_rejects_mismatch() {
-        let domains = vec!["orders".to_string()];
-        assert!(!matches_domain_filter("inventory", &domains));
-        assert!(!matches_domain_filter("fulfillment", &domains));
-    }
-
-    #[test]
-    fn test_matches_domain_filter_multiple_domains() {
-        let domains = vec!["orders".to_string(), "inventory".to_string()];
-        assert!(matches_domain_filter("orders", &domains));
-        assert!(matches_domain_filter("inventory", &domains));
-        assert!(!matches_domain_filter("fulfillment", &domains));
-    }
-
-    #[test]
-    fn test_matches_domain_filter_wildcard_with_specific() {
-        // Wildcard in list should accept all
-        let domains = vec!["orders".to_string(), "#".to_string()];
-        assert!(matches_domain_filter("orders", &domains));
-        assert!(matches_domain_filter("inventory", &domains));
-        assert!(matches_domain_filter("anything", &domains));
-    }
-
-    // ========================================================================
-    // Length-Prefixed Protocol Tests - Catch mutations on lines 48-73
-    // ========================================================================
-
-    #[test]
-    fn test_length_prefix_big_endian_encoding() {
-        // Verify the 4-byte big-endian format used by the protocol
-        let len: u32 = 0x00000100; // 256 in decimal
-        let bytes = len.to_be_bytes();
-        assert_eq!(bytes, [0x00, 0x00, 0x01, 0x00]);
-
-        // Verify round-trip
-        let decoded = u32::from_be_bytes(bytes);
-        assert_eq!(decoded, 256);
-    }
-
-    #[test]
-    fn test_length_prefix_small_values() {
-        // Test small message lengths
-        let bytes = 10u32.to_be_bytes();
-        assert_eq!(bytes, [0x00, 0x00, 0x00, 0x0A]);
-        assert_eq!(u32::from_be_bytes(bytes), 10);
-    }
-
-    #[test]
-    fn test_length_prefix_max_valid() {
-        // Test maximum valid message size (just under 10MB)
-        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
-        let len = (MAX_MESSAGE_SIZE - 1) as u32;
-        let bytes = len.to_be_bytes();
-        let decoded = u32::from_be_bytes(bytes);
-        assert_eq!(decoded as usize, MAX_MESSAGE_SIZE - 1);
-        assert!((decoded as usize) < MAX_MESSAGE_SIZE);
-    }
-
-    #[test]
-    fn test_max_message_size_constant() {
-        // Verify the 10MB limit constant
-        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
-        assert_eq!(MAX_MESSAGE_SIZE, 10_485_760);
-        assert!(MAX_MESSAGE_SIZE > 1024 * 1024); // More than 1MB
-        assert!(MAX_MESSAGE_SIZE < 100 * 1024 * 1024); // Less than 100MB
-    }
-
-    #[test]
-    fn test_length_prefix_over_max_would_be_rejected() {
-        // Verify that lengths over MAX would be rejected
-        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
-        let too_large = (MAX_MESSAGE_SIZE + 1) as u32;
-        let bytes = too_large.to_be_bytes();
-        let decoded = u32::from_be_bytes(bytes) as usize;
-        assert!(decoded > MAX_MESSAGE_SIZE);
-    }
-
-    // ========================================================================
-    // IPC Config Tests
-    // ========================================================================
-
-    #[test]
-    fn test_ipc_config_publisher() {
-        let config = IpcConfig::publisher("/tmp/test");
-        assert_eq!(config.base_path, PathBuf::from("/tmp/test"));
-        assert!(config.subscriber_name.is_none());
-    }
-
-    #[test]
-    fn test_ipc_config_subscriber() {
-        let config = IpcConfig::subscriber("/tmp/test", "my-projector", vec!["orders".to_string()]);
-        assert_eq!(config.base_path, PathBuf::from("/tmp/test"));
-        assert_eq!(config.subscriber_name, Some("my-projector".to_string()));
-        assert_eq!(config.domains, vec!["orders".to_string()]);
-        assert_eq!(
-            config.subscriber_pipe(),
-            Some(PathBuf::from("/tmp/test/subscriber-my-projector.pipe"))
-        );
-    }
-
-    #[test]
-    fn test_ipc_config_publisher_with_subscribers() {
-        let subs = vec![SubscriberInfo {
-            name: "test".to_string(),
-            domains: vec!["orders".to_string()],
-            pipe_path: PathBuf::from("/tmp/test.pipe"),
-        }];
-        let config = IpcConfig::publisher_with_subscribers("/tmp/test", subs);
-        assert_eq!(config.subscribers.len(), 1);
-    }
-
-    #[test]
-    fn test_subscriber_config_enables_checkpoint() {
-        let config = IpcConfig::subscriber("/tmp/test", "my-saga", vec![]);
-        assert!(config.checkpoint_enabled);
-    }
-
-    #[test]
-    fn test_publisher_config_disables_checkpoint() {
-        let config = IpcConfig::publisher("/tmp/test");
-        assert!(!config.checkpoint_enabled);
-    }
-
-    #[test]
-    fn test_max_page_sequence_empty() {
-        let book = EventBook {
-            cover: None,
-            pages: vec![],
-            snapshot: None,
-            ..Default::default()
-        };
-        assert_eq!(max_page_sequence(&book), None);
-    }
-
-    #[test]
-    fn test_max_page_sequence_single_page() {
-        use crate::proto::EventPage;
-        let book = EventBook {
-            cover: None,
-            pages: vec![EventPage {
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
-                payload: None,
-                created_at: None,
-            }],
-            snapshot: None,
-            ..Default::default()
-        };
-        assert_eq!(max_page_sequence(&book), Some(5));
-    }
-
-    #[test]
-    fn test_max_page_sequence_multiple_pages() {
-        use crate::proto::EventPage;
-        let book = EventBook {
-            cover: None,
-            pages: vec![
-                EventPage {
-                    sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(2)),
-                    payload: None,
-                    created_at: None,
-                },
-                EventPage {
-                    sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(7)),
-                    payload: None,
-                    created_at: None,
-                },
-                EventPage {
-                    sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(4)),
-                    payload: None,
-                    created_at: None,
-                },
-            ],
-            snapshot: None,
-            ..Default::default()
-        };
-        assert_eq!(max_page_sequence(&book), Some(7));
-    }
-}
+#[path = "client.test.rs"]
+mod tests;

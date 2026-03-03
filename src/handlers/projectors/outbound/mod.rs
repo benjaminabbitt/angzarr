@@ -451,7 +451,7 @@ fn wrap_eventbook_as_cloudevent(
         .ty(format!("angzarr.{}", event_type))
         .source(source)
         .time(time)
-        .subject(root_id.clone())
+        .subject(root_id)
         .data("application/x-protobuf", book_bytes);
 
     // Add correlation_id as extension if present

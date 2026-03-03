@@ -266,8 +266,7 @@ impl AggregateContext for LocalAggregateContext {
         // Check if snapshot changed (compare state bytes)
         let snapshot_changed = match (&prior.snapshot, &received.snapshot) {
             (None, Some(s)) => s.state.is_some(),
-            (Some(_), None) => false, // Client cleared snapshot, don't persist
-            (None, None) => false,
+            (Some(_), None) | (None, None) => false, // No snapshot or client cleared it
             (Some(p), Some(r)) => {
                 // Compare state bytes
                 let prior_state = p.state.as_ref().map(|s| &s.value);

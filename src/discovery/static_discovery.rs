@@ -306,33 +306,10 @@ impl super::ServiceDiscovery for StaticServiceDiscovery {
 
         // Fallback to EVENT_QUERY_ADDRESS_ENV_VAR env var
         if let Ok(addr) = std::env::var(EVENT_QUERY_ADDRESS_ENV_VAR) {
-            // Parse address - may be "host:port" or "http://host:port"
-            let (host, port) = if addr.starts_with("http://") || addr.starts_with("https://") {
-                // Already a URL, extract host:port
-                let without_scheme = addr
-                    .trim_start_matches("http://")
-                    .trim_start_matches("https://");
-                if let Some((h, p)) = without_scheme.rsplit_once(':') {
-                    let port = p.parse().unwrap_or_else(|_| {
-                        warn!(port_str = %p, address = %addr, "Failed to parse port, defaulting to 80");
-                        80
-                    });
-                    (h.to_string(), port)
-                } else {
-                    (without_scheme.to_string(), 80)
-                }
-            } else if let Some((h, p)) = addr.rsplit_once(':') {
-                // host:port format
-                let port = p.parse().unwrap_or_else(|_| {
-                    warn!(port_str = %p, address = %addr, "Failed to parse port, defaulting to 80");
-                    80
-                });
-                (h.to_string(), port)
-            } else {
-                // Just host, default port
+            let (host, port) = parse_url(&addr).unwrap_or_else(|| {
+                warn!(address = %addr, "Failed to parse EVENT_QUERY_ADDRESS, using raw address with port 80");
                 (addr, 80)
-            };
-
+            });
             let service = DiscoveredService {
                 name: format!("{}-event-query-fallback", domain),
                 service_address: host,
@@ -496,110 +473,5 @@ fn parse_url(url: &str) -> Option<(String, u16)> {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Tests for static service discovery.
-    //!
-    //! Static discovery provides service lookup without K8s dependencies:
-    //! - Services registered manually or via environment variables
-    //! - No background watching (unlike K8s discovery)
-    //! - Suitable for local development, Cloud Run, VMs
-    //!
-    //! Key behaviors verified:
-    //! - URL parsing handles UDS paths, HTTP/HTTPS, host:port formats
-    //! - Registration adds services to the appropriate cache
-    //! - Sync and async registration both work
-
-    use super::*;
-    use crate::discovery::ServiceDiscovery;
-
-    // ============================================================================
-    // URL Parsing Tests
-    // ============================================================================
-
-    /// UDS paths are recognized and parsed with port=0.
-    #[test]
-    fn test_parse_url_uds() {
-        let (addr, port) = parse_url("/tmp/angzarr/test.sock").unwrap();
-        assert_eq!(addr, "/tmp/angzarr/test.sock");
-        assert_eq!(port, 0);
-    }
-
-    /// HTTP URLs are parsed correctly.
-    #[test]
-    fn test_parse_url_http() {
-        let (addr, port) = parse_url("http://localhost:8080").unwrap();
-        assert_eq!(addr, "localhost");
-        assert_eq!(port, 8080);
-    }
-
-    /// HTTPS URLs default to port 443.
-    #[test]
-    fn test_parse_url_https() {
-        let (addr, port) = parse_url("https://order-coordinator.run.app").unwrap();
-        assert_eq!(addr, "order-coordinator.run.app");
-        assert_eq!(port, 443);
-    }
-
-    /// HTTPS URLs with explicit port override default 443.
-    #[test]
-    fn test_parse_url_https_with_port() {
-        let (addr, port) = parse_url("https://order-coordinator.run.app:8443").unwrap();
-        assert_eq!(addr, "order-coordinator.run.app");
-        assert_eq!(port, 8443);
-    }
-
-    /// Plain host:port format is parsed correctly.
-    #[test]
-    fn test_parse_url_host_port() {
-        let (addr, port) = parse_url("localhost:50051").unwrap();
-        assert_eq!(addr, "localhost");
-        assert_eq!(port, 50051);
-    }
-
-    /// URL paths are stripped (only host:port used for gRPC).
-    #[test]
-    fn test_parse_url_with_path() {
-        let (addr, port) = parse_url("https://order-coordinator.run.app/api/v1").unwrap();
-        assert_eq!(addr, "order-coordinator.run.app");
-        assert_eq!(port, 443);
-    }
-
-    // ============================================================================
-    // Registration Tests
-    // ============================================================================
-
-    /// Aggregate registration adds service and updates has_aggregates().
-    #[tokio::test]
-    async fn test_static_discovery_register_aggregate() {
-        let discovery = StaticServiceDiscovery::new();
-        discovery
-            .register_aggregate("order", "localhost", 50051)
-            .await;
-
-        assert!(discovery.has_aggregates().await);
-        let domains = discovery.aggregate_domains().await;
-        assert_eq!(domains, vec!["order"]);
-    }
-
-    /// Projector registration adds service and updates has_projectors().
-    #[tokio::test]
-    async fn test_static_discovery_register_projector() {
-        let discovery = StaticServiceDiscovery::new();
-        discovery
-            .register_projector("web", "order", "localhost", 50052)
-            .await;
-
-        assert!(discovery.has_projectors().await);
-    }
-
-    /// Sync registration works for use in constructors (no async runtime).
-    #[test]
-    fn test_static_discovery_sync_registration() {
-        let discovery = StaticServiceDiscovery::new();
-        discovery.register_aggregate_sync("order", "localhost", 50051);
-        discovery.register_projector_sync("web", "order", "localhost", 50052);
-
-        assert!(!discovery.aggregates.blocking_read().is_empty());
-        assert!(!discovery.projectors.blocking_read().is_empty());
-    }
-}
+#[path = "static_discovery.test.rs"]
+mod tests;

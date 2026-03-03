@@ -105,7 +105,7 @@ pub fn full_type_url<T: Name>() -> String {
 
 /// Get the fully-qualified type name for message type T (without URL prefix).
 pub fn full_type_name<T: Name>() -> String {
-    T::full_name().to_string()
+    T::full_name()
 }
 
 /// Convert a UUID to its protobuf representation.

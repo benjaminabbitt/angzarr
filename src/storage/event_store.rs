@@ -38,16 +38,16 @@ impl AddOutcome {
     /// Returns the first sequence number regardless of outcome.
     pub fn first_sequence(&self) -> u32 {
         match self {
-            AddOutcome::Added { first_sequence, .. } => *first_sequence,
-            AddOutcome::Duplicate { first_sequence, .. } => *first_sequence,
+            AddOutcome::Added { first_sequence, .. }
+            | AddOutcome::Duplicate { first_sequence, .. } => *first_sequence,
         }
     }
 
     /// Returns the last sequence number regardless of outcome.
     pub fn last_sequence(&self) -> u32 {
         match self {
-            AddOutcome::Added { last_sequence, .. } => *last_sequence,
-            AddOutcome::Duplicate { last_sequence, .. } => *last_sequence,
+            AddOutcome::Added { last_sequence, .. }
+            | AddOutcome::Duplicate { last_sequence, .. } => *last_sequence,
         }
     }
 }

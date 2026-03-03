@@ -197,18 +197,7 @@ impl EventQueryTrait for SingleDomainEventQuery {
         let query = request.into_inner();
         self.validate_domain(&query)?;
 
-        let cover = query
-            .cover
-            .as_ref()
-            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_COVER))?;
-        let edition = cover.edition_opt();
-        let root = cover
-            .root
-            .as_ref()
-            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_ROOT))?;
-        let root_uuid = uuid::Uuid::from_slice(&root.value)
-            .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
-
+        let (edition, root_uuid) = parse_query_cover(&query)?;
         let repo = self.get_repo();
 
         let book = match query.selection {
@@ -270,18 +259,9 @@ impl EventQueryTrait for SingleDomainEventQuery {
         let query = request.into_inner();
         self.validate_domain(&query)?;
 
-        let cover = query
-            .cover
-            .as_ref()
-            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_COVER))?;
-        let edition = cover.edition_opt().map(String::from);
-        let root = cover
-            .root
-            .as_ref()
-            .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_ROOT))?;
-        let root_uuid = uuid::Uuid::from_slice(&root.value)
-            .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
-
+        let (edition, root_uuid) = parse_query_cover(&query)?;
+        // Convert to owned for move into spawned task
+        let edition = edition.map(String::from);
         let repo = self.get_repo();
         let domain = self.domain.clone();
         let (tx, rx) = tokio::sync::mpsc::channel(32);
@@ -395,6 +375,26 @@ fn validate_domain_match(actual: &str, expected: &str, context: &str) -> Result<
     Ok(())
 }
 
+/// Parse and validate the cover from a query.
+///
+/// Extracts edition and root UUID from the query's cover, validating that
+/// required fields are present and the UUID is valid.
+#[allow(clippy::result_large_err)]
+fn parse_query_cover(query: &Query) -> Result<(Option<&str>, uuid::Uuid), Status> {
+    let cover = query
+        .cover
+        .as_ref()
+        .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_COVER))?;
+    let edition = cover.edition_opt();
+    let root = cover
+        .root
+        .as_ref()
+        .ok_or_else(|| Status::invalid_argument(super::errmsg::QUERY_MISSING_ROOT))?;
+    let root_uuid = uuid::Uuid::from_slice(&root.value)
+        .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
+    Ok((edition, root_uuid))
+}
+
 /// Parse temporal query into (as_of_sequence, as_of_timestamp) tuple.
 ///
 /// Returns (None, None) if no temporal query is specified.
@@ -414,94 +414,6 @@ fn parse_temporal_query(
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ========================================================================
-    // validate_domain_match Tests
-    // ========================================================================
-
-    #[test]
-    fn test_validate_domain_match_same_domain_succeeds() {
-        let result = validate_domain_match("orders", "orders", "Command");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_domain_match_different_domain_fails() {
-        let result = validate_domain_match("inventory", "orders", "Command");
-        assert!(result.is_err());
-        let status = result.unwrap_err();
-        assert_eq!(status.code(), tonic::Code::InvalidArgument);
-        assert!(status.message().contains("inventory"));
-        assert!(status.message().contains("orders"));
-    }
-
-    #[test]
-    fn test_validate_domain_match_empty_domain_fails() {
-        let result = validate_domain_match("", "orders", "Query");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_domain_match_context_in_message() {
-        let result = validate_domain_match("a", "b", "Event");
-        let status = result.unwrap_err();
-        assert!(status.message().contains("Event"));
-    }
-
-    // ========================================================================
-    // parse_temporal_query Tests
-    // ========================================================================
-
-    #[test]
-    fn test_parse_temporal_query_none_returns_none_none() {
-        let (seq, ts) = parse_temporal_query(None);
-        assert!(seq.is_none());
-        assert!(ts.is_none());
-    }
-
-    #[test]
-    fn test_parse_temporal_query_as_of_sequence() {
-        use crate::proto::{temporal_query::PointInTime, TemporalQuery};
-
-        let temporal = TemporalQuery {
-            point_in_time: Some(PointInTime::AsOfSequence(42)),
-        };
-        let (seq, ts) = parse_temporal_query(Some(&temporal));
-        assert_eq!(seq, Some(42));
-        assert!(ts.is_none());
-    }
-
-    #[test]
-    fn test_parse_temporal_query_as_of_time() {
-        use crate::proto::{temporal_query::PointInTime, TemporalQuery};
-
-        let temporal = TemporalQuery {
-            point_in_time: Some(PointInTime::AsOfTime(prost_types::Timestamp {
-                seconds: 1704067200,
-                nanos: 123456789,
-            })),
-        };
-        let (seq, ts) = parse_temporal_query(Some(&temporal));
-        assert!(seq.is_none());
-        assert_eq!(ts, Some("1704067200.123456789".to_string()));
-    }
-
-    #[test]
-    fn test_parse_temporal_query_empty_point_in_time() {
-        use crate::proto::TemporalQuery;
-
-        let temporal = TemporalQuery {
-            point_in_time: None,
-        };
-        let (seq, ts) = parse_temporal_query(Some(&temporal));
-        assert!(seq.is_none());
-        assert!(ts.is_none());
-    }
-}
+#[path = "server.test.rs"]
+mod tests;
