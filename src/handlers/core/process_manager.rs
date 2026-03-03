@@ -173,3 +173,7 @@ impl EventHandler for ProcessManagerEventHandler {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "process_manager.test.rs"]
+mod tests;

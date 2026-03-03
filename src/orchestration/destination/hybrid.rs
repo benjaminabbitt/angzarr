@@ -199,3 +199,7 @@ impl DestinationFetcher for HybridDestinationFetcher {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "hybrid.test.rs"]
+mod tests;

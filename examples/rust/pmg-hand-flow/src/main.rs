@@ -10,6 +10,7 @@ use angzarr_client::proto::examples::{
 use angzarr_client::{build_command, ProcessManager};
 
 // docs:start:pm_state
+// docs:start:pm_state_oo
 #[derive(Default)]
 pub struct HandFlowState {
     hand_id: String,
@@ -26,6 +27,7 @@ pub enum HandPhase {
     Betting,
     Complete,
 }
+// docs:end:pm_state_oo
 // docs:end:pm_state
 
 // docs:start:pm_handler

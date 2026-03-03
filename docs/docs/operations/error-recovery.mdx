@@ -497,9 +497,9 @@ The source aggregate registers rejection handlers using `@rejected` decorators. 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-**[`examples/python/player/agg/handlers/rejected.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/rejected.py)**
+**[`examples/python/player/agg/rejected.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/rejected.py)**
 
-```python file=examples/python/player/agg/handlers/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
+```python file=examples/python/player/agg/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
@@ -521,17 +521,29 @@ The source aggregate registers rejection handlers using `@rejected` decorators. 
 </TabItem>
 <TabItem value="java" label="Java">
 
-**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
-
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:rejected_handler end=docs:end:rejected_handler
+```java title="illustrative - rejection handler"
+@RejectionHandler("JoinTable")
+public FundsReleased handleJoinRejected(RejectionNotification rejection) {
+    byte[] tableRoot = rejection.getRejectedCommand().getCover().getRoot().getValue();
+    long reserved = state.getTableReservations().get(tableRoot);
+    return FundsReleased.newBuilder()
+        .setAmount(reserved)
+        .setTableRoot(tableRoot)
+        .build();
+}
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-**[`examples/csharp/Player/Agg/Player.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Player.cs)**
-
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:rejected_handler end=docs:end:rejected_handler
+```csharp title="illustrative - rejection handler"
+[RejectionHandler("JoinTable")]
+public FundsReleased HandleJoinRejected(RejectionNotification rejection)
+{
+    var tableRoot = rejection.RejectedCommand.Cover.Root.Value;
+    var reserved = State.TableReservations[tableRoot];
+    return new FundsReleased { Amount = reserved, TableRoot = tableRoot };
+}
 ```
 
 </TabItem>

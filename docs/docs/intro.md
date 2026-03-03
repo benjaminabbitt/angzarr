@@ -140,7 +140,7 @@ Free functions following **guard → validate → compute**. Easy to unit test�
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_guard end=docs:end:deposit_compute
+```python file=examples/python/player/agg/handlers.py start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
 
 </TabItem>
@@ -202,13 +202,26 @@ Class-based handlers with decorator/annotation registration. State managed by ba
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:deposit_oo end=docs:end:deposit_oo
+```java title="illustrative - OO pattern"
+@CommandHandler
+public FundsDeposited handleDeposit(DepositFunds cmd, PlayerState state) {
+    guard(state);
+    long amount = validate(cmd);
+    return compute(cmd, state, amount);
+}
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:deposit_oo end=docs:end:deposit_oo
+```csharp title="illustrative - OO pattern"
+[CommandHandler]
+public FundsDeposited HandleDeposit(DepositFunds cmd, PlayerState state)
+{
+    Guard(state);
+    var amount = Validate(cmd);
+    return Compute(cmd, state, amount);
+}
 ```
 
 </TabItem>

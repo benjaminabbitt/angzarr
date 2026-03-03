@@ -56,7 +56,7 @@ The rejection notification bypasses the saga entirely. The framework routes it d
 
 Register handlers for specific rejection scenarios:
 
-```python file=examples/python/player/agg/handlers/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
+```python file=examples/python/player/agg/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 The framework routes rejections to the appropriate handler based on the rejected command's domain and type.

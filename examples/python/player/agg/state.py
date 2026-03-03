@@ -36,6 +36,7 @@ class PlayerState:
 # --- Event appliers (pure functions) ---
 
 
+# docs:start:state_router
 def apply_registered(state: PlayerState, event: player.PlayerRegistered) -> None:
     """Apply PlayerRegistered event to state."""
     state.player_id = f"player_{event.email}"
@@ -81,3 +82,6 @@ def apply_transferred(state: PlayerState, event: player.FundsTransferred) -> Non
     """Apply FundsTransferred event to state."""
     if event.new_balance:
         state.bankroll = event.new_balance.amount
+
+
+# docs:end:state_router

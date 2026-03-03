@@ -244,3 +244,7 @@ fn extract_command_from_event_book(book: &EventBook) -> Option<CommandBook> {
     // Deserialize the CommandBook
     CommandBook::decode(event.value.as_slice()).ok()
 }
+
+#[cfg(test)]
+#[path = "aggregate.test.rs"]
+mod tests;

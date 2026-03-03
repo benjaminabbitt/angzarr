@@ -55,6 +55,7 @@ state_router = (
     .on(player.FundsTransferred, apply_transferred)
 )
 
+# docs:start:command_router
 # Command router with state composition
 router = (
     CommandRouter[PlayerState]("player")
@@ -65,6 +66,7 @@ router = (
     .on(player.ReserveFunds, handle_reserve)
     .on(player.ReleaseFunds, handle_release)
 )
+# docs:end:command_router
 
 
 if __name__ == "__main__":

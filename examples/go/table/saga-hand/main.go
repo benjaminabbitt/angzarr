@@ -24,6 +24,7 @@ type TableHandSaga struct {
 }
 
 // docs:start:saga_oo
+// docs:start:saga_handler
 // NewTableHandSaga creates a new TableHandSaga with registered handlers.
 func NewTableHandSaga() *TableHandSaga {
 	s := &TableHandSaga{}
@@ -103,6 +104,7 @@ func (s *TableHandSaga) handleHandStarted(
 	}, nil
 }
 
+// docs:end:saga_handler
 // docs:end:saga_oo
 
 func main() {

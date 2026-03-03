@@ -17,6 +17,7 @@ use prost_types::Any;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // docs:start:saga_handler
+// docs:start:saga_oo
 /// Saga handler for Table → Hand domain translation.
 struct TableHandSagaHandler;
 
@@ -122,6 +123,7 @@ impl TableHandSagaHandler {
         })
     }
 }
+// docs:end:saga_oo
 // docs:end:saga_handler
 
 #[tokio::main]

@@ -135,3 +135,7 @@ impl EventHandler for SagaEventHandler {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "saga.test.rs"]
+mod tests;

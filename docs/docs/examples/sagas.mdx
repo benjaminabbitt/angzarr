@@ -83,7 +83,7 @@ OO sagas use `@prepares`/`@handles` decorators on class methods.
 <Tabs groupId="language-oo">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/table/saga-hand-oo/main.py start=docs:start:saga_oo end=docs:end:saga_oo
+```python file=examples/python/table/saga-hand/main.py start=docs:start:saga_oo end=docs:end:saga_oo
 ```
 
 </TabItem>
@@ -95,25 +95,25 @@ OO sagas use `@prepares`/`@handles` decorators on class methods.
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust file=examples/rust/table/saga-hand-oo/src/main.rs start=docs:start:saga_oo end=docs:end:saga_oo
+```rust file=examples/rust/table/saga-hand/src/main.rs start=docs:start:saga_oo end=docs:end:saga_oo
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/table/saga-hand-oo/src/main/java/dev/angzarr/examples/table/sagahandoo/TableHandSaga.java start=docs:start:saga_oo end=docs:end:saga_oo
+```java file=examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/TableHandSaga.java start=docs:start:saga_oo end=docs:end:saga_oo
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go file=examples/go/table/saga-hand-oo/main.go start=docs:start:saga_oo end=docs:end:saga_oo
+```go file=examples/go/table/saga-hand/main.go start=docs:start:saga_oo end=docs:end:saga_oo
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp file=examples/cpp/table/saga-hand-oo/src/main.cpp start=docs:start:saga_class_oo end=docs:end:saga_class_oo
+```cpp file=examples/cpp/table/saga-hand/src/table_hand_saga.cpp start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -131,13 +131,20 @@ When a saga-issued command is rejected, the source aggregate receives a **Notifi
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
+```python file=examples/python/player/agg/rejected.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:rejected_handler end=docs:end:rejected_handler
+```csharp title="illustrative - rejection handler"
+[RejectionHandler("JoinTable")]
+public FundsReleased HandleJoinRejected(RejectionNotification rejection)
+{
+    var tableRoot = rejection.RejectedCommand.Cover.Root.Value;
+    var reserved = State.TableReservations[tableRoot];
+    return new FundsReleased { Amount = reserved, TableRoot = tableRoot };
+}
 ```
 
 </TabItem>
@@ -149,7 +156,13 @@ When a saga-issued command is rejected, the source aggregate receives a **Notifi
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:rejected_handler end=docs:end:rejected_handler
+```java title="illustrative - rejection handler"
+@RejectionHandler("JoinTable")
+public FundsReleased handleJoinRejected(RejectionNotification rejection) {
+    byte[] tableRoot = rejection.getRejectedCommand().getCover().getRoot().getValue();
+    long reserved = state.getTableReservations().get(tableRoot);
+    return FundsReleased.newBuilder().setAmount(reserved).setTableRoot(tableRoot).build();
+}
 ```
 
 </TabItem>

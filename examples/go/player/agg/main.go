@@ -9,6 +9,7 @@ import (
 	"github.com/benjaminabbitt/angzarr/examples/go/player/agg/handlers"
 )
 
+// docs:start:command_router
 func main() {
 	router := angzarr.NewCommandRouter("player", handlers.RebuildState).
 		On("examples.RegisterPlayer", handlers.HandleRegisterPlayer).
@@ -20,3 +21,5 @@ func main() {
 
 	angzarr.RunCommandHandlerServer("player", "50201", router)
 }
+
+// docs:end:command_router

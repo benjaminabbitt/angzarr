@@ -39,25 +39,53 @@ def handle_register(
     )
 
 
-# docs:start:polyglot_handler
-@command_handler(player.DepositFunds)
-def handle_deposit(
-    cmd: player.DepositFunds, state: PlayerState, seq: int
-) -> player.FundsDeposited:
-    """Deposit funds into player's bankroll."""
+# docs:start:deposit_guard
+def deposit_guard(state: PlayerState) -> None:
+    """Check state preconditions before processing deposit."""
     if not state.exists:
         raise CommandRejectedError("Player does not exist")
 
+
+# docs:end:deposit_guard
+
+
+# docs:start:deposit_validate
+def deposit_validate(cmd: player.DepositFunds) -> int:
+    """Validate deposit command and extract amount."""
     amount = cmd.amount.amount if cmd.amount else 0
     if amount <= 0:
         raise CommandRejectedError("amount must be positive")
+    return amount
 
+
+# docs:end:deposit_validate
+
+
+# docs:start:deposit_compute
+def deposit_compute(
+    cmd: player.DepositFunds, state: PlayerState, amount: int
+) -> player.FundsDeposited:
+    """Build FundsDeposited event from validated inputs."""
     new_balance = state.bankroll + amount
     return player.FundsDeposited(
         amount=cmd.amount,
         new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
         deposited_at=now(),
     )
+
+
+# docs:end:deposit_compute
+
+
+# docs:start:polyglot_handler
+@command_handler(player.DepositFunds)
+def handle_deposit(
+    cmd: player.DepositFunds, state: PlayerState, seq: int
+) -> player.FundsDeposited:
+    """Deposit funds into player's bankroll."""
+    deposit_guard(state)
+    amount = deposit_validate(cmd)
+    return deposit_compute(cmd, state, amount)
 
 
 # docs:end:polyglot_handler
@@ -85,6 +113,7 @@ def handle_withdraw(
     )
 
 
+# docs:start:reserve_funds_imp
 @command_handler(player.ReserveFunds)
 def handle_reserve(
     cmd: player.ReserveFunds, state: PlayerState, seq: int
@@ -117,6 +146,9 @@ def handle_reserve(
         ),
         reserved_at=now(),
     )
+
+
+# docs:end:reserve_funds_imp
 
 
 @command_handler(player.ReleaseFunds)

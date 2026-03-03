@@ -11,6 +11,7 @@ namespace Angzarr.Examples.PmgHandFlow;
 /// tracking phase transitions and dispatching commands as the hand progresses.
 /// </summary>
 // docs:start:pm_state
+// docs:start:pm_state_oo
 public enum HandPhase
 {
     AwaitingDeal,
@@ -27,6 +28,7 @@ public class HandFlowState
     public int PlayerCount { get; set; } = 0;
 }
 
+// docs:end:pm_state_oo
 // docs:end:pm_state
 
 // docs:start:pm_handler

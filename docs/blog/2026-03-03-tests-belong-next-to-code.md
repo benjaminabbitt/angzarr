@@ -285,7 +285,7 @@ This gives us:
 - No parallel directory tree
 - Clean mutation testing workflow
 
-**Mutation testing benefits**
+**[Mutation testing](https://softengbook.org/articles/mutation-testing) benefits**
 
 Separate test files pair well with mutation testing tools like [cargo-mutants](https://mutants.rs/). Should tooling fail and mutations survive test completion (accidentally getting committed), they're easy to detect and restore. The mutation is in `correlation.rs`; the test file `correlation.test.rs` is untouched. Revert the production file, keep the tests.
 
@@ -355,9 +355,9 @@ My answer, after two decades: tests belong next to the code they test. Always ha
 
 Here's where I admit my thinking has evolved.
 
-For years, I advocated for tests *in the same file*. Rust's `#[cfg(test)] mod tests` at the bottom of each file was, I thought, the ideal. Maximum colocation. Maximum visibility. One file, one scroll, everything you need.
+I've always advocated for tests *nearby*—same directory, not a parallel tree. But within "nearby," I thought Rust's `#[cfg(test)] mod tests` approach was better than file-alongside. Maximum colocation. Maximum visibility. One file, one scroll, everything you need.
 
-Then I started working extensively with AI coding assistants.
+I've come to disagree with that. Working extensively with AI coding assistants changed my mind.
 
 AI tools operate within context windows, a fixed budget of tokens they can "see" at once. Every line of code loaded into context is a line that competes for attention. When an AI reads a 500-line file where 300 lines are tests, it's spending 60% of its context budget on code that's irrelevant to most tasks.
 
@@ -383,7 +383,7 @@ src/
 └── mod.rs
 ```
 
-This preserves colocation (tests are *adjacent*, one directory listing shows them together) while enabling selective loading. An AI (or human) exploring business logic can skip `.test` files entirely. When it's time to maintain tests, they're right there.
+This preserves colocation (tests are *adjacent*, one directory listing shows them together) while enabling selective loading. An AI exploring business logic can skip `.test` files entirely. A human wanting to understand how code works can head *for* the tests—well-written tests are documentation. Separate files give you the choice; inline tests force everything on you at once.
 
 ### Instructing AI to Skip Test Files
 
@@ -416,90 +416,6 @@ These are real costs. I'm trading them for:
 
 For me, in 2026, with AI assistants as daily collaborators, the tradeoff favors separate files.
 
-### Testcontainers Blur the Lines
-
-There's another shift happening that affects test organization: testcontainers.
-
-Traditionally, we drew a hard line between unit tests and integration tests:
-
-- **Unit tests**: Fast, no external dependencies, run anywhere, colocate with code
-- **Integration tests**: Slow, need databases/queues/services, run in CI, separate directory
-
-This separation made sense when "integration test" meant "spin up a full environment." You wouldn't colocate tests that require PostgreSQL next to your repository implementation; they'd fail on every developer's machine without the right setup.
-
-[Testcontainers](https://testcontainers.com/) changed this. (In Rust, we use [testcontainers-rs](https://docs.rs/testcontainers/).)
-
-```rust
-#[test]
-fn test_event_store_persists_events() {
-    let container = PostgresContainer::new();
-    let pool = connect_to(&container);
-    let store = PostgresEventStore::new(pool);
-
-    store.append("order-123", vec![event]).unwrap();
-    let events = store.read("order-123").unwrap();
-
-    assert_eq!(events.len(), 1);
-}
-```
-
-This test spins up a real PostgreSQL instance in [Docker](https://www.docker.com/), runs the test against it, and tears it down. No shared database. No environment configuration. No "works on my machine." The container is ephemeral, isolated, and automatic.
-
-**What does this mean for test organization?**
-
-Tests that verify trait implementations (`EventStore`, `SnapshotStore`, `MessageBus`) are no longer "integration tests" in the traditional sense. They're interface contract tests. They verify that a specific implementation correctly fulfills its contract.
-
-These tests *should* live near the implementation:
-
-```
-src/
-├── storage/
-│   ├── postgres.rs              # PostgresEventStore implementation
-│   ├── postgres.test.rs         # Contract tests against real Postgres
-│   ├── sqlite.rs
-│   └── sqlite.test.rs
-```
-
-The "real database" aspect doesn't change where the test belongs. It's still testing one module's behavior. It's still colocated. It just happens to need a container.
-
-**The new distinction isn't unit vs integration; [it's scope](https://martinfowler.com/articles/practical-test-pyramid.html).**
-
-| Test Type | What It Tests | Where It Lives |
-|-----------|--------------|----------------|
-| Unit | Pure logic, no dependencies | Adjacent `.test` file |
-| Contract | Single implementation against its interface | Adjacent `.test` file (with testcontainers) |
-| Integration | Multiple components interacting | `tests/` directory |
-| End-to-end | Full system behavior | Separate test project |
-
-Contract tests with testcontainers are closer to unit tests than integration tests. They test one thing. They're fast enough to run frequently. They should be colocated.
-
-**The CI consideration**
-
-Yes, testcontainer tests are slower than pure unit tests. On my machine, a PostgreSQL container adds ~2 seconds of startup. That's too slow for "run on every save" but fine for "run before commit."
-
-We handle this with test categories:
-
-```rust
-#[test]
-fn test_pure_logic() { /* runs always */ }
-
-#[test]
-#[cfg_attr(not(feature = "testcontainers"), ignore)]
-fn test_postgres_storage() { /* runs with --features testcontainers */ }
-```
-
-Local development runs the fast tests continuously. [Pre-commit hooks](https://pre-commit.com/) and CI run everything. The slower tests are still colocated; they're just conditionally executed.
-
-**Mocks are for boundaries, not implementations**
-
-This shift has changed how I think about mocking. Previously, I'd mock the database to test repository logic. Now I test the repository against a real database (via testcontainers) and reserve mocks for:
-
-- External services I don't control (third-party APIs)
-- Failure injection (simulate network errors)
-- True unit tests of pure logic
-
-If I *can* test against the real thing cheaply, I should. Testcontainers made "the real thing" cheap.
-
 ### This Isn't a Reversal
 
 I still believe tests belong *next to* code: same directory, obvious relationship, no parallel tree structure. I still reject the `src/main`/`src/test` split.
@@ -516,7 +432,7 @@ I'm under no illusion that separate-but-adjacent test files are the final word. 
 - Current mutation testing workflows
 - Current code review practices
 
-Every position in this article emerged from tooling constraints of its era. Java's parallel directories made sense when the JVM couldn't exclude code. Rust's inline tests made sense when file size didn't compete with AI context budgets. My current position makes sense given today's tradeoffs.
+Every position in this article emerged from tooling constraints of its era. Java's parallel directories made sense when the JVM couldn't exclude code. Rust's inline tests made sense when file size didn't compete with AI context budgets. My current position makes sense *to me* given today's tradeoffs.
 
 Tomorrow's tradeoffs will be different. AI context windows will grow. IDE integrations will get smarter about selective loading. New testing paradigms will emerge. When the constraints change, the optimal organization will change too.
 

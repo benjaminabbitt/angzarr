@@ -24,7 +24,7 @@ use tonic::Status;
 use uuid::Uuid;
 
 use super::*;
-use crate::proto::{Cover, MergeStrategy, Uuid as ProtoUuid};
+use crate::proto::MergeStrategy;
 use crate::proto_ext::CommandPageExt;
 
 // ============================================================================

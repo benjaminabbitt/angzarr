@@ -39,7 +39,7 @@ Pure functions following **guard → validate → compute**. Each function has a
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_guard end=docs:end:deposit_compute
+```python file=examples/python/player/agg/handlers.py start=docs:start:deposit_guard end=docs:end:deposit_compute
 ```
 
 </TabItem>
@@ -89,7 +89,10 @@ Class-based handlers with decorator/annotation registration. State managed by ba
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:deposit_oo end=docs:end:deposit_oo
+```csharp title="illustrative - OO handler"
+[CommandHandler]
+public FundsDeposited HandleDeposit(DepositFunds cmd) =>
+    new FundsDeposited { Amount = cmd.Amount, NewBalance = State.Bankroll + cmd.Amount };
 ```
 
 </TabItem>
@@ -101,7 +104,11 @@ Class-based handlers with decorator/annotation registration. State managed by ba
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:deposit_oo end=docs:end:deposit_oo
+```java title="illustrative - OO handler"
+@CommandHandler
+public FundsDeposited handleDeposit(DepositFunds cmd) {
+    return new FundsDeposited(cmd.getAmount(), state.getBankroll() + cmd.getAmount());
+}
 ```
 
 </TabItem>
@@ -134,7 +141,7 @@ The Player aggregate demonstrates **two-phase reservation**. Funds are reserved 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/commands.py start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
+```python file=examples/python/player/agg/handlers.py start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
 ```
 
 </TabItem>
@@ -182,7 +189,13 @@ The Player aggregate demonstrates **two-phase reservation**. Funds are reserved 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:reserve_funds_oo end=docs:end:reserve_funds_oo
+```csharp title="illustrative - OO reserve handler"
+[CommandHandler]
+public FundsReserved HandleReserve(ReserveFunds cmd)
+{
+    var newReserved = State.ReservedFunds + cmd.Amount;
+    return new FundsReserved { Amount = cmd.Amount, NewReserved = newReserved };
+}
 ```
 
 </TabItem>
@@ -194,7 +207,12 @@ The Player aggregate demonstrates **two-phase reservation**. Funds are reserved 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:reserve_funds_oo end=docs:end:reserve_funds_oo
+```java title="illustrative - OO reserve handler"
+@CommandHandler
+public FundsReserved handleReserve(ReserveFunds cmd) {
+    long newReserved = state.getReservedFunds() + cmd.getAmount();
+    return new FundsReserved(cmd.getAmount(), newReserved);
+}
 ```
 
 </TabItem>
@@ -234,7 +252,7 @@ StateRouter provides fluent registration of event appliers, keeping state recons
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/state.py start=docs:start:state_router end=docs:end:state_router
+```python file=examples/python/player/agg/state.py start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
@@ -284,7 +302,12 @@ OO aggregates use `@applies`/`[Applies]` decorators on methods within the aggreg
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:state_appliers_oo end=docs:end:state_appliers_oo
+```csharp title="illustrative - OO state appliers"
+[Applies]
+public void Apply(FundsDeposited e) => Bankroll += e.Amount;
+
+[Applies]
+public void Apply(FundsReserved e) => ReservedFunds += e.Amount;
 ```
 
 </TabItem>
@@ -296,7 +319,12 @@ OO aggregates use `@applies`/`[Applies]` decorators on methods within the aggreg
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:state_appliers_oo end=docs:end:state_appliers_oo
+```java title="illustrative - OO state appliers"
+@Applies
+public void apply(FundsDeposited e) { bankroll += e.getAmount(); }
+
+@Applies
+public void apply(FundsReserved e) { reservedFunds += e.getAmount(); }
 ```
 
 </TabItem>

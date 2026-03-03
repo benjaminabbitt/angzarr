@@ -39,6 +39,7 @@ logger = structlog.get_logger()
 
 
 # docs:start:saga_oo
+# docs:start:saga_handler
 @domain("table")
 @output_domain("hand")
 class TableHandSaga(Saga):
@@ -110,6 +111,7 @@ class TableHandSaga(Saga):
         )
 
 
+# docs:end:saga_handler
 # docs:end:saga_oo
 
 

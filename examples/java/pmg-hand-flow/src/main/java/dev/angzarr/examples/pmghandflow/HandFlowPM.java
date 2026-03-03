@@ -19,6 +19,7 @@ import java.util.List;
  */
 
 // docs:start:pm_state
+// docs:start:pm_state_oo
 enum HandPhase {
     AWAITING_DEAL, DEALING, BLINDS, BETTING, COMPLETE
 }
@@ -35,6 +36,7 @@ class HandFlowState {
     public int getPlayerCount() { return playerCount; }
     public void setPlayerCount(int playerCount) { this.playerCount = playerCount; }
 }
+// docs:end:pm_state_oo
 // docs:end:pm_state
 
 // docs:start:pm_handler

@@ -36,7 +36,7 @@ Checks state preconditions before processing:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_guard end=docs:end:deposit_guard
+```python file=examples/python/player/agg/handlers.py start=docs:start:deposit_guard end=docs:end:deposit_guard
 ```
 
 </TabItem>
@@ -79,7 +79,7 @@ Validates command inputs and extracts validated data:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_validate end=docs:end:deposit_validate
+```python file=examples/python/player/agg/handlers.py start=docs:start:deposit_validate end=docs:end:deposit_validate
 ```
 
 </TabItem>
@@ -122,7 +122,7 @@ Builds the resulting event from validated inputs:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_compute end=docs:end:deposit_compute
+```python file=examples/python/player/agg/handlers.py start=docs:start:deposit_compute end=docs:end:deposit_compute
 ```
 
 </TabItem>
@@ -189,7 +189,7 @@ Each function is testable in isolation:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/test_commands.py start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
+```python file=examples/python/player/agg/test_handlers.py start=docs:start:unit_test_deposit end=docs:end:unit_test_deposit
 ```
 
 </TabItem>
@@ -294,7 +294,13 @@ Handlers are methods on an `Aggregate` subclass, using decorators/attributes/mac
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:annotation_handlers end=docs:end:annotation_handlers
+```csharp title="illustrative - OO handler registration"
+public class PlayerAggregate : Aggregate<PlayerState>
+{
+    [CommandHandler]
+    public FundsDeposited HandleDeposit(DepositFunds cmd) =>
+        new FundsDeposited { Amount = cmd.Amount, NewBalance = State.Bankroll + cmd.Amount };
+}
 ```
 
 </TabItem>
@@ -308,7 +314,13 @@ Rust uses proc macros on impl blocks:
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:annotation_handlers end=docs:end:annotation_handlers
+```java title="illustrative - OO handler registration"
+public class PlayerAggregate extends Aggregate<PlayerState> {
+    @CommandHandler
+    public FundsDeposited handleDeposit(DepositFunds cmd) {
+        return new FundsDeposited(cmd.getAmount(), state.getBankroll() + cmd.getAmount());
+    }
+}
 ```
 
 </TabItem>

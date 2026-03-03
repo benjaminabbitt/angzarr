@@ -16,6 +16,7 @@ using namespace angzarr::proto::angzarr;
 using namespace angzarr::proto::examples;
 
 // docs:start:pm_state
+// docs:start:pm_state_oo
 enum class HandPhase { AwaitingDeal, Dealing, Blinds, Betting, Complete };
 
 struct HandFlowState {
@@ -23,6 +24,7 @@ struct HandFlowState {
     HandPhase phase = HandPhase::AwaitingDeal;
     int32_t player_count = 0;
 };
+// docs:end:pm_state_oo
 // docs:end:pm_state
 
 // docs:start:pm_handler
