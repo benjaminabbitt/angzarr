@@ -306,6 +306,8 @@ After running `cargo mutants`, you'll see patterns:
 
 ### Contract Tests
 
+**Contract tests MUST break the build.** This diverges from Fowler's historical position that contract tests shouldn't fail builds because they test external dependencies outside your control. In the modern paradigm with testcontainers and hermetic builds, we control the dependency versions—contract tests verify our code works with specific, pinned versions of backing services. A failing contract test means real breakage that must be fixed before merge.
+
 Verify that storage and bus implementations correctly fulfill their trait contracts. Uses **testcontainers** to provision real databases/message brokers in Docker containers.
 
 **Full-support backends** (SQLite, PostgreSQL) use Gherkin interface tests:
