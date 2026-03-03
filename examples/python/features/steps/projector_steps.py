@@ -610,9 +610,9 @@ def step_then_output_contains(context, text):
 def step_then_output_starts_with(context, prefix):
     """Verify output starts with prefix."""
     if context.output_lines:
-        assert context.output_lines[0].startswith(
-            prefix
-        ), f"Expected start '{prefix}' in:\n{context.output_lines[0]}"
+        assert context.output_lines[0].startswith(prefix), (
+            f"Expected start '{prefix}' in:\n{context.output_lines[0]}"
+        )
     else:
         raise AssertionError("No output produced")
 

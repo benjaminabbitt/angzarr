@@ -10,7 +10,6 @@ use tracing::error;
 
 use crate::proto::{Cover, EventBook};
 use crate::proto_ext::CoverExt;
-use crate::repository::EventBookRepository;
 use crate::standalone::DomainStorage;
 
 use super::DestinationFetcher;
@@ -32,16 +31,10 @@ impl DestinationFetcher for LocalDestinationFetcher {
     async fn fetch(&self, cover: &Cover) -> Option<EventBook> {
         let domain = &cover.domain;
         let edition = cover.edition();
-        let root_uuid = cover
-            .root
-            .as_ref()
-            .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())?;
+        let root_uuid = cover.root_uuid()?;
 
         let store = self.domain_stores.get(domain)?;
-
-        // Use EventBookRepository to properly load snapshot + subsequent events
-        let repo =
-            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
+        let repo = store.event_book_repo();
 
         match repo.get(domain, edition, root_uuid).await {
             Ok(mut book) => {
@@ -86,18 +79,10 @@ impl DestinationFetcher for LocalDestinationFetcher {
 
         // Re-fetch using EventBookRepository to get snapshot-optimized version
         let cover = book.cover.as_ref()?;
-        let edition = cover
-            .edition
-            .as_ref()
-            .map(|e| e.name.as_str())
-            .unwrap_or("main");
-        let root_uuid = cover
-            .root
-            .as_ref()
-            .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())?;
+        let edition = cover.edition();
+        let root_uuid = cover.root_uuid()?;
 
-        let repo =
-            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
+        let repo = store.event_book_repo();
 
         match repo.get(domain, edition, root_uuid).await {
             Ok(mut fetched_book) => {

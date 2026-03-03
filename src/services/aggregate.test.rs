@@ -476,3 +476,43 @@ async fn test_create_sync_context_succeeds() {
     // Verify context creation with sync mode doesn't panic
     let _ctx = service.create_sync_context(SyncMode::Simple);
 }
+
+/// create_context_for_sync_mode with Async int creates async context.
+///
+/// The helper parses the proto int value and creates the appropriate context.
+/// Async mode (0) should create an async context (no sync projector calls).
+#[tokio::test]
+async fn test_create_context_for_sync_mode_async() {
+    let (service, _) = create_test_service().await;
+    // SyncMode::Async = 0
+    let _ctx = service.create_context_for_sync_mode(SyncMode::Async as i32);
+}
+
+/// create_context_for_sync_mode with Simple int creates sync context.
+///
+/// Non-async modes should create a sync context that will call sync projectors.
+#[tokio::test]
+async fn test_create_context_for_sync_mode_simple() {
+    let (service, _) = create_test_service().await;
+    // SyncMode::Simple = 1
+    let _ctx = service.create_context_for_sync_mode(SyncMode::Simple as i32);
+}
+
+/// create_context_for_sync_mode with Cascade int creates sync context.
+#[tokio::test]
+async fn test_create_context_for_sync_mode_cascade() {
+    let (service, _) = create_test_service().await;
+    // SyncMode::Cascade = 2
+    let _ctx = service.create_context_for_sync_mode(SyncMode::Cascade as i32);
+}
+
+/// create_context_for_sync_mode with invalid int defaults to async.
+///
+/// Invalid/unknown sync mode values should safely default to async mode
+/// rather than failing, matching the behavior of the original pattern.
+#[tokio::test]
+async fn test_create_context_for_sync_mode_invalid_defaults_to_async() {
+    let (service, _) = create_test_service().await;
+    // Invalid value should default to Async
+    let _ctx = service.create_context_for_sync_mode(999);
+}

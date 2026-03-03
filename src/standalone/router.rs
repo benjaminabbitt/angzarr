@@ -37,6 +37,19 @@ pub struct DomainStorage {
     pub snapshot_store: Arc<dyn SnapshotStore>,
 }
 
+impl DomainStorage {
+    /// Create an EventBookRepository for this domain's stores.
+    ///
+    /// Consolidates the repeated pattern of creating repositories from
+    /// event_store and snapshot_store Arcs.
+    pub fn event_book_repo(&self) -> crate::repository::EventBookRepository {
+        crate::repository::EventBookRepository::new(
+            self.event_store.clone(),
+            self.snapshot_store.clone(),
+        )
+    }
+}
+
 /// In-process sync projector entry for standalone mode.
 #[derive(Clone)]
 pub struct SyncProjectorEntry {
@@ -128,6 +141,23 @@ impl CommandRouter {
     /// Returns the registered handler if one exists for the domain.
     pub fn get_client_logic(&self, domain: &str) -> Option<Arc<dyn ClientLogic>> {
         self.business.get(domain).cloned()
+    }
+
+    /// Get both business handler and storage for a domain.
+    ///
+    /// Consolidates the repeated pattern of fetching both resources with
+    /// appropriate error messages. Returns references to avoid cloning.
+    fn get_domain_resources(
+        &self,
+        domain: &str,
+    ) -> Result<(&Arc<dyn ClientLogic>, &DomainStorage), Status> {
+        let business = self.business.get(domain).ok_or_else(|| {
+            Status::not_found(format!("No handler registered for domain: {domain}"))
+        })?;
+        let storage = self.stores.get(domain).ok_or_else(|| {
+            Status::not_found(format!("No storage configured for domain: {domain}"))
+        })?;
+        Ok((business, storage))
     }
 
     /// Create an aggregate context for command execution.
@@ -356,14 +386,7 @@ impl CommandRouter {
         command_book: CommandBook,
     ) -> Result<CommandResponse, Status> {
         let (domain, _root_uuid) = parse_command_cover(&command_book)?;
-
-        let business = self.business.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No handler registered for domain: {domain}"))
-        })?;
-
-        let storage = self.stores.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No storage configured for domain: {domain}"))
-        })?;
+        let (business, storage) = self.get_domain_resources(&domain)?;
 
         // CASCADE mode: set sync_mode on context so post_persist skips bus publishing
         let ctx = self.create_context(storage, Some(crate::proto::SyncMode::Cascade));
@@ -402,14 +425,7 @@ impl CommandRouter {
             "Executing command"
         );
 
-        let business = self.business.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No handler registered for domain: {domain}"))
-        })?;
-
-        let storage = self.stores.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No storage configured for domain: {domain}"))
-        })?;
-
+        let (business, storage) = self.get_domain_resources(&domain)?;
         let ctx = self.create_context(storage, None);
 
         let mut response =
@@ -450,14 +466,7 @@ impl CommandRouter {
             "Speculative command"
         );
 
-        let business = self.business.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No handler registered for domain: {domain}"))
-        })?;
-
-        let storage = self.stores.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No storage configured for domain: {domain}"))
-        })?;
-
+        let (business, storage) = self.get_domain_resources(&domain)?;
         let ctx = self.create_context(storage, None);
 
         execute_command_pipeline(
@@ -489,14 +498,7 @@ impl CommandRouter {
             "Executing compensation"
         );
 
-        let business = self.business.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No handler registered for domain: {domain}"))
-        })?;
-
-        let storage = self.stores.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No storage configured for domain: {domain}"))
-        })?;
-
+        let (business, storage) = self.get_domain_resources(&domain)?;
         let ctx = self.create_context(storage, None);
 
         let edition = command_book.edition().to_string();
@@ -552,10 +554,7 @@ impl CommandRouter {
         use crate::orchestration::aggregate::{execute_fact_pipeline, parse_event_cover};
 
         let (domain, _root_uuid) = parse_event_cover(&fact_events)?;
-
-        let storage = self.stores.get(&domain).ok_or_else(|| {
-            Status::not_found(format!("No storage registered for domain '{}'", domain))
-        })?;
+        let storage = self.get_storage(&domain)?;
 
         // Get client logic from router if available and routing is enabled
         let client_logic = if route_to_handler {

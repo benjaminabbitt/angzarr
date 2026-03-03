@@ -280,9 +280,9 @@ def step_when_rebuild_state(context):
 @then(r"the result is a (?P<event_type>\w+) event")
 def step_then_result_is_event(context, event_type):
     """Verify the result event type."""
-    assert (
-        context.result is not None
-    ), f"Expected {event_type} event but got error: {context.error}"
+    assert context.result is not None, (
+        f"Expected {event_type} event but got error: {context.error}"
+    )
     assert context.result.pages, "No event pages in result"
     event_any = context.result.pages[0].event
     actual_type = type_name_from_url(event_any.type_url)
@@ -294,9 +294,9 @@ def step_then_event_has_display_name(context, name):
     """Verify the event display_name field."""
     event = player.PlayerRegistered()
     context.result_event_any.Unpack(event)
-    assert (
-        event.display_name == name
-    ), f"Expected display_name={name}, got {event.display_name}"
+    assert event.display_name == name, (
+        f"Expected display_name={name}, got {event.display_name}"
+    )
 
 
 @then(r'the player event has player_type "(?P<ptype>[^"]+)"')
@@ -305,9 +305,9 @@ def step_then_event_has_player_type(context, ptype):
     event = player.PlayerRegistered()
     context.result_event_any.Unpack(event)
     expected_type = getattr(poker_types.PlayerType, ptype)
-    assert (
-        event.player_type == expected_type
-    ), f"Expected player_type={ptype}, got {event.player_type}"
+    assert event.player_type == expected_type, (
+        f"Expected player_type={ptype}, got {event.player_type}"
+    )
 
 
 @then(r"the player event has amount (?P<amount>\d+)")
@@ -325,9 +325,9 @@ def step_then_event_has_amount(context, amount):
     if event is None:
         raise AssertionError(f"Unknown event type: {event_any.type_url}")
 
-    assert event.amount.amount == int(
-        amount
-    ), f"Expected amount={amount}, got {event.amount.amount}"
+    assert event.amount.amount == int(amount), (
+        f"Expected amount={amount}, got {event.amount.amount}"
+    )
 
 
 @then(r"the player event has new_balance (?P<balance>\d+)")
@@ -344,9 +344,9 @@ def step_then_event_has_new_balance(context, balance):
             f"Unknown event type for new_balance: {event_any.type_url}"
         )
 
-    assert event.new_balance.amount == int(
-        balance
-    ), f"Expected new_balance={balance}, got {event.new_balance.amount}"
+    assert event.new_balance.amount == int(balance), (
+        f"Expected new_balance={balance}, got {event.new_balance.amount}"
+    )
 
 
 @then(r"the player event has new_available_balance (?P<balance>\d+)")
@@ -362,9 +362,9 @@ def step_then_event_has_new_available_balance(context, balance):
             f"Unknown event type for new_available_balance: {event_any.type_url}"
         )
 
-    assert event.new_available_balance.amount == int(
-        balance
-    ), f"Expected new_available_balance={balance}, got {event.new_available_balance.amount}"
+    assert event.new_available_balance.amount == int(balance), (
+        f"Expected new_available_balance={balance}, got {event.new_available_balance.amount}"
+    )
 
 
 @then(r'the command fails with status "(?P<status>[^"]+)"')
@@ -379,27 +379,27 @@ def step_then_command_fails_with_status(context, status):
 def step_then_error_contains(context, text):
     """Verify the error message contains expected text."""
     assert context.error is not None, "Expected an error but got success"
-    assert (
-        text.lower() in context.error_message.lower()
-    ), f"Expected error to contain '{text}', got '{context.error_message}'"
+    assert text.lower() in context.error_message.lower(), (
+        f"Expected error to contain '{text}', got '{context.error_message}'"
+    )
 
 
 @then(r"the player state has bankroll (?P<amount>\d+)")
 def step_then_state_has_bankroll(context, amount):
     """Verify the player state bankroll."""
     assert context.state is not None, "No player state"
-    assert context.state.bankroll == int(
-        amount
-    ), f"Expected bankroll={amount}, got {context.state.bankroll}"
+    assert context.state.bankroll == int(amount), (
+        f"Expected bankroll={amount}, got {context.state.bankroll}"
+    )
 
 
 @then(r"the player state has reserved_funds (?P<amount>\d+)")
 def step_then_state_has_reserved_funds(context, amount):
     """Verify the player state reserved_funds."""
     assert context.state is not None, "No player state"
-    assert context.state.reserved_funds == int(
-        amount
-    ), f"Expected reserved_funds={amount}, got {context.state.reserved_funds}"
+    assert context.state.reserved_funds == int(amount), (
+        f"Expected reserved_funds={amount}, got {context.state.reserved_funds}"
+    )
 
 
 @then(r"the player state has available_balance (?P<amount>\d+)")
@@ -407,6 +407,6 @@ def step_then_state_has_available_balance(context, amount):
     """Verify the player state available_balance."""
     assert context.state is not None, "No player state"
     available = context.state.available_balance
-    assert available == int(
-        amount
-    ), f"Expected available_balance={amount}, got {available}"
+    assert available == int(amount), (
+        f"Expected available_balance={amount}, got {available}"
+    )

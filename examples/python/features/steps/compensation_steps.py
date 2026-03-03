@@ -780,18 +780,18 @@ def step_notification_created(context):
 def step_notification_has_issuer_name(context, expected):
     """Verify issuer_name field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert (
-        rejection.issuer_name == expected
-    ), f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+    assert rejection.issuer_name == expected, (
+        f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+    )
 
 
 @then(r"the notification has rejection_reason \"([^\"]+)\"")
 def step_notification_has_reason(context, expected):
     """Verify rejection_reason field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert (
-        rejection.rejection_reason == expected
-    ), f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+    assert rejection.rejection_reason == expected, (
+        f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+    )
 
 
 @then(r"the notification contains the rejected (\w+) command")
@@ -945,9 +945,9 @@ def step_notification_rejected_cmd_contains(context):
         value = row["value"]
 
         if field == "cover.domain":
-            assert (
-                rejection.rejected_command.cover.domain == value
-            ), f"Expected domain {value}, got {rejection.rejected_command.cover.domain}"
+            assert rejection.rejected_command.cover.domain == value, (
+                f"Expected domain {value}, got {rejection.rejected_command.cover.domain}"
+            )
         elif field == "cover.root":
             # Root is bytes, value from table is string - compare as decoded
             actual_root = rejection.rejected_command.cover.root.value.decode()
@@ -1010,9 +1010,9 @@ def step_aggregate_reserved_becomes(context, amount):
     """Verify aggregate state updated."""
     assert hasattr(context, "aggregate"), "No aggregate in context"
     assert context.aggregate.state is not None, "Aggregate has no state"
-    assert context.aggregate.state.reserved_amount == int(
-        amount
-    ), f"Expected reserved_amount={amount}, got {context.aggregate.state.reserved_amount}"
+    assert context.aggregate.state.reserved_amount == int(amount), (
+        f"Expected reserved_amount={amount}, got {context.aggregate.state.reserved_amount}"
+    )
 
 
 @then("the event is added to the event book")
@@ -1028,9 +1028,9 @@ def step_handler_called(context, handler_name):
     """Verify handler called."""
     # For fluent router tests, check _rejection_handler_called
     if hasattr(context, "_rejection_handler_called"):
-        assert (
-            handler_name in context._rejection_handler_called
-        ), f"Handler {handler_name} was not called. Called: {list(context._rejection_handler_called.keys())}"
+        assert handler_name in context._rejection_handler_called, (
+            f"Handler {handler_name} was not called. Called: {list(context._rejection_handler_called.keys())}"
+        )
         return
 
     component = getattr(context, "aggregate", None) or getattr(context, "pm", None)
@@ -1045,9 +1045,9 @@ def step_handler_not_called(context, handler_name):
     """Verify handler not called."""
     # For fluent router tests, check _rejection_handler_called
     if hasattr(context, "_rejection_handler_called"):
-        assert (
-            handler_name not in context._rejection_handler_called
-        ), f"Handler {handler_name} was unexpectedly called"
+        assert handler_name not in context._rejection_handler_called, (
+            f"Handler {handler_name} was unexpectedly called"
+        )
         return
 
     component = getattr(context, "aggregate", None) or getattr(context, "pm", None)
@@ -1070,9 +1070,9 @@ def step_pm_events_persisted(context):
 def step_framework_routes_to_source(context):
     """Verify routing continues."""
     # In unit tests, verify that aggregate exists and could receive notification
-    assert hasattr(context, "aggregate") or hasattr(
-        context, "notification"
-    ), "No aggregate or notification in context for routing verification"
+    assert hasattr(context, "aggregate") or hasattr(context, "notification"), (
+        "No aggregate or notification in context for routing verification"
+    )
 
 
 @then(r"a WorkflowFailed event is recorded in PM state with:")
@@ -1091,9 +1091,9 @@ def step_notification_matches_correlation(context):
     assert context.notification is not None, "No notification in context"
     # Notification contains correlation_id in rejected_command cover
     rejection = get_rejection_from_notification(context.notification)
-    assert (
-        rejection.rejected_command.cover.correlation_id
-    ), "Notification has no correlation_id for PM matching"
+    assert rejection.rejected_command.cover.correlation_id, (
+        "Notification has no correlation_id for PM matching"
+    )
 
 
 @then("the PM can access its state when handling rejection")
@@ -1107,9 +1107,9 @@ def step_pm_accesses_state(context):
 def step_framework_initiates_compensation(context):
     """Verify compensation flow started."""
     # Compensation flow is initiated when notification exists
-    assert (
-        context.notification is not None
-    ), "No notification - compensation not initiated"
+    assert context.notification is not None, (
+        "No notification - compensation not initiated"
+    )
     assert (
         getattr(context, "compensation_flow_initiated", False) or context.notification
     ), "Compensation flow was not initiated"
@@ -1126,9 +1126,9 @@ def step_no_notification_created(context):
 def step_error_returned(context):
     """Verify error returned."""
     # For INVALID_ARGUMENT, compensation flow is not initiated
-    assert not getattr(
-        context, "compensation_flow_initiated", True
-    ), "Compensation flow should not be initiated for validation errors"
+    assert not getattr(context, "compensation_flow_initiated", True), (
+        "Compensation flow should not be initiated for validation errors"
+    )
 
 
 @then("ChargeCreditCard is not sent")
@@ -1933,13 +1933,13 @@ def step_notification_containing(context):
         field = row[0]
         expected = row[1]
         if field == "issuer_name":
-            assert (
-                rejection.issuer_name == expected
-            ), f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+            assert rejection.issuer_name == expected, (
+                f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+            )
         elif field == "rejection_reason":
-            assert (
-                rejection.rejection_reason == expected
-            ), f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+            assert rejection.rejection_reason == expected, (
+                f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+            )
         elif field == "rejected_command":
             type_url = rejection.rejected_command.pages[0].command.type_url
             assert expected in type_url, f"Expected {expected} in {type_url}"
@@ -2001,18 +2001,18 @@ def step_can_update_workflow(context):
 def step_source_receives_second(context):
     """Verify SourceAggregate receives second."""
     # In unit tests, verify aggregate exists to receive notification
-    assert (
-        hasattr(context, "aggregate") or context.notification is not None
-    ), "No aggregate or notification for routing verification"
+    assert hasattr(context, "aggregate") or context.notification is not None, (
+        "No aggregate or notification for routing verification"
+    )
 
 
 @then("can emit compensation events")
 def step_can_emit_compensation(context):
     """Aggregate can emit compensation events."""
     # Aggregate exists and can emit events
-    assert hasattr(context, "aggregate") or hasattr(
-        context, "notification"
-    ), "No aggregate in context for emitting events"
+    assert hasattr(context, "aggregate") or hasattr(context, "notification"), (
+        "No aggregate in context for emitting events"
+    )
 
 
 @then("the Notification includes correlation_id linking to this PM instance")
@@ -2051,9 +2051,9 @@ def step_no_notification(context):
 def step_error_propagates(context):
     """Error propagates to caller."""
     # For validation errors, no compensation flow - error returns directly
-    assert not getattr(
-        context, "compensation_flow_initiated", True
-    ), "Compensation should not be initiated for validation errors"
+    assert not getattr(context, "compensation_flow_initiated", True), (
+        "Compensation should not be initiated for validation errors"
+    )
 
 
 @then("it contains the full provenance:")
@@ -2717,9 +2717,9 @@ def step_reason_indicates_no_handler(context):
     # System revocation indicates no custom handler
     if hasattr(context, "response") and context.response:
         if context.response.HasField("revocation"):
-            assert (
-                context.response.revocation.emit_system_revocation
-            ), "Expected system revocation when no handler"
+            assert context.response.revocation.emit_system_revocation, (
+                "Expected system revocation when no handler"
+            )
 
 
 @then("receives the Notification with rejection details")
@@ -2777,9 +2777,9 @@ def step_emit_revocation_true(context):
         # RejectionHandlerResponse: empty response means framework delegation
         if hasattr(response, "events") and hasattr(response, "notification"):
             # Both None = delegate to framework = emit_system_revocation
-            assert (
-                response.events is None and response.notification is None
-            ), "PM returned events or notification; expected framework delegation"
+            assert response.events is None and response.notification is None, (
+                "PM returned events or notification; expected framework delegation"
+            )
         else:
             # BusinessResponse or other type with emit_system_revocation attr
             assert response.emit_system_revocation
@@ -2792,9 +2792,9 @@ def step_target_handler_receives(context):
     assert context.notification is not None, "No notification for handler"
     # For fluent router, check _rejection_handler_called
     if hasattr(context, "_rejection_handler_called"):
-        assert any(
-            "target" in k for k in context._rejection_handler_called.keys()
-        ), "Target handler was not called"
+        assert any("target" in k for k in context._rejection_handler_called.keys()), (
+            "Target handler was not called"
+        )
 
 
 @then("BusinessResponse contains the EventBook")
@@ -2813,9 +2813,9 @@ def step_business_response_has_events(context):
 def step_resource_released_will_be_persisted(context):
     """ResourceReleased will be persisted."""
     # In unit test, verify aggregate exists for persistence
-    assert hasattr(context, "aggregate") or hasattr(
-        context, "router"
-    ), "No component for event persistence"
+    assert hasattr(context, "aggregate") or hasattr(context, "router"), (
+        "No component for event persistence"
+    )
 
 
 @then("BusinessResponse has emit_system_revocation = true")
@@ -2830,9 +2830,9 @@ def step_business_response_emit_true(context):
         if hasattr(context.response, "HasField") and context.response.HasField(
             "revocation"
         ):
-            assert (
-                context.response.revocation.emit_system_revocation
-            ), "Expected emit_system_revocation to be true"
+            assert context.response.revocation.emit_system_revocation, (
+                "Expected emit_system_revocation to be true"
+            )
 
 
 @then("handle_other is NOT called")
@@ -2840,9 +2840,9 @@ def step_handle_other_not_called(context):
     """handle_other is not called."""
     # For fluent router, check _rejection_handler_called doesn't contain handle_other
     if hasattr(context, "_rejection_handler_called"):
-        assert (
-            "handle_other" not in context._rejection_handler_called
-        ), "handle_other was unexpectedly called"
+        assert "handle_other" not in context._rejection_handler_called, (
+            "handle_other was unexpectedly called"
+        )
 
 
 @then(r"domain part = \"([^\"]+)\"")

@@ -174,6 +174,21 @@ impl AggregateService {
         }
         ctx
     }
+
+    /// Create context for the given sync mode integer value.
+    ///
+    /// Parses the proto sync mode and creates async context for Async mode,
+    /// sync context otherwise. This consolidates the repeated pattern of
+    /// extracting sync mode and conditionally creating the right context type.
+    fn create_context_for_sync_mode(&self, sync_mode_int: i32) -> GrpcAggregateContext {
+        let sync_mode = crate::proto::SyncMode::try_from(sync_mode_int)
+            .unwrap_or(crate::proto::SyncMode::Async);
+        if sync_mode == crate::proto::SyncMode::Async {
+            self.create_async_context()
+        } else {
+            self.create_sync_context(sync_mode)
+        }
+    }
 }
 
 #[tonic::async_trait]
@@ -185,18 +200,11 @@ impl CommandHandlerCoordinatorService for AggregateService {
         request: Request<CommandRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_request = request.into_inner();
-        let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Async);
         let command_book = sync_request.command.ok_or_else(|| {
             Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
         })?;
 
-        // Unspecified = async (fire and forget), otherwise use sync context
-        let ctx = if sync_mode == crate::proto::SyncMode::Async {
-            self.create_async_context()
-        } else {
-            self.create_sync_context(sync_mode)
-        };
+        let ctx = self.create_context_for_sync_mode(sync_request.sync_mode);
 
         let result =
             execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
@@ -256,8 +264,6 @@ impl CommandHandlerCoordinatorService for AggregateService {
         request: Request<CommandRequest>,
     ) -> Result<Response<BusinessResponse>, Status> {
         let sync_request = request.into_inner();
-        let sync_mode = crate::proto::SyncMode::try_from(sync_request.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Async);
         let command_book = sync_request.command.ok_or_else(|| {
             Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
         })?;
@@ -266,11 +272,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
         let correlation_id =
             crate::orchestration::correlation::extract_correlation_id(&command_book)?;
 
-        let ctx = if sync_mode == crate::proto::SyncMode::Async {
-            self.create_async_context()
-        } else {
-            self.create_sync_context(sync_mode)
-        };
+        let ctx = self.create_context_for_sync_mode(sync_request.sync_mode);
 
         // Load prior events
         let prior_events = ctx
@@ -326,17 +328,11 @@ impl CommandHandlerCoordinatorService for AggregateService {
         request: Request<EventRequest>,
     ) -> Result<Response<FactInjectionResponse>, Status> {
         let sync_event_book = request.into_inner();
-        let sync_mode = crate::proto::SyncMode::try_from(sync_event_book.sync_mode)
-            .unwrap_or(crate::proto::SyncMode::Async);
         let fact_events = sync_event_book
             .events
             .ok_or_else(|| Status::invalid_argument(super::errmsg::EVENT_REQUEST_MISSING_EVENTS))?;
 
-        let ctx = if sync_mode == crate::proto::SyncMode::Async {
-            self.create_async_context()
-        } else {
-            self.create_sync_context(sync_mode)
-        };
+        let ctx = self.create_context_for_sync_mode(sync_event_book.sync_mode);
 
         // Use aggregate handler if route_to_handler is true (default behavior)
         let business: Option<&dyn ClientLogic> = if sync_event_book.route_to_handler {

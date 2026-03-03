@@ -108,6 +108,23 @@ fn test_domain_storage_clone() {
     assert_clone::<DomainStorage>();
 }
 
+/// event_book_repo creates repository from storage components.
+///
+/// The helper consolidates the repeated pattern of creating EventBookRepository
+/// from event_store and snapshot_store. Verifies the method doesn't panic.
+#[test]
+fn test_domain_storage_event_book_repo() {
+    use crate::storage::mock::{MockEventStore, MockSnapshotStore};
+
+    let storage = DomainStorage {
+        event_store: Arc::new(MockEventStore::new()),
+        snapshot_store: Arc::new(MockSnapshotStore::new()),
+    };
+
+    // Should create repository without panicking
+    let _repo = storage.event_book_repo();
+}
+
 // ============================================================================
 // CommandRouter Construction Tests
 // ============================================================================
@@ -242,6 +259,53 @@ mod router_construction {
             Err(err) => {
                 assert!(err.message().contains("missing_domain"));
                 assert!(err.message().contains("No storage configured"));
+            }
+            Ok(_) => panic!("Expected error"),
+        }
+    }
+
+    // ============================================================================
+    // get_domain_resources Tests
+    // ============================================================================
+
+    /// get_domain_resources succeeds for registered domains.
+    ///
+    /// Returns both business handler and storage for the domain.
+    /// This helper consolidates the repeated pattern of fetching both resources.
+    #[test]
+    fn test_get_domain_resources_success() {
+        let router = make_router_with_domains(&["orders"]);
+
+        let result = router.get_domain_resources("orders");
+        assert!(result.is_ok());
+    }
+
+    /// get_domain_resources returns NotFound when handler is missing.
+    ///
+    /// If a domain has storage but no handler registered, returns handler error.
+    #[test]
+    fn test_get_domain_resources_missing_handler() {
+        let router = make_router_empty();
+
+        let result = router.get_domain_resources("orders");
+        match result {
+            Err(err) => {
+                assert!(err.message().contains("No handler registered"));
+                assert!(err.message().contains("orders"));
+            }
+            Ok(_) => panic!("Expected error"),
+        }
+    }
+
+    /// get_domain_resources error includes domain name for debugging.
+    #[test]
+    fn test_get_domain_resources_error_includes_domain() {
+        let router = make_router_with_domains(&["orders"]);
+
+        let result = router.get_domain_resources("missing_domain");
+        match result {
+            Err(err) => {
+                assert!(err.message().contains("missing_domain"));
             }
             Ok(_) => panic!("Expected error"),
         }
