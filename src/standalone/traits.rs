@@ -166,27 +166,10 @@ pub trait CommandHandler: Send + Sync + 'static {
     /// }
     /// ```
     fn handle_revocation(&self, notification: &Notification) -> BusinessResponse {
-        // Extract issuer_name from notification payload for default message
-        let issuer_name = notification
-            .payload
-            .as_ref()
-            .and_then(|p| {
-                use prost::Message;
-                RejectionNotification::decode(p.value.as_slice()).ok()
-            })
-            .map(|r| r.issuer_name)
-            .unwrap_or_else(|| "unknown".to_string());
-
+        let issuer_name = extract_issuer_name(notification);
         BusinessResponse {
             result: Some(crate::proto::business_response::Result::Revocation(
-                RevocationResponse {
-                    emit_system_revocation: true,
-                    reason: format!(
-                        "CommandHandler has no custom compensation for {}",
-                        issuer_name
-                    ),
-                    ..Default::default()
-                },
+                build_command_handler_revocation_response(&issuer_name),
             )),
         }
     }
@@ -473,29 +456,9 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
         notification: &Notification,
         _process_state: Option<&EventBook>,
     ) -> (Option<EventBook>, RevocationResponse) {
-        // Extract issuer_name from notification payload for default message
-        let issuer_name = notification
-            .payload
-            .as_ref()
-            .and_then(|p| {
-                use prost::Message;
-                RejectionNotification::decode(p.value.as_slice()).ok()
-            })
-            .map(|r| r.issuer_name)
-            .unwrap_or_else(|| "unknown".to_string());
-
+        let issuer_name = extract_issuer_name(notification);
         // Default: no PM events, delegate to framework
-        (
-            None,
-            RevocationResponse {
-                emit_system_revocation: true,
-                reason: format!(
-                    "ProcessManager has no custom compensation for {}",
-                    issuer_name
-                ),
-                ..Default::default()
-            },
-        )
+        (None, build_pm_revocation_response(&issuer_name))
     }
 }
 
@@ -521,5 +484,53 @@ impl ProcessManagerConfig {
     pub fn with_subscriptions(mut self, subscriptions: Vec<crate::descriptor::Target>) -> Self {
         self.subscriptions = subscriptions;
         self
+    }
+}
+
+// ============================================================================
+// Pure Helper Functions (testable without infrastructure)
+// ============================================================================
+
+/// Extract issuer name from a notification payload.
+///
+/// Returns the issuer_name field from RejectionNotification, or "unknown"
+/// if the notification payload cannot be decoded.
+pub(crate) fn extract_issuer_name(notification: &Notification) -> String {
+    notification
+        .payload
+        .as_ref()
+        .and_then(|p| {
+            use prost::Message;
+            RejectionNotification::decode(p.value.as_slice()).ok()
+        })
+        .map(|r| r.issuer_name)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Build a default revocation response for command handlers.
+///
+/// Returns a RevocationResponse requesting framework to emit system revocation event.
+pub(crate) fn build_command_handler_revocation_response(issuer_name: &str) -> RevocationResponse {
+    RevocationResponse {
+        emit_system_revocation: true,
+        reason: format!(
+            "CommandHandler has no custom compensation for {}",
+            issuer_name
+        ),
+        ..Default::default()
+    }
+}
+
+/// Build a default revocation response for process managers.
+///
+/// Returns a RevocationResponse requesting framework to emit system revocation event.
+pub(crate) fn build_pm_revocation_response(issuer_name: &str) -> RevocationResponse {
+    RevocationResponse {
+        emit_system_revocation: true,
+        reason: format!(
+            "ProcessManager has no custom compensation for {}",
+            issuer_name
+        ),
+        ..Default::default()
     }
 }

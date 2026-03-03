@@ -82,4 +82,5 @@ pub async fn persist_snapshot_if_present(
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

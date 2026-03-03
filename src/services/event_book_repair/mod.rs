@@ -203,4 +203,5 @@ impl EventBookRepairer {
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

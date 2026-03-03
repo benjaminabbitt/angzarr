@@ -135,3 +135,137 @@ fn test_event_sequence() {
     let event = make_event_with_sequence(42);
     assert_eq!(event_sequence(&event), 42);
 }
+
+// ============================================================================
+// Edition Timeline Tests
+// ============================================================================
+
+/// Empty string is the main timeline.
+///
+/// When no edition is specified, we're operating on the canonical timeline.
+#[test]
+fn test_is_main_timeline_empty_string() {
+    assert!(is_main_timeline(""));
+}
+
+/// Default edition name ("angzarr") is the main timeline.
+///
+/// The default edition name explicitly represents the main timeline.
+#[test]
+fn test_is_main_timeline_default_edition() {
+    assert!(is_main_timeline(DEFAULT_EDITION));
+    assert!(is_main_timeline("angzarr"));
+}
+
+/// Named editions are not the main timeline.
+///
+/// Custom edition names (branches, drafts) are separate from the main timeline.
+#[test]
+fn test_is_main_timeline_named_edition() {
+    assert!(!is_main_timeline("v2"));
+    assert!(!is_main_timeline("draft-1"));
+    assert!(!is_main_timeline("feature-branch"));
+}
+
+/// Fallback edition returns main timeline for named editions.
+///
+/// When a named edition has no events, queries fall back to the main timeline.
+#[test]
+fn test_fallback_edition_named() {
+    assert_eq!(fallback_edition("v2"), DEFAULT_EDITION);
+    assert_eq!(fallback_edition("draft"), DEFAULT_EDITION);
+}
+
+/// Fallback edition returns same edition for main timeline.
+///
+/// Main timeline has no fallback - it is the fallback target.
+#[test]
+fn test_fallback_edition_main_timeline() {
+    assert_eq!(fallback_edition(""), "");
+    assert_eq!(fallback_edition("angzarr"), "angzarr");
+}
+
+// ============================================================================
+// EventBook Assembly Tests
+// ============================================================================
+
+/// Empty map produces empty vec.
+///
+/// No events means no EventBooks to return.
+#[test]
+fn test_assemble_event_books_empty() {
+    let map = HashMap::new();
+    let result = assemble_event_books(map, "corr-123");
+    assert!(result.is_empty());
+}
+
+/// Single aggregate produces single EventBook.
+///
+/// One (domain, edition, root) key produces one EventBook with all its events.
+#[test]
+fn test_assemble_event_books_single() {
+    let root = uuid::Uuid::new_v4();
+    let mut map = HashMap::new();
+    map.insert(
+        ("orders".to_string(), "angzarr".to_string(), root),
+        vec![make_event_with_sequence(0), make_event_with_sequence(1)],
+    );
+
+    let result = assemble_event_books(map, "corr-123");
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].pages.len(), 2);
+    assert_eq!(result[0].cover.as_ref().unwrap().correlation_id, "corr-123");
+    assert_eq!(result[0].cover.as_ref().unwrap().domain, "orders");
+}
+
+/// Multiple aggregates produce multiple EventBooks.
+///
+/// Each (domain, edition, root) key produces a separate EventBook.
+#[test]
+fn test_assemble_event_books_multiple() {
+    let root1 = uuid::Uuid::new_v4();
+    let root2 = uuid::Uuid::new_v4();
+    let mut map = HashMap::new();
+    map.insert(
+        ("orders".to_string(), "angzarr".to_string(), root1),
+        vec![make_event_with_sequence(0)],
+    );
+    map.insert(
+        ("inventory".to_string(), "angzarr".to_string(), root2),
+        vec![make_event_with_sequence(0)],
+    );
+
+    let result = assemble_event_books(map, "corr-456");
+    assert_eq!(result.len(), 2);
+
+    // Both should have the correlation ID
+    for book in &result {
+        assert_eq!(book.cover.as_ref().unwrap().correlation_id, "corr-456");
+    }
+}
+
+// ============================================================================
+// timestamp_to_rfc3339 Tests
+// ============================================================================
+
+/// Valid timestamp converts to RFC3339 string.
+#[test]
+fn test_timestamp_to_rfc3339_valid() {
+    let ts = Timestamp {
+        seconds: 1704067200, // 2024-01-01 00:00:00 UTC
+        nanos: 0,
+    };
+    let result = timestamp_to_rfc3339(&ts).unwrap();
+    assert!(result.starts_with("2024-01-01"));
+}
+
+/// Invalid timestamp returns error.
+#[test]
+fn test_timestamp_to_rfc3339_invalid() {
+    let ts = Timestamp {
+        seconds: i64::MAX,
+        nanos: i32::MAX,
+    };
+    let result = timestamp_to_rfc3339(&ts);
+    assert!(matches!(result, Err(StorageError::InvalidTimestamp { .. })));
+}

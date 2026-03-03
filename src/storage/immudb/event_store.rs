@@ -564,7 +564,5 @@ impl EventStore for ImmudbEventStore {
 }
 
 #[cfg(test)]
-mod tests {
-    // Integration tests require a running immudb instance
-    // See tests/immudb_integration/ for full test suite
-}
+#[path = "event_store.test.rs"]
+mod tests;

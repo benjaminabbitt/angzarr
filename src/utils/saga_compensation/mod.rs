@@ -627,4 +627,5 @@ pub async fn process_compensation_response(
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

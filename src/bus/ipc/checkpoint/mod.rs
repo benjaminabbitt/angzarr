@@ -243,4 +243,5 @@ pub struct CheckpointStats {
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

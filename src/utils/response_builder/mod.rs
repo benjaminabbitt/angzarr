@@ -115,4 +115,5 @@ pub fn build_command_response(
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

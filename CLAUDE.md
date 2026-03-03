@@ -158,10 +158,53 @@ Four levels of testing:
 
 No external dependencies. Tests interact only with the system under test. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.
 
-- Angzarr core: inline `#[cfg(test)]` modules
-- Examples: `test_*_logic.py`, `*_test.go`, inline Rust tests
+- Angzarr core: separate `.test.rs` files alongside source
+- Examples: `test_*_logic.py`, `*_test.go`, `*.test.rs`
 - Run with: `cargo test --lib` or `just test`
 - **Execution**: Continuous via bacon, pre-commit hooks
+
+#### Test File Organization (Rust)
+
+**Place tests in `.test.rs` files alongside source files.** This reduces context size when reading production code—AI and human reviewers see implementation without wading through test code.
+
+```
+src/
+├── correlation.rs           # Production code
+├── correlation.test.rs      # Tests for correlation.rs
+├── validation.rs
+├── validation.test.rs
+└── mod.rs                   # Includes both via #[cfg(test)]
+```
+
+**Include pattern in parent module:**
+```rust
+// In mod.rs or lib.rs
+pub mod correlation;
+#[cfg(test)]
+#[path = "correlation.test.rs"]
+mod correlation_tests;
+```
+
+**Test file structure:**
+```rust
+// correlation.test.rs
+//! Tests for correlation ID propagation.
+//!
+//! Why: Correlation IDs enable cross-domain tracing...
+
+use super::*;
+
+#[test]
+fn test_fill_correlation_id_fills_empty() { ... }
+```
+
+**Benefits:**
+- Production files stay focused on implementation
+- Test files can be skipped when reading for understanding
+- Still compiled conditionally via `#[cfg(test)]`
+- Tests remain co-located (same directory) for discoverability
+
+**Migration:** Existing inline `#[cfg(test)] mod tests` blocks should be migrated to `.test.rs` files when touched.
 
 ### Test Documentation: Always Explain WHY
 

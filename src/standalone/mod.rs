@@ -43,12 +43,18 @@ pub mod errmsg {
 mod builder;
 mod client;
 mod dispatcher;
+#[cfg(test)]
+#[path = "dispatcher.test.rs"]
+mod dispatcher_tests;
 pub mod grpc_handlers;
 mod router;
 mod runtime;
 mod server;
 mod speculative;
 mod traits;
+#[cfg(test)]
+#[path = "traits.test.rs"]
+mod traits_tests;
 
 pub use builder::RuntimeBuilder;
 pub use client::{CommandBuilder, CommandClient, SpeculativeClient, StandaloneQueryClient};

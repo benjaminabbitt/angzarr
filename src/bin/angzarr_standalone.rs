@@ -155,60 +155,63 @@ impl ManagedChild {
 
     /// Kill the process and all its descendants.
     async fn kill(&mut self) {
-        if let Some(pid) = self.child.id() {
-            info!(name = %self.name, pid = pid, "Killing process");
+        let Some(pid) = self.child.id() else {
+            return;
+        };
 
-            #[cfg(unix)]
-            {
-                use nix::sys::signal::{killpg, Signal};
-                use nix::unistd::Pid;
+        info!(name = %self.name, pid = pid, "Killing process");
+        send_sigterm_to_group(pid, &self.name);
+        let _ = self.child.start_kill();
 
-                let pgid = Pid::from_raw(pid as i32);
-                if let Err(e) = killpg(pgid, Signal::SIGTERM) {
-                    warn!(name = %self.name, error = %e, "Failed to send SIGTERM to process group");
-                }
+        match tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await {
+            Ok(Ok(status)) => {
+                info!(name = %self.name, status = ?status, "Process exited");
             }
-
-            let _ = self.child.start_kill();
-
-            match tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await {
-                Ok(Ok(status)) => {
-                    info!(name = %self.name, status = ?status, "Process exited");
-                }
-                Ok(Err(e)) => {
-                    warn!(name = %self.name, error = %e, "Error waiting for process");
-                }
-                Err(_) => {
-                    warn!(name = %self.name, "Process didn't exit gracefully, sending SIGKILL");
-
-                    #[cfg(unix)]
-                    {
-                        use nix::sys::signal::{killpg, Signal};
-                        use nix::unistd::Pid;
-
-                        let pgid = Pid::from_raw(pid as i32);
-                        let _ = killpg(pgid, Signal::SIGKILL);
-                    }
-
-                    let _ = self.child.kill().await;
-                }
+            Ok(Err(e)) => {
+                warn!(name = %self.name, error = %e, "Error waiting for process");
+            }
+            Err(_) => {
+                warn!(name = %self.name, "Process didn't exit gracefully, sending SIGKILL");
+                send_sigkill_to_group(pid);
+                let _ = self.child.kill().await;
             }
         }
     }
 }
 
+/// Send SIGTERM to a process group (Unix only).
+#[cfg(unix)]
+fn send_sigterm_to_group(pid: u32, name: &str) {
+    use nix::sys::signal::{killpg, Signal};
+    use nix::unistd::Pid;
+
+    let pgid = Pid::from_raw(pid as i32);
+    if let Err(e) = killpg(pgid, Signal::SIGTERM) {
+        warn!(name = %name, error = %e, "Failed to send SIGTERM to process group");
+    }
+}
+
+#[cfg(not(unix))]
+fn send_sigterm_to_group(_pid: u32, _name: &str) {}
+
+/// Send SIGKILL to a process group (Unix only).
+#[cfg(unix)]
+fn send_sigkill_to_group(pid: u32) {
+    use nix::sys::signal::{killpg, Signal};
+    use nix::unistd::Pid;
+
+    let pgid = Pid::from_raw(pid as i32);
+    let _ = killpg(pgid, Signal::SIGKILL);
+}
+
+#[cfg(not(unix))]
+fn send_sigkill_to_group(_pid: u32) {}
+
 impl Drop for ManagedChild {
     fn drop(&mut self) {
         if let Ok(None) = self.child.try_wait() {
             if let Some(pid) = self.child.id() {
-                #[cfg(unix)]
-                {
-                    use nix::sys::signal::{killpg, Signal};
-                    use nix::unistd::Pid;
-
-                    let pgid = Pid::from_raw(pid as i32);
-                    let _ = killpg(pgid, Signal::SIGKILL);
-                }
+                send_sigkill_to_group(pid);
                 let _ = self.child.start_kill();
             }
         }

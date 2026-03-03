@@ -212,57 +212,5 @@ pub async fn wait_for_ready(
 }
 
 #[cfg(test)]
-mod tests {
-    //! Tests for process management utilities.
-    //!
-    //! Process management handles spawning child processes for business logic:
-    //! - ProcessEnv converts transport config to environment variables
-    //! - ManagedProcess wraps child process lifecycle
-    //! - wait_for_ready polls until a service accepts connections
-    //!
-    //! Key behaviors verified:
-    //! - UDS transport produces correct env vars (TRANSPORT_TYPE, UDS_BASE_PATH)
-    //! - TCP transport produces PORT instead of UDS_BASE_PATH
-    //! - Domain and service name are always included
-
-    use super::*;
-
-    // ============================================================================
-    // ProcessEnv Conversion Tests
-    // ============================================================================
-
-    /// UDS transport produces TRANSPORT_TYPE=uds and UDS_BASE_PATH.
-    #[test]
-    fn test_process_env_to_env_vars() {
-        let env = ProcessEnv {
-            transport_type: "uds".to_string(),
-            uds_base_path: Some("/tmp/angzarr".to_string()),
-            service_name: "business".to_string(),
-            domain: Some("customer".to_string()),
-            port: None,
-        };
-
-        let vars = env.to_env_vars();
-        assert_eq!(vars.get("TRANSPORT_TYPE"), Some(&"uds".to_string()));
-        assert_eq!(vars.get("UDS_BASE_PATH"), Some(&"/tmp/angzarr".to_string()));
-        assert_eq!(vars.get("SERVICE_NAME"), Some(&"business".to_string()));
-        assert_eq!(vars.get("DOMAIN"), Some(&"customer".to_string()));
-    }
-
-    /// TCP transport produces TRANSPORT_TYPE=tcp and PORT, omits UDS_BASE_PATH.
-    #[test]
-    fn test_process_env_tcp() {
-        let env = ProcessEnv {
-            transport_type: "tcp".to_string(),
-            uds_base_path: None,
-            service_name: "business".to_string(),
-            domain: Some("order".to_string()),
-            port: Some(50051),
-        };
-
-        let vars = env.to_env_vars();
-        assert_eq!(vars.get("TRANSPORT_TYPE"), Some(&"tcp".to_string()));
-        assert_eq!(vars.get("PORT"), Some(&"50051".to_string()));
-        assert!(!vars.contains_key("UDS_BASE_PATH"));
-    }
-}
+#[path = "mod.test.rs"]
+mod tests;

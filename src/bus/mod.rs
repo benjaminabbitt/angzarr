@@ -141,4 +141,5 @@ impl<T: EventBus> EventBus for Instrumented<T> {
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

@@ -150,6 +150,36 @@ fn test_extract_events_from_response_empty() {
     // No cover means no correlation ID - that's expected for empty responses
 }
 
+/// Notification response returns empty EventBook for upstream propagation.
+///
+/// When a rejection handler returns a Notification, the framework handles
+/// forwarding it separately. The response builder returns an empty EventBook
+/// so the command processing completes without blocking.
+#[test]
+fn test_extract_events_from_response_notification() {
+    use crate::proto::Notification;
+
+    let response = BusinessResponse {
+        result: Some(business_response::Result::Notification(Notification {
+            cover: Some(Cover {
+                domain: "test".to_string(),
+                root: None,
+                correlation_id: "upstream-correlation".to_string(),
+                edition: None,
+                external_id: String::new(),
+            }),
+            ..Default::default()
+        })),
+    };
+
+    let result = extract_events_from_response(response, "test-correlation".to_string());
+    assert!(result.is_ok());
+    let events = result.unwrap();
+    assert!(events.pages.is_empty());
+    // Cover is None since notification handling doesn't produce events directly
+    assert!(events.cover.is_none());
+}
+
 // ============================================================================
 // Publish and Build Response Tests
 // ============================================================================

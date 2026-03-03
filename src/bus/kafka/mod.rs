@@ -566,4 +566,5 @@ fn kafka_extract_trace_context<M: rdkafka::message::Message>(message: &M, span: 
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

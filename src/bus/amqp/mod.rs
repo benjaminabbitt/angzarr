@@ -583,45 +583,8 @@ fn amqp_extract_trace_context(properties: &BasicProperties, span: &tracing::Span
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::proto::{Cover, Uuid};
-
-    #[test]
-    fn test_routing_key_generation() {
-        let book = EventBook {
-            cover: Some(Cover {
-                domain: "orders".to_string(),
-                root: Some(Uuid {
-                    value: b"test-123".to_vec(),
-                }),
-                correlation_id: String::new(),
-                edition: None,
-                external_id: String::new(),
-            }),
-            pages: vec![],
-            snapshot: None,
-            ..Default::default()
-        };
-
-        // "test-123" as bytes becomes "746573742d313233" in hex
-        assert_eq!(AmqpEventBus::routing_key(&book), "orders.746573742d313233");
-    }
-
-    #[test]
-    fn test_publisher_config() {
-        let config = AmqpConfig::publisher("amqp://localhost:5672");
-        assert_eq!(config.exchange, "angzarr.events");
-        assert!(config.queue.is_none());
-    }
-
-    #[test]
-    fn test_subscriber_config() {
-        let config = AmqpConfig::subscriber("amqp://localhost:5672", "orders-projector", "orders");
-        assert_eq!(config.routing_key, Some("orders.*".to_string()));
-        assert_eq!(config.queue, Some("orders-projector".to_string()));
-    }
-}
+#[path = "mod.test.rs"]
+mod tests;
 
 // Integration tests have been moved to tests/bus_amqp.rs using testcontainers.
 // Run with: cargo test --test bus_amqp --features amqp -- --nocapture

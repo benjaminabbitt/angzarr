@@ -150,6 +150,41 @@ enum MessageAction {
     Exit,
 }
 
+/// Handle a successfully read message buffer.
+///
+/// Decodes, filters, and dispatches the message to handlers.
+fn handle_message_buffer(
+    buf: Vec<u8>,
+    domains: &[String],
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    checkpoint: &Checkpoint,
+    rt: &tokio::runtime::Handle,
+) {
+    let book = match EventBook::decode(&buf[..]) {
+        Ok(b) => Arc::new(b),
+        Err(e) => {
+            error!(error = %e, "Failed to decode EventBook");
+            return;
+        }
+    };
+
+    if !should_process_message(&book, domains, checkpoint, rt) {
+        return;
+    }
+
+    debug!(routing_key = %book.routing_key(), "Received event via pipe");
+    dispatch_to_handlers(book, handlers, checkpoint, rt);
+}
+
+/// Flush checkpoint on pipe EOF.
+fn flush_checkpoint_on_eof(checkpoint: &Checkpoint, rt: &tokio::runtime::Handle) {
+    rt.block_on(async {
+        if let Err(e) = checkpoint.flush().await {
+            warn!(error = %e, "Failed to flush checkpoint on pipe EOF");
+        }
+    });
+}
+
 /// Process a single read result from the pipe.
 ///
 /// Handles message decoding, filtering, and dispatching to handlers.
@@ -164,28 +199,11 @@ fn process_read_result(
 ) -> MessageAction {
     match result {
         ReadResult::Message(buf) => {
-            let book = match EventBook::decode(&buf[..]) {
-                Ok(b) => Arc::new(b),
-                Err(e) => {
-                    error!(error = %e, "Failed to decode EventBook");
-                    return MessageAction::Continue;
-                }
-            };
-
-            if !should_process_message(&book, domains, checkpoint, rt) {
-                return MessageAction::Continue;
-            }
-
-            debug!(routing_key = %book.routing_key(), "Received event via pipe");
-            dispatch_to_handlers(book, handlers, checkpoint, rt);
+            handle_message_buffer(buf, domains, handlers, checkpoint, rt);
             MessageAction::Continue
         }
         ReadResult::Eof => {
-            rt.block_on(async {
-                if let Err(e) = checkpoint.flush().await {
-                    warn!(error = %e, "Failed to flush checkpoint on pipe EOF");
-                }
-            });
+            flush_checkpoint_on_eof(checkpoint, rt);
             debug!(pipe = %pipe_path.display(), "Pipe EOF, reopening");
             MessageAction::Reopen
         }

@@ -446,4 +446,5 @@ impl EventQueryTrait for EventQueryService {
 }
 
 #[cfg(test)]
+#[path = "mod.test.rs"]
 mod tests;

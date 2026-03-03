@@ -510,31 +510,5 @@ impl EventBus for PubSubEventBus {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_topic_for_domain() {
-        let config = PubSubConfig::publisher("my-project");
-        assert_eq!(config.topic_for_domain("orders"), "angzarr-events-orders");
-        assert_eq!(
-            config.topic_for_domain("game.player0"),
-            "angzarr-events-game-player0"
-        );
-    }
-
-    #[test]
-    fn test_topic_with_custom_prefix() {
-        let config = PubSubConfig::publisher("my-project").with_topic_prefix("myapp");
-        assert_eq!(config.topic_for_domain("orders"), "myapp-events-orders");
-    }
-
-    #[test]
-    fn test_subscription_for_domain() {
-        let config = PubSubConfig::subscriber("my-project", "saga-fulfillment", vec![]);
-        assert_eq!(
-            config.subscription_for_domain("orders"),
-            "angzarr-saga-fulfillment-orders"
-        );
-    }
-}
+#[path = "mod.test.rs"]
+mod tests;
