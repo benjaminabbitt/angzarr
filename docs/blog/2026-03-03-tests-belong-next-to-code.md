@@ -6,191 +6,103 @@ tags: [testing, patterns, rust, java, architecture]
 keywords: [testing, test organization, rust, java, maven, cargo, colocation, documentation]
 ---
 
-Why I've always preferred tests adjacent to production code, and how modern toolchains are finally catching up.
+Tests should live next to the code they test—same directory, separate file. Not inline. Not in a parallel tree.
 
 <!-- truncate -->
 
-## The Divisive Opinion
+```
+src/
+├── user_service.rs           # Production code only
+├── user_service.test.rs      # Tests only
+└── mod.rs
+```
 
-For most of my career, I've held a divisive opinion: test code should live next to the code it tests. Not in a parallel directory tree. Not in a separate package. *Right there*, where you can see it.
+AI context windows changed my thinking. When an AI reads a 500-line file where 300 lines are tests, it wastes 60% of its context budget on code irrelevant to most tasks. Separate files let AI skip tests; inline tests force everything into context.
 
-This puts me at odds with decades of enterprise convention. Java's Maven established the `src/main` and `src/test` split. .NET followed. The pattern became orthodoxy: production code here, test code over there, and never the twain shall meet.
+Java's `src/main`/`src/test` split goes too far—that was a workaround for the JVM's inability to exclude code at compile time. Modern languages (Rust, Go) solved this. We get colocation without the baggage.
 
-I think this was a mistake born from [tooling limitations](https://maven.apache.org/guides/introduction/introduction-to-the-standard-directory-layout.html), not from any inherent benefit to developers.
+**The principle:** Tests belong near code. **The implementation:** Same directory, separate file, clearly named (`.test.rs`, `_test.go`).
 
-## The Case for Colocation
+---
 
-When tests live next to code, several good things happen:
+## Why Separate Files?
 
-**Tests are visible.** Open a file, see its tests. No hunting through a parallel directory structure. No wondering "does this even have tests?" The presence (or absence) of tests is immediately apparent.
+I used to prefer Rust's `#[cfg(test)] mod tests` pattern: maximum colocation, one scroll shows everything.
 
-**Tests serve as documentation.** Well-structured tests show how code is meant to be used. When tests are one scroll away, they're more likely to be read. When they're three directories over, they're discovered only when something breaks.
+Working with AI assistants changed my mind. Every token in an AI context window has a cost. Inline tests create noise: search for business logic, get hits in test assertions, fixtures, helpers. Ask an AI to understand authentication, it loads 47 test cases it doesn't need.
 
-**Refactoring is safer.** Move a file, its tests move with it. Rename a module, the tests follow. The parallel directory structure creates a fragile coupling: rename `src/main/java/com/example/UserService.java` and you'd better remember to rename `src/test/java/com/example/UserServiceTest.java` too.
+**The problem isn't that tests exist. It's that inline tests are in the way.**
 
-**Code review is easier.** When reviewing a change, the test changes are contextually adjacent. You see the implementation and its verification together. With split directories, reviewers must mentally correlate changes across distant locations.
+Separate files preserve colocation (one directory listing shows both) while enabling selective loading. AI tools skip `.test` files. Humans wanting documentation head *for* the tests. Choice instead of force.
 
-**Tests remind you they exist.** Out of sight, out of mind. Tests in a parallel tree are easy to forget, easy to neglect, easy to let rot. Tests next to code are a constant presence, a reminder that this code has expectations that must be maintained.
+## Why Not Parallel Trees?
 
-## The Java Problem
+Java's `src/main`/`src/test` split was a workaround for tooling limitations, not a design choice for developer benefit.
 
-Java's `src/main/java` and `src/test/java` split became the template for an entire generation of build tools. [Maven codified it](https://maven.apache.org/guides/introduction/introduction-to-the-standard-directory-layout.html). [Gradle inherited it](https://docs.gradle.org/current/userguide/java_plugin.html). IDE project wizards generate it by default.
+### The Java Constraint
+
+The JVM's class loading model forced physical separation:
+
+1. **No conditional compilation.** Unlike Rust's `#[cfg]`, Java can't say "compile this class but exclude it from the JAR." Every `.class` file could end up in production.
+
+2. **Heavy test dependencies.** JUnit, Mockito, assertion libraries add megabytes. You don't want them shipped.
+
+3. **Classpath-based loading.** The only way to exclude code was to put it in a different directory and configure the packager to ignore it.
+
+Maven's [Surefire plugin](https://maven.apache.org/surefire/maven-surefire-plugin/) runs tests from `target/test-classes`. The [JAR plugin](https://maven.apache.org/plugins/maven-jar-plugin/) packages from `target/classes`. They never overlap because the source directories never overlapped. Physical separation at source level cascades to physical separation everywhere.
 
 ```
 my-project/
 ├── src/
-│   ├── main/
-│   │   └── java/
-│   │       └── com/
-│   │           └── example/
-│   │               └── UserService.java
-│   └── test/
-│       └── java/
-│           └── com/
-│               └── example/
-│                   └── UserServiceTest.java
+│   ├── main/java/com/example/UserService.java
+│   └── test/java/com/example/UserServiceTest.java
 └── pom.xml
 ```
 
-To find the tests for `UserService`, you navigate:
-1. Up from `src/main/java/com/example/`
-2. Over to `src/test/java/`
-3. Back down through `com/example/`
-4. Find `UserServiceTest.java`
+To find tests for `UserService`: up from `src/main/java/com/example/`, over to `src/test/java/`, back down through `com/example/`. That's not "next to the code." That's an archaeological expedition.
 
-That's not "next to the code." That's an archaeological expedition.
+### The .NET Constraint
 
-Worse, the parallel structure creates maintenance burden. The package hierarchy must be duplicated exactly. Add a new package in main? Manually create the same package in test. Refactor a package name? Do it twice. This isn't separation of concerns; it's separation of location, which only adds friction.
+.NET went further: **separate assemblies**.
 
-**Why did Java do this?**
-
-The JVM's class loading model made this nearly inevitable. Here's the chain of constraints:
-
-1. **The JVM [loads classes from the classpath](https://docs.oracle.com/javase/8/docs/technotes/tools/findingclasses.html).** At runtime, there's no concept of "source directories," just a flat namespace of classes resolved from JAR files and directories.
-
-2. **JAR files are the deployment unit.** You ship a `.jar` containing your compiled `.class` files. That's what goes to production.
-
-3. **The JVM has no conditional compilation.** Unlike C's [`#ifdef`](https://gcc.gnu.org/onlinedocs/cpp/Ifdef.html) or Rust's `#[cfg]`, Java has no mechanism to say "compile this class, but exclude it from the final artifact." Every `.class` file in your source tree gets compiled. Every compiled class *could* end up in the JAR.
-
-4. **Test dependencies are heavy.** [JUnit](https://junit.org/), [Mockito](https://site.mockito.org/), assertion libraries: these add megabytes to your classpath. You don't want them in production.
-
-The only solution available was **physical separation**. Put test sources in a different directory tree. Compile them to a different output directory. Configure the packager to ignore that output. The directory structure *is* the filter.
-
-Maven's [Surefire plugin](https://maven.apache.org/surefire/maven-surefire-plugin/) runs tests from `target/test-classes`. The [JAR plugin](https://maven.apache.org/plugins/maven-jar-plugin/) packages from `target/classes`. They never overlap because the *source directories* never overlapped. Physical separation at the source level cascades to physical separation at every subsequent stage.
-
-It solved the technical problem. But it created an organizational one that we've been living with for 25 years.
-
-## The .NET Pattern
-
-.NET followed Java's lead, though with its own twist: **separate assemblies**.
-
-In the .NET world, the deployment unit is the assembly (`.dll` or `.exe`). Visual Studio's project model [encourages a one-to-one correspondence](https://www.red-gate.com/simple-talk/development/dotnet-development/partitioning-your-code-base-through-net-assemblies-and-visual-studio-projects/) between projects and assemblies. Each project compiles to one assembly.
-
-The conventional structure:
 ```
 MySolution/
-├── MyApp/
-│   └── MyApp.csproj          → MyApp.dll
-├── MyApp.Tests/
-│   └── MyApp.Tests.csproj    → MyApp.Tests.dll
+├── MyApp/MyApp.csproj          → MyApp.dll
+├── MyApp.Tests/MyApp.Tests.csproj    → MyApp.Tests.dll
 └── MySolution.sln
 ```
 
-Why separate projects instead of separate directories within one project?
+Assembly references are explicit. NuGet packages are per-project. Deployment is per-assembly. The tooling expects tests far away from production code.
 
-1. **Assembly references are explicit.** `MyApp.Tests.csproj` references `MyApp.csproj`. The test assembly depends on the production assembly. This is cleaner than trying to exclude certain source files from compilation.
+Both patterns solved real technical problems. But they created organizational ones we've been living with for decades.
 
-2. **NuGet packages are per-project.** Test frameworks ([xUnit](https://xunit.net/), [NUnit](https://nunit.org/), [MSTest](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-with-mstest)) are NuGet dependencies. You want them in the test project, not the production project. Separate projects mean separate dependency graphs.
+## Modern Solutions
 
-3. **Deployment is per-assembly.** When you deploy, you copy assemblies. If tests were in the same assembly, you'd need post-build filtering, something MSBuild never standardized.
+Rust and Go proved smarter tooling removes the need for separation.
 
-The result: even more separation than Java. Not just different directories, but entirely different projects. The test code isn't merely in a parallel tree; it's in a parallel *solution structure*.
+### Rust: Conditional Compilation
 
-[Microsoft's guidance](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-pack) for `dotnet pack` assumes this separation: "OctoPack should only be installed on projects that you are going to deploy... Do not install OctoPack on unit tests, class libraries, or other supporting projects."
-
-The tooling *expects* you to keep tests far away from production code.
-
-## The Rust Innovation: True Conditional Compilation
-
-Rust solved the problem Java and .NET couldn't: **compile-time code elimination**. The language's [test organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html) is built around this capability.
+Rust's [`#[cfg(test)]`](https://doc.rust-lang.org/reference/conditional-compilation.html) eliminates code at compile time:
 
 ```rust
-// user_service.rs
-
-pub struct UserService {
-    // ...
-}
-
-impl UserService {
-    pub fn create_user(&self, name: &str) -> Result<User, Error> {
-        // implementation
-    }
-}
+pub struct UserService { /* ... */ }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_create_user_succeeds() {
-        let service = UserService::new();
-        let user = service.create_user("Alice").unwrap();
-        assert_eq!(user.name, "Alice");
-    }
-
-    #[test]
-    fn test_create_user_rejects_empty_name() {
-        let service = UserService::new();
-        let result = service.create_user("");
-        assert!(result.is_err());
-    }
+    fn test_create_user() { /* ... */ }
 }
 ```
 
-The [`#[cfg(test)]`](https://doc.rust-lang.org/reference/conditional-compilation.html) attribute tells the compiler: "this module exists only when compiling for tests." In release builds, this code doesn't exist. Zero overhead. No separate directories needed.
+In release builds, the test module doesn't exist—not compiled, not linked, not present. Test dependencies ([`[dev-dependencies]`](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#development-dependencies)) are only linked when building tests.
 
-**How it actually works:**
+No deployment risk. No dependency contamination. No separate directories needed.
 
-Rust's conditional compilation operates at the AST (Abstract Syntax Tree) level, before code generation. When the compiler encounters `#[cfg(test)]`:
+### Go: Naming Convention
 
-1. It evaluates the predicate (`test`) against the current compilation configuration
-2. If false (release build), [the entire annotated item is removed from the source](https://doc.rust-lang.org/reference/conditional-compilation.html). Not compiled, not linked, not present in the binary.
-3. If true (test build), the attribute is stripped and compilation proceeds normally
-
-This is fundamentally different from Java's approach. Java compiles everything, then uses directory conventions to exclude artifacts. Rust *doesn't compile* the excluded code. The test module isn't "excluded from the JAR"; it never becomes machine code in the first place.
-
-The implications:
-
-- **No deployment risk.** You can't accidentally ship test code because it doesn't exist in the release binary. There's nothing to exclude.
-- **No dependency contamination.** Test-only dependencies (marked [`[dev-dependencies]`](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#development-dependencies) in `Cargo.toml`) are only linked when building tests. Release builds don't see them.
-- **Source-level colocation.** Since the compiler handles exclusion, there's no need for physical separation. Tests can live in the same file, and the tooling handles the rest.
-
-**This isn't preprocessor hackery.** Unlike C's [`#ifdef`](https://gcc.gnu.org/onlinedocs/cpp/Ifdef.html), which operates on text before parsing, Rust's `#[cfg]` is a proper language feature. The compiler understands the structure. IDEs can gray out inactive code. Refactoring tools work correctly across conditional boundaries.
-
-**The benefits are immediate:**
-
-- Open `user_service.rs`, scroll down, see the tests
-- Refactor `UserService`? The tests are right there to update
-- Code review shows implementation and tests in one diff
-- IDE navigation is trivial: it's the same file
-
-**But doesn't this make files huge?**
-
-Sometimes. Rust developers have split opinions. Some keep tests inline. Others use a `tests` submodule in a [separate file](https://doc.rust-lang.org/rust-by-example/cargo/test.html). The language supports both:
-
-```rust
-// user_service.rs
-pub struct UserService { /* ... */ }
-
-#[cfg(test)]
-mod tests;  // Load tests from user_service/tests.rs
-```
-
-Either way, the tests are *adjacent*: same directory, obvious relationship, no parallel tree.
-
-## Go's Middle Ground: Convention Over Configuration
-
-Go took a different approach than both Java and Rust: **file naming conventions**.
+Go uses file naming: `_test.go` files are [only compiled by `go test`](https://pkg.go.dev/testing).
 
 ```
 mypackage/
@@ -198,75 +110,20 @@ mypackage/
 └── user_service_test.go      # Test code
 ```
 
-Files ending in `_test.go` are [only compiled by `go test`](https://pkg.go.dev/testing). The regular `go build` command ignores them entirely. No annotations, no configuration, no separate directories. Just a naming convention that the toolchain respects.
+No annotations, no configuration. The toolchain examines file names before compilation. `go build` skips test files entirely.
 
-**How it works:**
+Both languages achieve colocation because the compiler handles what the filesystem used to handle.
 
-The Go toolchain examines file names before compilation. When you run `go build`:
-- `user_service.go` → compiled
-- `user_service_test.go` → skipped
+## What We Do
 
-When you run `go test`:
-- `user_service.go` → compiled
-- `user_service_test.go` → compiled
-
-The convention extends to test packages. A file in package `mypackage` can have tests in the same package (white-box testing) or in `mypackage_test` (black-box testing). Both live in the same directory:
-
-```go
-// user_service_test.go
-package mypackage  // Same package: access to unexported identifiers
-
-// user_service_external_test.go
-package mypackage_test  // Different package: only exported API visible
-```
-
-**Why this works for Go:**
-
-1. **Static compilation.** Go compiles to native binaries. There's no runtime class loading to worry about. If a file isn't compiled, its code doesn't exist.
-
-2. **Flat package structure.** Go packages are single directories. No nested hierarchies to mirror. The test file sits next to its source file naturally.
-
-3. **Convention enforcement.** The toolchain *is* the convention. You don't configure anything; you just name files correctly. Developers can't accidentally break it.
-
-**The tradeoff:**
-
-Go's approach is less flexible than Rust's. You can't conditionally compile *part* of a file; the entire `_test.go` file is in or out. For fine-grained conditional compilation, you'd need [build constraints](https://pkg.go.dev/go/build#hdr-Build_Constraints) (a separate feature). But for test organization, the simplicity wins.
-
-Tests are colocated. No parallel directories. No configuration. Just `foo.go` and `foo_test.go`, side by side.
-
-## The Principle: Smart Tooling Over Physical Separation
-
-The insight isn't "Rust good, Java bad." It's that **physical separation is a workaround for tooling limitations**.
-
-Look at the pattern:
-
-| Language | Tooling Limitation | Workaround |
-|----------|-------------------|------------|
-| Java | No conditional compilation; classpath-based class loading | Parallel directory trees (`src/main` vs `src/test`) |
-| .NET | Assembly-based deployment; per-project dependencies | Separate projects (`MyApp` vs `MyApp.Tests`) |
-| Rust | *None:* `#[cfg]` eliminates code at compile time | Tests in same file |
-| Go | *None:* `_test.go` convention excludes files from build | Tests in same directory |
-
-Java and .NET adopted physical separation because their toolchains couldn't selectively exclude code. The directory structure *became* the exclusion mechanism. It wasn't a design choice for developer ergonomics; it was the only option available.
-
-Rust and Go proved that smarter tooling removes the need for separation. Rust's [`#[cfg(test)]`](https://doc.rust-lang.org/reference/conditional-compilation.html) eliminates code before it's compiled. Go's [`_test.go` suffix](https://pkg.go.dev/testing) makes file exclusion a first-class toolchain feature. Neither requires parallel directories because the compiler handles what the filesystem used to handle.
-
-**The lesson:** When evaluating test organization patterns, ask whether the pattern exists for developer benefit or tooling necessity. If it's the latter, check whether your toolchain has evolved past the limitation. You might be inheriting ceremony from a constraint that no longer applies.
-
-## What We Do in This Project
-
-We've landed on a middle ground for Rust: tests in `.test.rs` files adjacent to source files.
+We use Rust's `.test.rs` pattern with the [`#[path]`](https://doc.rust-lang.org/reference/items/modules.html#the-path-attribute) attribute:
 
 ```
 src/
 ├── correlation.rs           # Production code
-├── correlation.test.rs      # Tests for correlation.rs
-├── validation.rs
-├── validation.test.rs
+├── correlation.test.rs      # Tests
 └── mod.rs
 ```
-
-The parent module conditionally includes the test file:
 
 ```rust
 // mod.rs
@@ -279,171 +136,46 @@ mod correlation_tests;
 
 This gives us:
 - Tests adjacent to code (same directory)
-- Production files stay focused on implementation
-- Test files can be skipped when reading for understanding
-- Still conditionally compiled via `#[cfg(test)]`
-- No parallel directory tree
+- Production files focused on implementation
+- Test files skippable when reading for understanding
+- Conditional compilation via `#[cfg(test)]`
 - Clean mutation testing workflow
 
-**[Mutation testing](https://softengbook.org/articles/mutation-testing) benefits**
-
-Separate test files pair well with mutation testing tools like [cargo-mutants](https://mutants.rs/). Should tooling fail and mutations survive test completion (accidentally getting committed), they're easy to detect and restore. The mutation is in `correlation.rs`; the test file `correlation.test.rs` is untouched. Revert the production file, keep the tests.
-
-With inline tests, a surviving mutation contaminates the same file as your test code. Reverting means losing both the mutated production code *and* any test improvements made in the same session. Separate files mean clean boundaries: production code changes stay isolated from test code changes.
-
-It's not quite "tests in the same file," but it's close enough. Open the directory, see both files, understand the relationship. The key property, colocation, is preserved.
-
-**Multiple test files per source file**
-
-The `#[path]` pattern also allows multiple test files for a single source file:
-
-```rust
-// mod.rs
-pub mod correlation;
-
-#[cfg(test)]
-#[path = "correlation.test.rs"]
-mod correlation_unit_tests;
-
-#[cfg(test)]
-#[path = "correlation.contract.test.rs"]
-mod correlation_contract_tests;
-```
-
-We don't currently use this, and needing it is generally a code smell: if your source file needs multiple test files, the source file is probably doing too much. But the option exists for cases where it's genuinely valuable: separating fast unit tests from slower contract tests, or organizing tests by behavior category when a module legitimately has broad responsibilities.
+**Mutation testing benefits:** Separate files pair well with tools like [cargo-mutants](https://mutants.rs/). If a mutation survives (accidentally gets committed), it's in `correlation.rs`; the test file is untouched. Revert the production file, keep the tests. With inline tests, reverting means losing both mutated code and test improvements.
 
 ## When Separation Makes Sense
 
-I'm not absolutist about this. Some testing scenarios benefit from separation, and understanding where tests belong is part of understanding the [testing pyramid](https://martinfowler.com/bliki/TestPyramid.html):
+This isn't absolutism. Some tests benefit from separation:
 
-**Integration tests** that exercise multiple modules often belong in a dedicated `tests/` directory. They're not testing one file; they're testing interactions.
+**Integration tests** exercising multiple modules belong in `tests/`. They're not testing one file.
 
-**End-to-end tests** that spin up the whole system are genuinely different from unit tests. Different lifecycle, different dependencies, different execution context.
+**End-to-end tests** spinning up the whole system are genuinely different. Different lifecycle, different dependencies.
 
-**Test fixtures and utilities** shared across many tests might warrant their own module. Though even then, I'd put them in `src/test_utils/` rather than a parallel tree.
+**Shared fixtures** might warrant their own module—though I'd put them in `src/test_utils/`, not a parallel tree.
 
-The principle isn't "never separate." It's "don't separate without reason." The default should be colocation. Separation should be a deliberate choice, not a convention inherited from tools that couldn't do better.
+The principle: don't separate without reason. Colocation is the default. Separation is a deliberate choice.
 
-## The Documentation Argument
+## The Tradeoffs
 
-Well-written tests are documentation. They show:
-- How to construct objects
-- What inputs are valid
-- What outputs to expect
-- What error conditions exist
-- What edge cases matter
+What's lost with separate files:
 
-When tests are next to code, this documentation is discoverable. Developers reading the implementation naturally encounter the tests. They see examples. They understand intent.
+- **Visibility.** Inline tests were impossible to miss. Separate files require knowing to look.
+- **Encouragement.** Scroll down, see tests. With separate files, there's an extra step.
+- **Atomic versioning.** Change function and test in one commit. Separate files technically allow drift.
 
-When tests are in a parallel tree, this documentation might as well not exist. Developers find it only when tests fail. The learning opportunity is lost.
+What's gained:
 
-Consider: how often do you proactively navigate to `src/test/java/...` to understand how a class works? Now compare: how often would you scroll down in a file you're already reading?
-
-Colocation turns tests into documentation that developers actually encounter.
-
-## The Tooling Trend
-
-The industry is slowly moving toward colocation. JavaScript's [Jest popularized `*.test.js` files next to source](https://jestjs.io/docs/configuration). Go [requires `*_test.go` in the same package](https://pkg.go.dev/testing). Rust puts tests in the same file by default.
-
-Even Java is shifting. [JUnit 5](https://junit.org/junit5/docs/current/user-guide/) supports test classes in the same package as production code (with proper module configuration). Gradle can be [configured to compile tests](https://docs.gradle.org/current/userguide/java_testing.html) from custom source sets. It's not the default, but it's possible.
-
-The old separation was a tooling constraint. As tooling improves, the constraint lifts. The question becomes: what organization actually serves developers best?
-
-My answer, after two decades: tests belong next to the code they test. Always have. The tools are finally catching up.
-
-## The AI Context Window Changes Everything
-
-Here's where I admit my thinking has evolved.
-
-I've always advocated for tests *nearby*—same directory, not a parallel tree. But within "nearby," I thought Rust's `#[cfg(test)] mod tests` approach was better than file-alongside. Maximum colocation. Maximum visibility. One file, one scroll, everything you need.
-
-I've come to disagree with that. Working extensively with AI coding assistants changed my mind.
-
-AI tools operate within context windows, a fixed budget of tokens they can "see" at once. Every line of code loaded into context is a line that competes for attention. When an AI reads a 500-line file where 300 lines are tests, it's spending 60% of its context budget on code that's irrelevant to most tasks.
-
-**The problem isn't that tests exist. It's that they're in the way.**
-
-When I ask an AI to "understand how UserService handles authentication," it doesn't need to see 47 test cases. It needs the implementation. But if tests are inline, the AI loads them anyway. Context fills up. Important code gets truncated or summarized. The AI's understanding degrades.
-
-Worse, when searching for business logic across a codebase, inline tests create noise. "Find where we validate email addresses" returns hits in test assertions, test fixtures, test helpers, all irrelevant to understanding the production validation logic.
-
-### The New Position: Separate Files, Same Directory
-
-I've updated my stance. Tests should be:
-- **In separate files** — not inline with production code
-- **In the same directory** — not in a parallel tree
-- **Clearly named** — `.test.rs`, `_test.go`, `.test.ts`
-
-```
-src/
-├── user_service.rs           # Production code only
-├── user_service.test.rs      # Tests only
-├── validation.rs
-├── validation.test.rs
-└── mod.rs
-```
-
-This preserves colocation (tests are *adjacent*, one directory listing shows them together) while enabling selective loading. An AI exploring business logic can skip `.test` files entirely. A human wanting to understand how code works can head *for* the tests—well-written tests are documentation. Separate files give you the choice; inline tests force everything on you at once.
-
-### Instructing AI to Skip Test Files
-
-The key insight: **you can tell AI tools what to ignore**.
-
-In our project instructions, we now include guidance like:
-
-> When searching for business logic or understanding how features work, skip `.test.rs` files. These contain tests, not implementation. Only read test files when specifically working on test maintenance or verification.
-
-This simple instruction dramatically improves AI efficiency. A search for "correlation ID propagation" no longer returns 50 test files asserting correlation IDs are propagated. It returns the 3 files where propagation actually happens.
-
-The tests still exist. They're still adjacent. They're still discoverable. But they're not polluting every context window and every search result.
-
-### The Tradeoff I'm Making
-
-Let me be honest about what's lost:
-
-**Inline tests were more visible.** You couldn't miss them; they were right there when you opened the file. Separate files require knowing to look for them.
-
-**Inline tests encouraged reading.** Scroll down, see tests, understand usage. With separate files, there's an extra step.
-
-**Inline tests were atomically versioned.** Change the function, change the test, one commit. Separate files technically allow them to drift (though tooling and discipline prevent this).
-
-These are real costs. I'm trading them for:
-
-- **Cleaner production files** — implementation without test noise
-- **Efficient AI assistance** — context windows focused on relevant code
-- **Faster codebase search** — grep for logic, not test assertions
-- **Flexible reading** — choose when to engage with tests
+- **Cleaner production files.** Implementation without test noise.
+- **Efficient AI assistance.** Context windows focused on relevant code.
+- **Faster codebase search.** Grep for logic, not test assertions.
+- **Flexible reading.** Choose when to engage with tests.
 
 For me, in 2026, with AI assistants as daily collaborators, the tradeoff favors separate files.
 
-### This Isn't a Reversal
+## This Won't Be the Answer Forever
 
-I still believe tests belong *next to* code: same directory, obvious relationship, no parallel tree structure. I still reject the `src/main`/`src/test` split.
+Every position in this article emerged from tooling constraints of its era. Java's parallel directories made sense when the JVM couldn't exclude code. Rust's inline tests made sense when file size didn't compete with AI context budgets.
 
-What's changed is the file boundary. Tests adjacent in the directory structure, but not inline in the same file. Colocation without conflation.
+Tomorrow's tradeoffs will differ. AI context windows will grow. IDE integrations will get smarter. When constraints change, optimal organization changes too.
 
-The principle remains: **tests should be discoverable and contextually related to the code they test**. The implementation adapts to new constraints, specifically the constraint that every token in an AI's context window has a cost.
-
-### This Won't Be the Answer Forever
-
-I'm under no illusion that separate-but-adjacent test files are the final word. This is the best solution *now*, given:
-- Current AI context window sizes
-- Current toolchain capabilities
-- Current mutation testing workflows
-- Current code review practices
-
-Every position in this article emerged from tooling constraints of its era. Java's parallel directories made sense when the JVM couldn't exclude code. Rust's inline tests made sense when file size didn't compete with AI context budgets. My current position makes sense *to me* given today's tradeoffs.
-
-Tomorrow's tradeoffs will be different. AI context windows will grow. IDE integrations will get smarter about selective loading. New testing paradigms will emerge. When the constraints change, the optimal organization will change too.
-
-What I'm confident won't change: **tests belong near the code they test**. The definition of "near" adapts to tooling. The principle doesn't.
-
-## Try It
-
-If your toolchain supports it:
-
-1. Put a test file next to your source file
-2. Configure conditional compilation or build exclusion
-3. See if the proximity changes how you think about testing
-
-You might find, as I did, that tests stop feeling like a chore in a distant directory and start feeling like a natural part of the code itself.
+What won't change: **tests belong near the code they test**. The definition of "near" adapts to tooling. The principle doesn't.
