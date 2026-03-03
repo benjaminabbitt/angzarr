@@ -156,106 +156,59 @@ Four levels of testing:
 
 ### Unit Tests
 
+**Approach:** Tests live alongside code in separate `.test.rs` files. This keeps production files focused while maintaining discoverability. Tests document WHY they exist, not just what they test.
+
 No external dependencies. Tests interact only with the system under test. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.
 
-- Angzarr core: separate `.test.rs` files alongside source
-- Examples: `test_*_logic.py`, `*_test.go`, `*.test.rs`
-- Run with: `cargo test --lib` or `just test`
-- **Execution**: Continuous via bacon, pre-commit hooks
+| Codebase | Convention | Run |
+|----------|------------|-----|
+| Angzarr core | `foo.test.rs` alongside `foo.rs` | `cargo test --lib` |
+| Python examples | `test_*_logic.py` | `pytest` |
+| Go examples | `*_test.go` | `go test` |
+| Rust examples | `*.test.rs` | `cargo test` |
 
-#### Test File Organization (Rust)
+**Execution:** Continuous via bacon, pre-commit hooks.
 
-**Place tests in `.test.rs` files alongside source files.** This reduces context size when reading production code—AI and human reviewers see implementation without wading through test code.
+#### File Organization (Rust)
 
 ```
 src/
 ├── correlation.rs           # Production code
 ├── correlation.test.rs      # Tests for correlation.rs
-├── validation.rs
-├── validation.test.rs
-└── mod.rs                   # Includes both via #[cfg(test)]
+└── mod.rs                   # Includes via #[cfg(test)] #[path = "..."]
 ```
 
-**Include pattern in parent module:**
+Include pattern:
 ```rust
-// In mod.rs or lib.rs
 pub mod correlation;
 #[cfg(test)]
 #[path = "correlation.test.rs"]
 mod correlation_tests;
 ```
 
-**Test file structure:**
+Migrate inline `#[cfg(test)] mod tests` blocks to `.test.rs` files when touched.
+
+#### Test Documentation
+
+Every test documents WHY it exists. Include: what capability it protects, what breaks if it fails, why this scenario matters.
+
 ```rust
 // correlation.test.rs
-//! Tests for correlation ID propagation.
-//!
-//! Why: Correlation IDs enable cross-domain tracing...
+//! Correlation IDs enable cross-domain tracing in saga and PM flows.
+//! Without proper propagation, observability breaks.
 
-use super::*;
-
+/// Commands with empty correlation_id receive the propagated value.
+/// Primary use case: saga/PM produces commands without setting
+/// correlation_id, framework fills it from the triggering event.
 #[test]
 fn test_fill_correlation_id_fills_empty() { ... }
 ```
 
-**Benefits:**
-- Production files stay focused on implementation
-- Test files can be skipped when reading for understanding
-- Still compiled conditionally via `#[cfg(test)]`
-- Tests remain co-located (same directory) for discoverability
-
-**Migration:** Existing inline `#[cfg(test)] mod tests` blocks should be migrated to `.test.rs` files when touched.
-
-### Test Documentation: Always Explain WHY
-
-Every test must document WHY it exists, not just WHAT it tests. A test without context is maintenance burden waiting to happen.
-
-**Structure for test modules:**
-
-```rust
-#[cfg(test)]
-mod tests {
-    //! Module-level doc explaining the feature being tested and why it matters.
-    //!
-    //! Example: "Correlation IDs enable cross-domain tracing in saga and PM flows.
-    //! Without proper propagation, observability breaks and PMs cannot correlate
-    //! related events."
-
-    /// Test-level doc explaining the specific scenario.
-    ///
-    /// Good: "Commands with empty correlation_id should receive the propagated
-    /// value. This is the primary use case: saga/PM produces commands without
-    /// setting correlation_id, and the framework fills it from the triggering event."
-    ///
-    /// Bad: "Test that fill_correlation_id fills empty correlation_id"
-    #[test]
-    fn test_fill_correlation_id_fills_empty() { ... }
-}
-```
-
-**What to include:**
-- Business context: What capability does this test protect?
-- Failure mode: What breaks if this test fails?
-- Edge case rationale: Why does this specific scenario matter?
-
-**Section headers for large test files:**
-
+For large test files, use section headers:
 ```rust
 // ============================================================================
 // Selection::Sequences Tests
 // ============================================================================
-
-/// Projectors and sagas sometimes need specific events rather than a range...
-#[test]
-fn test_sequences_returns_sparse_events() { ... }
-
-// ============================================================================
-// Missing Cover Validation Tests
-// ============================================================================
-
-/// The cover contains domain and root_id which identify the aggregate...
-#[test]
-fn test_missing_cover_rejected() { ... }
 ```
 
 ### What to Test vs What to Skip
