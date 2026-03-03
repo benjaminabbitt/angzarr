@@ -106,3 +106,172 @@ fn test_uds_cleanup_guard() {
 
     assert!(!socket_path.exists());
 }
+
+/// UdsCleanupGuard path() returns the socket path.
+#[test]
+fn test_uds_cleanup_guard_path() {
+    let socket_path = PathBuf::from("/tmp/test.sock");
+    let guard = UdsCleanupGuard::new(&socket_path);
+    assert_eq!(guard.path(), &socket_path);
+}
+
+/// UdsCleanupGuard handles non-existent file gracefully.
+///
+/// Guards may be created before socket is bound - no error on drop.
+#[test]
+fn test_uds_cleanup_guard_no_file() {
+    let socket_path = PathBuf::from("/tmp/nonexistent_socket_for_test.sock");
+    // Ensure file doesn't exist
+    let _ = std::fs::remove_file(&socket_path);
+    assert!(!socket_path.exists());
+
+    // Guard should not panic on drop when file doesn't exist
+    {
+        let _guard = UdsCleanupGuard::new(&socket_path);
+    }
+}
+
+// ============================================================================
+// is_uds_address Tests
+// ============================================================================
+
+/// Absolute path is detected as UDS.
+#[test]
+fn test_is_uds_address_absolute_path() {
+    assert!(is_uds_address("/tmp/socket.sock"));
+    assert!(is_uds_address("/var/run/angzarr/agg-orders.sock"));
+}
+
+/// Relative path starting with ./ is detected as UDS.
+#[test]
+fn test_is_uds_address_relative_path() {
+    assert!(is_uds_address("./socket.sock"));
+    assert!(is_uds_address("./sockets/orders.sock"));
+}
+
+/// TCP addresses are not UDS.
+#[test]
+fn test_is_uds_address_tcp() {
+    assert!(!is_uds_address("localhost:50051"));
+    assert!(!is_uds_address("127.0.0.1:8080"));
+    assert!(!is_uds_address("http://example.com:8080"));
+    assert!(!is_uds_address("example.com"));
+}
+
+// ============================================================================
+// max_grpc_message_size Tests
+// ============================================================================
+
+/// max_grpc_message_size returns default when env var not set.
+///
+/// Default is 10MB (10240 KB * 1024 = 10485760 bytes).
+#[test]
+fn test_max_grpc_message_size_default() {
+    // Save and clear env var
+    let original = std::env::var(GRPC_MESSAGE_SIZE_KB_ENV).ok();
+    std::env::remove_var(GRPC_MESSAGE_SIZE_KB_ENV);
+
+    let size = max_grpc_message_size();
+    assert_eq!(size, DEFAULT_GRPC_MESSAGE_SIZE_KB * 1024);
+
+    // Restore
+    if let Some(val) = original {
+        std::env::set_var(GRPC_MESSAGE_SIZE_KB_ENV, val);
+    }
+}
+
+/// max_grpc_message_size reads env var value.
+#[test]
+fn test_max_grpc_message_size_from_env() {
+    // Save original
+    let original = std::env::var(GRPC_MESSAGE_SIZE_KB_ENV).ok();
+
+    // Set to 50MB (51200 KB)
+    std::env::set_var(GRPC_MESSAGE_SIZE_KB_ENV, "51200");
+
+    let size = max_grpc_message_size();
+    assert_eq!(size, 51200 * 1024);
+
+    // Restore
+    match original {
+        Some(val) => std::env::set_var(GRPC_MESSAGE_SIZE_KB_ENV, val),
+        None => std::env::remove_var(GRPC_MESSAGE_SIZE_KB_ENV),
+    }
+}
+
+/// max_grpc_message_size falls back to default on invalid value.
+#[test]
+fn test_max_grpc_message_size_invalid_env() {
+    // Save original
+    let original = std::env::var(GRPC_MESSAGE_SIZE_KB_ENV).ok();
+
+    // Set invalid value
+    std::env::set_var(GRPC_MESSAGE_SIZE_KB_ENV, "not_a_number");
+
+    let size = max_grpc_message_size();
+    assert_eq!(size, DEFAULT_GRPC_MESSAGE_SIZE_KB * 1024);
+
+    // Restore
+    match original {
+        Some(val) => std::env::set_var(GRPC_MESSAGE_SIZE_KB_ENV, val),
+        None => std::env::remove_var(GRPC_MESSAGE_SIZE_KB_ENV),
+    }
+}
+
+// ============================================================================
+// ServiceEndpointConfig Tests
+// ============================================================================
+
+/// ServiceEndpointConfig builder creates basic config.
+#[test]
+fn test_service_endpoint_config_new() {
+    let config = ServiceEndpointConfig::new("aggregate");
+    assert_eq!(config.name, "aggregate");
+    assert!(config.qualifier.is_none());
+    assert!(config.address.is_none());
+}
+
+/// with_qualifier adds qualifier to config.
+#[test]
+fn test_service_endpoint_config_with_qualifier() {
+    let config = ServiceEndpointConfig::new("aggregate").with_qualifier("orders");
+    assert_eq!(config.name, "aggregate");
+    assert_eq!(config.qualifier, Some("orders".to_string()));
+}
+
+/// with_address adds TCP address to config.
+#[test]
+fn test_service_endpoint_config_with_address() {
+    let config = ServiceEndpointConfig::new("aggregate").with_address("localhost:8080");
+    assert_eq!(config.name, "aggregate");
+    assert_eq!(config.address, Some("localhost:8080".to_string()));
+}
+
+/// Builder methods can be chained.
+#[test]
+fn test_service_endpoint_config_builder_chain() {
+    let config = ServiceEndpointConfig::new("projector")
+        .with_qualifier("accounting")
+        .with_address("192.168.1.100:50055");
+
+    assert_eq!(config.name, "projector");
+    assert_eq!(config.qualifier, Some("accounting".to_string()));
+    assert_eq!(config.address, Some("192.168.1.100:50055".to_string()));
+}
+
+// ============================================================================
+// Constants Tests
+// ============================================================================
+
+/// Environment variable constant has expected value.
+#[test]
+fn test_grpc_message_size_env_constant() {
+    assert_eq!(GRPC_MESSAGE_SIZE_KB_ENV, "ANGZARR_GRPC_MESSAGE_SIZE_KB");
+}
+
+/// Default message size constant is 10MB in KB.
+#[test]
+fn test_default_grpc_message_size_constant() {
+    // 10 * 1024 = 10240 KB = 10 MB
+    assert_eq!(DEFAULT_GRPC_MESSAGE_SIZE_KB, 10 * 1024);
+}

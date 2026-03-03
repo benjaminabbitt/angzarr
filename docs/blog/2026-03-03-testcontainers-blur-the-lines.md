@@ -2,8 +2,8 @@
 slug: testcontainers-blur-the-lines
 title: "Testcontainers Blur the Lines Between Unit and Integration Tests"
 authors: [angzarr]
-tags: [testing, testcontainers, docker, rust, patterns]
-keywords: [testcontainers, integration testing, unit testing, docker, contract testing, rust, testing pyramid]
+tags: [testing, testcontainers, docker, rust, patterns, bit]
+keywords: [testcontainers, integration testing, unit testing, docker, behavioral interface test, BIT, rust, testing pyramid]
 ---
 
 The old unit/integration distinction assumed "integration" meant "slow, fragile, needs environment setup." Testcontainers changed the economics.
@@ -25,7 +25,7 @@ This separation made sense when "integration test" meant "spin up a full environ
 
 ```rust
 #[test]
-fn test_event_store_persists_events() {
+fn bit_event_store_persists_events() {
     let container = PostgresContainer::new();
     let pool = connect_to(&container);
     let store = PostgresEventStore::new(pool);
@@ -39,9 +39,9 @@ fn test_event_store_persists_events() {
 
 This test spins up a real PostgreSQL instance in [Docker](https://www.docker.com/), runs the test against it, and tears it down. No shared database. No environment configuration. No "works on my machine." The container is ephemeral, isolated, and automatic.
 
-## Contract Tests Fit Here
+## Behavioral Interface Tests (BITs) Fit Here
 
-[Contract tests](https://martinfowler.com/bliki/ContractTest.html) verify that an implementation correctly fulfills its interface. Tests that verify trait implementations (`EventStore`, `SnapshotStore`, `MessageBus`) are contract tests—not "integration tests" in the traditional sense.
+We call these **Behavioral Interface Tests** (BITs): tests that verify an implementation correctly fulfills its interface's behavioral contract. Tests that verify trait implementations (`EventStore`, `SnapshotStore`, `MessageBus`) are BITs—not "integration tests" in the traditional sense.
 
 These tests *should* live near the implementation:
 
@@ -49,12 +49,14 @@ These tests *should* live near the implementation:
 src/
 ├── storage/
 │   ├── postgres.rs              # PostgresEventStore implementation
-│   ├── postgres.test.rs         # Contract tests against real Postgres
+│   ├── postgres.bit.rs          # BITs against real Postgres
 │   ├── sqlite.rs
-│   └── sqlite.test.rs
+│   └── sqlite.bit.rs
 ```
 
 The "real database" aspect doesn't change where the test belongs. It's still testing one module's behavior. It's still colocated. It just happens to need a container.
+
+*(Why "BIT"? It's a pun. "The BIT caught a regression." "That edge case BIT me." Also: **B**ehavioral **I**nterface **T**est.)*
 
 ## The New Distinction: Scope, Not Speed
 
@@ -63,11 +65,11 @@ The old unit/integration split was about *how* tests run. The better distinction
 | Test Type | What It Tests | Where It Lives |
 |-----------|--------------|----------------|
 | Unit | Pure logic, no dependencies | Adjacent `.test` file |
-| Contract | Single implementation against its interface | Adjacent `.test` file (with testcontainers) |
+| BIT | Single implementation against its interface | Adjacent `.test` file (with testcontainers) |
 | Integration | Multiple components interacting | `tests/` directory |
 | End-to-end | Full system behavior | Separate test project |
 
-Contract tests with testcontainers are closer to unit tests than integration tests. They test one thing. They're fast enough to run frequently. They should be colocated.
+BITs with testcontainers are closer to unit tests than integration tests. They test one thing. They're fast enough to run frequently. They should be colocated.
 
 See Martin Fowler's [Practical Test Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html) for more on scope-based test categorization.
 
@@ -101,6 +103,10 @@ If I *can* test against the real thing cheaply, I should. Testcontainers made "t
 
 The unit/integration distinction was always about economics: unit tests were cheap, integration tests were expensive. Testcontainers collapsed that cost difference for many scenarios.
 
-When the economics change, the categories should too. Contract tests against real infrastructure aren't integration tests just because they touch a database. They're colocatable, fast-enough, single-purpose tests that happen to need Docker.
+When the economics change, the categories should too. BITs against real infrastructure aren't integration tests just because they touch a database. They're colocatable, fast-enough, single-purpose tests that happen to need Docker.
 
 Organize by what you're testing, not by what tools you need to test it.
+
+---
+
+*Prior art: This concept aligns with what some call "Behavioral Contract Testing" ([jdecool.fr](https://www.jdecool.fr/blog/2025/02/16/tester-les-implementations-d-une-interface-avec-le-behavioral-contract-testing.html)) and the Abstract Test pattern ([testingpatterns.net](https://testingpatterns.net/patterns/abstract_test/)). We prefer "BIT" because it's punchier and avoids confusion with Consumer-Driven Contract testing (Pact, etc.).*

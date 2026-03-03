@@ -53,3 +53,7 @@ impl opentelemetry::propagation::Injector for MetadataInjector<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "grpc.test.rs"]
+mod tests;

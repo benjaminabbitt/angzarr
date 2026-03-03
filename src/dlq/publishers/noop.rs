@@ -51,3 +51,7 @@ impl DeadLetterPublisher for NoopDeadLetterPublisher {
         false
     }
 }
+
+#[cfg(test)]
+#[path = "noop.test.rs"]
+mod tests;

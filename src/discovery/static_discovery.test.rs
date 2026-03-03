@@ -119,3 +119,116 @@ fn test_static_discovery_sync_registration() {
     assert!(!discovery.aggregates.blocking_read().is_empty());
     assert!(!discovery.projectors.blocking_read().is_empty());
 }
+
+// ============================================================================
+// Additional URL Parsing Tests
+// ============================================================================
+
+/// HTTP URLs without port default to 80.
+#[test]
+fn test_parse_url_http_no_port() {
+    let (addr, port) = parse_url("http://example.com").unwrap();
+    assert_eq!(addr, "example.com");
+    assert_eq!(port, 80);
+}
+
+/// Just a hostname without scheme or port defaults to port 80.
+#[test]
+fn test_parse_url_just_host() {
+    let (addr, port) = parse_url("example.com").unwrap();
+    assert_eq!(addr, "example.com");
+    assert_eq!(port, 80);
+}
+
+/// IPv6 addresses in URLs are handled correctly.
+#[test]
+fn test_parse_url_ipv6() {
+    let (addr, port) = parse_url("[::1]:8080").unwrap();
+    assert_eq!(addr, "[::1]");
+    assert_eq!(port, 8080);
+}
+
+// ============================================================================
+// Discovery Lifecycle Tests
+// ============================================================================
+
+/// Default constructor creates empty discovery.
+#[test]
+fn test_static_discovery_default() {
+    let discovery = StaticServiceDiscovery::default();
+    assert!(discovery.aggregates.blocking_read().is_empty());
+    assert!(discovery.projectors.blocking_read().is_empty());
+}
+
+/// initial_sync is a no-op for static discovery.
+///
+/// Static discovery doesn't need to sync from external sources.
+#[tokio::test]
+async fn test_static_discovery_initial_sync() {
+    let discovery = StaticServiceDiscovery::new();
+    let result = discovery.initial_sync().await;
+    assert!(result.is_ok());
+}
+
+/// start_watching is a no-op for static discovery.
+///
+/// Static discovery doesn't watch for changes.
+#[test]
+fn test_static_discovery_start_watching() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery.start_watching(); // Should not panic
+}
+
+/// New discovery has no aggregates.
+#[tokio::test]
+async fn test_static_discovery_has_no_aggregates_initially() {
+    let discovery = StaticServiceDiscovery::new();
+    assert!(!discovery.has_aggregates().await);
+}
+
+/// New discovery has no projectors.
+#[tokio::test]
+async fn test_static_discovery_has_no_projectors_initially() {
+    let discovery = StaticServiceDiscovery::new();
+    assert!(!discovery.has_projectors().await);
+}
+
+/// Empty discovery returns empty projector list.
+#[tokio::test]
+async fn test_static_discovery_get_all_projectors_empty() {
+    let discovery = StaticServiceDiscovery::new();
+    let projectors = discovery.get_all_projectors().await.unwrap();
+    assert!(projectors.is_empty());
+}
+
+/// aggregate_domains returns empty list when no aggregates registered.
+#[tokio::test]
+async fn test_static_discovery_aggregate_domains_empty() {
+    let discovery = StaticServiceDiscovery::new();
+    let domains = discovery.aggregate_domains().await;
+    assert!(domains.is_empty());
+}
+
+// ============================================================================
+// Error Case Tests
+// ============================================================================
+
+/// get_aggregate returns error for unregistered domain.
+#[tokio::test]
+async fn test_static_discovery_get_aggregate_not_found() {
+    let discovery = StaticServiceDiscovery::new();
+    let result = discovery.get_aggregate("nonexistent").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, DiscoveryError::DomainNotFound(_)));
+}
+
+/// get_projector_by_name returns error for unregistered projector.
+#[tokio::test]
+async fn test_static_discovery_get_projector_not_found() {
+    let discovery = StaticServiceDiscovery::new();
+    let result = discovery.get_projector_by_name("nonexistent").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, DiscoveryError::NoServicesFound(_)));
+}

@@ -77,3 +77,86 @@ fn test_env_var_constants() {
     assert_eq!(LOG_ENV_VAR, "ANGZARR_LOG");
     assert_eq!(DISCOVERY_STATIC, "static");
 }
+
+/// Transport and discovery env var constants have expected values.
+#[test]
+fn test_transport_env_var_constants() {
+    assert_eq!(TRANSPORT_TYPE_ENV_VAR, "TRANSPORT_TYPE");
+    assert_eq!(UDS_BASE_PATH_ENV_VAR, "UDS_BASE_PATH");
+    assert_eq!(PORT_ENV_VAR, "PORT");
+    assert_eq!(DATABASE_URL_ENV_VAR, "DATABASE_URL");
+    assert_eq!(DISCOVERY_ENV_VAR, "ANGZARR_DISCOVERY");
+}
+
+/// Endpoint and service env var constants have expected values.
+#[test]
+fn test_endpoint_env_var_constants() {
+    assert_eq!(STATIC_ENDPOINTS_ENV_VAR, "ANGZARR_STATIC_ENDPOINTS");
+    assert_eq!(STREAM_ADDRESS_ENV_VAR, "STREAM_ADDRESS");
+    assert_eq!(STREAM_TIMEOUT_ENV_VAR, "STREAM_TIMEOUT_SECS");
+    assert_eq!(STREAM_OUTPUT_ENV_VAR, "STREAM_OUTPUT");
+    assert_eq!(EVENT_QUERY_ADDRESS_ENV_VAR, "EVENT_QUERY_ADDRESS");
+}
+
+/// Kubernetes env var constants have expected values.
+#[test]
+fn test_k8s_env_var_constants() {
+    assert_eq!(NAMESPACE_ENV_VAR, "NAMESPACE");
+    assert_eq!(POD_NAMESPACE_ENV_VAR, "POD_NAMESPACE");
+    assert_eq!(POD_NAME_ENV_VAR, "POD_NAME");
+}
+
+/// Feature-related env var constants have expected values.
+#[test]
+fn test_feature_env_var_constants() {
+    assert_eq!(UPCASTER_ENABLED_ENV_VAR, "ANGZARR_UPCASTER_ENABLED");
+    assert_eq!(UPCASTER_ADDRESS_ENV_VAR, "ANGZARR_UPCASTER_ADDRESS");
+    assert_eq!(OUTBOX_ENABLED_ENV_VAR, "ANGZARR_OUTBOX_ENABLED");
+    assert_eq!(OTEL_SERVICE_NAME_ENV_VAR, "OTEL_SERVICE_NAME");
+}
+
+/// Target command env var constant has expected value.
+#[test]
+fn test_target_command_env_var_constant() {
+    assert_eq!(TARGET_COMMAND_JSON_ENV_VAR, "ANGZARR__TARGET__COMMAND_JSON");
+    assert_eq!(DESCRIPTOR_PATH_ENV_VAR, "DESCRIPTOR_PATH");
+}
+
+// ============================================================================
+// Config Default Tests
+// ============================================================================
+
+/// Default config has no client logic endpoints.
+#[test]
+fn test_config_default_no_client_logic() {
+    let config = Config::default();
+    assert!(config.client_logic.is_none());
+}
+
+/// Default config has no projectors.
+#[test]
+fn test_config_default_no_projectors() {
+    let config = Config::default();
+    assert!(config.projectors.is_none());
+}
+
+/// Default config has no sagas.
+#[test]
+fn test_config_default_no_sagas() {
+    let config = Config::default();
+    assert!(config.sagas.is_none());
+}
+
+/// Default config has no process managers.
+#[test]
+fn test_config_default_no_process_managers() {
+    let config = Config::default();
+    assert!(config.process_managers.is_none());
+}
+
+/// Default config has no saga compensation config.
+#[test]
+fn test_config_default_no_saga_compensation() {
+    let config = Config::default();
+    assert!(config.saga_compensation.is_none());
+}

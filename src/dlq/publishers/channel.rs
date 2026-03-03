@@ -102,3 +102,7 @@ impl DeadLetterPublisher for ChannelDeadLetterPublisher {
         result
     }
 }
+
+#[cfg(test)]
+#[path = "channel.test.rs"]
+mod tests;

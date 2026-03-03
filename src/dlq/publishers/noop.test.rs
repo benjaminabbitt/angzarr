@@ -1,15 +1,14 @@
-//! Tests for logging-based DLQ publisher.
+//! Tests for no-op DLQ publisher.
 //!
-//! The logging publisher is a last-resort fallback that logs dead letters
-//! at WARN level. Unlike NoopDeadLetterPublisher, it reports is_configured()
-//! true because it actively logs (observability value).
+//! The noop publisher is the fallback when no DLQ is configured. It logs
+//! dead letters at WARN level but takes no other action.
 //!
-//! Why this matters: Even when all other DLQ targets fail, logging ensures
-//! the dead letter is captured somewhere (log aggregators like Splunk/Datadog
-//! can alert on these).
+//! Why this matters: Even without a configured DLQ, dead letters must not
+//! be silently dropped. Logging ensures operators can see failures in logs.
 //!
-//! Basic publish/is_configured tests are covered by Gherkin contract tests.
-//! Only edge cases remain here.
+//! Key behaviors verified:
+//! - is_configured() returns false (distinguishes from logging publisher)
+//! - publish() always succeeds (never fails on logging)
 
 use super::*;
 use crate::dlq::{AngzarrDeadLetter, DeadLetterPayload};
@@ -57,38 +56,37 @@ fn make_dead_letter(domain: &str, reason: &str) -> AngzarrDeadLetter {
     }
 }
 
-/// Missing cover handled gracefully — logs with empty correlation ID.
+/// is_configured() returns false for noop publisher.
 ///
-/// Dead letters may come from malformed commands. The publisher shouldn't
-/// crash on edge cases.
-#[tokio::test]
-async fn test_logging_publisher_handles_missing_correlation() {
-    let publisher = LoggingDeadLetterPublisher;
-    let mut dead_letter = make_dead_letter("orders", "Test rejection");
-    dead_letter.cover = None; // No cover means no correlation ID
-
-    let result = publisher.publish(dead_letter).await;
-
-    assert!(result.is_ok(), "Should handle missing cover gracefully");
-}
-
-/// is_configured() returns true for logging publisher.
-///
-/// Unlike noop publisher, logging publisher reports as configured because
-/// it actively logs (provides observability value).
+/// Unlike the logging publisher which reports is_configured = true,
+/// noop reports false to indicate no actual DLQ backend is present.
 #[test]
-fn test_logging_is_configured() {
-    let publisher = LoggingDeadLetterPublisher;
-    assert!(publisher.is_configured());
+fn test_noop_is_not_configured() {
+    let publisher = NoopDeadLetterPublisher;
+    assert!(!publisher.is_configured());
 }
 
 /// publish() always succeeds.
 ///
-/// Logging cannot fail - writes to stdout/stderr are infallible.
+/// Noop publisher cannot fail - it just logs and returns Ok.
 #[tokio::test]
-async fn test_logging_publish_succeeds() {
-    let publisher = LoggingDeadLetterPublisher;
-    let dead_letter = make_dead_letter("inventory", "Conflict on sequence");
+async fn test_noop_publish_succeeds() {
+    let publisher = NoopDeadLetterPublisher;
+    let dead_letter = make_dead_letter("orders", "Test rejection");
+
+    let result = publisher.publish(dead_letter).await;
+
+    assert!(result.is_ok());
+}
+
+/// publish() handles missing cover gracefully.
+///
+/// Even with no cover (malformed input), publish should succeed.
+#[tokio::test]
+async fn test_noop_publish_handles_missing_cover() {
+    let publisher = NoopDeadLetterPublisher;
+    let mut dead_letter = make_dead_letter("orders", "Test rejection");
+    dead_letter.cover = None;
 
     let result = publisher.publish(dead_letter).await;
 

@@ -48,3 +48,31 @@ async fn test_instrumented_preserves_errors() {
     let result = instrumented.get("test", "angzarr", root).await;
     assert!(result.is_err());
 }
+
+// ============================================================================
+// Accessor Method Tests
+// ============================================================================
+
+/// inner() provides read access to wrapped storage.
+///
+/// Useful for inspecting state or calling methods not in the trait.
+#[test]
+fn test_instrumented_inner_access() {
+    let inner = MockEventStore::new();
+    let instrumented = Instrumented::new(inner, "mock");
+
+    // Should provide reference to inner
+    let _ = instrumented.inner();
+}
+
+/// into_inner() unwraps and returns the inner storage.
+///
+/// Allows recovering the original storage after instrumentation is no longer needed.
+#[test]
+fn test_instrumented_into_inner() {
+    let inner = MockEventStore::new();
+    let instrumented = Instrumented::new(inner, "mock");
+
+    // Should consume wrapper and return inner
+    let _recovered: MockEventStore = instrumented.into_inner();
+}

@@ -59,3 +59,7 @@ pub async fn connect_channel(address: &str) -> Result<Channel, String> {
 
     Err(last_error.unwrap_or_else(|| errmsg::MAX_RETRIES_EXCEEDED.to_string()))
 }
+
+#[cfg(test)]
+#[path = "grpc.test.rs"]
+mod tests;

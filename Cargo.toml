@@ -64,8 +64,8 @@ default = ["standalone"]
 # =============================================================================
 # Deployment Profiles (opinionated stacks)
 # =============================================================================
-# standalone: Local dev, no external deps
-standalone = ["sqlite", "channel"]
+# standalone: Local dev, no external deps (otel enabled for observability)
+standalone = ["sqlite", "channel", "otel"]
 # k8s: Generic Kubernetes with Postgres + RabbitMQ
 k8s = ["postgres", "amqp", "otel", "dep:kube", "dep:k8s-openapi"]
 # gcp-cloudrun: GCP serverless with Cloud SQL + Pub/Sub + GCS
