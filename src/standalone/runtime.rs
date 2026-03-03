@@ -70,6 +70,173 @@ struct ProjectorEntry {
     config: ProjectorConfig,
 }
 
+// ============================================================================
+// Helper Functions for Runtime Initialization
+// ============================================================================
+
+/// Initialize storage for a PM domain if not already present.
+async fn init_pm_domain_storage(
+    pm_name: &str,
+    pm_domain: &str,
+    domain_stores: &mut HashMap<String, DomainStorage>,
+    default_storage_config: &StorageConfig,
+    domain_storage_configs: &HashMap<String, StorageConfig>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if domain_stores.contains_key(pm_domain) {
+        return Ok(());
+    }
+
+    let storage_config = domain_storage_configs
+        .get(pm_domain)
+        .unwrap_or(default_storage_config);
+
+    let (event_store, snapshot_store) = crate::storage::init_storage(storage_config).await?;
+
+    info!(
+        pm = %pm_name,
+        domain = %pm_domain,
+        storage_type = ?storage_config.storage_type,
+        "Initialized storage for process manager domain"
+    );
+
+    domain_stores.insert(
+        pm_domain.to_string(),
+        DomainStorage {
+            event_store,
+            snapshot_store,
+        },
+    );
+
+    Ok(())
+}
+
+/// Register a PM domain handler in the business map if not already present.
+fn register_pm_handler(
+    domain: &str,
+    handler: &Arc<dyn ProcessManagerHandler>,
+    business: &mut HashMap<String, Arc<dyn ClientLogic>>,
+) {
+    if !business.contains_key(domain) {
+        business.insert(
+            domain.to_string(),
+            Arc::new(ProcessManagerHandlerAdapter::new(handler.clone())),
+        );
+    }
+}
+
+/// Build aggregate handlers for all domains with storage.
+fn build_aggregate_handlers(
+    business: &HashMap<String, Arc<dyn ClientLogic>>,
+    domain_stores: &HashMap<String, DomainStorage>,
+    discovery: &Arc<dyn ServiceDiscovery>,
+    event_bus: &Arc<dyn EventBus>,
+    sync_projector_entries: &[SyncProjectorEntry],
+) -> HashMap<String, Arc<AggregateCommandHandler>> {
+    let mut handlers: HashMap<String, Arc<AggregateCommandHandler>> = HashMap::new();
+
+    for (domain, client_logic) in business {
+        if let Some(storage) = domain_stores.get(domain) {
+            let factory = Arc::new(LocalAggregateContextFactory::new(
+                domain.clone(),
+                storage.clone(),
+                discovery.clone(),
+                event_bus.clone(),
+                client_logic.clone(),
+            ));
+
+            let handler_sync_projectors: Vec<HandlerSyncProjectorEntry> = sync_projector_entries
+                .iter()
+                .map(|e| HandlerSyncProjectorEntry {
+                    name: e.name.clone(),
+                    handler: e.handler.clone(),
+                })
+                .collect();
+
+            let handler = Arc::new(
+                AggregateCommandHandler::new(factory).with_sync_projectors(handler_sync_projectors),
+            );
+
+            handlers.insert(domain.clone(), handler);
+        }
+    }
+
+    handlers
+}
+
+/// Start event distribution by setting up subscribers for projectors, sagas, and PMs.
+async fn start_event_distribution(
+    projector_entries: &[ProjectorEntry],
+    sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
+    process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
+    event_bus: &Arc<dyn EventBus>,
+    router: &Arc<CommandRouter>,
+    domain_stores: &HashMap<String, DomainStorage>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = Arc::new(LocalCommandExecutor::new(router.clone()));
+    let fetcher = Arc::new(LocalDestinationFetcher::new(domain_stores.clone()));
+    let fact_executor: Arc<dyn FactExecutor> = router.clone();
+
+    // Async projectors — each gets its own subscriber
+    for entry in projector_entries {
+        let handler =
+            ProjectorEventHandler::from_handler(entry.handler.clone(), entry.name.clone())
+                .with_domains(entry.config.domains.clone())
+                .with_synchronous(entry.config.synchronous);
+        let sub = event_bus
+            .create_subscriber(&format!("projector-{}", entry.name), None)
+            .await?;
+        sub.subscribe(Box::new(handler)).await?;
+        sub.start_consuming().await?;
+    }
+
+    // Sagas — domain-filtered subscribers
+    for (name, (handler, config)) in sagas {
+        let factory = Arc::new(LocalSagaContextFactory::new(handler, name.clone()));
+        let validator = build_output_domain_validator(&name, &config.output_domains);
+        let handler = SagaEventHandler::from_factory_with_validator(
+            factory,
+            executor.clone(),
+            None, // command_bus - not used in standalone
+            Some(fetcher.clone()),
+            Some(fact_executor.clone()),
+            Some(Arc::new(validator)),
+            saga_backoff(),
+        );
+        let sub = event_bus
+            .create_subscriber(&format!("saga-{name}"), Some(&config.input_domain))
+            .await?;
+        sub.subscribe(Box::new(handler)).await?;
+        sub.start_consuming().await?;
+    }
+
+    // Process managers — subscriber_all with handler-level subscription filtering
+    for (name, (handler, config)) in process_managers {
+        let subscriptions = config.subscriptions.clone();
+        let Some(pm_store) = domain_stores.get(&config.domain) else {
+            continue;
+        };
+        let factory = Arc::new(LocalPMContextFactory::new(
+            handler,
+            name.clone(),
+            config.domain,
+            pm_store.clone(),
+            event_bus.clone(),
+        ));
+        let pm_handler =
+            ProcessManagerEventHandler::from_factory(factory, fetcher.clone(), executor.clone())
+                .with_fact_executor(Some(fact_executor.clone()))
+                .with_targets(subscriptions);
+        let sub = event_bus
+            .create_subscriber(&format!("pm-{name}"), None)
+            .await?;
+        sub.subscribe(Box::new(pm_handler)).await?;
+        sub.start_consuming().await?;
+    }
+
+    info!("Event distribution started");
+    Ok(())
+}
+
 impl Runtime {
     /// Create a new runtime (called by RuntimeBuilder).
     #[allow(clippy::too_many_arguments)]
@@ -113,29 +280,14 @@ impl Runtime {
 
         // Initialize storage for process manager domains (PMs are aggregates)
         for (name, (_, config)) in &process_managers {
-            if !domain_stores.contains_key(&config.domain) {
-                let storage_config = domain_storage_configs
-                    .get(&config.domain)
-                    .unwrap_or(&default_storage_config);
-
-                let (event_store, snapshot_store) =
-                    crate::storage::init_storage(storage_config).await?;
-
-                info!(
-                    pm = %name,
-                    domain = %config.domain,
-                    storage_type = ?storage_config.storage_type,
-                    "Initialized storage for process manager domain"
-                );
-
-                domain_stores.insert(
-                    config.domain.clone(),
-                    DomainStorage {
-                        event_store,
-                        snapshot_store,
-                    },
-                );
-            }
+            init_pm_domain_storage(
+                name,
+                &config.domain,
+                &mut domain_stores,
+                &default_storage_config,
+                &domain_storage_configs,
+            )
+            .await?;
         }
 
         info!(
@@ -155,12 +307,7 @@ impl Runtime {
         // Register PM domains as command handlers (PMs are aggregates)
         // This allows Notification commands to route to PMs for compensation
         for (handler, config) in process_managers.values() {
-            if !business.contains_key(&config.domain) {
-                business.insert(
-                    config.domain.clone(),
-                    Arc::new(ProcessManagerHandlerAdapter::new(handler.clone())),
-                );
-            }
+            register_pm_handler(&config.domain, handler, &mut business);
         }
 
         let servers = Vec::new();
@@ -237,110 +384,27 @@ impl Runtime {
         ));
 
         // Create per-domain handlers using factory pattern (new architecture).
-        // This creates AggregateCommandHandler per domain, each with its own factory.
-        let mut aggregate_handlers: HashMap<String, Arc<AggregateCommandHandler>> = HashMap::new();
-        for (domain, client_logic) in &business {
-            if let Some(storage) = domain_stores.get(domain) {
-                // Create factory for this domain
-                let factory = Arc::new(LocalAggregateContextFactory::new(
-                    domain.clone(),
-                    storage.clone(),
-                    discovery.clone(),
-                    event_bus.clone(),
-                    client_logic.clone(),
-                ));
-
-                // Convert sync projector entries to handler format
-                let handler_sync_projectors: Vec<HandlerSyncProjectorEntry> =
-                    sync_projector_entries
-                        .iter()
-                        .map(|e| HandlerSyncProjectorEntry {
-                            name: e.name.clone(),
-                            handler: e.handler.clone(),
-                        })
-                        .collect();
-
-                // Create handler with factory and sync projectors
-                let handler = Arc::new(
-                    AggregateCommandHandler::new(factory)
-                        .with_sync_projectors(handler_sync_projectors),
-                );
-
-                aggregate_handlers.insert(domain.clone(), handler);
-            }
-        }
+        let aggregate_handlers = build_aggregate_handlers(
+            &business,
+            &domain_stores,
+            &discovery,
+            &event_bus,
+            &sync_projector_entries,
+        );
 
         // Create dispatcher with per-domain handlers
         let dispatcher = Arc::new(CommandDispatcher::new(aggregate_handlers));
 
         // Start event distribution for sagas, PMs, and async projectors
-        let executor = Arc::new(LocalCommandExecutor::new(router.clone()));
-        let fetcher = Arc::new(LocalDestinationFetcher::new(domain_stores.clone()));
-
-        // Async projectors — each gets its own subscriber
-        for entry in &projector_entries {
-            let handler =
-                ProjectorEventHandler::from_handler(entry.handler.clone(), entry.name.clone())
-                    .with_domains(entry.config.domains.clone())
-                    .with_synchronous(entry.config.synchronous);
-            let sub = event_bus
-                .create_subscriber(&format!("projector-{}", entry.name), None)
-                .await?;
-            sub.subscribe(Box::new(handler)).await?;
-            sub.start_consuming().await?;
-        }
-
-        // Sagas — domain-filtered subscribers
-        // Cast router to FactExecutor for fact injection support
-        let fact_executor: Arc<dyn FactExecutor> = router.clone();
-        for (name, (handler, config)) in sagas {
-            let factory = Arc::new(LocalSagaContextFactory::new(handler, name.clone()));
-            let validator = build_output_domain_validator(&name, &config.output_domains);
-            let handler = SagaEventHandler::from_factory_with_validator(
-                factory,
-                executor.clone(),
-                None, // command_bus - not used in standalone
-                Some(fetcher.clone()),
-                Some(fact_executor.clone()),
-                Some(Arc::new(validator)),
-                saga_backoff(),
-            );
-            let sub = event_bus
-                .create_subscriber(&format!("saga-{name}"), Some(&config.input_domain))
-                .await?;
-            sub.subscribe(Box::new(handler)).await?;
-            sub.start_consuming().await?;
-        }
-
-        // Process managers — subscriber_all with handler-level subscription filtering
-        for (name, (handler, config)) in process_managers {
-            let subscriptions = config.subscriptions.clone();
-            let pm_store = match domain_stores.get(&config.domain) {
-                Some(store) => store.clone(),
-                None => continue,
-            };
-            let factory = Arc::new(LocalPMContextFactory::new(
-                handler,
-                name.clone(),
-                config.domain,
-                pm_store,
-                event_bus.clone(),
-            ));
-            let pm_handler = ProcessManagerEventHandler::from_factory(
-                factory,
-                fetcher.clone(),
-                executor.clone(),
-            )
-            .with_fact_executor(Some(fact_executor.clone()))
-            .with_targets(subscriptions);
-            let sub = event_bus
-                .create_subscriber(&format!("pm-{name}"), None)
-                .await?;
-            sub.subscribe(Box::new(pm_handler)).await?;
-            sub.start_consuming().await?;
-        }
-
-        info!("Event distribution started");
+        start_event_distribution(
+            &projector_entries,
+            sagas,
+            process_managers,
+            &event_bus,
+            &router,
+            &domain_stores,
+        )
+        .await?;
 
         let speculative = Arc::new(SpeculativeExecutor::new(
             spec_projectors,

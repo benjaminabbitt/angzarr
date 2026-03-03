@@ -36,6 +36,62 @@ const AGGREGATE_PREFIX: &str = "ANGZARR_AGGREGATE_";
 /// Environment variable for projector JSON array.
 const PROJECTORS_VAR: &str = "ANGZARR_PROJECTORS";
 
+// ============================================================================
+// Helper Functions for Environment Variable Parsing
+// ============================================================================
+
+/// Parse a single aggregate entry from an environment variable.
+fn parse_aggregate_entry(key: &str, value: &str, discovery: &StaticServiceDiscovery) {
+    let Some(domain) = key.strip_prefix(AGGREGATE_PREFIX) else {
+        return;
+    };
+
+    let domain = domain.to_lowercase();
+    if let Some((address, port)) = parse_url(value) {
+        discovery.register_aggregate_sync(&domain, &address, port);
+    } else {
+        warn!(
+            key = %key,
+            value = %value,
+            "Failed to parse aggregate URL"
+        );
+    }
+}
+
+/// Parse a single projector entry from parsed JSON.
+fn parse_projector_entry(entry: &ProjectorEntry, discovery: &StaticServiceDiscovery) {
+    if let Some((address, port)) = parse_url(&entry.url) {
+        discovery.register_projector_sync(&entry.name, &entry.domain, &address, port);
+    } else {
+        warn!(
+            name = %entry.name,
+            url = %entry.url,
+            "Failed to parse projector URL"
+        );
+    }
+}
+
+/// Parse the ANGZARR_PROJECTORS environment variable.
+fn parse_projectors_env_var(discovery: &StaticServiceDiscovery) {
+    let Ok(json) = std::env::var(PROJECTORS_VAR) else {
+        return;
+    };
+
+    match serde_json::from_str::<Vec<ProjectorEntry>>(&json) {
+        Ok(entries) => {
+            for entry in &entries {
+                parse_projector_entry(entry, discovery);
+            }
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                "Failed to parse ANGZARR_PROJECTORS JSON"
+            );
+        }
+    }
+}
+
 /// Projector entry from JSON configuration.
 #[derive(Debug, Deserialize)]
 struct ProjectorEntry {
@@ -83,49 +139,11 @@ impl StaticServiceDiscovery {
 
         // Parse aggregates: ANGZARR_AGGREGATE_{DOMAIN}=url
         for (key, value) in std::env::vars() {
-            if let Some(domain) = key.strip_prefix(AGGREGATE_PREFIX) {
-                let domain = domain.to_lowercase();
-                if let Some((address, port)) = parse_url(&value) {
-                    discovery.register_aggregate_sync(&domain, &address, port);
-                } else {
-                    warn!(
-                        key = %key,
-                        value = %value,
-                        "Failed to parse aggregate URL"
-                    );
-                }
-            }
+            parse_aggregate_entry(&key, &value, &discovery);
         }
 
         // Parse projectors: ANGZARR_PROJECTORS='[{"name":"...","domain":"...","url":"..."}]'
-        if let Ok(json) = std::env::var(PROJECTORS_VAR) {
-            match serde_json::from_str::<Vec<ProjectorEntry>>(&json) {
-                Ok(entries) => {
-                    for entry in entries {
-                        if let Some((address, port)) = parse_url(&entry.url) {
-                            discovery.register_projector_sync(
-                                &entry.name,
-                                &entry.domain,
-                                &address,
-                                port,
-                            );
-                        } else {
-                            warn!(
-                                name = %entry.name,
-                                url = %entry.url,
-                                "Failed to parse projector URL"
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        error = %e,
-                        "Failed to parse ANGZARR_PROJECTORS JSON"
-                    );
-                }
-            }
-        }
+        parse_projectors_env_var(&discovery);
 
         let agg_count = discovery.aggregates.blocking_read().len();
         let proj_count = discovery.projectors.blocking_read().len();
