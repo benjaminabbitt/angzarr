@@ -45,11 +45,14 @@ public final class DepositHandler {
 
   // docs:end:deposit_compute
 
+  // docs:start:polyglot_handler
   public static FundsDeposited handle(DepositFunds cmd, PlayerState state) {
     guard(state);
     long amount = validate(cmd);
     return compute(cmd, state, amount);
   }
+
+  // docs:end:polyglot_handler
 
   private static Timestamp now() {
     Instant instant = Instant.now();

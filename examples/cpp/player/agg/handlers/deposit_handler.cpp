@@ -43,12 +43,14 @@ examples::FundsDeposited compute(const examples::DepositFunds& cmd, const Player
 }
 // docs:end:deposit_compute
 
+// docs:start:polyglot_handler
 examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd,
                                         const PlayerState& state) {
     guard(state);
     int64_t amount = validate(cmd);
     return compute(cmd, state, amount);
 }
+// docs:end:polyglot_handler
 
 }  // namespace handlers
 }  // namespace player

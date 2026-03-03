@@ -47,6 +47,7 @@ func computeFundsDeposited(cmd *examples.DepositFunds, state PlayerState, amount
 
 // docs:end:deposit_compute
 
+// docs:start:polyglot_handler
 // HandleDepositFunds handles the DepositFunds command.
 func HandleDepositFunds(
 	commandBook *pb.CommandBook,
@@ -76,3 +77,5 @@ func HandleDepositFunds(
 
 	return angzarr.NewEventBook(commandBook.Cover, seq, eventAny), nil
 }
+
+// docs:end:polyglot_handler

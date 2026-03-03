@@ -43,10 +43,12 @@ public static class DepositHandler
 
     // docs:end:deposit_compute
 
+    // docs:start:polyglot_handler
     public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)
     {
         Guard(state);
         var amount = Validate(cmd);
         return Compute(cmd, state, amount);
     }
+    // docs:end:polyglot_handler
 }

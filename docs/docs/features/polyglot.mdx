@@ -146,73 +146,112 @@ import TabItem from '@theme/TabItem';
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-@command_handler(PlayerAction)
-def handle_action(cmd: PlayerAction, state: HandState, seq: int):
-    if not state.is_player_turn(cmd.player_id):
-        raise CommandRejectedError("Not your turn")
-    return ActionRecorded(...)
+```python title="examples/python/player/agg/handlers.py"
+@command_handler(player.DepositFunds)
+def handle_deposit(
+    cmd: player.DepositFunds, state: PlayerState, seq: int
+) -> player.FundsDeposited:
+    """Deposit funds into player's bankroll."""
+    if not state.exists:
+        raise CommandRejectedError("Player does not exist")
+
+    amount = cmd.amount.amount if cmd.amount else 0
+    if amount <= 0:
+        raise CommandRejectedError("amount must be positive")
+
+    new_balance = state.bankroll + amount
+    return player.FundsDeposited(
+        amount=cmd.amount,
+        new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
+        deposited_at=now(),
+    )
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-fn handle_action(cmd: PlayerAction, state: &HandState) -> Result<ActionRecorded> {
-    if !state.is_player_turn(&cmd.player_id) {
-        return Err(CommandRejectedError::new("Not your turn"));
-    }
-    Ok(ActionRecorded { ... })
+```rust title="examples/rust/player/agg/src/handlers/deposit.rs"
+pub fn handle_deposit_funds(
+    command_book: &CommandBook,
+    command_any: &Any,
+    state: &PlayerState,
+    seq: u32,
+) -> CommandResult<EventBook> {
+    let cmd: DepositFunds = command_any
+        .unpack()
+        .map_err(|e| CommandRejectedError::new(format!("Failed to decode: {}", e)))?;
+
+    guard(state)?;
+    let amount = validate(&cmd)?;
+
+    let event = compute(&cmd, state, amount);
+    let event_any = pack_event(&event, "examples.FundsDeposited");
+
+    Ok(new_event_book(command_book, seq, event_any))
 }
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-func HandleAction(cmd *PlayerAction, state *HandState) (*ActionRecorded, error) {
-    if !state.IsPlayerTurn(cmd.PlayerId) {
-        return nil, angzarr.NewCommandRejectedError("Not your turn")
-    }
-    return &ActionRecorded{...}, nil
+```go title="examples/go/player/agg/handlers/deposit.go"
+func HandleDepositFunds(
+	commandBook *pb.CommandBook,
+	commandAny *anypb.Any,
+	state PlayerState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	var cmd examples.DepositFunds
+	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
+		return nil, err
+	}
+
+	if err := guardDepositFunds(state); err != nil {
+		return nil, err
+	}
+	amount, err := validateDepositFunds(&cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	event := computeFundsDeposited(&cmd, state, amount)
+	eventAny, _ := anypb.New(event)
+	return angzarr.NewEventBook(commandBook.Cover, seq, eventAny), nil
 }
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-public ActionRecorded handle(PlayerAction cmd, HandState state) {
-    if (!state.isPlayerTurn(cmd.getPlayerId())) {
-        throw CommandRejectedError.invalidArgument("Not your turn");
-    }
-    return ActionRecorded.newBuilder()...build();
+```java title="examples/java/player/agg/.../handlers/DepositHandler.java"
+public static FundsDeposited handle(DepositFunds cmd, PlayerState state) {
+    guard(state);
+    long amount = validate(cmd);
+    return compute(cmd, state, amount);
 }
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-public ActionRecorded Handle(PlayerAction cmd, HandState state)
+```csharp title="examples/csharp/Player/Agg/Handlers/DepositHandler.cs"
+public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)
 {
-    if (!state.IsPlayerTurn(cmd.PlayerId))
-    {
-        throw CommandRejectedError.PreconditionFailed("Not your turn");
-    }
-    return new ActionRecorded { ... };
+    Guard(state);
+    var amount = Validate(cmd);
+    return Compute(cmd, state, amount);
 }
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-ActionTaken handle_action(const PlayerAction& cmd, const HandState& state) {
-    if (!state.is_player_turn(cmd.player_id())) {
-        throw angzarr::CommandRejectedError::precondition_failed("Not your turn");
-    }
-    return ActionTaken{...};
+```cpp title="examples/cpp/player/agg/handlers/deposit_handler.cpp"
+examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd,
+                                        const PlayerState& state) {
+    guard(state);
+    int64_t amount = validate(cmd);
+    return compute(cmd, state, amount);
 }
 ```
 

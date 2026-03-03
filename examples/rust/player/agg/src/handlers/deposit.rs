@@ -40,6 +40,7 @@ fn compute(cmd: &DepositFunds, state: &PlayerState, amount: i64) -> FundsDeposit
 }
 // docs:end:deposit_compute
 
+// docs:start:polyglot_handler
 pub fn handle_deposit_funds(
     command_book: &CommandBook,
     command_any: &Any,
@@ -58,6 +59,7 @@ pub fn handle_deposit_funds(
 
     Ok(new_event_book(command_book, seq, event_any))
 }
+// docs:end:polyglot_handler
 
 // docs:start:unit_test_deposit
 #[cfg(test)]

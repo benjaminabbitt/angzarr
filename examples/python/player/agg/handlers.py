@@ -39,6 +39,7 @@ def handle_register(
     )
 
 
+# docs:start:polyglot_handler
 @command_handler(player.DepositFunds)
 def handle_deposit(
     cmd: player.DepositFunds, state: PlayerState, seq: int
@@ -57,6 +58,9 @@ def handle_deposit(
         new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
         deposited_at=now(),
     )
+
+
+# docs:end:polyglot_handler
 
 
 @command_handler(player.WithdrawFunds)
