@@ -53,6 +53,74 @@ use super::cloudevents::types::{CloudEventEnvelope, ContentType};
 
 type SubscriberSender = mpsc::Sender<Result<EventBook, Status>>;
 
+// ============================================================================
+// Helper Functions for gRPC Subscriber Management
+// ============================================================================
+
+/// Extract correlation ID from event book if present and non-empty.
+fn extract_correlation_id(book: &EventBook) -> Option<&str> {
+    book.cover
+        .as_ref()
+        .filter(|c| !c.correlation_id.is_empty())
+        .map(|c| c.correlation_id.as_str())
+}
+
+/// Send event to all subscribers, returning (sent_count, indices_to_remove).
+///
+/// Tries to send to each subscriber. Closed channels are marked for removal.
+fn send_to_subscribers(
+    subscribers: &[Subscriber],
+    book: &EventBook,
+    correlation_id: &str,
+) -> (usize, Vec<usize>) {
+    let mut to_remove = Vec::new();
+    let mut sent_count = 0;
+
+    for (idx, sub) in subscribers.iter().enumerate() {
+        if sub.sender.is_closed() {
+            to_remove.push(idx);
+            continue;
+        }
+
+        match sub.sender.try_send(Ok(book.clone())) {
+            Ok(()) => sent_count += 1,
+            Err(e) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %e,
+                    "Failed to send event to gRPC subscriber"
+                );
+                if sub.sender.is_closed() {
+                    to_remove.push(idx);
+                }
+            }
+        }
+    }
+
+    (sent_count, to_remove)
+}
+
+/// Remove stale subscribers by index (in reverse order to preserve indices).
+fn remove_stale_subscribers(
+    subscribers: &mut Vec<Subscriber>,
+    to_remove: Vec<usize>,
+    correlation_id: &str,
+) {
+    if to_remove.is_empty() {
+        return;
+    }
+
+    debug!(
+        correlation_id = %correlation_id,
+        removed = to_remove.len(),
+        "Removing disconnected gRPC subscribers"
+    );
+
+    for idx in to_remove.into_iter().rev() {
+        subscribers.remove(idx);
+    }
+}
+
 /// Subscriber registration for gRPC streaming.
 pub(crate) struct Subscriber {
     pub(crate) sender: SubscriberSender,
@@ -180,67 +248,35 @@ impl OutboundService {
 
     /// Forward event book to gRPC subscribers.
     async fn forward_to_grpc_subscribers(&self, book: &EventBook) {
-        // Skip events without correlation ID for gRPC streaming
-        let correlation_id = match book.cover.as_ref() {
-            Some(c) if !c.correlation_id.is_empty() => &c.correlation_id,
-            _ => {
+        let correlation_id = match extract_correlation_id(book) {
+            Some(id) => id,
+            None => {
                 debug!("No correlation_id for gRPC streaming, skipping gRPC forward");
                 return;
             }
         };
 
         let mut subs = self.subscriptions.write().await;
-        if let Some(subscribers) = subs.get_mut(correlation_id) {
-            let mut to_remove = Vec::new();
-            let mut sent_count = 0;
+        let Some(subscribers) = subs.get_mut(correlation_id) else {
+            return;
+        };
 
-            for (idx, sub) in subscribers.iter().enumerate() {
-                if sub.sender.is_closed() {
-                    to_remove.push(idx);
-                    continue;
-                }
+        let (sent_count, to_remove) = send_to_subscribers(subscribers, book, correlation_id);
+        remove_stale_subscribers(subscribers, to_remove, correlation_id);
 
-                if let Err(e) = sub.sender.try_send(Ok(book.clone())) {
-                    warn!(
-                        correlation_id = %correlation_id,
-                        error = %e,
-                        "Failed to send event to gRPC subscriber"
-                    );
-                    if sub.sender.is_closed() {
-                        to_remove.push(idx);
-                    }
-                } else {
-                    sent_count += 1;
-                }
-            }
-
-            // Remove closed subscribers (reverse order to preserve indices)
-            if !to_remove.is_empty() {
-                debug!(
-                    correlation_id = %correlation_id,
-                    removed = to_remove.len(),
-                    "Removing disconnected gRPC subscribers"
-                );
-                for idx in to_remove.into_iter().rev() {
-                    subscribers.remove(idx);
-                }
-            }
-
-            // Remove correlation_id entry if no subscribers left
-            if subscribers.is_empty() {
-                subs.remove(correlation_id);
-                debug!(
-                    correlation_id = %correlation_id,
-                    "No gRPC subscribers remaining, removed correlation entry"
-                );
-            } else {
-                debug!(
-                    correlation_id = %correlation_id,
-                    sent = sent_count,
-                    remaining = subscribers.len(),
-                    "Event delivered to gRPC subscribers"
-                );
-            }
+        if subscribers.is_empty() {
+            subs.remove(correlation_id);
+            debug!(
+                correlation_id = %correlation_id,
+                "No gRPC subscribers remaining, removed correlation entry"
+            );
+        } else {
+            debug!(
+                correlation_id = %correlation_id,
+                sent = sent_count,
+                remaining = subscribers.len(),
+                "Event delivered to gRPC subscribers"
+            );
         }
     }
 
