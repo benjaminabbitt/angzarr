@@ -147,6 +147,7 @@ impl CommandRouter {
     ///
     /// Consolidates the repeated pattern of fetching both resources with
     /// appropriate error messages. Returns references to avoid cloning.
+    #[allow(clippy::result_large_err)] // Status is 176 bytes but only allocated on error paths
     fn get_domain_resources(
         &self,
         domain: &str,

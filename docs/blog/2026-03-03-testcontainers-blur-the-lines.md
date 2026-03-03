@@ -86,7 +86,7 @@ fn test_pure_logic() { /* runs always */ }
 fn test_postgres_storage() { /* runs with --features testcontainers */ }
 ```
 
-Local development runs the fast tests continuously. [Pre-commit hooks](https://github.com/evilmartians/lefthook) and CI run everything. The slower tests are still colocated; they're just conditionally executed.
+Local development runs the fast tests continuously. [Pre-commit hooks](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks) ([we like Lefthook](https://github.com/evilmartians/lefthook)) and CI run everything. The slower tests are still colocated; they're just conditionally executed.
 
 ## Mocks Are for Boundaries, Not Implementations
 
