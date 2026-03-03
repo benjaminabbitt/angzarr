@@ -57,7 +57,7 @@ async fn test_repairer_fetches_missing_history() {
         .map(|i| test_event(i, &format!("Event{}", i)))
         .collect();
     event_store
-        .add(domain, DEFAULT_EDITION, root, events, "")
+        .add(domain, DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 
@@ -200,7 +200,7 @@ async fn test_discovery_resolves_event_query_via_env_var() {
         .map(|i| test_event(i, &format!("Event{}", i)))
         .collect();
     event_store
-        .add(domain, DEFAULT_EDITION, root, events, "")
+        .add(domain, DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 
@@ -266,7 +266,7 @@ async fn test_discovery_resolves_registered_aggregate() {
         .map(|i| test_event(i, &format!("ProductEvent{}", i)))
         .collect();
     event_store
-        .add(domain, DEFAULT_EDITION, root, events, "")
+        .add(domain, DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 

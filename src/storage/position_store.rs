@@ -20,10 +20,8 @@ use super::Result;
 ///
 /// # Implementations
 ///
-/// - `MongoPositionStore`: MongoDB storage
 /// - `PostgresPositionStore`: PostgreSQL storage
 /// - `SqlitePositionStore`: SQLite storage
-/// - `MockPositionStore`: In-memory mock for testing
 #[async_trait]
 pub trait PositionStore: Send + Sync {
     /// Get the last-processed sequence for a handler/domain/edition/root.

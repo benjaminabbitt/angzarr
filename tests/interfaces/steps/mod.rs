@@ -8,6 +8,7 @@ pub mod event_bus;
 pub mod event_query_service;
 pub mod event_store;
 pub mod event_stream_service;
+pub mod idempotency;
 pub mod notification;
 pub mod payload_offloading;
 pub mod position_store;

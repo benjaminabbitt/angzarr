@@ -459,6 +459,7 @@ mod grpc_integration {
                     test_event(4, "Completed"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -512,7 +513,7 @@ mod grpc_integration {
             .map(|i| test_event(i, &format!("Event{}", i)))
             .collect();
         event_store
-            .add(domain, DEFAULT_EDITION, root, events, "")
+            .add(domain, DEFAULT_EDITION, root, events, "", None)
             .await
             .unwrap();
 

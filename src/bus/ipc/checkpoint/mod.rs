@@ -224,12 +224,10 @@ impl Checkpoint {
     pub async fn stats(&self) -> CheckpointStats {
         let data = self.data.read().await;
         let dirty = *self.dirty.read().await;
-        let last_flush = *self.last_flush.read().await;
 
         CheckpointStats {
             position_count: data.positions.len(),
             dirty,
-            last_flush_elapsed: last_flush.elapsed(),
         }
     }
 }
@@ -242,8 +240,6 @@ pub struct CheckpointStats {
     pub position_count: usize,
     /// Whether there are unpersisted changes.
     pub dirty: bool,
-    /// Time since last flush.
-    pub last_flush_elapsed: Duration,
 }
 
 #[cfg(test)]

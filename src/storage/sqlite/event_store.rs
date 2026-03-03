@@ -14,7 +14,7 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
-use crate::storage::{EventStore, Result};
+use crate::storage::{AddOutcome, EventStore, Result};
 
 /// SQLite implementation of EventStore.
 pub struct SqliteEventStore {
@@ -170,6 +170,7 @@ impl SqliteEventStore {
     }
 
     /// Insert events within an already-started transaction.
+    /// Returns (first_sequence, last_sequence) of inserted events.
     async fn insert_events(
         conn: &mut SqliteConnection,
         domain: &str,
@@ -177,7 +178,8 @@ impl SqliteEventStore {
         root_str: &str,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        external_id: &str,
+    ) -> Result<(u32, u32)> {
         let base_sequence = {
             let query = Query::select()
                 .expr(Expr::col(Events::Sequence).max())
@@ -199,6 +201,8 @@ impl SqliteEventStore {
         };
 
         let mut auto_sequence = base_sequence;
+        let mut first_sequence = None;
+        let mut last_sequence = 0u32;
 
         for event in events {
             let event_data = event.encode_to_vec();
@@ -208,6 +212,11 @@ impl SqliteEventStore {
                 &mut auto_sequence,
             )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
+
+            if first_sequence.is_none() {
+                first_sequence = Some(sequence);
+            }
+            last_sequence = sequence;
 
             let query = Query::insert()
                 .into_table(Events::Table)
@@ -219,6 +228,7 @@ impl SqliteEventStore {
                     Events::CreatedAt,
                     Events::EventData,
                     Events::CorrelationId,
+                    Events::ExternalId,
                 ])
                 .values_panic([
                     edition.into(),
@@ -228,13 +238,48 @@ impl SqliteEventStore {
                     created_at.into(),
                     event_data.into(),
                     correlation_id.into(),
+                    external_id.into(),
                 ])
                 .to_string(SqliteQueryBuilder);
 
             sqlx::query(&query).execute(&mut *conn).await?;
         }
 
-        Ok(())
+        Ok((first_sequence.unwrap_or(0), last_sequence))
+    }
+
+    /// Check if events with the given external_id already exist.
+    /// Returns Some((first_sequence, last_sequence)) if found.
+    async fn check_idempotency(
+        conn: &mut SqliteConnection,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+        external_id: &str,
+    ) -> Result<Option<(u32, u32)>> {
+        let query = Query::select()
+            .expr(Expr::col(Events::Sequence).min())
+            .expr(Expr::col(Events::Sequence).max())
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(root_str))
+            .and_where(Expr::col(Events::ExternalId).eq(external_id))
+            .to_string(SqliteQueryBuilder);
+
+        let row = sqlx::query(&query).fetch_optional(&mut *conn).await?;
+
+        match row {
+            Some(row) => {
+                let min_seq: Option<i32> = row.get(0);
+                let max_seq: Option<i32> = row.get(1);
+                match (min_seq, max_seq) {
+                    (Some(min), Some(max)) => Ok(Some((min as u32, max as u32))),
+                    _ => Ok(None),
+                }
+            }
+            None => Ok(None),
+        }
     }
 }
 
@@ -247,17 +292,35 @@ impl EventStore for SqliteEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        external_id: Option<&str>,
+    ) -> Result<AddOutcome> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
         }
 
         let root_str = root.to_string();
+        let external_id = external_id.unwrap_or("");
 
         // BEGIN IMMEDIATE acquires the write lock upfront, preventing deadlocks
         // when concurrent DEFERRED transactions race to upgrade from shared to exclusive.
         let mut conn = self.pool.acquire().await?;
         sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+
+        // Check for idempotency if external_id is provided
+        if !external_id.is_empty() {
+            if let Some((first, last)) =
+                Self::check_idempotency(&mut conn, domain, edition, &root_str, external_id).await?
+            {
+                sqlx::query("COMMIT").execute(&mut *conn).await?;
+                return Ok(AddOutcome::Duplicate {
+                    first_sequence: first,
+                    last_sequence: last,
+                });
+            }
+        }
 
         let result = Self::insert_events(
             &mut conn,
@@ -266,13 +329,17 @@ impl EventStore for SqliteEventStore {
             &root_str,
             events,
             correlation_id,
+            external_id,
         )
         .await;
 
         match result {
-            Ok(()) => {
+            Ok((first, last)) => {
                 sqlx::query("COMMIT").execute(&mut *conn).await?;
-                Ok(())
+                Ok(AddOutcome::Added {
+                    first_sequence: first,
+                    last_sequence: last,
+                })
             }
             Err(e) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;

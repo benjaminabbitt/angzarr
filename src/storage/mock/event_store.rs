@@ -10,12 +10,13 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{EventBook, EventPage};
 use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
-use crate::storage::{EventStore, Result, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, StorageError};
 
-/// Stored event with correlation tracking.
+/// Stored event with correlation and idempotency tracking.
 struct StoredEvent {
     page: EventPage,
     correlation_id: String,
+    external_id: String,
 }
 
 /// Mock event store that stores events in memory.
@@ -58,24 +59,69 @@ impl EventStore for MockEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        external_id: Option<&str>,
+    ) -> Result<AddOutcome> {
         if *self.fail_on_add.read().await {
             return Err(StorageError::NotFound {
                 domain: domain.to_string(),
                 root,
             });
         }
+
+        if events.is_empty() {
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
+        }
+
+        let external_id = external_id.unwrap_or("");
         let key = (domain.to_string(), edition.to_string(), root);
         let mut store = self.events.write().await;
+
+        // Check for idempotency if external_id is provided
+        if !external_id.is_empty() {
+            if let Some(existing) = store.get(&key) {
+                let matching: Vec<_> = existing
+                    .iter()
+                    .filter(|e| e.external_id == external_id)
+                    .collect();
+                if !matching.is_empty() {
+                    let first = matching
+                        .iter()
+                        .map(|e| e.page.sequence_num())
+                        .min()
+                        .unwrap();
+                    let last = matching
+                        .iter()
+                        .map(|e| e.page.sequence_num())
+                        .max()
+                        .unwrap();
+                    return Ok(AddOutcome::Duplicate {
+                        first_sequence: first,
+                        last_sequence: last,
+                    });
+                }
+            }
+        }
+
+        let first_sequence = events.first().map(|e| e.sequence_num()).unwrap_or(0);
+        let last_sequence = events.last().map(|e| e.sequence_num()).unwrap_or(0);
+
         let stored: Vec<StoredEvent> = events
             .into_iter()
             .map(|page| StoredEvent {
                 page,
                 correlation_id: correlation_id.to_string(),
+                external_id: external_id.to_string(),
             })
             .collect();
         store.entry(key).or_default().extend(stored);
-        Ok(())
+
+        Ok(AddOutcome::Added {
+            first_sequence,
+            last_sequence,
+        })
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {

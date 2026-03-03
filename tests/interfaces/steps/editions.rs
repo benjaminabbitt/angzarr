@@ -109,7 +109,7 @@ async fn when_add_event_main_timeline(world: &mut EditionWorld, domain: String) 
 
     world
         .store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "")
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
         .await
         .expect("Failed to add event");
 
@@ -136,7 +136,7 @@ async fn when_add_event_with_edition(world: &mut EditionWorld, domain: String, e
 
     world
         .store()
-        .add(&domain, effective, root, pages, "")
+        .add(&domain, effective, root, pages, "", None)
         .await
         .expect("Failed to add event");
 
@@ -215,7 +215,7 @@ async fn given_aggregate_main_with_events(world: &mut EditionWorld, domain: Stri
 
     world
         .store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "")
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
         .await
         .expect("Failed to add events");
 
@@ -251,6 +251,7 @@ async fn when_add_events_to_edition(world: &mut EditionWorld, count: u32, editio
             world.current_root,
             pages,
             "",
+            None,
         )
         .await
         .expect("Failed to add edition events");
@@ -341,6 +342,7 @@ async fn when_add_events_in_edition(world: &mut EditionWorld, count: u32, editio
             world.current_root,
             pages,
             "",
+            None,
         )
         .await
         .expect("Failed to add events");
@@ -396,6 +398,7 @@ async fn when_add_event_on_main(world: &mut EditionWorld, count: u32) {
             world.current_root,
             pages,
             "",
+            None,
         )
         .await
         .expect("Failed to add events");
@@ -415,6 +418,7 @@ async fn when_add_event_in_edition(world: &mut EditionWorld, count: u32, edition
             world.current_root,
             pages,
             "",
+            None,
         )
         .await
         .expect("Failed to add events");
@@ -480,6 +484,7 @@ async fn when_add_single_event_to_edition(world: &mut EditionWorld, edition: Str
             world.current_root,
             pages,
             "",
+            None,
         )
         .await
         .expect("Failed to add event");
@@ -535,7 +540,7 @@ async fn when_add_events_to_aggregate_edition(
 
     world
         .store()
-        .add(&domain, &edition, root, pages, "")
+        .add(&domain, &edition, root, pages, "", None)
         .await
         .expect("Failed to add events");
 }
@@ -589,7 +594,7 @@ async fn given_aggregate_root_main(world: &mut EditionWorld, domain: String, roo
 
     world
         .store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "")
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
         .await
         .expect("Failed to add event");
 
@@ -609,7 +614,7 @@ async fn given_aggregate_root_edition(
 
     world
         .store()
-        .add(&domain, &edition, root, pages, "")
+        .add(&domain, &edition, root, pages, "", None)
         .await
         .expect("Failed to add event");
 
@@ -683,7 +688,7 @@ async fn given_aggregate_edition_with_events(
 
     world
         .store()
-        .add(&domain, &edition, world.current_root, pages, "")
+        .add(&domain, &edition, world.current_root, pages, "", None)
         .await
         .expect("Failed to add events");
 }

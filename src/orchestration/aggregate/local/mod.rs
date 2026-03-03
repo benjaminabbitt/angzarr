@@ -312,7 +312,14 @@ impl AggregateContext for LocalAggregateContext {
 
             self.storage
                 .event_store
-                .add(domain, edition, root, new_pages.clone(), correlation_id)
+                .add(
+                    domain,
+                    edition,
+                    root,
+                    new_pages.clone(),
+                    correlation_id,
+                    None,
+                )
                 .await
                 .map_err(|e| match e {
                     StorageError::SequenceConflict { expected, actual } => {
@@ -504,13 +511,11 @@ mod tests {
     // Mock ClientLogic for testing
     // ========================================================================
 
-    struct MockClientLogic {
-        id: usize,
-    }
+    struct MockClientLogic;
 
     impl MockClientLogic {
-        fn new(id: usize) -> Self {
-            Self { id }
+        fn new(_id: usize) -> Self {
+            Self
         }
     }
 

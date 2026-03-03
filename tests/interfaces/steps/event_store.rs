@@ -131,7 +131,7 @@ async fn given_aggregate_with_events(world: &mut EventStoreWorld, domain: String
     if !pages.is_empty() {
         world
             .store()
-            .add(&domain, "test", root, pages, "test-correlation")
+            .add(&domain, "test", root, pages, "test-correlation", None)
             .await
             .expect("Failed to add events");
     }
@@ -172,7 +172,7 @@ async fn given_multiple_aggregates(
         if !pages.is_empty() {
             world
                 .store()
-                .add(&domain, "test", root, pages, "test-correlation")
+                .add(&domain, "test", root, pages, "test-correlation", None)
                 .await
                 .expect("Failed to add events");
         }
@@ -210,7 +210,7 @@ async fn given_aggregate_with_root(
     if !pages.is_empty() {
         world
             .store()
-            .add(&domain, "test", root, pages, "test-correlation")
+            .add(&domain, "test", root, pages, "test-correlation", None)
             .await
             .expect("Failed to add events");
     }
@@ -256,6 +256,7 @@ async fn when_add_events(world: &mut EventStoreWorld, count: u32) {
                 world.current_root,
                 pages,
                 "test-correlation",
+                None,
             )
             .await
         {
@@ -282,6 +283,7 @@ async fn when_try_add_event_at_sequence(world: &mut EventStoreWorld, seq: u32) {
             world.current_root,
             pages,
             "test-correlation",
+            None,
         )
         .await
     {
@@ -330,6 +332,7 @@ async fn when_add_event_with_type_payload(
             world.current_root,
             pages,
             "test-correlation",
+            None,
         )
         .await
         .expect("Failed to add event");
@@ -600,7 +603,14 @@ async fn given_aggregate_with_root_edition(
     let page = world.make_event_page(0, "type.test/InitEvent", vec![0]);
     world
         .store()
-        .add(&domain, &edition, root, vec![page], "test-correlation")
+        .add(
+            &domain,
+            &edition,
+            root,
+            vec![page],
+            "test-correlation",
+            None,
+        )
         .await
         .expect("Failed to add initial event");
 
@@ -637,7 +647,7 @@ async fn given_aggregate_with_root_edition_with_events(
     if !pages.is_empty() {
         world
             .store()
-            .add(&domain, &edition, root, pages, "test-correlation")
+            .add(&domain, &edition, root, pages, "test-correlation", None)
             .await
             .expect("Failed to add events");
     }
@@ -692,6 +702,7 @@ async fn when_add_events_to_root_edition(
                 root,
                 pages,
                 "test-correlation",
+                None,
             )
             .await
             .expect("Failed to add events");
@@ -781,7 +792,7 @@ async fn given_aggregate_with_correlation(
     let page = world.make_event_page(0, "type.test/Event0", vec![0]);
     world
         .store()
-        .add(&domain, "test", root, vec![page], &correlation_id)
+        .add(&domain, "test", root, vec![page], &correlation_id, None)
         .await
         .expect("Failed to add event");
 
@@ -858,6 +869,7 @@ async fn when_add_event_with_correlation(world: &mut EventStoreWorld, correlatio
             world.current_root,
             vec![page],
             &correlation_id,
+            None,
         )
         .await
         .expect("Failed to add event");
@@ -899,6 +911,7 @@ async fn when_add_event_with_known_timestamp(world: &mut EventStoreWorld) {
             world.current_root,
             vec![page],
             "test-correlation",
+            None,
         )
         .await
         .expect("Failed to add event");

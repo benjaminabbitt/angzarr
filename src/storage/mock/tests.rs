@@ -40,7 +40,7 @@ async fn test_mock_event_store_add_and_get() {
     }];
 
     store
-        .add("orders", "test", root, events, "corr-123")
+        .add("orders", "test", root, events, "corr-123", None)
         .await
         .unwrap();
 
@@ -83,11 +83,11 @@ async fn test_mock_event_store_get_by_correlation() {
 
     // Add events with same correlation_id across different domains
     store
-        .add("orders", "test", root1, vec![event1], "tx-abc")
+        .add("orders", "test", root1, vec![event1], "tx-abc", None)
         .await
         .unwrap();
     store
-        .add("payment", "test", root2, vec![event2], "tx-abc")
+        .add("payment", "test", root2, vec![event2], "tx-abc", None)
         .await
         .unwrap();
 
@@ -150,7 +150,10 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
     ];
-    store.add("orders", "test", root, events, "").await.unwrap();
+    store
+        .add("orders", "test", root, events, "", None)
+        .await
+        .unwrap();
 
     // Query as-of Jan 2 — should return events 0 and 1
     let result = store
@@ -199,7 +202,10 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
         })),
         created_at: None,
     }];
-    store.add("orders", "test", root, events, "").await.unwrap();
+    store
+        .add("orders", "test", root, events, "", None)
+        .await
+        .unwrap();
 
     let result = store
         .get_until_timestamp("orders", "test", root, "2024-01-02T00:00:00Z")

@@ -78,6 +78,7 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
             root,
             (0..5).map(make_event_page).collect(),
             "",
+            None,
         )
         .await
         .unwrap();
@@ -125,6 +126,7 @@ async fn test_get_from_to_returns_range() {
             root,
             (0..10).map(make_event_page).collect(),
             "",
+            None,
         )
         .await
         .unwrap();
@@ -265,6 +267,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
             root,
             (0..5).map(make_event_page).collect(),
             "",
+            None,
         )
         .await
         .unwrap();
@@ -308,6 +311,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
             root,
             (0..5).map(make_event_page).collect(),
             "",
+            None,
         )
         .await
         .unwrap();
@@ -355,6 +359,7 @@ async fn test_with_config_defaults_match_new_constructor() {
             root,
             (0..3).map(make_event_page).collect(),
             "",
+            None,
         )
         .await
         .unwrap();
@@ -459,11 +464,12 @@ mod mock_integration {
                     test_event(4, "Event4"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();
 
-        // Snapshot at sequence 3 — should be ignored for temporal queries
+        // Snapshot at sequence 3 — should be ignored
         use crate::storage::SnapshotStore;
         snapshot_store
             .put(domain, "test", root, test_snapshot(3))
@@ -502,6 +508,7 @@ mod mock_integration {
                     test_event(4, "Event4"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -541,6 +548,7 @@ mod mock_integration {
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -581,11 +589,12 @@ mod mock_integration {
                     test_event(4, "Event4"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();
 
-        // Request sparse sequences: 1, 3
+        // Request sparse sequences
         let book = repo
             .get_sequences(domain, "test", root, &[1, 3])
             .await
@@ -618,6 +627,7 @@ mod mock_integration {
                     test_event(4, "Event4"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -650,6 +660,7 @@ mod mock_integration {
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -680,6 +691,7 @@ mod mock_integration {
                     test_event(2, "Event2"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -710,6 +722,7 @@ mod mock_integration {
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
+                None,
             )
             .await
             .unwrap();
@@ -746,6 +759,7 @@ mod mock_integration {
                     test_event(3, "Event3"),
                 ],
                 "",
+                None,
             )
             .await
             .unwrap();

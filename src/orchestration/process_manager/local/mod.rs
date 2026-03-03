@@ -109,6 +109,7 @@ impl ProcessManagerContext for LocalPMContext {
                 pm_root,
                 process_events.pages.clone(),
                 correlation_id,
+                None, // No idempotency key for PM events
             )
             .await
         {

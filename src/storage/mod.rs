@@ -14,12 +14,10 @@ pub mod factory;
 
 // Trait modules
 mod event_store;
-mod idempotency_store;
 mod position_store;
 mod snapshot_store;
 
-pub use event_store::EventStore;
-pub use idempotency_store::{IdempotencyRecord, IdempotencyStore};
+pub use event_store::{AddOutcome, EventStore};
 pub use position_store::PositionStore;
 pub use snapshot_store::SnapshotStore;
 
@@ -60,7 +58,7 @@ pub use bigtable::{
 pub use dynamo::{DynamoConfig, DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
 #[cfg(feature = "immudb")]
 pub use immudb::ImmudbEventStore;
-pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+pub use mock::{MockEventStore, MockSnapshotStore};
 #[cfg(feature = "nats")]
 pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
 #[cfg(feature = "postgres")]
@@ -68,6 +66,4 @@ pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotSt
 #[cfg(feature = "redis")]
 pub use redis::RedisSnapshotStore;
 #[cfg(feature = "sqlite")]
-pub use sqlite::{
-    SqliteEventStore, SqliteIdempotencyStore, SqlitePositionStore, SqliteSnapshotStore,
-};
+pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};

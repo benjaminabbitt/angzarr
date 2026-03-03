@@ -14,7 +14,7 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
-use crate::storage::{EventStore, Result};
+use crate::storage::{AddOutcome, EventStore, Result};
 
 /// PostgreSQL implementation of EventStore.
 pub struct PostgresEventStore {
@@ -101,16 +101,48 @@ impl EventStore for PostgresEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        external_id: Option<&str>,
+    ) -> Result<AddOutcome> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
         }
 
         let root_str = root.to_string();
+        let external_id = external_id.unwrap_or("");
 
         // Use a transaction to ensure atomicity
         let mut conn = self.pool.acquire().await?;
         let mut tx = conn.begin().await?;
+
+        // Check for idempotency if external_id is provided
+        if !external_id.is_empty() {
+            let query = Query::select()
+                .expr(Expr::col(Events::Sequence).min())
+                .expr(Expr::col(Events::Sequence).max())
+                .from(Events::Table)
+                .and_where(Expr::col(Events::Edition).eq(edition))
+                .and_where(Expr::col(Events::Domain).eq(domain))
+                .and_where(Expr::col(Events::Root).eq(&root_str))
+                .and_where(Expr::col(Events::ExternalId).eq(external_id))
+                .to_string(PostgresQueryBuilder);
+
+            let row = sqlx::query(&query).fetch_optional(&mut *tx).await?;
+
+            if let Some(row) = row {
+                let min_seq: Option<i32> = row.get(0);
+                let max_seq: Option<i32> = row.get(1);
+                if let (Some(min), Some(max)) = (min_seq, max_seq) {
+                    tx.commit().await?;
+                    return Ok(AddOutcome::Duplicate {
+                        first_sequence: min as u32,
+                        last_sequence: max as u32,
+                    });
+                }
+            }
+        }
 
         // Get the next sequence number once at the start of the transaction
         let base_sequence = {
@@ -134,6 +166,8 @@ impl EventStore for PostgresEventStore {
         };
 
         let mut auto_sequence = base_sequence;
+        let mut first_sequence = None;
+        let mut last_sequence = 0u32;
 
         for event in events {
             let event_data = event.encode_to_vec();
@@ -143,6 +177,11 @@ impl EventStore for PostgresEventStore {
                 &mut auto_sequence,
             )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
+
+            if first_sequence.is_none() {
+                first_sequence = Some(sequence);
+            }
+            last_sequence = sequence;
 
             let query = Query::insert()
                 .into_table(Events::Table)
@@ -154,6 +193,7 @@ impl EventStore for PostgresEventStore {
                     Events::CreatedAt,
                     Events::EventData,
                     Events::CorrelationId,
+                    Events::ExternalId,
                 ])
                 .values_panic([
                     edition.into(),
@@ -163,6 +203,7 @@ impl EventStore for PostgresEventStore {
                     created_at.into(),
                     event_data.into(),
                     correlation_id.into(),
+                    external_id.into(),
                 ])
                 .to_string(PostgresQueryBuilder);
 
@@ -172,7 +213,10 @@ impl EventStore for PostgresEventStore {
         // Commit the transaction
         tx.commit().await?;
 
-        Ok(())
+        Ok(AddOutcome::Added {
+            first_sequence: first_sequence.unwrap_or(0),
+            last_sequence,
+        })
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {

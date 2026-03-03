@@ -6,6 +6,52 @@ use uuid::Uuid;
 use super::Result;
 use crate::proto::EventPage;
 
+/// Outcome of an `add()` operation.
+///
+/// Distinguishes between newly added events and duplicates detected via external_id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddOutcome {
+    /// Events were persisted. Returns the sequence range of added events.
+    Added {
+        first_sequence: u32,
+        last_sequence: u32,
+    },
+    /// Duplicate external_id detected. Returns the sequence range of the original events.
+    /// No new events were persisted.
+    Duplicate {
+        first_sequence: u32,
+        last_sequence: u32,
+    },
+}
+
+impl AddOutcome {
+    /// Returns true if events were added (not a duplicate).
+    pub fn is_added(&self) -> bool {
+        matches!(self, AddOutcome::Added { .. })
+    }
+
+    /// Returns true if this was a duplicate request.
+    pub fn is_duplicate(&self) -> bool {
+        matches!(self, AddOutcome::Duplicate { .. })
+    }
+
+    /// Returns the first sequence number regardless of outcome.
+    pub fn first_sequence(&self) -> u32 {
+        match self {
+            AddOutcome::Added { first_sequence, .. } => *first_sequence,
+            AddOutcome::Duplicate { first_sequence, .. } => *first_sequence,
+        }
+    }
+
+    /// Returns the last sequence number regardless of outcome.
+    pub fn last_sequence(&self) -> u32 {
+        match self {
+            AddOutcome::Added { last_sequence, .. } => *last_sequence,
+            AddOutcome::Duplicate { last_sequence, .. } => *last_sequence,
+        }
+    }
+}
+
 /// Interface for event persistence.
 ///
 /// All domain-scoped operations take `domain` as their first parameter,
@@ -15,6 +61,16 @@ use crate::proto::EventPage;
 ///
 /// The `(domain, edition, root, sequence)` tuple forms the unique key
 /// for stored events.
+///
+/// # Idempotency
+///
+/// The `external_id` parameter enables exactly-once delivery semantics.
+/// When provided (non-empty), the store records a claim for that external_id.
+/// Subsequent requests with the same (domain, edition, root, external_id)
+/// return `AddOutcome::Duplicate` with the original sequence range instead
+/// of persisting duplicate events.
+///
+/// Pass `None` or empty string for non-idempotent operations.
 ///
 /// Implementations:
 /// - `SqliteEventStore`: SQLite storage
@@ -28,6 +84,15 @@ pub trait EventStore: Send + Sync {
     /// Events are appended to the existing event stream for this root.
     /// Sequence numbers are validated for consistency.
     /// The correlation_id links related events across aggregates for tracing.
+    ///
+    /// # Idempotency
+    ///
+    /// If `external_id` is `Some(id)` where `id` is non-empty:
+    /// - First call: persists events and returns `AddOutcome::Added`
+    /// - Subsequent calls with same external_id: returns `AddOutcome::Duplicate`
+    ///   with the original sequence range (no new events persisted)
+    ///
+    /// If `external_id` is `None` or `Some("")`: events are always persisted.
     async fn add(
         &self,
         domain: &str,
@@ -35,7 +100,8 @@ pub trait EventStore: Send + Sync {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()>;
+        external_id: Option<&str>,
+    ) -> Result<AddOutcome>;
 
     /// Retrieve all events for an aggregate.
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>>;

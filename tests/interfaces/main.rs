@@ -52,6 +52,7 @@ use steps::event_bus::EventBusWorld;
 use steps::event_query_service::EventQueryServiceWorld;
 use steps::event_store::EventStoreWorld;
 use steps::event_stream_service::EventStreamServiceWorld;
+use steps::idempotency::IdempotencyWorld;
 use steps::notification::NotificationWorld;
 use steps::payload_offloading::PayloadWorld;
 use steps::position_store::PositionStoreWorld;
@@ -165,5 +166,12 @@ async fn main() {
     AggregateHandlerWorld::cucumber()
         .fail_on_skipped()
         .run("tests/interfaces/features/aggregate_handler.feature")
+        .await;
+
+    // Run Idempotency tests
+    println!("\n=== Running Event Idempotency Interface Tests ===\n");
+    IdempotencyWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/idempotency.feature")
         .await;
 }

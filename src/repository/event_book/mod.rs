@@ -338,8 +338,10 @@ impl EventBookRepository {
                 root_uuid,
                 book.pages.clone(),
                 correlation_id,
+                None, // No idempotency key for regular puts
             )
             .await
+            .map(|_| ()) // Ignore AddOutcome, just succeed
     }
 }
 

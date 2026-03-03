@@ -257,7 +257,7 @@ async fn test_eventstore_eventbus_interoperability() {
 
     let events = make_event_pages(0, 2);
     event_store
-        .add(domain, edition, root, events, "interop-test")
+        .add(domain, edition, root, events, "interop-test", None)
         .await
         .expect("Failed to add events via EventStore");
 

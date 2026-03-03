@@ -95,7 +95,7 @@ async fn test_get_event_book_with_data() {
         created_at: None,
     }];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, "")
+        .add("orders", DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 
@@ -194,7 +194,7 @@ async fn test_get_event_book_with_range() {
             created_at: None,
         }];
         event_store
-            .add("orders", DEFAULT_EDITION, root, events, "")
+            .add("orders", DEFAULT_EDITION, root, events, "", None)
             .await
             .unwrap();
     }
@@ -272,7 +272,7 @@ async fn test_get_events_with_data() {
         created_at: None,
     }];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, "")
+        .add("orders", DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 
@@ -370,13 +370,28 @@ async fn test_get_aggregate_roots_with_data() {
     let root1 = uuid::Uuid::new_v4();
     let root2 = uuid::Uuid::new_v4();
 
-    // Add some events
+    // Add some events - must have at least one event to create an aggregate root
+    let event = EventPage {
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "test.Event".to_string(),
+            value: vec![],
+        })),
+        created_at: None,
+    };
     event_store
-        .add("orders", DEFAULT_EDITION, root1, vec![], "")
+        .add(
+            "orders",
+            DEFAULT_EDITION,
+            root1,
+            vec![event.clone()],
+            "",
+            None,
+        )
         .await
         .unwrap();
     event_store
-        .add("orders", DEFAULT_EDITION, root2, vec![], "")
+        .add("orders", DEFAULT_EDITION, root2, vec![event], "", None)
         .await
         .unwrap();
 
@@ -393,8 +408,24 @@ async fn test_get_aggregate_roots_with_data() {
 async fn test_get_aggregate_roots_multiple_domains() {
     let (service, event_store, _) = create_default_test_service();
 
+    // Must add at least one event to create an aggregate root
+    let event = EventPage {
+        sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "test.Event".to_string(),
+            value: vec![],
+        })),
+        created_at: None,
+    };
     event_store
-        .add("orders", DEFAULT_EDITION, uuid::Uuid::new_v4(), vec![], "")
+        .add(
+            "orders",
+            DEFAULT_EDITION,
+            uuid::Uuid::new_v4(),
+            vec![event.clone()],
+            "",
+            None,
+        )
         .await
         .unwrap();
     event_store
@@ -402,8 +433,9 @@ async fn test_get_aggregate_roots_multiple_domains() {
             "inventory",
             DEFAULT_EDITION,
             uuid::Uuid::new_v4(),
-            vec![],
+            vec![event],
             "",
+            None,
         )
         .await
         .unwrap();
@@ -440,7 +472,14 @@ async fn test_get_event_book_by_correlation_id() {
         created_at: None,
     }];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, correlation_id)
+        .add(
+            "orders",
+            DEFAULT_EDITION,
+            root,
+            events,
+            correlation_id,
+            None,
+        )
         .await
         .unwrap();
 
@@ -509,7 +548,7 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
             created_at: None,
         }];
         event_store
-            .add(domain, DEFAULT_EDITION, root, events, correlation_id)
+            .add(domain, DEFAULT_EDITION, root, events, correlation_id, None)
             .await
             .unwrap();
     }
@@ -583,7 +622,7 @@ async fn test_get_event_book_temporal_by_time() {
         },
     ];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, "")
+        .add("orders", DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 
@@ -633,7 +672,7 @@ async fn test_get_event_book_temporal_by_sequence() {
             created_at: None,
         }];
         event_store
-            .add("orders", DEFAULT_EDITION, root, events, "")
+            .add("orders", DEFAULT_EDITION, root, events, "", None)
             .await
             .unwrap();
     }
@@ -713,7 +752,7 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
         created_at: None,
     }];
     event_store
-        .add("customer", DEFAULT_EDITION, root, events, "")
+        .add("customer", DEFAULT_EDITION, root, events, "", None)
         .await
         .unwrap();
 
@@ -784,7 +823,7 @@ async fn test_get_event_book_with_sequences() {
             created_at: None,
         }];
         event_store
-            .add("orders", DEFAULT_EDITION, root, events, "")
+            .add("orders", DEFAULT_EDITION, root, events, "", None)
             .await
             .unwrap();
     }

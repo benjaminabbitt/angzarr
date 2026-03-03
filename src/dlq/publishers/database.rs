@@ -364,63 +364,11 @@ impl DeadLetterPublisher for SqliteDlqPublisher {
     }
 }
 
-#[cfg(all(test, feature = "sqlite"))]
-mod tests {
-    use super::*;
-    use crate::dlq::{AngzarrDeadLetter, DeadLetterPayload};
-    use crate::proto::{
-        command_page, CommandBook, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid,
-    };
-    use std::collections::HashMap;
-    use uuid::Uuid;
-
-    fn make_test_command(domain: &str) -> CommandBook {
-        let root = Uuid::new_v4();
-        CommandBook {
-            cover: Some(Cover {
-                domain: domain.to_string(),
-                root: Some(ProtoUuid {
-                    value: root.as_bytes().to_vec(),
-                }),
-                correlation_id: "test-corr-123".to_string(),
-                edition: None,
-                external_id: String::new(),
-            }),
-            pages: vec![CommandPage {
-                sequence: 0,
-                payload: Some(command_page::Payload::Command(prost_types::Any {
-                    type_url: "test.Command".to_string(),
-                    value: vec![1, 2, 3],
-                })),
-                merge_strategy: MergeStrategy::MergeManual as i32,
-            }],
-            saga_origin: None,
-        }
-    }
-
-    fn make_dead_letter(domain: &str, reason: &str) -> AngzarrDeadLetter {
-        let cmd = make_test_command(domain);
-        AngzarrDeadLetter {
-            cover: cmd.cover.clone(),
-            payload: DeadLetterPayload::Command(cmd),
-            rejection_reason: reason.to_string(),
-            rejection_details: None,
-            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-            metadata: HashMap::new(),
-            source_component: "test-component".to_string(),
-            source_component_type: "aggregate".to_string(),
-        }
-    }
-
-    // NOTE: All SQLite DLQ publisher contract tests are covered by
-    // tests/interfaces/features/dlq_publishers.feature (Gherkin contract tests).
-    // The Gherkin tests use SQLite as the default backend and verify:
-    // - is_configured
-    // - persistence (persists_entry)
-    // - domain preservation
-    // - rejection reason preservation
-    // - source component preservation
-    //
-    // No implementation-specific unit tests remain because SQLite is the
-    // canonical test backend for the DLQ contract.
-}
+// NOTE: All DLQ publisher contract tests are covered by
+// tests/interfaces/features/dlq_publishers.feature (Gherkin contract tests).
+// The Gherkin tests use SQLite as the default backend and verify:
+// - is_configured
+// - persistence (persists_entry)
+// - domain preservation
+// - rejection reason preservation
+// - source component preservation

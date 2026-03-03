@@ -23,6 +23,8 @@ pub enum Events {
     EventData,
     #[iden = "correlation_id"]
     CorrelationId,
+    #[iden = "external_id"]
+    ExternalId,
 }
 
 /// Snapshots table schema.

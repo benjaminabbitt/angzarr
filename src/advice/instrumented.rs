@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::proto::{EventBook, EventPage, Snapshot};
-use crate::storage::{EventStore, PositionStore, Result, SnapshotStore};
+use crate::storage::{AddOutcome, EventStore, PositionStore, Result, SnapshotStore};
 
 // Re-export constants for backwards compatibility
 #[allow(unused_imports)]
@@ -82,13 +82,14 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        external_id: Option<&str>,
+    ) -> Result<AddOutcome> {
         let start = Instant::now();
         let count = events.len();
 
         let result = self
             .inner
-            .add(domain, edition, root, events, correlation_id)
+            .add(domain, edition, root, events, correlation_id, external_id)
             .await;
 
         #[cfg(feature = "otel")]
@@ -101,11 +102,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 ],
             );
 
-            if result.is_ok() {
-                EVENTS_STORED_TOTAL.add(
-                    count as u64,
-                    &[domain_attr(domain), storage_type_attr(self.storage_type)],
-                );
+            if let Ok(ref outcome) = result {
+                if outcome.is_added() {
+                    EVENTS_STORED_TOTAL.add(
+                        count as u64,
+                        &[domain_attr(domain), storage_type_attr(self.storage_type)],
+                    );
+                }
             }
         }
         let _ = (start, count); // Suppress unused warnings when otel disabled

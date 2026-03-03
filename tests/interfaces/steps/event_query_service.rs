@@ -184,7 +184,7 @@ async fn given_aggregate_with_events(
     if !pages.is_empty() {
         world
             .event_store()
-            .add(&domain, DEFAULT_EDITION, root, pages, "")
+            .add(&domain, DEFAULT_EDITION, root, pages, "", None)
             .await
             .expect("Failed to add events");
     }
@@ -235,7 +235,7 @@ async fn given_aggregate_with_sequences(
 
     world
         .event_store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "")
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
         .await
         .expect("Failed to add events");
 
@@ -284,7 +284,7 @@ async fn given_aggregate_with_timestamps(
 
     world
         .event_store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "")
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
         .await
         .expect("Failed to add events");
 
@@ -319,7 +319,7 @@ async fn given_aggregate_with_correlation(
     if !pages.is_empty() {
         world
             .event_store()
-            .add(&domain, DEFAULT_EDITION, root, pages, &correlation_id)
+            .add(&domain, DEFAULT_EDITION, root, pages, &correlation_id, None)
             .await
             .expect("Failed to add events");
     }
@@ -354,7 +354,7 @@ async fn given_aggregate_with_snapshot(
 
     world
         .event_store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "")
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
         .await
         .expect("Failed to add events");
 
@@ -408,7 +408,7 @@ async fn given_aggregates_with_correlation(
 
             world
                 .event_store()
-                .add(&domain, DEFAULT_EDITION, root, pages, &correlation_id)
+                .add(&domain, DEFAULT_EDITION, root, pages, &correlation_id, None)
                 .await
                 .expect("Failed to add events");
 
@@ -449,7 +449,7 @@ async fn given_aggregates_in_domain(
 
             world
                 .event_store()
-                .add(&domain, DEFAULT_EDITION, root, pages, "")
+                .add(&domain, DEFAULT_EDITION, root, pages, "", None)
                 .await
                 .expect("Failed to add events");
 
