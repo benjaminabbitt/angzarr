@@ -66,3 +66,7 @@ pub fn inject_trace_context<I>(_injector: &mut I) {}
 /// No-op version when otel feature is disabled.
 #[cfg(not(feature = "otel"))]
 pub fn extract_trace_context<E>(_extractor: &E, _span: &tracing::Span) {}
+
+#[cfg(test)]
+#[path = "tracing.test.rs"]
+mod tests;

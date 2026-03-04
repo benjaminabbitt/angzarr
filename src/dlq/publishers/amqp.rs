@@ -167,3 +167,7 @@ impl DeadLetterPublisher for AmqpDeadLetterPublisher {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "amqp.test.rs"]
+mod tests;

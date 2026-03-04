@@ -313,3 +313,7 @@ pub const OP_POSITION_PUT: &str = "position_put";
 
 /// Placeholder domain for correlation queries spanning multiple domains.
 pub const DOMAIN_CORRELATION_QUERY: &str = "correlation_query";
+
+#[cfg(test)]
+#[path = "metrics.test.rs"]
+mod tests;

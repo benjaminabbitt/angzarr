@@ -171,3 +171,7 @@ impl DeadLetterPublisher for KafkaDeadLetterPublisher {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "kafka.test.rs"]
+mod tests;

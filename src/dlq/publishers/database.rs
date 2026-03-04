@@ -372,3 +372,7 @@ impl DeadLetterPublisher for SqliteDlqPublisher {
 // - domain preservation
 // - rejection reason preservation
 // - source component preservation
+
+#[cfg(test)]
+#[path = "database.test.rs"]
+mod tests;

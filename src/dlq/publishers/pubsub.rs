@@ -203,3 +203,7 @@ impl DeadLetterPublisher for PubSubDeadLetterPublisher {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "pubsub.test.rs"]
+mod tests;

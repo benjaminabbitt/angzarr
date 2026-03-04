@@ -234,3 +234,7 @@ impl DeadLetterPublisher for SnsSqsDeadLetterPublisher {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "sns_sqs.test.rs"]
+mod tests;
