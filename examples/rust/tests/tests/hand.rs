@@ -1027,9 +1027,7 @@ fn then_result_is_event(world: &mut HandWorld, event_type: String) {
         })
         .expect("No event in result");
 
-    let full_type = type_name_from_url(&event.type_url);
-    // Strip package prefix (e.g., "examples.CardsDealt" -> "CardsDealt")
-    let actual_type = full_type.rsplit('.').next().unwrap_or(full_type);
+    let actual_type = type_name_from_url(&event.type_url);
     assert_eq!(
         actual_type, event_type,
         "Expected {} but got {}",
