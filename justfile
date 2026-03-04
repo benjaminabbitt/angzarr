@@ -585,8 +585,9 @@ port-forward-grafana:
 
 # === Operators ===
 
-# Install all Kubernetes operators (CloudNativePG, Strimzi, RabbitMQ)
-operators: _cluster-ready
+# Internal: install operators without cluster-ready dependency (used by _cluster-ready)
+[private]
+_operators-impl:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "=== Installing operators ==="
@@ -599,6 +600,9 @@ operators: _cluster-ready
     echo "=== Operators installed ==="
     kubectl get pods -n operators
     kubectl get pods -n rabbitmq-system
+
+# Install all Kubernetes operators (CloudNativePG, Strimzi, RabbitMQ)
+operators: _cluster-ready _operators-impl
 
 # Install RabbitMQ Cluster Operator (no official Helm chart)
 operators-rabbitmq:
@@ -628,8 +632,9 @@ infra-ci:
     echo "=== CI Infrastructure deployed ==="
     kubectl get pods -n angzarr
 
-# Deploy infrastructure to angzarr namespace (requires operators installed first)
-infra: _cluster-ready
+# Internal: deploy infrastructure without cluster-ready dependency (used by _cluster-ready)
+[private]
+_infra-impl:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "=== Deploying infrastructure ==="
@@ -643,6 +648,9 @@ infra: _cluster-ready
         --set auth.password=angzarr --wait
     echo "=== Infrastructure deployed ==="
     kubectl get pods -n angzarr
+
+# Deploy infrastructure to angzarr namespace (requires operators installed first)
+infra: _cluster-ready _infra-impl
 
 # Deploy infrastructure with Kafka (alternative to RabbitMQ)
 infra-kafka: _cluster-ready
@@ -737,7 +745,7 @@ integration: _cluster-ready
 
 # Run acceptance tests
 acceptance: _cluster-ready
-    cd "{{TOP}}/examples/rust" && just acceptance
+    cd "{{TOP}}/examples/rust" && just test-acceptance
 
 # === Vector Search ===
 
@@ -863,8 +871,8 @@ lsp-csharp:
 _cluster-ready:
     just cluster-create
     just secrets-init
-    just operators
-    just infra
+    just _operators-impl
+    just _infra-impl
 
 _skaffold-ready:
     just skaffold-init

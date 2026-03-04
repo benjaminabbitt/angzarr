@@ -23,18 +23,27 @@ build:
       docker:
         dockerfile: examples/rust/Containerfile
         target: agg-player-dev
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-rust
+          alias: RUST_IMAGE
 
     - image: ghcr.io/angzarr-io/poker-rust-table
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: agg-table-dev
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-rust
+          alias: RUST_IMAGE
 
     - image: ghcr.io/angzarr-io/poker-rust-hand
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: agg-hand-dev
+      requires:
+        - image: ghcr.io/angzarr-io/angzarr-rust
+          alias: RUST_IMAGE
 
 deploy:
   helm:
@@ -81,15 +90,24 @@ profiles:
           docker:
             dockerfile: examples/rust/Containerfile
             target: agg-player
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
 
         - image: ghcr.io/angzarr-io/poker-rust-table
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
             target: agg-table
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
 
         - image: ghcr.io/angzarr-io/poker-rust-hand
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
             target: agg-hand
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
