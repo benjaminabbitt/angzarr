@@ -330,7 +330,7 @@ fn rebuild_player_state(world: &mut PlayerWorld) {
 // --- Then Step Definitions ---
 
 // docs:start:then_step
-#[then("the result is a PlayerRegistered event")]
+#[then("the result is a examples.PlayerRegistered event")]
 fn result_is_player_registered(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
@@ -341,7 +341,7 @@ fn result_is_player_registered(world: &mut PlayerWorld) {
 }
 // docs:end:then_step
 
-#[then("the result is a FundsDeposited event")]
+#[then("the result is a examples.FundsDeposited event")]
 fn result_is_funds_deposited(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
@@ -351,7 +351,7 @@ fn result_is_funds_deposited(world: &mut PlayerWorld) {
     );
 }
 
-#[then("the result is a FundsWithdrawn event")]
+#[then("the result is a examples.FundsWithdrawn event")]
 fn result_is_funds_withdrawn(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
@@ -361,7 +361,7 @@ fn result_is_funds_withdrawn(world: &mut PlayerWorld) {
     );
 }
 
-#[then("the result is a FundsReserved event")]
+#[then("the result is a examples.FundsReserved event")]
 fn result_is_funds_reserved(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
@@ -371,7 +371,7 @@ fn result_is_funds_reserved(world: &mut PlayerWorld) {
     );
 }
 
-#[then("the result is a FundsReleased event")]
+#[then("the result is a examples.FundsReleased event")]
 fn result_is_funds_released(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(

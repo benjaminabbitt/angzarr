@@ -1099,6 +1099,13 @@ fn then_blind_type(world: &mut HandWorld, expected: String) {
     assert_eq!(blind_posted.blind_type, expected);
 }
 
+#[then(expr = "the blind event has blind_type {string}")]
+fn then_blind_event_type(world: &mut HandWorld, expected: String) {
+    let event = world.result_event().expect("No event");
+    let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    assert_eq!(blind_posted.blind_type, expected);
+}
+
 #[then(expr = "the player event has amount {int}")]
 fn then_player_amount(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
@@ -1109,6 +1116,13 @@ fn then_player_amount(world: &mut HandWorld, expected: i64) {
     }
 }
 
+#[then(expr = "the blind event has amount {int}")]
+fn then_blind_event_amount(world: &mut HandWorld, expected: i64) {
+    let event = world.result_event().expect("No event");
+    let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    assert_eq!(blind_posted.amount, expected);
+}
+
 #[then(expr = "the player event has player_stack {int}")]
 fn then_player_stack(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
@@ -1117,12 +1131,26 @@ fn then_player_stack(world: &mut HandWorld, expected: i64) {
     }
 }
 
+#[then(expr = "the blind event has player_stack {int}")]
+fn then_blind_event_stack(world: &mut HandWorld, expected: i64) {
+    let event = world.result_event().expect("No event");
+    let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    assert_eq!(blind_posted.player_stack, expected);
+}
+
 #[then(expr = "the player event has pot_total {int}")]
 fn then_pot_total(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
     if let Some(blind_posted) = try_unpack::<BlindPosted>(&event) {
         assert_eq!(blind_posted.pot_total, expected);
     }
+}
+
+#[then(expr = "the blind event has pot_total {int}")]
+fn then_blind_event_pot_total(world: &mut HandWorld, expected: i64) {
+    let event = world.result_event().expect("No event");
+    let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    assert_eq!(blind_posted.pot_total, expected);
 }
 
 #[then(expr = "the action event has action {string}")]
