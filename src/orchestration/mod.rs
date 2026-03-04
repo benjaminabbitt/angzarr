@@ -33,6 +33,16 @@ pub mod errmsg {
     pub const EVENT_BOOK_MISSING_COVER: &str = "EventBook must have a cover";
     pub const COVER_MISSING_ROOT: &str = "Cover must have a root UUID";
     pub const REPLAY_MISSING_STATE: &str = "Replay response missing state";
+
+    // Aggregate command pipeline errors
+    pub const INVALID_UUID: &str = "Invalid UUID: ";
+    pub const SPECULATIVE_REQUIRES_TEMPORAL: &str =
+        "Speculative requires either as_of_sequence or as_of_timestamp";
+    pub const SEQUENCE_MISMATCH: &str = "Sequence mismatch: command expects ";
+    pub const SEQUENCE_MISMATCH_OVERLAP: &str =
+        "Sequence mismatch with overlapping fields: command expects ";
+    pub const SEQUENCE_MISMATCH_DLQ_SUFFIX: &str = ". Sent to DLQ for manual review.";
+    pub const FACT_EVENTS_MISSING_MARKER: &str = "Fact events must have FactSequence markers";
 }
 
 /// Error type for fact injection failures.

@@ -1,6 +1,6 @@
 module github.com/angzarr-io/angzarr/gateway
 
-go 1.25.0
+go 1.23
 
 require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.0
@@ -10,8 +10,8 @@ require (
 )
 
 require (
-	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 )

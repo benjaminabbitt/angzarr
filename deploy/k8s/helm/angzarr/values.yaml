@@ -4,29 +4,34 @@
 replicaCount: 1
 
 # Angzarr sidecar images (separate binaries per mode)
+# Use full ghcr.io paths to match skaffold build artifacts for image substitution
 images:
   aggregate:
-    repository: angzarr-aggregate
+    repository: ghcr.io/angzarr-io/angzarr-aggregate
     pullPolicy: IfNotPresent
     tag: "latest"
   projector:
-    repository: angzarr-projector
+    repository: ghcr.io/angzarr-io/angzarr-projector
     pullPolicy: IfNotPresent
     tag: "latest"
   saga:
-    repository: angzarr-saga
+    repository: ghcr.io/angzarr-io/angzarr-saga
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  processManager:
+    repository: ghcr.io/angzarr-io/angzarr-process-manager
     pullPolicy: IfNotPresent
     tag: "latest"
   log:
-    repository: angzarr-log
+    repository: ghcr.io/angzarr-io/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
   stream:
-    repository: angzarr-stream
+    repository: ghcr.io/angzarr-io/angzarr-stream
     pullPolicy: IfNotPresent
     tag: "latest"
   upcaster:
-    repository: angzarr-upcaster
+    repository: ghcr.io/angzarr-io/angzarr-upcaster
     pullPolicy: IfNotPresent
     tag: "latest"
 
@@ -236,8 +241,11 @@ storage:
   # Options: postgres, sqlite, redis
   type: postgres
   postgres:
+    # Host and port for init container health checks
+    host: "angzarr-db-rw"
+    port: 5432
     # Connection URI (credentials should be set via --set or secretRef)
-    uri: "postgres://angzarr:angzarr@angzarr-db-postgresql:5432/angzarr"
+    uri: "postgres://angzarr:angzarr@angzarr-db-rw:5432/angzarr"
     # Use existing secret for credentials
     existingSecret: ""
     secretKeys:
@@ -277,6 +285,8 @@ messaging:
   # AMQP (RabbitMQ) configuration
   amqp:
     enabled: false
+    host: "angzarr-mq"
+    port: 5672
     url: "amqp://rabbitmq:5672"
     # Use existing secret for URL
     existingSecret: ""

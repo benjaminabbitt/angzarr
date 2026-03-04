@@ -7,7 +7,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use backon::{BackoffBuilder, ExponentialBuilder};
 use deadpool_lapin::{Manager, Pool, PoolError};
-use futures::future::BoxFuture;
 use hex;
 use lapin::{
     options::{
@@ -21,7 +20,7 @@ use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, Instrument};
 
-use super::config::{EventBusMode, MessagingConfig};
+use super::config::EventBusMode;
 use super::error::{BusError, Result};
 use super::factory::BusBackend;
 use super::traits::{EventBus, EventHandler, PublishResult};
@@ -34,34 +33,34 @@ use crate::proto_ext::CoverExt;
 
 inventory::submit! {
     BusBackend {
-        try_create: |config, mode| Box::pin(try_create(config, mode)),
-    }
-}
+        try_create: |config, mode| {
+            // Clone what we need before creating the 'static future
+            let messaging_type = config.messaging_type.clone();
+            let amqp_url = config.amqp.url.clone();
+            Box::pin(async move {
+                if messaging_type != "amqp" {
+                    return None;
+                }
 
-async fn try_create(
-    config: &MessagingConfig,
-    mode: EventBusMode,
-) -> Option<Result<Arc<dyn EventBus>>> {
-    if config.messaging_type != "amqp" {
-        return None;
-    }
+                let amqp_config = match mode {
+                    EventBusMode::Publisher => AmqpConfig::publisher(&amqp_url),
+                    EventBusMode::Subscriber { queue, domain } => {
+                        AmqpConfig::subscriber(&amqp_url, queue, &domain)
+                    }
+                    EventBusMode::SubscriberAll { queue } => {
+                        AmqpConfig::subscriber_all(&amqp_url, queue)
+                    }
+                };
 
-    let amqp_config = match mode {
-        EventBusMode::Publisher => AmqpConfig::publisher(&config.amqp.url),
-        EventBusMode::Subscriber { queue, domain } => {
-            AmqpConfig::subscriber(&config.amqp.url, queue, &domain)
-        }
-        EventBusMode::SubscriberAll { queue } => {
-            AmqpConfig::subscriber_all(&config.amqp.url, queue)
-        }
-    };
-
-    match AmqpEventBus::new(amqp_config).await {
-        Ok(bus) => {
-            info!(messaging_type = "amqp", "Event bus initialized");
-            Some(Ok(Arc::new(bus)))
-        }
-        Err(e) => Some(Err(e)),
+                match AmqpEventBus::new(amqp_config).await {
+                    Ok(bus) => {
+                        info!(messaging_type = "amqp", "Event bus initialized");
+                        Some(Ok(Arc::new(bus) as Arc<dyn EventBus>))
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            })
+        },
     }
 }
 
@@ -377,7 +376,7 @@ impl AmqpEventBus {
 
                 // Call all handlers within the consume span
                 async {
-                    crate::bus::dispatch_to_handlers(handlers, &book).await;
+                    crate::bus::dispatch::dispatch_to_handlers(handlers, &book).await;
                 }
                 .instrument(consume_span)
                 .await;

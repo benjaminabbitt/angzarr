@@ -101,7 +101,7 @@ impl ProjectorCoordinatorService for ProjectorCoord {
             .await
             .map_err(|e| {
                 error!(error = %e, "Failed to repair EventBook");
-                Status::internal(format!("Failed to repair EventBook: {}", e))
+                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
             })?;
 
         // Clone connections to minimize lock scope during async I/O
@@ -125,8 +125,10 @@ impl ProjectorCoordinatorService for ProjectorCoord {
                 Err(e) => {
                     error!(projector.name = %config.name, error = %e, "Synchronous projector failed");
                     return Err(Status::internal(format!(
-                        "Projector {} failed: {}",
-                        config.name, e
+                        "Projector {}{}{}",
+                        config.name,
+                        super::errmsg::PROJECTOR_FAILED,
+                        e
                     )));
                 }
             }
@@ -155,7 +157,7 @@ impl ProjectorCoordinatorService for ProjectorCoord {
             .await
             .map_err(|e| {
                 error!(error = %e, "Failed to repair EventBook");
-                Status::internal(format!("Failed to repair EventBook: {}", e))
+                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
             })?;
 
         // Clone connections to minimize lock scope during async I/O
@@ -202,7 +204,7 @@ impl ProjectorCoordinatorService for ProjectorCoord {
             .await
             .map_err(|e| {
                 error!(error = %e, "Failed to repair EventBook");
-                Status::internal(format!("Failed to repair EventBook: {}", e))
+                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
             })?;
 
         // Clone connections to minimize lock scope during async I/O
@@ -226,8 +228,10 @@ impl ProjectorCoordinatorService for ProjectorCoord {
                 Err(e) => {
                     error!(projector.name = %config.name, error = %e, "Speculative projector failed");
                     return Err(Status::internal(format!(
-                        "Projector {} failed: {}",
-                        config.name, e
+                        "Projector {}{}{}",
+                        config.name,
+                        super::errmsg::PROJECTOR_FAILED,
+                        e
                     )));
                 }
             }

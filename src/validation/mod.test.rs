@@ -49,7 +49,7 @@ mod domain_validation {
     fn test_empty_domain() {
         let result = validate_domain("");
         assert!(result.is_err());
-        assert!(result.unwrap_err().message().contains("empty"));
+        assert!(result.unwrap_err().message().contains(errmsg::DOMAIN_EMPTY));
     }
 
     /// Domain exceeding 64 chars is rejected.
@@ -60,7 +60,10 @@ mod domain_validation {
         let long_domain = "a".repeat(65);
         let result = validate_domain(&long_domain);
         assert!(result.is_err());
-        assert!(result.unwrap_err().message().contains("exceeds"));
+        assert!(result
+            .unwrap_err()
+            .message()
+            .contains(errmsg::DOMAIN_TOO_LONG));
     }
 
     /// Domain at exactly 64 chars is accepted.
@@ -125,7 +128,10 @@ mod correlation_id_validation {
         let long_id = "a".repeat(129);
         let result = validate_correlation_id(&long_id);
         assert!(result.is_err());
-        assert!(result.unwrap_err().message().contains("exceeds"));
+        assert!(result
+            .unwrap_err()
+            .message()
+            .contains(errmsg::CORRELATION_ID_TOO_LONG));
     }
 
     /// Correlation ID at exactly 128 chars is accepted.
@@ -174,7 +180,10 @@ mod component_name_validation {
     fn test_empty_component_name() {
         let result = validate_component_name("");
         assert!(result.is_err());
-        assert!(result.unwrap_err().message().contains("empty"));
+        assert!(result
+            .unwrap_err()
+            .message()
+            .contains(errmsg::COMPONENT_NAME_EMPTY));
     }
 
     /// Component name exceeding 128 chars is rejected.
@@ -349,7 +358,7 @@ mod resource_limits_validation {
         assert!(result
             .unwrap_err()
             .message()
-            .contains("exceeds maximum pages"));
+            .contains(errmsg::TOO_MANY_PAGES));
     }
 
     /// Command book at exactly max payload (256 KB) is valid.
@@ -374,7 +383,7 @@ mod resource_limits_validation {
         assert!(result
             .unwrap_err()
             .message()
-            .contains("exceeds maximum size"));
+            .contains(errmsg::PAYLOAD_TOO_LARGE));
     }
 
     /// Custom limits (IPC: 10 MB) allow larger payloads.
@@ -388,4 +397,31 @@ mod resource_limits_validation {
         let limits = ResourceLimits::for_ipc();
         assert!(validate_command_book(&book, &limits).is_ok());
     }
+}
+
+// ============================================================================
+// Error Message Constant Tests
+// ============================================================================
+//
+// Error messages are exported as constants in the errmsg module.
+// Tests verify constants are non-empty and properly defined.
+
+/// All validation error message constants are non-empty.
+#[test]
+fn test_errmsg_constants_non_empty() {
+    assert!(!errmsg::DOMAIN_EMPTY.is_empty());
+    assert!(!errmsg::DOMAIN_TOO_LONG.is_empty());
+    assert!(!errmsg::DOMAIN_INVALID_START.is_empty());
+    assert!(!errmsg::DOMAIN_INVALID_CHARS.is_empty());
+    assert!(!errmsg::CORRELATION_ID_TOO_LONG.is_empty());
+    assert!(!errmsg::CORRELATION_ID_INVALID_CHARS.is_empty());
+    assert!(!errmsg::COMPONENT_NAME_EMPTY.is_empty());
+    assert!(!errmsg::COMPONENT_NAME_TOO_LONG.is_empty());
+    assert!(!errmsg::COMPONENT_NAME_INVALID_START.is_empty());
+    assert!(!errmsg::COMPONENT_NAME_INVALID_CHARS.is_empty());
+    assert!(!errmsg::EDITION_TOO_LONG.is_empty());
+    assert!(!errmsg::EDITION_INVALID_START.is_empty());
+    assert!(!errmsg::EDITION_INVALID_CHARS.is_empty());
+    assert!(!errmsg::TOO_MANY_PAGES.is_empty());
+    assert!(!errmsg::PAYLOAD_TOO_LARGE.is_empty());
 }

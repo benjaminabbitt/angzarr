@@ -32,6 +32,10 @@ pub mod errmsg {
     /// Temporal query missing point in time.
     pub const TEMPORAL_QUERY_MISSING_POINT: &str =
         "TemporalQuery must specify as_of_time or as_of_sequence";
+    /// EventBook repair failure prefix.
+    pub const REPAIR_EVENTBOOK_FAILED: &str = "Failed to repair EventBook: ";
+    /// Projector failure suffix (appears after projector name).
+    pub const PROJECTOR_FAILED: &str = " failed: ";
 }
 
 pub use crate::utils::saga_compensation::{

@@ -8,7 +8,7 @@ imagePullSecrets: []
 storage:
   type: postgres
   postgres:
-    host: "angzarr-postgresql"
+    host: "angzarr-db-rw"
     port: 5432
     database: "angzarr"
     username: "angzarr"
@@ -18,7 +18,10 @@ messaging:
   type: amqp
   amqp:
     enabled: true
-    url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+    host: "angzarr-mq"
+    port: 5672
+    # Use hardcoded URL with credentials from angzarr-mq-credentials secret
+    url: "amqp://angzarr:angzarr@angzarr-mq:5672"
 
 # Poker domain aggregates
 applications:

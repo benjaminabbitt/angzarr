@@ -308,8 +308,9 @@ pub fn parse_command_cover(command: &CommandBook) -> Result<(String, Uuid), Stat
         Status::invalid_argument(crate::orchestration::errmsg::COVER_MISSING_ROOT)
     })?;
 
-    let root_uuid = Uuid::from_slice(&root.value)
-        .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
+    let root_uuid = Uuid::from_slice(&root.value).map_err(|e| {
+        Status::invalid_argument(format!("{}{e}", crate::orchestration::errmsg::INVALID_UUID))
+    })?;
 
     Ok((domain, root_uuid))
 }
@@ -634,7 +635,7 @@ pub async fn execute_command_pipeline(
                 (_, Some(ts)) => TemporalQuery::AsOfTimestamp(ts),
                 (None, None) => {
                     return Err(Status::invalid_argument(
-                        "Speculative requires either as_of_sequence or as_of_timestamp",
+                        crate::orchestration::errmsg::SPECULATIVE_REQUIRES_TEMPORAL,
                     ));
                 }
             };
@@ -735,7 +736,8 @@ async fn execute_mode(
                 // STRICT: Return FAILED_PRECONDITION (retryable) for update-and-retry flow.
                 // The retry loop will reload fresh state and retry the command.
                 return Err(Status::failed_precondition(format!(
-                    "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+                    "{}{expected}, aggregate at {actual}",
+                    crate::orchestration::errmsg::SEQUENCE_MISMATCH
                 )));
             }
             MergeStrategy::MergeCommutative => {
@@ -763,7 +765,8 @@ async fn execute_mode(
                     Ok(CommutativeMergeResult::Overlap) => {
                         // Fields overlap - need retry
                         return Err(Status::failed_precondition(format!(
-                            "Sequence mismatch with overlapping fields: command expects {expected}, aggregate at {actual}"
+                            "{}{expected}, aggregate at {actual}",
+                            crate::orchestration::errmsg::SEQUENCE_MISMATCH_OVERLAP
                         )));
                     }
                     Err(e) => {
@@ -775,7 +778,8 @@ async fn execute_mode(
                             "COMMUTATIVE: degrading to STRICT due to Replay failure"
                         );
                         return Err(Status::failed_precondition(format!(
-                            "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+                            "{}{expected}, aggregate at {actual}",
+                            crate::orchestration::errmsg::SEQUENCE_MISMATCH
                         )));
                     }
                 }
@@ -785,7 +789,9 @@ async fn execute_mode(
                 ctx.send_to_dlq(&command_book, expected, actual, &domain)
                     .await;
                 return Err(Status::aborted(format!(
-                    "Sequence mismatch: command expects {expected}, aggregate at {actual}. Sent to DLQ for manual review."
+                    "{}{expected}, aggregate at {actual}{}",
+                    crate::orchestration::errmsg::SEQUENCE_MISMATCH,
+                    crate::orchestration::errmsg::SEQUENCE_MISMATCH_DLQ_SUFFIX
                 )));
             }
             MergeStrategy::MergeAggregateHandles => {
@@ -893,8 +899,9 @@ pub fn parse_event_cover(event_book: &EventBook) -> Result<(String, Uuid), Statu
         Status::invalid_argument(crate::orchestration::errmsg::COVER_MISSING_ROOT)
     })?;
 
-    let root_uuid = Uuid::from_slice(&root.value)
-        .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
+    let root_uuid = Uuid::from_slice(&root.value).map_err(|e| {
+        Status::invalid_argument(format!("{}{e}", crate::orchestration::errmsg::INVALID_UUID))
+    })?;
 
     Ok((domain, root_uuid))
 }
@@ -1000,7 +1007,7 @@ pub async fn execute_fact_pipeline(
         .any(|p| matches!(&p.sequence_type, Some(event_page::SequenceType::Fact(_))));
     if !has_fact_marker {
         return Err(Status::invalid_argument(
-            "Fact events must have FactSequence markers",
+            crate::orchestration::errmsg::FACT_EVENTS_MISSING_MARKER,
         ));
     }
 

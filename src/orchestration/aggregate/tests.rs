@@ -123,7 +123,10 @@ fn test_parse_command_cover_missing_cover() {
 
     let result = parse_command_cover(&command);
     assert!(result.is_err());
-    assert!(result.unwrap_err().message().contains("cover"));
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains(crate::orchestration::errmsg::COMMAND_BOOK_MISSING_COVER));
 }
 
 /// Missing root returns error — aggregate instance must be specified.
@@ -146,7 +149,10 @@ fn test_parse_command_cover_missing_root() {
 
     let result = parse_command_cover(&command);
     assert!(result.is_err());
-    assert!(result.unwrap_err().message().contains("root"));
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains(crate::orchestration::errmsg::COVER_MISSING_ROOT));
 }
 
 // ============================================================================
@@ -696,6 +702,10 @@ fn test_parse_event_cover_missing_cover() {
 
     let result = parse_event_cover(&event);
     assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains(crate::orchestration::errmsg::EVENT_BOOK_MISSING_COVER));
 }
 
 /// Missing root returns error — aggregate instance must be specified.
@@ -716,4 +726,57 @@ fn test_parse_event_cover_missing_root() {
 
     let result = parse_event_cover(&event);
     assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains(crate::orchestration::errmsg::COVER_MISSING_ROOT));
+}
+
+// ============================================================================
+// Error Message Constant Tests
+// ============================================================================
+//
+// Error messages are exported as constants in crate::orchestration::errmsg.
+// Tests verify constants are non-empty and prefix constants end appropriately.
+
+/// All orchestration error message constants are non-empty.
+#[test]
+fn test_errmsg_constants_non_empty() {
+    use crate::orchestration::errmsg;
+
+    assert!(!errmsg::COMMAND_BOOK_MISSING_COVER.is_empty());
+    assert!(!errmsg::EVENT_BOOK_MISSING_COVER.is_empty());
+    assert!(!errmsg::COVER_MISSING_ROOT.is_empty());
+    assert!(!errmsg::INVALID_UUID.is_empty());
+    assert!(!errmsg::SEQUENCE_MISMATCH.is_empty());
+    assert!(!errmsg::SEQUENCE_MISMATCH_OVERLAP.is_empty());
+    assert!(!errmsg::SEQUENCE_MISMATCH_DLQ_SUFFIX.is_empty());
+    assert!(!errmsg::SPECULATIVE_REQUIRES_TEMPORAL.is_empty());
+    assert!(!errmsg::FACT_EVENTS_MISSING_MARKER.is_empty());
+}
+
+/// Prefix constants end with colon-space for appending dynamic values.
+#[test]
+fn test_errmsg_prefix_constants_format() {
+    use crate::orchestration::errmsg;
+
+    // Prefix constants should end with ": " for consistent formatting
+    assert!(errmsg::INVALID_UUID.ends_with(": "));
+    assert!(errmsg::SEQUENCE_MISMATCH.ends_with(' '));
+    assert!(errmsg::SEQUENCE_MISMATCH_OVERLAP.ends_with(' '));
+}
+
+/// Error messages can be used in format! and produce expected output.
+#[test]
+fn test_errmsg_format_usage() {
+    use crate::orchestration::errmsg;
+
+    let error = format!("{}bad-uuid", errmsg::INVALID_UUID);
+    assert!(error.starts_with(errmsg::INVALID_UUID));
+    assert!(error.contains("bad-uuid"));
+
+    let error = format!("{}5, aggregate at 10", errmsg::SEQUENCE_MISMATCH);
+    assert!(error.starts_with(errmsg::SEQUENCE_MISMATCH));
+    assert!(error.contains("5"));
+    assert!(error.contains("10"));
 }
