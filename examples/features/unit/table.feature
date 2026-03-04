@@ -39,7 +39,7 @@ Feature: Table aggregate logic
     When I handle a CreateTable command with name "Main Table" and variant "TEXAS_HOLDEM":
       | small_blind | big_blind | min_buy_in | max_buy_in | max_players |
       | 5           | 10        | 200        | 1000       | 9           |
-    Then the result is a TableCreated event
+    Then the result is a examples.TableCreated event
     And the table event has table_name "Main Table"
     And the table event has game_variant "TEXAS_HOLDEM"
     And the table event has small_blind 5
@@ -50,7 +50,7 @@ Feature: Table aggregate logic
     When I handle a CreateTable command with name "Draw Table" and variant "FIVE_CARD_DRAW":
       | small_blind | big_blind | min_buy_in | max_buy_in | max_players |
       | 10          | 20        | 400        | 2000       | 6           |
-    Then the result is a TableCreated event
+    Then the result is a examples.TableCreated event
     And the table event has game_variant "FIVE_CARD_DRAW"
 
   Scenario: Cannot create table twice
@@ -71,14 +71,14 @@ Feature: Table aggregate logic
   Scenario: Player joins table at preferred seat
     Given a TableCreated event for "Main Table"
     When I handle a JoinTable command for player "player-1" at seat 3 with buy-in 500
-    Then the result is a PlayerJoined event
+    Then the result is a examples.PlayerJoined event
     And the table event has seat_position 3
     And the table event has buy_in_amount 500
 
   Scenario: Player joins table at any seat
     Given a TableCreated event for "Main Table"
     When I handle a JoinTable command for player "player-1" at seat -1 with buy-in 500
-    Then the result is a PlayerJoined event
+    Then the result is a examples.PlayerJoined event
     And the table event has seat_position 0
 
   Scenario: Cannot join occupied seat
@@ -120,7 +120,7 @@ Feature: Table aggregate logic
     Given a TableCreated event for "Main Table"
     And a PlayerJoined event for player "player-1" at seat 3 with stack 500
     When I handle a LeaveTable command for player "player-1"
-    Then the result is a PlayerLeft event
+    Then the result is a examples.PlayerLeft event
     And the table event has chips_cashed_out 500
 
   Scenario: Cannot leave during hand
@@ -150,7 +150,7 @@ Feature: Table aggregate logic
     And a PlayerJoined event for player "player-1" at seat 0 with stack 500
     And a PlayerJoined event for player "player-2" at seat 1 with stack 500
     When I handle a StartHand command
-    Then the result is a HandStarted event
+    Then the result is a examples.HandStarted event
     And the table event has hand_number 1
     And the table event has 2 active_players
 
@@ -161,7 +161,7 @@ Feature: Table aggregate logic
     And a HandStarted event for hand 1 with dealer at seat 0
     And a HandEnded event for hand 1
     When I handle a StartHand command
-    Then the result is a HandStarted event
+    Then the result is a examples.HandStarted event
     And the table event has hand_number 2
     And the table event has dealer_position 1
 
@@ -194,7 +194,7 @@ Feature: Table aggregate logic
     And a PlayerJoined event for player "player-2" at seat 1 with stack 500
     And a HandStarted event for hand 1
     When I handle an EndHand command with winner "player-1" winning 50
-    Then the result is a HandEnded event
+    Then the result is a examples.HandEnded event
     And player "player-1" stack change is 50
 
   Scenario: Cannot end hand not in progress
@@ -214,7 +214,7 @@ Feature: Table aggregate logic
       | player   | change |
       | player-1 | 150    |
       | player-2 | -150   |
-    Then the result is a HandEnded event
+    Then the result is a examples.HandEnded event
     And player "player-1" stack change is 150
     And player "player-2" stack change is -150
 

@@ -45,7 +45,7 @@ Feature: Hand aggregate logic
       | player_root | position | stack |
       | player-1    | 0        | 500   |
       | player-2    | 1        | 500   |
-    Then the result is a CardsDealt event
+    Then the result is a examples.CardsDealt event
     And each player has 2 hole cards
     And the remaining deck has 48 cards
 
@@ -56,7 +56,7 @@ Feature: Hand aggregate logic
       | player-1    | 0        | 500   |
       | player-2    | 1        | 500   |
       | player-3    | 2        | 500   |
-    Then the result is a CardsDealt event
+    Then the result is a examples.CardsDealt event
     And each player has 4 hole cards
     And the remaining deck has 40 cards
 
@@ -68,7 +68,7 @@ Feature: Hand aggregate logic
       | player-2    | 1        | 500   |
       | player-3    | 2        | 500   |
       | player-4    | 3        | 500   |
-    Then the result is a CardsDealt event
+    Then the result is a examples.CardsDealt event
     And each player has 5 hole cards
     And the remaining deck has 32 cards
 
@@ -78,7 +78,7 @@ Feature: Hand aggregate logic
       | player_root | position | stack |
       | player-1    | 0        | 500   |
       | player-2    | 1        | 500   |
-    Then the result is a CardsDealt event
+    Then the result is a examples.CardsDealt event
     And player "player-1" has specific hole cards for seed "test-seed-123"
 
   Scenario: Cannot deal cards twice
@@ -107,7 +107,7 @@ Feature: Hand aggregate logic
   Scenario: Post small blind
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     When I handle a PostBlind command for player "player-1" type "small" amount 5
-    Then the result is a BlindPosted event
+    Then the result is a examples.BlindPosted event
     And the blind event has blind_type "small"
     And the blind event has amount 5
     And the blind event has player_stack 495
@@ -117,7 +117,7 @@ Feature: Hand aggregate logic
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     And a BlindPosted event for player "player-1" amount 5
     When I handle a PostBlind command for player "player-2" type "big" amount 10
-    Then the result is a BlindPosted event
+    Then the result is a examples.BlindPosted event
     And the blind event has blind_type "big"
     And the blind event has amount 10
     And the blind event has pot_total 15
@@ -128,7 +128,7 @@ Feature: Hand aggregate logic
       | player-1    | 0        | 3     |
       | player-2    | 1        | 500   |
     When I handle a PostBlind command for player "player-1" type "small" amount 5
-    Then the result is a BlindPosted event
+    Then the result is a examples.BlindPosted event
     And the blind event has amount 3
     And the blind event has player_stack 0
 
@@ -143,7 +143,7 @@ Feature: Hand aggregate logic
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     And blinds posted with pot 15
     When I handle a PlayerAction command for player "player-1" action FOLD
-    Then the result is an ActionTaken event
+    Then the result is an examples.ActionTaken event
     And the action event has action "FOLD"
 
   Scenario: Player checks when no bet
@@ -152,14 +152,14 @@ Feature: Hand aggregate logic
     And a BettingRoundComplete event for preflop
     And a CommunityCardsDealt event for FLOP
     When I handle a PlayerAction command for player "player-1" action CHECK
-    Then the result is an ActionTaken event
+    Then the result is an examples.ActionTaken event
     And the action event has action "CHECK"
 
   Scenario: Player calls the big blind
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     And blinds posted with pot 15 and current_bet 10
     When I handle a PlayerAction command for player "player-1" action CALL amount 5
-    Then the result is an ActionTaken event
+    Then the result is an examples.ActionTaken event
     And the action event has action "CALL"
     And the action event has amount 5
     And the action event has pot_total 20
@@ -170,7 +170,7 @@ Feature: Hand aggregate logic
     And a BettingRoundComplete event for preflop
     And a CommunityCardsDealt event for FLOP
     When I handle a PlayerAction command for player "player-1" action BET amount 20
-    Then the result is an ActionTaken event
+    Then the result is an examples.ActionTaken event
     And the action event has action "BET"
     And the action event has amount 20
     And the action event has amount_to_call 20
@@ -179,7 +179,7 @@ Feature: Hand aggregate logic
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     And blinds posted with pot 15 and current_bet 10
     When I handle a PlayerAction command for player "player-1" action RAISE amount 30
-    Then the result is an ActionTaken event
+    Then the result is an examples.ActionTaken event
     And the action event has action "RAISE"
     And the action event has amount 30
 
@@ -190,7 +190,7 @@ Feature: Hand aggregate logic
       | player-2    | 1        | 500   |
     And blinds posted with pot 15 and current_bet 10
     When I handle a PlayerAction command for player "player-1" action ALL_IN amount 50
-    Then the result is an ActionTaken event
+    Then the result is an examples.ActionTaken event
     And the action event has action "ALL_IN"
     And the action event has player_stack 0
 
@@ -222,7 +222,7 @@ Feature: Hand aggregate logic
     And blinds posted with pot 15
     And a BettingRoundComplete event for preflop
     When I handle a DealCommunityCards command with count 3
-    Then the result is a CommunityCardsDealt event
+    Then the result is a examples.CommunityCardsDealt event
     And the event has 3 cards dealt
     And the event has phase "FLOP"
     And the remaining deck decreases by 3
@@ -232,7 +232,7 @@ Feature: Hand aggregate logic
     And the flop has been dealt
     And a BettingRoundComplete event for flop
     When I handle a DealCommunityCards command with count 1
-    Then the result is a CommunityCardsDealt event
+    Then the result is a examples.CommunityCardsDealt event
     And the event has 1 card dealt
     And the event has phase "TURN"
     And all_community_cards has 4 cards
@@ -242,7 +242,7 @@ Feature: Hand aggregate logic
     And the flop and turn have been dealt
     And a BettingRoundComplete event for turn
     When I handle a DealCommunityCards command with count 1
-    Then the result is a CommunityCardsDealt event
+    Then the result is a examples.CommunityCardsDealt event
     And the event has phase "RIVER"
     And all_community_cards has 5 cards
 
@@ -265,7 +265,7 @@ Feature: Hand aggregate logic
     And blinds posted with pot 15
     And a BettingRoundComplete event for preflop
     When I handle a RequestDraw command for player "player-1" discarding indices [0, 2, 4]
-    Then the result is a DrawCompleted event
+    Then the result is a examples.DrawCompleted event
     And the draw event has cards_discarded 3
     And the draw event has cards_drawn 3
     And player "player-1" has 5 hole cards
@@ -275,7 +275,7 @@ Feature: Hand aggregate logic
     And blinds posted with pot 15
     And a BettingRoundComplete event for preflop
     When I handle a RequestDraw command for player "player-1" discarding indices []
-    Then the result is a DrawCompleted event
+    Then the result is a examples.DrawCompleted event
     And the draw event has cards_discarded 0
     And the draw event has cards_drawn 0
 
@@ -296,7 +296,7 @@ Feature: Hand aggregate logic
     Given a completed betting for TEXAS_HOLDEM with 2 players
     And a ShowdownStarted event for the hand
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the reveal event has cards for player "player-1"
     And the reveal event has a hand ranking
 
@@ -304,7 +304,7 @@ Feature: Hand aggregate logic
     Given a completed betting for TEXAS_HOLDEM with 2 players
     And a ShowdownStarted event for the hand
     When I handle a RevealCards command for player "player-1" with muck true
-    Then the result is a CardsMucked event
+    Then the result is a examples.CardsMucked event
 
   # ==========================================================================
   # Pot Award
@@ -317,7 +317,7 @@ Feature: Hand aggregate logic
     And a CardsRevealed event for player "player-1" with ranking FLUSH
     And a CardsMucked event for player "player-2"
     When I handle an AwardPot command with winner "player-1" amount 15
-    Then the result is a PotAwarded event
+    Then the result is a examples.PotAwarded event
     And the award event has winner "player-1" with amount 15
 
   Scenario: Award pot generates HandComplete
@@ -371,67 +371,67 @@ Feature: Hand aggregate logic
   Scenario: Handler detects straight
     Given a hand at showdown with player "player-1" holding "Th 9c" and community "8d 7s 6h 2c 3d"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "STRAIGHT"
 
   Scenario: Handler detects wheel straight (A-2-3-4-5)
     Given a hand at showdown with player "player-1" holding "Ah 2c" and community "3d 4s 5h Kc Qd"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "STRAIGHT"
 
   Scenario: Handler detects straight flush
     Given a hand at showdown with player "player-1" holding "9h 8h" and community "7h 6h 5h 2c 3d"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "STRAIGHT_FLUSH"
 
   Scenario: Handler detects royal flush
     Given a hand at showdown with player "player-1" holding "As Ks" and community "Qs Js Ts 2c 3d"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "ROYAL_FLUSH"
 
   Scenario: Handler detects four of a kind
     Given a hand at showdown with player "player-1" holding "Kh Kd" and community "Ks Kc 2h 3d 4s"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "FOUR_OF_A_KIND"
 
   Scenario: Handler detects full house
     Given a hand at showdown with player "player-1" holding "Ah Ad" and community "Ac 2d 2h 4s 6c"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "FULL_HOUSE"
 
   Scenario: Handler detects flush
     Given a hand at showdown with player "player-1" holding "Ah 7h" and community "2h 4h 6h Kc Qd"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "FLUSH"
 
   Scenario: Handler detects three of a kind
     Given a hand at showdown with player "player-1" holding "Jh Jd" and community "Js 2c 4d 6h 8s"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "THREE_OF_A_KIND"
 
   Scenario: Handler detects two pair
     Given a hand at showdown with player "player-1" holding "Th Td" and community "5s 5c 2h 3d Ks"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "TWO_PAIR"
 
   Scenario: Handler detects pair
     Given a hand at showdown with player "player-1" holding "Ah Ac" and community "Kd Js 9h 4c 2d"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "PAIR"
 
   Scenario: Handler detects high card
     Given a hand at showdown with player "player-1" holding "Ah Qc" and community "Kd Js 9h 4c 2d"
     When I handle a RevealCards command for player "player-1" with muck false
-    Then the result is a CardsRevealed event
+    Then the result is a examples.CardsRevealed event
     And the revealed ranking is "HIGH_CARD"
 
   # ==========================================================================

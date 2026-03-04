@@ -44,7 +44,7 @@ Feature: Player aggregate logic
   Scenario: Register a new human player
     Given no prior events for the player aggregate
     When I handle a RegisterPlayer command with name "Alice" and email "alice@example.com"
-    Then the result is a PlayerRegistered event
+    Then the result is a examples.PlayerRegistered event
     And the player event has display_name "Alice"
     And the player event has player_type "HUMAN"
 
@@ -58,7 +58,7 @@ Feature: Player aggregate logic
   Scenario: Register an AI player
     Given no prior events for the player aggregate
     When I handle a RegisterPlayer command with name "Bot1" and email "bot1@example.com" as AI
-    Then the result is a PlayerRegistered event
+    Then the result is a examples.PlayerRegistered event
     And the player event has player_type "AI"
 
   # ==========================================================================
@@ -71,7 +71,7 @@ Feature: Player aggregate logic
   Scenario: Deposit funds to bankroll
     Given a PlayerRegistered event for "Alice"
     When I handle a DepositFunds command with amount 1000
-    Then the result is a FundsDeposited event
+    Then the result is a examples.FundsDeposited event
     And the player event has amount 1000
     And the player event has new_balance 1000
 
@@ -79,7 +79,7 @@ Feature: Player aggregate logic
     Given a PlayerRegistered event for "Alice"
     And a FundsDeposited event with amount 500
     When I handle a DepositFunds command with amount 300
-    Then the result is a FundsDeposited event
+    Then the result is a examples.FundsDeposited event
     And the player event has new_balance 800
 
   Scenario: Cannot deposit to non-existent player
@@ -105,7 +105,7 @@ Feature: Player aggregate logic
     Given a PlayerRegistered event for "Alice"
     And a FundsDeposited event with amount 1000
     When I handle a WithdrawFunds command with amount 400
-    Then the result is a FundsWithdrawn event
+    Then the result is a examples.FundsWithdrawn event
     And the player event has amount 400
     And the player event has new_balance 600
 
@@ -137,7 +137,7 @@ Feature: Player aggregate logic
     Given a PlayerRegistered event for "Alice"
     And a FundsDeposited event with amount 1000
     When I handle a ReserveFunds command with amount 500 for table "table-1"
-    Then the result is a FundsReserved event
+    Then the result is a examples.FundsReserved event
     And the player event has amount 500
     And the player event has new_available_balance 500
   # docs:end:reservation_scenario
@@ -169,7 +169,7 @@ Feature: Player aggregate logic
     And a FundsDeposited event with amount 1000
     And a FundsReserved event with amount 500 for table "table-1"
     When I handle a ReleaseFunds command for table "table-1"
-    Then the result is a FundsReleased event
+    Then the result is a examples.FundsReleased event
     And the player event has amount 500
     And the player event has new_available_balance 1000
 
@@ -207,6 +207,6 @@ Feature: Player aggregate logic
     And a FundsDeposited event with amount 500
     And a FundsReserved event with amount 200 for table "high-stakes"
     When I handle a ReleaseFunds command for table "high-stakes"
-    Then the result is a FundsReleased event
+    Then the result is a examples.FundsReleased event
     And the player event has amount 200
     And the player event has new_available_balance 500
