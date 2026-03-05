@@ -19,7 +19,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.60.0" },
     { name = "grpcio-health-checking", specifier = ">=1.60.0" },
     { name = "mutmut", marker = "extra == 'dev'", specifier = ">=2.5.0" },
-    { name = "protobuf", specifier = ">=4.25.0" },
+    { name = "protobuf", specifier = ">=5.29.0,<7.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "pytest-bdd", marker = "extra == 'dev'", specifier = ">=7.0.0" },

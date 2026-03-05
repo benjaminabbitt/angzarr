@@ -145,6 +145,10 @@ func applyBlindPosted(state *HandState, event *examples.BlindPosted) {
 	if event.Amount > state.CurrentBet {
 		state.CurrentBet = event.Amount
 	}
+	// Big blind sets the minimum raise amount
+	if event.BlindType == "big" {
+		state.MinRaise = event.Amount
+	}
 }
 
 func applyActionTaken(state *HandState, event *examples.ActionTaken) {

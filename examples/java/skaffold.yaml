@@ -1,0 +1,65 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: poker-java
+
+# Requires base angzarr infrastructure
+requires:
+  - path: ../../skaffold.yaml
+
+build:
+  tagPolicy:
+    gitCommit:
+      prefix: "dev-"
+      variant: AbbrevCommitSha
+  local:
+    push: false
+    useBuildkit: false
+    concurrency: 1
+  artifacts:
+    - image: ghcr.io/angzarr-io/poker-java-player
+      context: ../..
+      docker:
+        dockerfile: examples/java/Containerfile
+        target: agg-player
+
+    - image: ghcr.io/angzarr-io/poker-java-table
+      context: ../..
+      docker:
+        dockerfile: examples/java/Containerfile
+        target: agg-table
+
+    - image: ghcr.io/angzarr-io/poker-java-hand
+      context: ../..
+      docker:
+        dockerfile: examples/java/Containerfile
+        target: agg-hand
+
+deploy:
+  helm:
+    releases:
+      - name: poker-java
+        chartPath: ../../deploy/k8s/helm/angzarr
+        namespace: angzarr
+        createNamespace: true
+        valuesFiles:
+          - values.yaml
+        setValues:
+          # Player aggregate
+          applications.business[0].name: poker-player
+          applications.business[0].image.repository: ghcr.io/angzarr-io/poker-java-player
+          applications.business[0].image.tag: latest
+          applications.business[0].domain: player
+          applications.business[0].port: 50401
+          # Table aggregate
+          applications.business[1].name: poker-table
+          applications.business[1].image.repository: ghcr.io/angzarr-io/poker-java-table
+          applications.business[1].image.tag: latest
+          applications.business[1].domain: table
+          applications.business[1].port: 50402
+          # Hand aggregate
+          applications.business[2].name: poker-hand
+          applications.business[2].image.repository: ghcr.io/angzarr-io/poker-java-hand
+          applications.business[2].image.tag: latest
+          applications.business[2].domain: hand
+          applications.business[2].port: 50403

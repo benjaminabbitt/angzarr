@@ -11,6 +11,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// SharedEventStore is a package-level event store accessible by all contexts.
+// This allows steps registered in one context to populate events that can be
+// read by steps in another context (e.g., query_client -> domain_client).
+var SharedEventStore = make(map[string]*pb.EventBook)
+
 // QueryClientContext holds state for query client scenarios
 type QueryClientContext struct {
 	eventBooks       map[string]*pb.EventBook // domain/root -> EventBook
@@ -68,6 +73,8 @@ func (c *QueryClientContext) anAggregateWithRootHasEvents(domain, root string, c
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book
+	// Also store in shared event store for cross-context access
+	SharedEventStore[root] = book
 	return nil
 }
 

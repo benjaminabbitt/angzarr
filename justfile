@@ -693,9 +693,8 @@ secrets-init:
 
 # === Skaffold ===
 
-# One-time setup: configure Podman and Skaffold for local registry
+# One-time setup: configure Skaffold for local registry
 skaffold-init:
-    @uv run "{{TOP}}/scripts/configure_podman_registry.py"
     @uv run "{{TOP}}/scripts/configure_skaffold.py"
 
 # Build framework images (angzarr sidecars)

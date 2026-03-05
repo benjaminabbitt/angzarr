@@ -11,7 +11,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from angzarr_client.proto.angzarr import types_pb2
 
 # Link to feature file
-scenarios("../../../../features/compensation.feature")
 
 
 @pytest.fixture
@@ -125,6 +124,11 @@ def given_compensation_handling_context(compensation_context):
 def given_saga_command_rejected(compensation_context):
     compensation_context["rejected_command"] = make_command_book("orders")
     compensation_context["rejection_reason"] = "precondition_failed"
+    compensation_context["saga_origin"] = SagaOrigin(
+        saga_name="test-saga",
+        triggering_aggregate="orders",
+        triggering_event_sequence=0,
+    )
 
 
 @given(

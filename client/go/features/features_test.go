@@ -59,6 +59,15 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Query client steps
 	InitQueryClientSteps(ctx)
 
-	// Speculative client steps (last)
+	// Speculative client steps
 	InitSpeculativeClientSteps(ctx)
+
+	// Domain client steps
+	InitDomainClientSteps(ctx)
+
+	// Fact flow steps
+	InitFactFlowSteps(ctx)
+
+	// Merge strategy steps
+	InitMergeStrategySteps(ctx)
 }

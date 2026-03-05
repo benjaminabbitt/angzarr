@@ -90,14 +90,14 @@ func InitHandSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I rebuild the hand state$`, hc.rebuildHandState)
 
 	// Then steps
-	ctx.Step(`^the result is a CardsDealt event$`, hc.resultIsCardsDealt)
-	ctx.Step(`^the result is a BlindPosted event$`, hc.resultIsBlindPosted)
-	ctx.Step(`^the result is an ActionTaken event$`, hc.resultIsActionTaken)
-	ctx.Step(`^the result is a CommunityCardsDealt event$`, hc.resultIsCommunityCardsDealt)
-	ctx.Step(`^the result is a DrawCompleted event$`, hc.resultIsDrawCompleted)
-	ctx.Step(`^the result is a CardsRevealed event$`, hc.resultIsCardsRevealed)
-	ctx.Step(`^the result is a CardsMucked event$`, hc.resultIsCardsMucked)
-	ctx.Step(`^the result is a PotAwarded event$`, hc.resultIsPotAwarded)
+	ctx.Step(`^the result is a (?:examples\.)?CardsDealt event$`, hc.resultIsCardsDealt)
+	ctx.Step(`^the result is a (?:examples\.)?BlindPosted event$`, hc.resultIsBlindPosted)
+	ctx.Step(`^the result is an? (?:examples\.)?ActionTaken event$`, hc.resultIsActionTaken)
+	ctx.Step(`^the result is a (?:examples\.)?CommunityCardsDealt event$`, hc.resultIsCommunityCardsDealt)
+	ctx.Step(`^the result is a (?:examples\.)?DrawCompleted event$`, hc.resultIsDrawCompleted)
+	ctx.Step(`^the result is a (?:examples\.)?CardsRevealed event$`, hc.resultIsCardsRevealed)
+	ctx.Step(`^the result is a (?:examples\.)?CardsMucked event$`, hc.resultIsCardsMucked)
+	ctx.Step(`^the result is a (?:examples\.)?PotAwarded event$`, hc.resultIsPotAwarded)
 	ctx.Step(`^a HandComplete event is emitted$`, hc.handCompleteEmitted)
 	ctx.Step(`^each player has (\d+) hole cards$`, hc.eachPlayerHasHoleCards)
 	ctx.Step(`^the remaining deck has (\d+) cards$`, hc.remainingDeckHasCards)
@@ -307,26 +307,29 @@ func (hc *HandContext) blindsPostedWithPot(pot int) error {
 }
 
 func (hc *HandContext) blindsPostedWithPotAndBet(pot, currentBet int) error {
-	// Add small blind
-	sbPlayer := hc.getOrCreatePlayerRoot("Alice")
+	// Calculate small blind from pot and current bet
+	smallBlind := int64(pot - currentBet)
+
+	// Add small blind (player-1 is small blind in standard positions)
+	sbPlayer := hc.getOrCreatePlayerRoot("player-1")
 	sbEvent := &examples.BlindPosted{
 		PlayerRoot:  sbPlayer,
 		BlindType:   "small",
-		Amount:      10,
-		PlayerStack: 990,
-		PotTotal:    10,
+		Amount:      smallBlind,
+		PlayerStack: 500 - smallBlind,
+		PotTotal:    smallBlind,
 		PostedAt:    timestamppb.Now(),
 	}
 	sbAny, _ := anypb.New(sbEvent)
 	hc.addEvent(sbAny)
 
-	// Add big blind
-	bbPlayer := hc.getOrCreatePlayerRoot("Bob")
+	// Add big blind (player-2 is big blind)
+	bbPlayer := hc.getOrCreatePlayerRoot("player-2")
 	bbEvent := &examples.BlindPosted{
 		PlayerRoot:  bbPlayer,
 		BlindType:   "big",
 		Amount:      int64(currentBet),
-		PlayerStack: 1000 - int64(currentBet),
+		PlayerStack: 500 - int64(currentBet),
 		PotTotal:    int64(pot),
 		PostedAt:    timestamppb.Now(),
 	}
@@ -397,6 +400,8 @@ func (hc *HandContext) communityCardsDealtFlop() error {
 	}
 	eventAny, _ := anypb.New(event)
 	hc.addEvent(eventAny)
+	// Also set PM source event if PM context is active
+	SetPMSourceEvent(eventAny)
 	return nil
 }
 
@@ -466,13 +471,21 @@ func (hc *HandContext) actionTakenForPlayer(playerName, action string, amount in
 	playerRoot := hc.getOrCreatePlayerRoot(playerName)
 	actionType := examples.ActionType(examples.ActionType_value[action])
 
+	// Calculate the new bet level - for CALL/CHECK/FOLD it stays the same
+	// For BET/RAISE/ALL_IN it becomes the new bet amount
+	amountToCall := hc.state.CurrentBet
+	switch actionType {
+	case examples.ActionType_BET, examples.ActionType_RAISE, examples.ActionType_ALL_IN:
+		amountToCall = int64(amount)
+	}
+
 	event := &examples.ActionTaken{
 		PlayerRoot:   playerRoot,
 		Action:       actionType,
 		Amount:       int64(amount),
 		PlayerStack:  900,
 		PotTotal:     hc.state.TotalPot() + int64(amount),
-		AmountToCall: int64(amount),
+		AmountToCall: amountToCall,
 		ActionAt:     timestamppb.Now(),
 	}
 	eventAny, _ := anypb.New(event)
@@ -495,8 +508,106 @@ func (hc *HandContext) showdownWithHands(table *godog.Table) error {
 }
 
 func (hc *HandContext) handAtShowdown(playerName, holeCards, community string) error {
-	// Setup state for evaluation test
+	// Parse hole cards
+	holeCardsParsed := parseCards(holeCards)
+	communityCardsParsed := parseCards(community)
+
+	playerRoot := hc.getOrCreatePlayerRoot(playerName)
+
+	// Create a CardsDealt event to initialize the hand
+	cardsDealtEvent := &examples.CardsDealt{
+		HandNumber:  1,
+		GameVariant: examples.GameVariant_TEXAS_HOLDEM,
+		Players: []*examples.PlayerInHand{
+			{
+				PlayerRoot: playerRoot,
+				Position:   0,
+				Stack:      1000,
+			},
+		},
+		PlayerCards: []*examples.PlayerHoleCards{
+			{
+				PlayerRoot: playerRoot,
+				Cards:      holeCardsParsed,
+			},
+		},
+		DealtAt: timestamppb.Now(),
+	}
+	cardsDealtAny, _ := anypb.New(cardsDealtEvent)
+	hc.addEvent(cardsDealtAny)
+
+	// Add community cards dealt event
+	communityDealtEvent := &examples.CommunityCardsDealt{
+		Cards:             communityCardsParsed,
+		Phase:             examples.BettingPhase_RIVER,
+		AllCommunityCards: communityCardsParsed,
+		DealtAt:           timestamppb.Now(),
+	}
+	communityDealtAny, _ := anypb.New(communityDealtEvent)
+	hc.addEvent(communityDealtAny)
+
+	// Set state to showdown
+	hc.state.Status = "showdown"
+
 	return nil
+}
+
+// parseCards parses a space-separated string of cards like "Th 9c" into Card protos
+func parseCards(cardStr string) []*examples.Card {
+	cards := []*examples.Card{}
+	parts := strings.Split(cardStr, " ")
+	for _, part := range parts {
+		if len(part) < 2 {
+			continue
+		}
+		rankChar := part[0]
+		suitChar := part[1]
+
+		var rank examples.Rank
+		switch rankChar {
+		case 'A':
+			rank = examples.Rank_ACE
+		case 'K':
+			rank = examples.Rank_KING
+		case 'Q':
+			rank = examples.Rank_QUEEN
+		case 'J':
+			rank = examples.Rank_JACK
+		case 'T':
+			rank = examples.Rank_TEN
+		case '9':
+			rank = examples.Rank_NINE
+		case '8':
+			rank = examples.Rank_EIGHT
+		case '7':
+			rank = examples.Rank_SEVEN
+		case '6':
+			rank = examples.Rank_SIX
+		case '5':
+			rank = examples.Rank_FIVE
+		case '4':
+			rank = examples.Rank_FOUR
+		case '3':
+			rank = examples.Rank_THREE
+		case '2':
+			rank = examples.Rank_TWO
+		}
+
+		var suit examples.Suit
+		switch suitChar {
+		case 'h':
+			suit = examples.Suit_HEARTS
+		case 'd':
+			suit = examples.Suit_DIAMONDS
+		case 'c':
+			suit = examples.Suit_CLUBS
+		case 's':
+			suit = examples.Suit_SPADES
+		}
+
+		cards = append(cards, &examples.Card{Suit: suit, Rank: rank})
+	}
+	return cards
 }
 
 // When step implementations
@@ -547,7 +658,7 @@ func (hc *HandContext) handleDealCards(variant examples.GameVariant, table *godo
 func (hc *HandContext) handlePostBlind(playerName, blindType string, amount int) error {
 	playerRoot := hc.getOrCreatePlayerRoot(playerName)
 	bt := "small"
-	if blindType == "BIG_BLIND" {
+	if blindType == "BIG_BLIND" || blindType == "big" {
 		bt = "big"
 	}
 
@@ -694,6 +805,10 @@ func (hc *HandContext) dispatchCommand(cmdAny *anypb.Any) error {
 		if err == nil && len(results) > 0 {
 			hc.resultEvent = results[0]
 			hc.resultEvents = results
+			// Apply result events to state so status checks work
+			for _, evt := range results {
+				hc.addEvent(evt)
+			}
 		}
 	default:
 		hc.lastError = fmt.Errorf("unknown command type: %s", cmdAny.TypeUrl)

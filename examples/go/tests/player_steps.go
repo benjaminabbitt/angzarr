@@ -61,11 +61,11 @@ func InitPlayerSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I rebuild the player state$`, pc.rebuildPlayerState)
 
 	// Then steps
-	ctx.Step(`^the result is a PlayerRegistered event$`, pc.resultIsPlayerRegistered)
-	ctx.Step(`^the result is a FundsDeposited event$`, pc.resultIsFundsDeposited)
-	ctx.Step(`^the result is a FundsWithdrawn event$`, pc.resultIsFundsWithdrawn)
-	ctx.Step(`^the result is a FundsReserved event$`, pc.resultIsFundsReserved)
-	ctx.Step(`^the result is a FundsReleased event$`, pc.resultIsFundsReleased)
+	ctx.Step(`^the result is a (?:examples\.)?PlayerRegistered event$`, pc.resultIsPlayerRegistered)
+	ctx.Step(`^the result is a (?:examples\.)?FundsDeposited event$`, pc.resultIsFundsDeposited)
+	ctx.Step(`^the result is a (?:examples\.)?FundsWithdrawn event$`, pc.resultIsFundsWithdrawn)
+	ctx.Step(`^the result is a (?:examples\.)?FundsReserved event$`, pc.resultIsFundsReserved)
+	ctx.Step(`^the result is a (?:examples\.)?FundsReleased event$`, pc.resultIsFundsReleased)
 	ctx.Step(`^the player event has display_name "([^"]*)"$`, pc.eventHasDisplayName)
 	ctx.Step(`^the player event has player_type "([^"]*)"$`, pc.eventHasPlayerType)
 	ctx.Step(`^the player event has amount (\d+)$`, pc.eventHasAmount)

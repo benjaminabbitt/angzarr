@@ -38,6 +38,7 @@ dependencies {
     // Cucumber
     testImplementation("io.cucumber:cucumber-java:7.15.0")
     testImplementation("io.cucumber:cucumber-junit-platform-engine:7.15.0")
+    testImplementation("io.cucumber:cucumber-picocontainer:7.15.0")
     testImplementation("org.junit.platform:junit-platform-suite:1.10.1")
 }
 
@@ -48,7 +49,7 @@ tasks.test {
 
 // Copy shared feature files to test resources
 tasks.register<Copy>("copyClientFeatures") {
-    from("${rootDir}/../../tests/client/features")
+    from("${rootDir}/../features")
     into("src/test/resources/features")
 }
 

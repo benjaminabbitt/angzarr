@@ -70,4 +70,4 @@ router = (
 
 
 if __name__ == "__main__":
-    run_command_handler_server("player", "50402", router, logger=logger)
+    run_command_handler_server(router, "50301", logger=logger)

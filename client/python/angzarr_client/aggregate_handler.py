@@ -22,6 +22,7 @@ from .proto.angzarr import command_handler_pb2_grpc
 from .proto.angzarr import types_pb2 as types
 from .router import CommandHandlerRouter
 from .server import run_server
+from .state_builder import CommandRouter
 
 if TYPE_CHECKING:
     import structlog
@@ -102,7 +103,7 @@ class CommandHandlerGrpc(command_handler_pb2_grpc.CommandHandlerServiceServicer)
 
 
 def run_command_handler_server(
-    handler: type[CommandHandler] | CommandHandlerRouter,
+    handler: type[CommandHandler] | CommandHandlerRouter | CommandRouter,
     default_port: str,
     logger: structlog.BoundLogger | None = None,
 ) -> None:

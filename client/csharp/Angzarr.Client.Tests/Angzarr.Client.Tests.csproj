@@ -23,11 +23,16 @@
         <ProjectReference Include="..\Angzarr.Client\Angzarr.Client.csproj" />
     </ItemGroup>
 
+    <!-- Include feature files from shared location for Reqnroll code generation -->
     <ItemGroup>
-        <Content
-            Include="..\..\features\**\*.feature"
-            Link="Features\%(RecursiveDir)%(Filename)%(Extension)"
-            CopyToOutputDirectory="PreserveNewest"
-        />
+        <ReqnrollFeatureFiles Include="..\..\features\*.feature" Link="Features\%(Filename)%(Extension)">
+            <CodeBehindFile>..\..\features\%(Filename).feature.cs</CodeBehindFile>
+            <Visible>true</Visible>
+        </ReqnrollFeatureFiles>
+    </ItemGroup>
+
+    <!-- Copy feature files to output for runtime discovery -->
+    <ItemGroup>
+        <None Include="..\..\features\*.feature" Link="Features\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 </Project>

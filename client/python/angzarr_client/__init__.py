@@ -97,6 +97,7 @@ from .router import (
     Router,
     SingleFluentRouter,
     UpcasterRouter,
+    command_handler,  # Decorator for functional command handlers
     output_domain,  # Output domain decorator for sagas/PM methods
     prepares,  # Prepare handler decorator for two-phase protocol
     rejected,
@@ -121,6 +122,7 @@ from .server import (
     run_server,
 )
 from .state_builder import (
+    CommandRouter,
     SnapshotLoader,
     StateApplier,
     StateBuilder,
@@ -199,6 +201,7 @@ __all__ = [
     "event_handles",  # Unified decorator for event handlers (import from module for component-specific)
     "prepares",  # Prepare handler decorator for two-phase protocol
     "rejected",
+    "command_handler",  # Decorator for functional command handlers
     # Server
     "configure_logging",
     "get_transport_config",
@@ -249,6 +252,7 @@ __all__ = [
     "StateApplier",
     "SnapshotLoader",
     "StateFactory",
+    "CommandRouter",
     # Component base classes
     "CommandHandler",
     "handles",

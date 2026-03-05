@@ -38,6 +38,15 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Hand aggregate steps
 	InitHandSteps(ctx)
 
+	// Saga steps
+	RegisterSagaSteps(ctx)
+
+	// Process manager steps
+	RegisterPMSteps(ctx)
+
+	// Projector steps
+	RegisterProjectorSteps(ctx)
+
 	// Common steps (shared assertions)
 	InitCommonSteps(ctx)
 }

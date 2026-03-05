@@ -70,11 +70,11 @@ func InitTableSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I rebuild the table state$`, tc.rebuildTableState)
 
 	// Then steps
-	ctx.Step(`^the result is a TableCreated event$`, tc.resultIsTableCreated)
-	ctx.Step(`^the result is a PlayerJoined event$`, tc.resultIsPlayerJoined)
-	ctx.Step(`^the result is a PlayerLeft event$`, tc.resultIsPlayerLeft)
-	ctx.Step(`^the result is a HandStarted event$`, tc.resultIsHandStarted)
-	ctx.Step(`^the result is a HandEnded event$`, tc.resultIsHandEnded)
+	ctx.Step(`^the result is a (?:examples\.)?TableCreated event$`, tc.resultIsTableCreated)
+	ctx.Step(`^the result is a (?:examples\.)?PlayerJoined event$`, tc.resultIsPlayerJoined)
+	ctx.Step(`^the result is a (?:examples\.)?PlayerLeft event$`, tc.resultIsPlayerLeft)
+	ctx.Step(`^the result is a (?:examples\.)?HandStarted event$`, tc.resultIsHandStarted)
+	ctx.Step(`^the result is a (?:examples\.)?HandEnded event$`, tc.resultIsHandEnded)
 	ctx.Step(`^the table event has table_name "([^"]*)"$`, tc.eventHasTableName)
 	ctx.Step(`^the table event has game_variant "([^"]*)"$`, tc.eventHasGameVariant)
 	ctx.Step(`^the table event has small_blind (\d+)$`, tc.eventHasSmallBlind)
@@ -295,32 +295,42 @@ func (tc *TableContext) handEndedForHand(handNumber int) error {
 
 func (tc *TableContext) handleCreateTableWithVariant(tableName, variant string, table *godog.Table) error {
 	// Parse table parameters from the Gherkin table
+	// Table format: | small_blind | big_blind | min_buy_in | max_buy_in | max_players |
+	//               | 5           | 10        | 200        | 1000       | 9           |
 	var smallBlind, bigBlind, minBuyIn, maxBuyIn int64 = 10, 20, 200, 2000
 	var maxPlayers int32 = 9
 	var actionTimeout int32 = 30
 
-	for _, row := range table.Rows[1:] { // Skip header
-		key := row.Cells[0].Value
-		value := row.Cells[1].Value
-		switch key {
-		case "small_blind":
-			v, _ := strconv.ParseInt(value, 10, 64)
-			smallBlind = v
-		case "big_blind":
-			v, _ := strconv.ParseInt(value, 10, 64)
-			bigBlind = v
-		case "min_buy_in":
-			v, _ := strconv.ParseInt(value, 10, 64)
-			minBuyIn = v
-		case "max_buy_in":
-			v, _ := strconv.ParseInt(value, 10, 64)
-			maxBuyIn = v
-		case "max_players":
-			v, _ := strconv.ParseInt(value, 10, 32)
-			maxPlayers = int32(v)
-		case "action_timeout":
-			v, _ := strconv.ParseInt(value, 10, 32)
-			actionTimeout = int32(v)
+	// Header row contains column names
+	header := table.Rows[0]
+	// Data row contains values
+	if len(table.Rows) > 1 {
+		data := table.Rows[1]
+		for i, cell := range header.Cells {
+			if i >= len(data.Cells) {
+				break
+			}
+			value := data.Cells[i].Value
+			switch cell.Value {
+			case "small_blind":
+				v, _ := strconv.ParseInt(value, 10, 64)
+				smallBlind = v
+			case "big_blind":
+				v, _ := strconv.ParseInt(value, 10, 64)
+				bigBlind = v
+			case "min_buy_in":
+				v, _ := strconv.ParseInt(value, 10, 64)
+				minBuyIn = v
+			case "max_buy_in":
+				v, _ := strconv.ParseInt(value, 10, 64)
+				maxBuyIn = v
+			case "max_players":
+				v, _ := strconv.ParseInt(value, 10, 32)
+				maxPlayers = int32(v)
+			case "action_timeout":
+				v, _ := strconv.ParseInt(value, 10, 32)
+				actionTimeout = int32(v)
+			}
 		}
 	}
 

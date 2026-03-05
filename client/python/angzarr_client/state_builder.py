@@ -275,3 +275,140 @@ class StateRouter(Generic[S]):
                 return
 
         # Unknown event type - silently ignore (forward compatibility)
+
+
+class CommandRouter(Generic[S]):
+    """Fluent command router for functional aggregate handlers.
+
+    Composes with StateRouter for state reconstruction and provides
+    fluent registration of command handlers.
+
+    This is the functional alternative to the OO CommandHandler base class.
+    Handlers are pure functions with signature:
+        (cmd: CommandType, state: StateType, seq: int) -> Event
+
+    Example::
+
+        from angzarr_client import CommandRouter, StateRouter
+
+        state_router = (
+            StateRouter(PlayerState)
+            .on(PlayerRegistered, apply_registered)
+            .on(FundsDeposited, apply_deposited)
+        )
+
+        router = (
+            CommandRouter[PlayerState]("player")
+            .with_state(state_router)
+            .on(RegisterPlayer, handle_register)
+            .on(DepositFunds, handle_deposit)
+        )
+
+        # Use with run_command_handler_server:
+        run_command_handler_server(router, "50301", logger=logger)
+    """
+
+    def __init__(self, domain: str) -> None:
+        """Create a CommandRouter for a domain.
+
+        Args:
+            domain: The domain name (e.g., "player", "table").
+        """
+        self._domain = domain
+        self._state_router: StateRouter[S] | None = None
+        # command_type -> (full_name, cmd_type, handler)
+        self._handlers: list[tuple[str, type, Callable]] = []
+
+    @property
+    def domain(self) -> str:
+        """Get the domain name."""
+        return self._domain
+
+    def with_state(self, state_router: StateRouter[S]) -> CommandRouter[S]:
+        """Compose with a StateRouter for state reconstruction.
+
+        Args:
+            state_router: StateRouter to use for rebuilding state from events.
+
+        Returns:
+            Self for chaining.
+        """
+        self._state_router = state_router
+        return self
+
+    def on(self, command_type: type, handler: Callable) -> CommandRouter[S]:
+        """Register a command handler.
+
+        The handler function must have signature:
+            (cmd: CommandType, state: StateType, seq: int) -> Event
+
+        Args:
+            command_type: The protobuf command class to handle.
+            handler: Handler function.
+
+        Returns:
+            Self for chaining.
+        """
+        full_name = command_type.DESCRIPTOR.full_name
+        self._handlers.append((full_name, command_type, handler))
+        return self
+
+    def command_types(self) -> list[str]:
+        """Get list of registered command type names."""
+        return [name.rsplit(".", 1)[-1] for name, _, _ in self._handlers]
+
+    def dispatch(
+        self, request: "types.ContextualCommand"
+    ) -> "command_handler.BusinessResponse":
+        """Dispatch a ContextualCommand to the appropriate handler.
+
+        Rebuilds state from prior events, unpacks command, calls handler,
+        and packs result into BusinessResponse.
+
+        Args:
+            request: ContextualCommand with command and prior events.
+
+        Returns:
+            BusinessResponse wrapping the new events.
+
+        Raises:
+            ValueError: If no command pages or unknown command type.
+        """
+        # Import here to avoid circular imports
+        from .proto.angzarr import command_handler_pb2 as command_handler
+
+        prior_events = request.events if request.HasField("events") else None
+
+        # Rebuild state
+        if self._state_router is not None:
+            state = self._state_router.with_event_book(prior_events)
+        else:
+            state = None
+
+        # Get sequence number
+        seq = len(prior_events.pages) if prior_events else 0
+
+        if not request.command.pages:
+            raise ValueError("No command pages")
+
+        command_any = request.command.pages[0].command
+        type_url = command_any.type_url
+
+        # Find handler
+        for full_name, cmd_type, handler in self._handlers:
+            if type_url == TYPE_URL_PREFIX + full_name:
+                cmd = cmd_type()
+                command_any.Unpack(cmd)
+                event = handler(cmd, state, seq)
+
+                # Pack event into EventBook
+                event_any = AnyProto()
+                event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+
+                event_book = types.EventBook(
+                    pages=[types.EventPage(sequence=seq, event=event_any)]
+                )
+                return command_handler.BusinessResponse(events=event_book)
+
+        # Unknown command
+        raise ValueError(f"Unknown command type: {type_url}")

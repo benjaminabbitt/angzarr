@@ -14,9 +14,19 @@ build:
 
 test:
     cargo test -p angzarr-client --lib
+    cargo test -p angzarr-client --test features
 
 test-verbose:
     cargo test -p angzarr-client --lib -- --nocapture
+    cargo test -p angzarr-client --test features -- --nocapture
+
+# Run only BDD feature tests
+test-bdd:
+    cargo test -p angzarr-client --test features
+
+# Run only unit tests
+test-unit:
+    cargo test -p angzarr-client --lib
 
 mutate:
     cargo mutants --jobs 4

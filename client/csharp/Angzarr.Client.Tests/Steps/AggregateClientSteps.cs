@@ -1050,6 +1050,8 @@ public class AggregateClientSteps
                 new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
             );
         }
+        // Share event book to context for use by other step classes
+        _ctx["shared_eventbook"] = _eventBook;
     }
 
     [Given(@"an aggregate ""(.*)"" with root ""(.*)"" has (\d+) events in main")]

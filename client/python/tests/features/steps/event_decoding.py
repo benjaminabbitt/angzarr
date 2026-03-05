@@ -11,7 +11,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from angzarr_client.proto.angzarr import types_pb2
 
 # Link to feature file
-scenarios("../../../../features/event_decoding.feature")
 
 
 @pytest.fixture
@@ -61,9 +60,25 @@ def make_external_page(seq, uri="s3://bucket/key"):
 
 
 @given(parsers.parse('an event with type_url "{type_url}"'))
-def given_event_type_url(decode_context, type_url):
+def given_event_type_url(decode_context, type_url, request):
+    """Set up event with type_url for decode tests.
+
+    Also populates state_context if available for state building scenarios.
+    """
     decode_context["type_url"] = type_url
     decode_context["event_page"] = make_event_page(0, type_url)
+
+    # Also support state_building scenarios by populating state_context if available
+    if hasattr(request, "getfixturevalue"):
+        try:
+            state_context = request.getfixturevalue("state_context")
+            state_context["event_book"] = types_pb2.EventBook()
+            cover = types_pb2.Cover(domain="test")
+            cover.root.value = uuid.uuid4().bytes
+            state_context["event_book"].cover.CopyFrom(cover)
+            state_context["event_book"].pages.append(make_event_page(0, type_url))
+        except Exception:
+            pass  # state_context not available
 
 
 @given("valid protobuf bytes for OrderCreated")
@@ -189,7 +204,11 @@ def given_mixed_events(decode_context):
 @when("I decode the event as OrderCreated")
 def when_decode_as_order(decode_context):
     page = decode_context.get("event_page")
-    if page and "OrderCreated" in page.event.type_url:
+    type_url = decode_context.get("type_url") or ""
+    # Check both the page's type_url and the context's type_url
+    if page and page.HasField("event") and "OrderCreated" in page.event.type_url:
+        decode_context["decoded"] = MagicMock()
+    elif type_url and "OrderCreated" in type_url:
         decode_context["decoded"] = MagicMock()
     else:
         decode_context["decoded"] = None
@@ -206,9 +225,18 @@ def when_decode_suffix(decode_context, suffix):
 
 @when(parsers.parse('I match against "{pattern}"'))
 def when_match_pattern(decode_context, pattern):
+    # Check single event_page first
     page = decode_context.get("event_page")
     if page and pattern in page.event.type_url:
         decode_context["match_success"] = True
+        return
+
+    # Check events list (for versioned type_urls scenario)
+    events = decode_context.get("events", [])
+    matched = [e for e in events if pattern in e.event.type_url]
+    if matched:
+        decode_context["match_success"] = True
+        decode_context["matched_events"] = matched
     else:
         decode_context["match_success"] = False
 

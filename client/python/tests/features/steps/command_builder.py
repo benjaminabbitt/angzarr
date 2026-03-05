@@ -9,7 +9,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from angzarr_client.proto.angzarr import types_pb2
 
 # Link to feature file
-scenarios("../../../../features/command_builder.feature")
 
 
 # --- Fixtures ---
@@ -77,6 +76,7 @@ def when_build_command_new_aggregate(command_context, domain):
 @when(parsers.parse('I set the command type to "{type_name}"'))
 def when_set_command_type(command_context, type_name):
     command_context["type_url_set"] = True
+    command_context["type_name"] = type_name
 
 
 @when("I set the command payload")
@@ -133,7 +133,7 @@ def when_build_with_strict_strategy(command_context):
 
 
 @when("I build a command using fluent chaining:")
-def when_build_fluent_chaining(command_context):
+def when_build_fluent_chaining(command_context, text):
     command_context["domain"] = "orders"
     command_context["root"] = uuid.uuid4()
     command_context["correlation_id"] = "trace-456"
@@ -144,21 +144,24 @@ def when_build_fluent_chaining(command_context):
 
 
 @when(parsers.parse('I build and execute a command for domain "{domain}"'))
-async def when_build_and_execute(command_context, domain):
+def when_build_and_execute(command_context, domain):
     mock_client = command_context.get("mock_client") or MockGateway()
+    command_context["mock_client"] = mock_client
     command_context["domain"] = domain
     command_context["type_url_set"] = True
     command_context["payload_set"] = True
     _try_build(command_context)
 
     if command_context.get("built_command"):
-        response = await mock_client.execute(command_context["built_command"])
-        command_context["execute_response"] = response
+        # Simulate synchronous execution
+        mock_client.last_command = command_context["built_command"]
+        command_context["execute_response"] = MagicMock()
 
 
 @when("I use the builder to execute directly:")
-async def when_execute_directly(command_context):
+def when_execute_directly(command_context):
     mock_client = command_context.get("mock_client") or MockGateway()
+    command_context["mock_client"] = mock_client
     command_context["domain"] = "orders"
     command_context["root"] = uuid.uuid4()
     command_context["type_url_set"] = True
@@ -166,8 +169,9 @@ async def when_execute_directly(command_context):
     _try_build(command_context)
 
     if command_context.get("built_command"):
-        response = await mock_client.execute(command_context["built_command"])
-        command_context["execute_response"] = response
+        # Simulate synchronous execution
+        mock_client.last_command = command_context["built_command"]
+        command_context["execute_response"] = MagicMock()
 
 
 @given(parsers.parse('a builder configured for domain "{domain}"'))
@@ -378,9 +382,10 @@ def _try_build(ctx):
             sequence=ctx.get("sequence") or 0,
             merge_strategy=types_pb2.MERGE_COMMUTATIVE,
         )
+        type_name = ctx.get("type_name", "TestCommand")
         page.command.CopyFrom(
             Any(
-                type_url="type.googleapis.com/test.TestCommand",
+                type_url=f"type.googleapis.com/{type_name}",
                 value=b"test",
             )
         )

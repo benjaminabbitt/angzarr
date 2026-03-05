@@ -85,3 +85,38 @@ def apply_transferred(state: PlayerState, event: player.FundsTransferred) -> Non
 
 
 # docs:end:state_router
+
+
+def build_state(state: PlayerState, events: list) -> PlayerState:
+    """Build state from a list of Any-wrapped events.
+
+    Args:
+        state: Initial state to mutate.
+        events: List of Any-wrapped protobuf events.
+
+    Returns:
+        The mutated state.
+    """
+    from google.protobuf.any_pb2 import Any as AnyProto
+
+    _appliers = {
+        "examples.PlayerRegistered": (player.PlayerRegistered, apply_registered),
+        "examples.FundsDeposited": (player.FundsDeposited, apply_deposited),
+        "examples.FundsWithdrawn": (player.FundsWithdrawn, apply_withdrawn),
+        "examples.FundsReserved": (player.FundsReserved, apply_reserved),
+        "examples.FundsReleased": (player.FundsReleased, apply_released),
+        "examples.FundsTransferred": (player.FundsTransferred, apply_transferred),
+    }
+
+    for event_any in events:
+        if not isinstance(event_any, AnyProto):
+            continue
+        # Extract type name from type_url (e.g., "type.googleapis.com/examples.PlayerRegistered")
+        type_name = event_any.type_url.split("/")[-1]
+        if type_name in _appliers:
+            proto_cls, applier = _appliers[type_name]
+            event = proto_cls()
+            event_any.Unpack(event)
+            applier(state, event)
+
+    return state

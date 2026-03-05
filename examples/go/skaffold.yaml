@@ -13,7 +13,7 @@ build:
       prefix: "dev-"
       variant: AbbrevCommitSha
   local:
-    push: true
+    push: false
     useBuildkit: false
     concurrency: 1
   artifacts:
@@ -39,7 +39,7 @@ deploy:
   helm:
     releases:
       - name: poker-go
-        chartPath: ../../deploy/helm/angzarr
+        chartPath: ../../deploy/k8s/helm/angzarr
         namespace: angzarr
         createNamespace: true
         valuesFiles:

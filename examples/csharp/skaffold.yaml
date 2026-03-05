@@ -1,0 +1,65 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: poker-csharp
+
+# Requires base angzarr infrastructure
+requires:
+  - path: ../../skaffold.yaml
+
+build:
+  tagPolicy:
+    gitCommit:
+      prefix: "dev-"
+      variant: AbbrevCommitSha
+  local:
+    push: false
+    useBuildkit: false
+    concurrency: 1
+  artifacts:
+    - image: ghcr.io/angzarr-io/poker-csharp-player
+      context: ../..
+      docker:
+        dockerfile: examples/csharp/Containerfile
+        target: agg-player
+
+    - image: ghcr.io/angzarr-io/poker-csharp-table
+      context: ../..
+      docker:
+        dockerfile: examples/csharp/Containerfile
+        target: agg-table
+
+    - image: ghcr.io/angzarr-io/poker-csharp-hand
+      context: ../..
+      docker:
+        dockerfile: examples/csharp/Containerfile
+        target: agg-hand
+
+deploy:
+  helm:
+    releases:
+      - name: poker-csharp
+        chartPath: ../../deploy/k8s/helm/angzarr
+        namespace: angzarr
+        createNamespace: true
+        valuesFiles:
+          - values.yaml
+        setValues:
+          # Player aggregate
+          applications.business[0].name: poker-player
+          applications.business[0].image.repository: ghcr.io/angzarr-io/poker-csharp-player
+          applications.business[0].image.tag: latest
+          applications.business[0].domain: player
+          applications.business[0].port: 50501
+          # Table aggregate
+          applications.business[1].name: poker-table
+          applications.business[1].image.repository: ghcr.io/angzarr-io/poker-csharp-table
+          applications.business[1].image.tag: latest
+          applications.business[1].domain: table
+          applications.business[1].port: 50502
+          # Hand aggregate
+          applications.business[2].name: poker-hand
+          applications.business[2].image.repository: ghcr.io/angzarr-io/poker-csharp-hand
+          applications.business[2].image.tag: latest
+          applications.business[2].domain: hand
+          applications.business[2].port: 50503
