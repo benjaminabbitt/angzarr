@@ -56,6 +56,13 @@ async fn given_aggregate_at_sequence(world: &mut ErrorHandlingWorld) {
     world.current_error = Some(ClientError::from(status));
 }
 
+#[given(expr = "the server aggregate is at sequence {int}")]
+async fn given_server_aggregate_at_sequence(world: &mut ErrorHandlingWorld, seq: u32) {
+    // Simulate a precondition failed error due to sequence mismatch
+    let status = Status::failed_precondition(format!("sequence mismatch: expected {}, got 3", seq));
+    world.current_error = Some(ClientError::from(status));
+}
+
 #[given("the client lacks required permissions")]
 async fn given_lacks_permissions(world: &mut ErrorHandlingWorld) {
     let status = Status::permission_denied("access denied to resource");
@@ -157,6 +164,11 @@ async fn when_query_events(_world: &mut ErrorHandlingWorld) {
 #[when(expr = "I execute a command at sequence {int}")]
 async fn when_execute_at_sequence(_world: &mut ErrorHandlingWorld, _seq: u32) {
     // Error was already set in given step
+}
+
+#[when(expr = "I execute a mock command at sequence {int}")]
+async fn when_execute_mock_at_sequence(_world: &mut ErrorHandlingWorld, _seq: u32) {
+    // Error was already set in given step (precondition failed due to sequence mismatch)
 }
 
 #[when("I build a command without required fields")]

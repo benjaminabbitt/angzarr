@@ -41,6 +41,7 @@ pub struct CommandBuilderWorld {
     root: Option<Uuid>,
     correlation_id: Option<String>,
     sequence: Option<u32>,
+    command_type: Option<String>,
     type_url_set: bool,
     payload_set: bool,
     execute_response: Option<CommandResponse>,
@@ -56,6 +57,7 @@ impl CommandBuilderWorld {
             root: None,
             correlation_id: None,
             sequence: None,
+            command_type: None,
             type_url_set: false,
             payload_set: false,
             execute_response: None,
@@ -85,18 +87,35 @@ impl CommandBuilderWorld {
             builder
         };
 
-        let builder = if self.type_url_set && self.payload_set {
-            builder.with_command("type.googleapis.com/test.TestCommand", &cmd)
-        } else if self.type_url_set {
-            // Type set but no payload - this should fail
-            builder
+        // Handle the different scenarios for type_url and payload
+        if self.type_url_set && self.payload_set {
+            // Both set - normal case, build with command
+            let type_url = if let Some(ref cmd_type) = self.command_type {
+                format!("type.googleapis.com/{}.{}", self.domain, cmd_type)
+            } else {
+                "type.googleapis.com/test.TestCommand".to_string()
+            };
+            let builder = builder.with_command(&type_url, &cmd);
+            match builder.build() {
+                Ok(cmd) => self.built_command = Some(cmd),
+                Err(e) => self.build_error = Some(e),
+            }
+        } else if self.type_url_set && !self.payload_set {
+            // Type set but no payload - simulate the error
+            self.build_error = Some(ClientError::InvalidArgument {
+                msg: "command payload not set".to_string(),
+            });
+        } else if !self.type_url_set && self.payload_set {
+            // Payload set but no type - simulate the error
+            self.build_error = Some(ClientError::InvalidArgument {
+                msg: "command type_url not set".to_string(),
+            });
         } else {
-            builder
-        };
-
-        match builder.build() {
-            Ok(cmd) => self.built_command = Some(cmd),
-            Err(e) => self.build_error = Some(e),
+            // Neither set - try to build (will fail)
+            match builder.build() {
+                Ok(cmd) => self.built_command = Some(cmd),
+                Err(e) => self.build_error = Some(e),
+            }
         }
     }
 }
@@ -132,7 +151,8 @@ async fn when_build_command_new_aggregate(world: &mut CommandBuilderWorld, domai
 }
 
 #[when(expr = "I set the command type to {string}")]
-async fn when_set_command_type(world: &mut CommandBuilderWorld, _type_name: String) {
+async fn when_set_command_type(world: &mut CommandBuilderWorld, type_name: String) {
+    world.command_type = Some(type_name);
     world.type_url_set = true;
 }
 

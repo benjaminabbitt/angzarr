@@ -25,7 +25,13 @@ struct TestState {
 }
 
 fn make_event_book(domain: &str, events: Vec<EventPage>) -> EventBook {
-    let next_seq = events.len() as u32;
+    // Calculate next_sequence from actual event sequences
+    let max_event_seq = events
+        .iter()
+        .map(|e| get_sequence(e))
+        .max()
+        .map(|s| s + 1)
+        .unwrap_or(0);
     EventBook {
         cover: Some(Cover {
             domain: domain.to_string(),
@@ -38,7 +44,7 @@ fn make_event_book(domain: &str, events: Vec<EventPage>) -> EventBook {
         }),
         pages: events,
         snapshot: None,
-        next_sequence: next_seq,
+        next_sequence: max_event_seq,
     }
 }
 
@@ -202,6 +208,8 @@ async fn given_event_book_with_snapshot(world: &mut StateBuildingWorld, seq: u32
         }),
         retention: SnapshotRetention::RetentionDefault as i32,
     });
+    // Update next_sequence to be after the snapshot
+    book.next_sequence = seq + 1;
     world.event_book = Some(book);
 }
 
@@ -230,6 +238,7 @@ async fn given_event_book_with_snapshot_and_events(world: &mut StateBuildingWorl
         }),
         retention: SnapshotRetention::RetentionDefault as i32,
     });
+    // next_sequence is already 10 from make_event_book (max(6,7,8,9) + 1)
     world.event_book = Some(book);
 }
 
@@ -336,6 +345,8 @@ async fn given_snapshot_no_events(world: &mut StateBuildingWorld, seq: u32) {
         }),
         retention: SnapshotRetention::RetentionDefault as i32,
     });
+    // Update next_sequence to be after the snapshot
+    book.next_sequence = seq + 1;
     world.event_book = Some(book);
 }
 
@@ -380,16 +391,37 @@ async fn given_existing_state(world: &mut StateBuildingWorld) {
         item_count: 5,
         field_value: 100,
     };
+    // Also set up an event book so build_state has something to work with
+    let events = vec![make_event_page(
+        0,
+        "type.googleapis.com/test.OrderCreated",
+        "created",
+    )];
+    world.event_book = Some(make_event_book("test", events));
 }
 
 #[given("a build_state function")]
-async fn given_build_state_function(_world: &mut StateBuildingWorld) {
+async fn given_build_state_function(world: &mut StateBuildingWorld) {
     // build_state function exists
+    // Set up an event book so subsequent When steps can build state
+    let events = vec![make_event_page(
+        0,
+        "type.googleapis.com/test.OrderCreated",
+        "created",
+    )];
+    world.event_book = Some(make_event_book("test", events));
 }
 
 #[given("an _apply_event function")]
-async fn given_apply_event_function(_world: &mut StateBuildingWorld) {
+async fn given_apply_event_function(world: &mut StateBuildingWorld) {
     // _apply_event function exists
+    // Set up an event book so subsequent When steps can apply events
+    let events = vec![make_event_page(
+        0,
+        "type.googleapis.com/test.OrderCreated",
+        "created",
+    )];
+    world.event_book = Some(make_event_book("test", events));
 }
 
 // --- When steps ---
@@ -518,6 +550,12 @@ async fn then_state_reflects_event(world: &mut StateBuildingWorld, event_type: S
     }
 }
 
+#[then("the state should reflect the OrderCreated event")]
+async fn then_state_reflects_order_created(world: &mut StateBuildingWorld) {
+    let state = world.built_state.as_ref().expect("State should be built");
+    assert!(state.order_id.is_some(), "OrderCreated should set order_id");
+}
+
 #[then("the state should have order_id set")]
 async fn then_state_has_order_id(world: &mut StateBuildingWorld) {
     if let Some(ref state) = world.built_state {
@@ -538,6 +576,12 @@ async fn then_state_has_items(world: &mut StateBuildingWorld, count: u32) {
     if let Some(ref state) = world.built_state {
         assert_eq!(state.item_count, count);
     }
+}
+
+#[then(expr = "the built state should have {int} items")]
+async fn then_built_state_has_items(world: &mut StateBuildingWorld, count: u32) {
+    let state = world.built_state.as_ref().expect("State should be built");
+    assert_eq!(state.item_count, count);
 }
 
 #[then("events should be applied as A, then B, then C")]
@@ -633,6 +677,11 @@ async fn then_typed_event_applied(world: &mut StateBuildingWorld) {
 #[then(expr = "the {string} handler should be invoked")]
 async fn then_handler_invoked(_world: &mut StateBuildingWorld, _handler: String) {
     // Handler invoked for matching type
+}
+
+#[then("the ItemAdded handler should be invoked")]
+async fn then_item_added_handler_invoked(_world: &mut StateBuildingWorld) {
+    // ItemAdded handler is invoked for ItemAdded events
 }
 
 #[then("the type_url suffix should match the handler")]

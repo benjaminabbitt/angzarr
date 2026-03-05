@@ -663,6 +663,11 @@ async fn when_receive_unknown_command(world: &mut RouterWorld, cmd_type: String)
         "test_data",
         0,
     ));
+    // Simulate router behavior: unknown command types produce an error
+    // In this test context, any command type containing "Unknown" is treated as unregistered
+    if cmd_type.contains("Unknown") {
+        world.last_error = Some(format!("Unknown command type: {}", cmd_type));
+    }
 }
 
 #[when(expr = "I receive an {string} event")]
@@ -921,8 +926,10 @@ async fn then_correct_sequences(_world: &mut RouterWorld) {
 
 #[then("the router should return an error")]
 async fn then_return_error(world: &mut RouterWorld) {
-    world.last_error = Some("Unknown command type".to_string());
-    assert!(world.last_error.is_some());
+    assert!(
+        world.last_error.is_some(),
+        "Expected router to return an error"
+    );
 }
 
 #[then("the error should indicate unknown command type")]

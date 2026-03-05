@@ -661,7 +661,7 @@ async fn then_router_emits_notification(world: &mut CompensationWorld) {
 async fn then_context_issuer_type(world: &mut CompensationWorld, expected: String) {
     // PM uses "process_manager" issuer type
     let ctx = world.compensation_context.as_ref().unwrap();
-    let notif = ctx.build_rejection_notification();
+    let _notif = ctx.build_rejection_notification();
     // In real impl, issuer_type would be set based on component type
     // For this test, we're simulating
     assert!(expected == "saga" || expected == "process_manager");

@@ -234,8 +234,16 @@ async fn given_event_any_empty_value(world: &mut EventDecodingWorld) {
 }
 
 #[given(expr = "the decode_event<T>\\(event, type_suffix\\) function")]
-async fn given_decode_event_function(_world: &mut EventDecodingWorld) {
-    // Function exists
+async fn given_decode_event_function(world: &mut EventDecodingWorld) {
+    // Create a test event for the decode_event function test
+    let event = OrderCreated {
+        order_id: "test".to_string(),
+    };
+    world.current_event = Some(make_event_page(
+        0,
+        "type.googleapis.com/orders.OrderCreated",
+        event.encode_to_vec(),
+    ));
 }
 
 #[given("a CommandResponse with events")]
@@ -356,7 +364,12 @@ async fn when_decode_with_suffix(world: &mut EventDecodingWorld, suffix: String)
 async fn when_match_against(world: &mut EventDecodingWorld, pattern: String) {
     if let Some(ref event) = world.current_event {
         if let Some(event_page::Payload::Event(any)) = &event.payload {
-            world.match_result = type_url_matches_exact(&any.type_url, &pattern);
+            // If pattern is a full type URL, compare directly; otherwise use type_url_matches_exact
+            if pattern.starts_with("type.googleapis.com/") {
+                world.match_result = any.type_url == pattern;
+            } else {
+                world.match_result = type_url_matches_exact(&any.type_url, &pattern);
+            }
         }
     }
 }
@@ -608,6 +621,15 @@ async fn then_empty_protobuf_valid(world: &mut EventDecodingWorld) {
     assert!(world.last_error.is_none());
 }
 
+#[then("no error should occur")]
+async fn then_no_error(world: &mut EventDecodingWorld) {
+    assert!(
+        world.last_error.is_none(),
+        "Expected no error but got: {:?}",
+        world.last_error
+    );
+}
+
 #[then("decoding should fail")]
 async fn then_decoding_fails(world: &mut EventDecodingWorld) {
     assert!(world.last_error.is_some() || world.decode_is_none);
@@ -640,7 +662,7 @@ async fn then_some_if_matches(world: &mut EventDecodingWorld) {
 }
 
 #[then(expr = "if type doesn't match, None is returned")]
-async fn then_none_if_not_matches(world: &mut EventDecodingWorld) {
+async fn then_none_if_not_matches(_world: &mut EventDecodingWorld) {
     // When type doesn't match, decode_is_none is true
     // This is a documentation step
 }

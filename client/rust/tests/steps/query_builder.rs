@@ -334,9 +334,12 @@ async fn then_point_in_time_timestamp(world: &mut QueryBuilderWorld) {
     }
 }
 
-#[then("building should fail")]
+#[then("query building should fail")]
 async fn then_building_fails(world: &mut QueryBuilderWorld) {
-    assert!(world.build_error.is_some());
+    assert!(
+        world.build_error.is_some(),
+        "Expected query building to fail"
+    );
 }
 
 #[then("the error should indicate invalid timestamp")]
@@ -376,17 +379,26 @@ async fn then_query_targets_main_timeline(world: &mut QueryBuilderWorld) {
     assert!(cover.edition.is_none());
 }
 
-#[then("the build should succeed")]
+#[then("the query build should succeed")]
 async fn then_build_succeeds(world: &mut QueryBuilderWorld) {
-    assert!(world.built_query.is_some());
+    assert!(
+        world.built_query.is_some(),
+        "Expected query build to succeed"
+    );
 }
 
-#[then("all chained values should be preserved")]
+#[then("all chained query values should be preserved")]
 async fn then_chained_values_preserved(world: &mut QueryBuilderWorld) {
     let query = world.built_query.as_ref().expect("query not built");
     let cover = query.cover.as_ref().expect("cover missing");
-    assert!(cover.edition.is_some());
-    assert!(matches!(query.selection, Some(Selection::Range(_))));
+    assert!(
+        cover.edition.is_some(),
+        "Edition should be set in chained query"
+    );
+    assert!(
+        matches!(query.selection, Some(Selection::Range(_))),
+        "Range selection should be set in chained query"
+    );
 }
 
 #[then("the query should have temporal selection (last set)")]
