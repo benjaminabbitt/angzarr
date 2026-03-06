@@ -167,12 +167,15 @@ public class HandAggregate : CommandHandler<HandState>
                     throw CommandRejectedError.PreconditionFailed(
                         "Cannot raise when there is no bet"
                     );
-                var totalBet = player.BetThisRound + amount;
+                // cmd.Amount is the TOTAL bet they want to have (like Go impl)
+                var totalBet = amount;
                 var raiseAmount = totalBet - CurrentBet;
-                if (raiseAmount < MinRaise && amount < player.Stack)
+                if (raiseAmount < MinRaise)
                     throw CommandRejectedError.InvalidArgument(
                         $"Raise must be at least {MinRaise}"
                     );
+                // Actual amount to put in is total minus what they already bet
+                amount = totalBet - player.BetThisRound;
                 if (amount > player.Stack)
                     throw CommandRejectedError.InvalidArgument("Raise exceeds stack");
                 if (player.Stack - amount == 0)
@@ -188,11 +191,18 @@ public class HandAggregate : CommandHandler<HandState>
         var newStack = player.Stack - amount;
         var newPotTotal = GetPotTotal() + amount;
 
+        // For BET/RAISE, emit the total bet (cmd.Amount), not the chips put in (amount)
+        var amountToEmit = amount;
+        if (cmd.Action == ActionType.Bet || cmd.Action == ActionType.Raise)
+        {
+            amountToEmit = cmd.Amount;
+        }
+
         return new ActionTaken
         {
             PlayerRoot = cmd.PlayerRoot,
             Action = action,
-            Amount = amount,
+            Amount = amountToEmit,
             PlayerStack = newStack,
             PotTotal = newPotTotal,
             AmountToCall = Math.Max(CurrentBet, player.BetThisRound + amount) - player.BetThisRound,

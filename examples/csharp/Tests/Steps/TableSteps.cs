@@ -327,18 +327,15 @@ public class TableSteps
         {
             var playerId = row["player"];
             var change = int.Parse(row["change"]);
-            // Only add winners (positive changes)
-            if (change > 0)
-            {
-                cmd.Results.Add(
-                    new PotResult
-                    {
-                        PotType = "main",
-                        WinnerRoot = ByteString.CopyFromUtf8(playerId),
-                        Amount = change,
-                    }
-                );
-            }
+            // Add ALL changes (positive and negative) - matches Go impl
+            cmd.Results.Add(
+                new PotResult
+                {
+                    PotType = "main",
+                    WinnerRoot = ByteString.CopyFromUtf8(playerId),
+                    Amount = change,
+                }
+            );
         }
         ExecuteCommand(cmd);
     }
