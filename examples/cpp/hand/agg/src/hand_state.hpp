@@ -70,6 +70,7 @@ struct HandState {
     std::vector<const PlayerHandInfo*> get_active_players() const;
     std::vector<const PlayerHandInfo*> get_players_in_hand() const;
 
+    static HandState from_event_book(const angzarr::EventBook* event_book);
     static HandState from_event_book(const angzarr::EventBook& event_book);
     static void apply_event(HandState& state, const google::protobuf::Any& event_any);
 };

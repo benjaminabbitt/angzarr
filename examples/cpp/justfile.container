@@ -1,38 +1,53 @@
-# C++ poker examples - container version
-# This file is mounted as 'justfile' inside the container
-# Also used directly in CI container jobs
+# C++ poker examples - container execution
+#
+# This file runs inside the devcontainer and executes actual build commands.
+# It's mounted over justfile when running in a container.
 
 set shell := ["bash", "-c"]
 
-TOP := `git rev-parse --show-toplevel`
 BUILD_DIR := "build"
 
 default:
     @just --list
 
-configure:
-    cmake -B {{BUILD_DIR}} -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}}
+# Configure and build all C++ components
+build:
+    cmake -B {{BUILD_DIR}} -S . -DBUILD_TESTS=ON
+    cmake --build {{BUILD_DIR}} -j$(nproc)
 
-configure-dev:
-    cmake -B {{BUILD_DIR}} -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}}
-
-build: configure
-    cmake --build {{BUILD_DIR}} --parallel
-
-build-dev: configure-dev
-    cmake --build {{BUILD_DIR}} --parallel
-
-test-unit: build
+# Run unit tests
+test-unit:
+    cmake -B {{BUILD_DIR}} -S . -DBUILD_TESTS=ON
+    cmake --build {{BUILD_DIR}} -j$(nproc)
     cd {{BUILD_DIR}} && ctest --output-on-failure -L unit || echo "No unit tests labeled"
 
-test-acceptance: build
-    cd {{BUILD_DIR}} && ctest --output-on-failure -L acceptance || echo "No acceptance tests labeled"
+# Run acceptance tests (BDD/Gherkin)
+# cucumber-cpp uses a wire protocol: the C++ test binary runs as a server,
+# and cucumber (Ruby) connects to it to execute the feature files.
+test-acceptance:
+    cmake -B {{BUILD_DIR}} -S . -DBUILD_TESTS=ON
+    cmake --build {{BUILD_DIR}} -j$(nproc)
+    # Install cucumber gems via bundler
+    cd features && bundle install --quiet
+    # Start the wire server in background
+    ./{{BUILD_DIR}}/tests/acceptance_tests -p 3902 &
+    WIRE_PID=$$!; \
+    sleep 1; \
+    cd features && bundle exec cucumber --format progress . || { kill $$WIRE_PID 2>/dev/null; exit 1; }; \
+    kill $$WIRE_PID 2>/dev/null || true
 
-test: build
-    cd {{BUILD_DIR}} && ctest --output-on-failure
+# Run all tests
+test: test-unit test-acceptance
 
+# Format code with clang-format
 fmt:
-    find . \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) -not -path '*/build/*' -exec clang-format -i {} +
+    find . -name "*.cpp" -o -name "*.hpp" | grep -v build | xargs clang-format -i
 
+# Lint with clang-tidy
 lint:
-    find . \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) -not -path '*/build/*' -exec clang-tidy {} -- -I{{BUILD_DIR}}/generated +
+    cmake -B {{BUILD_DIR}} -S . -DBUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    find . -name "*.cpp" | grep -v build | xargs clang-tidy -p {{BUILD_DIR}}
+
+# Clean build artifacts
+clean:
+    rm -rf {{BUILD_DIR}}

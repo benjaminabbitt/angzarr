@@ -25,8 +25,10 @@ constexpr const char* TABLE_DOMAIN = "table";
 
 /// Create the table aggregate command router (functional style).
 angzarr::CommandRouter<table::TableState> create_router() {
-    return angzarr::CommandRouter<table::TableState>(TABLE_DOMAIN,
-                                                     table::TableState::from_event_book)
+    auto state_rebuilder = [](const angzarr::EventBook* eb) {
+        return table::TableState::from_event_book(eb);
+    };
+    return angzarr::CommandRouter<table::TableState>(TABLE_DOMAIN, state_rebuilder)
         .on<examples::CreateTable, examples::TableCreated>(table::handlers::handle_create)
         .on<examples::JoinTable, examples::PlayerJoined>(table::handlers::handle_join)
         .on<examples::LeaveTable, examples::PlayerLeft>(table::handlers::handle_leave)

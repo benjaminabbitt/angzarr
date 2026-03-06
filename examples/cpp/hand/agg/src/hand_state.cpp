@@ -53,12 +53,18 @@ std::vector<const PlayerHandInfo*> HandState::get_players_in_hand() const {
     return result;
 }
 
-HandState HandState::from_event_book(const angzarr::EventBook& event_book) {
+HandState HandState::from_event_book(const angzarr::EventBook* event_book) {
     HandState state;
-    for (const auto& page : event_book.pages()) {
-        apply_event(state, page.event());
+    if (event_book != nullptr) {
+        for (const auto& page : event_book->pages()) {
+            apply_event(state, page.event());
+        }
     }
     return state;
+}
+
+HandState HandState::from_event_book(const angzarr::EventBook& event_book) {
+    return from_event_book(&event_book);
 }
 
 void HandState::apply_event(HandState& state, const google::protobuf::Any& event_any) {

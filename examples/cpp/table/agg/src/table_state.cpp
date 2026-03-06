@@ -10,12 +10,18 @@ int TableState::active_player_count() const {
                                           [](const auto& p) { return !p.second.is_sitting_out; }));
 }
 
-TableState TableState::from_event_book(const angzarr::EventBook& event_book) {
+TableState TableState::from_event_book(const angzarr::EventBook* event_book) {
     TableState state;
-    for (const auto& page : event_book.pages()) {
-        apply_event(state, page.event());
+    if (event_book != nullptr) {
+        for (const auto& page : event_book->pages()) {
+            apply_event(state, page.event());
+        }
     }
     return state;
+}
+
+TableState TableState::from_event_book(const angzarr::EventBook& event_book) {
+    return from_event_book(&event_book);
 }
 
 void TableState::apply_event(TableState& state, const google::protobuf::Any& event_any) {

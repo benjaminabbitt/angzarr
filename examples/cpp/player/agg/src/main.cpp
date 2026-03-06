@@ -35,8 +35,10 @@ google::protobuf::Any pack_any(const T& msg) {
 /// Create functional command router for player aggregate.
 // docs:start:command_router
 angzarr::CommandRouter<player::PlayerState> create_router() {
-    return angzarr::CommandRouter<player::PlayerState>(PLAYER_DOMAIN,
-                                                       player::PlayerState::from_event_book)
+    auto state_rebuilder = [](const angzarr::EventBook* eb) {
+        return player::PlayerState::from_event_book(eb);
+    };
+    return angzarr::CommandRouter<player::PlayerState>(PLAYER_DOMAIN, state_rebuilder)
         .on<examples::RegisterPlayer, examples::PlayerRegistered>(player::handlers::handle_register)
         .on<examples::DepositFunds, examples::FundsDeposited>(player::handlers::handle_deposit)
         .on<examples::WithdrawFunds, examples::FundsWithdrawn>(player::handlers::handle_withdraw)

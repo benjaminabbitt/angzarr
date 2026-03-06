@@ -32,6 +32,9 @@ struct PlayerState {
     bool is_ai() const { return player_type == examples::PlayerType::AI; }
 
     /// Build state from an EventBook by applying all events.
+    static PlayerState from_event_book(const angzarr::EventBook* event_book);
+
+    /// Overload for reference (convenience)
     static PlayerState from_event_book(const angzarr::EventBook& event_book);
 
     /// Apply a single event to the state.

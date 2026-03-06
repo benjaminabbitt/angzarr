@@ -25,7 +25,10 @@ constexpr const char* HAND_DOMAIN = "hand";
 
 /// Create the hand aggregate command router (functional style).
 angzarr::CommandRouter<hand::HandState> create_router() {
-    return angzarr::CommandRouter<hand::HandState>(HAND_DOMAIN, hand::HandState::from_event_book)
+    auto state_rebuilder = [](const angzarr::EventBook* eb) {
+        return hand::HandState::from_event_book(eb);
+    };
+    return angzarr::CommandRouter<hand::HandState>(HAND_DOMAIN, state_rebuilder)
         .on<examples::DealCards, examples::CardsDealt>(hand::handlers::handle_deal)
         .on<examples::PostBlind, examples::BlindPosted>(hand::handlers::handle_post_blind)
         .on<examples::PlayerAction, examples::ActionTaken>(hand::handlers::handle_action)

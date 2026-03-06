@@ -24,12 +24,18 @@ bool ends_with(const std::string& str, const std::string& suffix) {
 }  // anonymous namespace
 
 // docs:start:state_router
-PlayerState PlayerState::from_event_book(const angzarr::EventBook& event_book) {
+PlayerState PlayerState::from_event_book(const angzarr::EventBook* event_book) {
     PlayerState state;
-    for (const auto& page : event_book.pages()) {
-        apply_event(state, page.event());
+    if (event_book != nullptr) {
+        for (const auto& page : event_book->pages()) {
+            apply_event(state, page.event());
+        }
     }
     return state;
+}
+
+PlayerState PlayerState::from_event_book(const angzarr::EventBook& event_book) {
+    return from_event_book(&event_book);
 }
 
 void PlayerState::apply_event(PlayerState& state, const google::protobuf::Any& event_any) {

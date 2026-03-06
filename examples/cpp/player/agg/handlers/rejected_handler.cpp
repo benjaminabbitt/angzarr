@@ -16,9 +16,10 @@ examples::FundsReleased handle_join_rejected(const angzarr::Notification& notifi
 
     // Get table_root from the notification cover (the target aggregate)
     std::string table_key;
-    if (notification.has_cover() && !notification.cover().root().empty()) {
+    if (notification.has_cover() && notification.cover().has_root() &&
+        !notification.cover().root().value().empty()) {
         // Convert root bytes to hex string for lookup
-        const std::string& root = notification.cover().root();
+        const std::string& root = notification.cover().root().value();
         table_key.reserve(root.size() * 2);
         for (unsigned char c : root) {
             static const char hex[] = "0123456789abcdef";
@@ -43,8 +44,8 @@ examples::FundsReleased handle_join_rejected(const angzarr::Notification& notifi
     event.mutable_amount()->set_amount(reserved_amount);
     event.mutable_amount()->set_currency_code("CHIPS");
 
-    if (notification.has_cover()) {
-        event.set_table_root(notification.cover().root());
+    if (notification.has_cover() && notification.cover().has_root()) {
+        event.set_table_root(notification.cover().root().value());
     }
 
     event.mutable_new_available_balance()->set_amount(new_available);

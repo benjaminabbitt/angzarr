@@ -82,13 +82,42 @@ The poker example implements three bounded contexts:
 
 ## Language Support
 
-### Primary Languages
+### Fully Supported Languages
 
 | Language | Directory | Unit Tests | Acceptance Tests |
 |----------|-----------|------------|------------------|
 | **Rust** | `rust/` | `#[cfg(test)]` modules | cucumber-rs |
 | **Go** | `go/` | `*_test.go` in `tests/` | godog |
 | **Python** | `python/` | `test_*.py` in `tests/` | pytest-bdd |
+| **Java** | `java/` | JUnit 5 | cucumber-junit5 |
+| **C#** | `csharp/` | xUnit | SpecFlow |
+
+### Best-Effort: C++
+
+| Language | Directory | Unit Tests | Acceptance Tests |
+|----------|-----------|------------|------------------|
+| **C++** | `cpp/` | GTest | cucumber-cpp (broken) |
+
+**C++ is provided as a best-effort example and cannot be supported at the same level as other languages.** The cucumber-cpp project relies on a wire protocol that requires the cucumber-wire Ruby gem, which is incompatible with modern versions of cucumber-ruby. The cucumber-cpp project itself has not been actively maintained since 2021.
+
+**What works:**
+- All C++ aggregates, sagas, projectors, and process managers compile correctly
+- Step definitions exist and compile into the test binary
+- The wire server starts and listens for connections
+
+**What doesn't work:**
+- End-to-end Gherkin test execution via cucumber-ruby
+- The cucumber-wire gem throws `undefined method 'registry'` errors with cucumber 3.x
+- No combination of cucumber/cucumber-wire versions has been found that works with Ruby 3.x
+
+**To verify the build:**
+```bash
+cd examples/cpp
+just build              # Compiles all code including test binary
+./build/tests/acceptance_tests --help  # Verify test binary runs
+```
+
+If C++ BDD testing is required, consider migrating to a maintained alternative like [Catch2](https://github.com/catchorg/Catch2) with a custom Gherkin parser, or using GTest directly for unit-style testing.
 
 ## Acceptance Testing with Gherkin
 
@@ -118,6 +147,9 @@ just test                    # All languages
 cd rust && just test
 cd go && just test
 cd python && just test
+cd java && just test
+cd csharp && just test
+cd cpp && just build         # C++: build only (see limitations above)
 ```
 
 ## Port Configuration
@@ -129,3 +161,6 @@ Each language has a unique port range:
 | Rust | 500xx | 50001 | 50002 | 50003 |
 | Go | 502xx | 50201 | 50202 | 50203 |
 | Python | 504xx | 50401 | 50402 | 50403 |
+| Java | 505xx | 50501 | 50502 | 50503 |
+| C# | 506xx | 50601 | 50602 | 50603 |
+| C++ | 507xx | 50701 | 50702 | 50703 |

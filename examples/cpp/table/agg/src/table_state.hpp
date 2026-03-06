@@ -45,6 +45,7 @@ struct TableState {
     int find_available_seat(int preferred = -1) const;
     int next_dealer_position() const;
 
+    static TableState from_event_book(const angzarr::EventBook* event_book);
     static TableState from_event_book(const angzarr::EventBook& event_book);
     static void apply_event(TableState& state, const google::protobuf::Any& event_any);
 };

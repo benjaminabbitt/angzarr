@@ -10,7 +10,7 @@
 # When running outside a devcontainer:
 #   - Builds/uses local devcontainer image with `just` pre-installed
 #   - Podman mounts justfile.container as /workspace/examples/cpp/justfile
-#   - `just build` on host → podman runs → `just build` in container → cmake
+#   - `just build` on host → podman runs → `just build` in container → `cmake ...`
 #
 # When running inside a devcontainer (DEVCONTAINER=true):
 #   - Commands execute directly via `just <target>`
@@ -43,17 +43,8 @@ _container +ARGS: _build-image
 default:
     @just --list
 
-configure:
-    just _container configure
-
-configure-dev:
-    just _container configure-dev
-
 build:
     just _container build
-
-build-dev:
-    just _container build-dev
 
 test-unit:
     just _container test-unit
@@ -69,14 +60,5 @@ fmt:
 lint:
     just _container lint
 
-# Run poker in standalone mode (host - needs Rust)
-run: build
-    mkdir -p "{{TOP}}/examples/cpp/data"
-    cd "{{TOP}}" && cargo run \
-        --bin angzarr-standalone \
-        --features standalone,sqlite \
-        -- --config examples/cpp/standalone.yaml
-
 clean:
     rm -rf "{{TOP}}/examples/cpp/build"
-    rm -rf "{{TOP}}/examples/cpp/data"
