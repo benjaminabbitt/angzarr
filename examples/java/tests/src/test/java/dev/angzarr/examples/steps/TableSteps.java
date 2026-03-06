@@ -222,31 +222,31 @@ public class TableSteps {
 
   // --- Then steps ---
 
-  @Then("the result is a TableCreated event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?TableCreated event$")
   public void resultIsTableCreatedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(TableCreated.class);
   }
 
-  @Then("the result is a PlayerJoined event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?PlayerJoined event$")
   public void resultIsPlayerJoinedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(PlayerJoined.class);
   }
 
-  @Then("the result is a PlayerLeft event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?PlayerLeft event$")
   public void resultIsPlayerLeftEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(PlayerLeft.class);
   }
 
-  @Then("the result is a HandStarted event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?HandStarted event$")
   public void resultIsHandStartedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(HandStarted.class);
   }
 
-  @Then("the result is a HandEnded event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?HandEnded event$")
   public void resultIsHandEndedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(HandEnded.class);

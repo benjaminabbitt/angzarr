@@ -99,7 +99,7 @@ namespace Tests.Features
                         "", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 47
-    testRunner.Then("the result is a PlayerRegistered event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.PlayerRegistered event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 48
     testRunner.And("the player event has display_name \"Alice\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -170,7 +170,7 @@ namespace Tests.Features
                         "s AI", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 61
-    testRunner.Then("the result is a PlayerRegistered event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.PlayerRegistered event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 62
     testRunner.And("the player event has player_type \"AI\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -203,7 +203,7 @@ namespace Tests.Features
     testRunner.When("I handle a DepositFunds command with amount 1000", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 74
-    testRunner.Then("the result is a FundsDeposited event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.FundsDeposited event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 75
     testRunner.And("the player event has amount 1000", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -242,7 +242,7 @@ namespace Tests.Features
     testRunner.When("I handle a DepositFunds command with amount 300", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 82
-    testRunner.Then("the result is a FundsDeposited event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.FundsDeposited event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 83
     testRunner.And("the player event has new_balance 800", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -344,7 +344,7 @@ namespace Tests.Features
     testRunner.When("I handle a WithdrawFunds command with amount 400", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 108
-    testRunner.Then("the result is a FundsWithdrawn event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.FundsWithdrawn event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 109
     testRunner.And("the player event has amount 400", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -458,7 +458,7 @@ namespace Tests.Features
     testRunner.When("I handle a ReserveFunds command with amount 500 for table \"table-1\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 140
-    testRunner.Then("the result is a FundsReserved event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.FundsReserved event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 141
     testRunner.And("the player event has amount 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -575,7 +575,7 @@ namespace Tests.Features
     testRunner.When("I handle a ReleaseFunds command for table \"table-1\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 172
-    testRunner.Then("the result is a FundsReleased event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.FundsReleased event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 173
     testRunner.And("the player event has amount 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -695,7 +695,7 @@ namespace Tests.Features
     testRunner.When("I handle a ReleaseFunds command for table \"high-stakes\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 210
-    testRunner.Then("the result is a FundsReleased event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.FundsReleased event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 211
     testRunner.And("the player event has amount 200", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");

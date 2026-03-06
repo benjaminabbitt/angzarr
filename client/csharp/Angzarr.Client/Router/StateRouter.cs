@@ -134,13 +134,17 @@ public class StateRouter<TState>
 
     private void ApplyEvent(TState state, Any eventAny)
     {
-        foreach (var (suffix, applier) in _appliers)
+        // Extract the simple type name from the TypeUrl
+        // e.g., "type.googleapis.com/examples.CommunityCardsDealt" -> "CommunityCardsDealt"
+        var typeUrl = eventAny.TypeUrl;
+        var lastDot = typeUrl.LastIndexOf('.');
+        var typeName = lastDot >= 0 ? typeUrl.Substring(lastDot + 1) : typeUrl;
+
+        // Now match exactly by type name
+        if (_appliers.TryGetValue(typeName, out var applier))
         {
-            if (eventAny.TypeUrl.EndsWith(suffix))
-            {
-                applier.Apply(state, eventAny);
-                return;
-            }
+            applier.Apply(state, eventAny);
+            return;
         }
         // Unknown event type - silently ignore (forward compatibility)
     }

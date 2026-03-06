@@ -1,1 +1,1 @@
-../../features/unit/fact_flow.feature
+../../../client/features/fact_flow.feature

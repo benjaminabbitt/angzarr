@@ -96,9 +96,26 @@ public class PlayerSteps
             ResultEventAny = any;
             Events.Add(MakeEventPage(result, Events.Count));
         }
+        catch (System.Reflection.TargetInvocationException ex)
+        {
+            // Unwrap reflection exceptions
+            var inner = ex.InnerException;
+            if (inner is CommandRejectedError cre)
+                Error = cre;
+            else if (inner is InvalidArgumentError iae)
+                Error = new CommandRejectedError(iae.Message, "INVALID_ARGUMENT");
+            else if (inner != null)
+                Error = new CommandRejectedError(inner.Message, "UNKNOWN");
+            else
+                throw;
+        }
         catch (CommandRejectedError e)
         {
             Error = e;
+        }
+        catch (InvalidArgumentError e)
+        {
+            Error = new CommandRejectedError(e.Message, "INVALID_ARGUMENT");
         }
     }
 

@@ -107,9 +107,26 @@ public class TableSteps
             ResultEventAny = any;
             Events.Add(MakeEventPage(result, Events.Count));
         }
+        catch (System.Reflection.TargetInvocationException ex)
+        {
+            // Unwrap reflection exceptions
+            var inner = ex.InnerException;
+            if (inner is CommandRejectedError cre)
+                Error = cre;
+            else if (inner is InvalidArgumentError iae)
+                Error = new CommandRejectedError(iae.Message, "INVALID_ARGUMENT");
+            else if (inner != null)
+                Error = new CommandRejectedError(inner.Message, "UNKNOWN");
+            else
+                throw;
+        }
         catch (CommandRejectedError e)
         {
             Error = e;
+        }
+        catch (InvalidArgumentError e)
+        {
+            Error = new CommandRejectedError(e.Message, "INVALID_ARGUMENT");
         }
     }
 
@@ -301,6 +318,31 @@ public class TableSteps
         ExecuteCommand(cmd);
     }
 
+    [When(@"I handle an EndHand command with results:")]
+    public void WhenIHandleAnEndHandCommandWithResults(TechTalk.SpecFlow.Table table)
+    {
+        var handRoot = CurrentHandRoot ?? "current_hand";
+        var cmd = new EndHand { HandRoot = ByteString.CopyFromUtf8(handRoot) };
+        foreach (var row in table.Rows)
+        {
+            var playerId = row["player"];
+            var change = int.Parse(row["change"]);
+            // Only add winners (positive changes)
+            if (change > 0)
+            {
+                cmd.Results.Add(
+                    new PotResult
+                    {
+                        PotType = "main",
+                        WinnerRoot = ByteString.CopyFromUtf8(playerId),
+                        Amount = change,
+                    }
+                );
+            }
+        }
+        ExecuteCommand(cmd);
+    }
+
     [When(@"I rebuild the table state")]
     public void WhenIRebuildTheTableState()
     {
@@ -312,7 +354,9 @@ public class TableSteps
 
     // --- Then steps ---
 
-    [Then(@"the result is a (TableCreated|PlayerJoined|PlayerLeft|HandStarted|HandEnded) event")]
+    [Then(
+        @"the result is a (?:examples\.)?(TableCreated|PlayerJoined|PlayerLeft|HandStarted|HandEnded) event"
+    )]
     public void ThenTheResultIsATableEvent(string eventType)
     {
         Error.Should().BeNull($"Expected {eventType} event but got error: {Error?.Message}");
@@ -397,7 +441,7 @@ public class TableSteps
         evt.DealerPosition.Should().Be(position);
     }
 
-    [Then(@"player ""(.*)"" stack change is (\d+)")]
+    [Then(@"player ""(.*)"" stack change is (-?\d+)")]
     public void ThenPlayerStackChangeIs(string playerId, int amount)
     {
         var evt = ResultEventAny!.Unpack<HandEnded>();

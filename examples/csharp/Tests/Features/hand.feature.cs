@@ -130,7 +130,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCards command for TEXAS_HOLDEM with players:", ((string)(null)), table1, "When ");
 #line hidden
 #line 48
-    testRunner.Then("the result is a CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 49
     testRunner.And("each player has 2 hole cards", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -182,7 +182,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCards command for OMAHA with players:", ((string)(null)), table2, "When ");
 #line hidden
 #line 59
-    testRunner.Then("the result is a CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 60
     testRunner.And("each player has 4 hole cards", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -238,7 +238,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCards command for FIVE_CARD_DRAW with players:", ((string)(null)), table3, "When ");
 #line hidden
 #line 71
-    testRunner.Then("the result is a CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 72
     testRunner.And("each player has 5 hole cards", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -286,7 +286,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCards command with seed \"test-seed-123\" and players:", ((string)(null)), table4, "When ");
 #line hidden
 #line 81
-    testRunner.Then("the result is a CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 82
     testRunner.And("player \"player-1\" has specific hole cards for seed \"test-seed-123\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -405,7 +405,7 @@ namespace Tests.Features
     testRunner.When("I handle a PostBlind command for player \"player-1\" type \"small\" amount 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 110
-    testRunner.Then("the result is a BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 111
     testRunner.And("the blind event has blind_type \"small\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -450,7 +450,7 @@ namespace Tests.Features
     testRunner.When("I handle a PostBlind command for player \"player-2\" type \"big\" amount 10", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 120
-    testRunner.Then("the result is a BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 121
     testRunner.And("the blind event has blind_type \"big\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -501,7 +501,7 @@ namespace Tests.Features
     testRunner.When("I handle a PostBlind command for player \"player-1\" type \"small\" amount 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 131
-    testRunner.Then("the result is a BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.BlindPosted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 132
     testRunner.And("the blind event has amount 3", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -540,7 +540,7 @@ namespace Tests.Features
     testRunner.When("I handle a PlayerAction command for player \"player-1\" action FOLD", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 146
-    testRunner.Then("the result is an ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is an examples.ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 147
     testRunner.And("the action event has action \"FOLD\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -582,7 +582,7 @@ namespace Tests.Features
     testRunner.When("I handle a PlayerAction command for player \"player-1\" action CHECK", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 155
-    testRunner.Then("the result is an ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is an examples.ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 156
     testRunner.And("the action event has action \"CHECK\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -618,7 +618,7 @@ namespace Tests.Features
     testRunner.When("I handle a PlayerAction command for player \"player-1\" action CALL amount 5", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 162
-    testRunner.Then("the result is an ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is an examples.ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 163
     testRunner.And("the action event has action \"CALL\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -666,7 +666,7 @@ namespace Tests.Features
     testRunner.When("I handle a PlayerAction command for player \"player-1\" action BET amount 20", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 173
-    testRunner.Then("the result is an ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is an examples.ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 174
     testRunner.And("the action event has action \"BET\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -708,7 +708,7 @@ namespace Tests.Features
     testRunner.When("I handle a PlayerAction command for player \"player-1\" action RAISE amount 30", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 182
-    testRunner.Then("the result is an ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is an examples.ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 183
     testRunner.And("the action event has action \"RAISE\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -759,7 +759,7 @@ namespace Tests.Features
     testRunner.When("I handle a PlayerAction command for player \"player-1\" action ALL_IN amount 50", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 193
-    testRunner.Then("the result is an ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is an examples.ActionTaken event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 194
     testRunner.And("the action event has action \"ALL_IN\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -879,7 +879,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCommunityCards command with count 3", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 225
-    testRunner.Then("the result is a CommunityCardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CommunityCardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 226
     testRunner.And("the event has 3 cards dealt", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -924,7 +924,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCommunityCards command with count 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 235
-    testRunner.Then("the result is a CommunityCardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CommunityCardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 236
     testRunner.And("the event has 1 card dealt", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -969,7 +969,7 @@ namespace Tests.Features
     testRunner.When("I handle a DealCommunityCards command with count 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 245
-    testRunner.Then("the result is a CommunityCardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CommunityCardsDealt event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 246
     testRunner.And("the event has phase \"RIVER\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1051,7 +1051,7 @@ namespace Tests.Features
                         "", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 268
-    testRunner.Then("the result is a DrawCompleted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.DrawCompleted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 269
     testRunner.And("the draw event has cards_discarded 3", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1096,7 +1096,7 @@ namespace Tests.Features
     testRunner.When("I handle a RequestDraw command for player \"player-1\" discarding indices []", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 278
-    testRunner.Then("the result is a DrawCompleted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.DrawCompleted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 279
     testRunner.And("the draw event has cards_discarded 0", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1171,7 +1171,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 299
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 300
     testRunner.And("the reveal event has cards for player \"player-1\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1210,7 +1210,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck true", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 307
-    testRunner.Then("the result is a CardsMucked event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsMucked event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
             }
             this.ScenarioCleanup();
@@ -1246,7 +1246,7 @@ namespace Tests.Features
     testRunner.When("I handle an AwardPot command with winner \"player-1\" amount 15", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 320
-    testRunner.Then("the result is a PotAwarded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.PotAwarded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 321
     testRunner.And("the award event has winner \"player-1\" with amount 15", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1457,7 +1457,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 374
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 375
     testRunner.And("the revealed ranking is \"STRAIGHT\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1491,7 +1491,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 380
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 381
     testRunner.And("the revealed ranking is \"STRAIGHT\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1525,7 +1525,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 386
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 387
     testRunner.And("the revealed ranking is \"STRAIGHT_FLUSH\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1559,7 +1559,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 392
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 393
     testRunner.And("the revealed ranking is \"ROYAL_FLUSH\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1593,7 +1593,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 398
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 399
     testRunner.And("the revealed ranking is \"FOUR_OF_A_KIND\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1627,7 +1627,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 404
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 405
     testRunner.And("the revealed ranking is \"FULL_HOUSE\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1661,7 +1661,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 410
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 411
     testRunner.And("the revealed ranking is \"FLUSH\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1695,7 +1695,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 416
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 417
     testRunner.And("the revealed ranking is \"THREE_OF_A_KIND\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1729,7 +1729,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 422
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 423
     testRunner.And("the revealed ranking is \"TWO_PAIR\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1763,7 +1763,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 428
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 429
     testRunner.And("the revealed ranking is \"PAIR\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -1797,7 +1797,7 @@ namespace Tests.Features
     testRunner.When("I handle a RevealCards command for player \"player-1\" with muck false", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 434
-    testRunner.Then("the result is a CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.CardsRevealed event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 435
     testRunner.And("the revealed ranking is \"HIGH_CARD\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");

@@ -13,7 +13,11 @@ namespace Table.Agg;
 /// </summary>
 public class TableAggregate : CommandHandler<TableState>
 {
-    public const string Domain = "table";
+    public const string DomainName = "table";
+
+    public override string Domain => DomainName;
+
+    protected override TableState CreateEmptyState() => new TableState();
 
     protected override void ApplyEvent(TableState state, Any eventAny)
     {
@@ -22,7 +26,7 @@ public class TableAggregate : CommandHandler<TableState>
 
     // --- State accessors ---
 
-    public bool Exists => State.Exists;
+    public new bool Exists => State.Exists;
     public string TableId => State.TableId;
     public string TableName => State.TableName;
     public GameVariant GameVariant => State.GameVariant;

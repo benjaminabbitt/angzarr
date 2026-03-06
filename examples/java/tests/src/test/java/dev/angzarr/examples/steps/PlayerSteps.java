@@ -167,31 +167,31 @@ public class PlayerSteps {
 
   // --- Then steps ---
 
-  @Then("the result is a PlayerRegistered event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?PlayerRegistered event$")
   public void resultIsPlayerRegisteredEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(PlayerRegistered.class);
   }
 
-  @Then("the result is a FundsDeposited event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?FundsDeposited event$")
   public void resultIsFundsDepositedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(FundsDeposited.class);
   }
 
-  @Then("the result is a FundsWithdrawn event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?FundsWithdrawn event$")
   public void resultIsFundsWithdrawnEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(FundsWithdrawn.class);
   }
 
-  @Then("the result is a FundsReserved event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?FundsReserved event$")
   public void resultIsFundsReservedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(FundsReserved.class);
   }
 
-  @Then("the result is a FundsReleased event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?FundsReleased event$")
   public void resultIsFundsReleasedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(FundsReleased.class);

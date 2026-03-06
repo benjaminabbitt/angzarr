@@ -648,31 +648,31 @@ public class HandSteps {
 
   // --- Then steps ---
 
-  @Then("the result is a CardsDealt event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?CardsDealt event$")
   public void resultIsCardsDealtEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(CardsDealt.class);
   }
 
-  @Then("the result is a BlindPosted event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?BlindPosted event$")
   public void resultIsBlindPostedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(BlindPosted.class);
   }
 
-  @Then("the result is an ActionTaken event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?ActionTaken event$")
   public void resultIsActionTakenEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(ActionTaken.class);
   }
 
-  @Then("the result is a CommunityCardsDealt event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?CommunityCardsDealt event$")
   public void resultIsCommunityCardsDealtEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(CommunityCardsDealt.class);
   }
 
-  @Then("the result is a PotAwarded event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?PotAwarded event$")
   public void resultIsPotAwardedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(PotAwarded.class);
@@ -854,7 +854,7 @@ public class HandSteps {
     assertThat(hand.getCommunityCardCount()).isEqualTo(count);
   }
 
-  @Then("the result is a DrawCompleted event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?DrawCompleted event$")
   public void resultIsDrawCompletedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(DrawCompleted.class);
@@ -877,13 +877,13 @@ public class HandSteps {
     assertThat(hand.getPlayerHoleCardCount(playerId)).isEqualTo(count);
   }
 
-  @Then("the result is a CardsRevealed event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?CardsRevealed event$")
   public void resultIsCardsRevealedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(CardsRevealed.class);
   }
 
-  @Then("the result is a CardsMucked event")
+  @Then("^the result is a(?:n)? (?:examples\\.)?CardsMucked event$")
   public void resultIsCardsMuckedEvent() {
     assertThat(rejectedError).isNull();
     assertThat(resultEvent).isInstanceOf(CardsMucked.class);

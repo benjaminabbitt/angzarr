@@ -129,7 +129,7 @@ namespace Tests.Features
                         "", ((string)(null)), table14, "When ");
 #line hidden
 #line 42
-    testRunner.Then("the result is a TableCreated event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.TableCreated event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 43
     testRunner.And("the table event has table_name \"Main Table\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -184,7 +184,7 @@ namespace Tests.Features
                         "\":", ((string)(null)), table15, "When ");
 #line hidden
 #line 53
-    testRunner.Then("the result is a TableCreated event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.TableCreated event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 54
     testRunner.And("the table event has game_variant \"FIVE_CARD_DRAW\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -263,7 +263,7 @@ namespace Tests.Features
     testRunner.When("I handle a JoinTable command for player \"player-1\" at seat 3 with buy-in 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 74
-    testRunner.Then("the result is a PlayerJoined event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.PlayerJoined event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 75
     testRunner.And("the table event has seat_position 3", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -299,7 +299,7 @@ namespace Tests.Features
     testRunner.When("I handle a JoinTable command for player \"player-1\" at seat -1 with buy-in 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 81
-    testRunner.Then("the result is a PlayerJoined event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.PlayerJoined event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 82
     testRunner.And("the table event has seat_position 0", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -479,7 +479,7 @@ namespace Tests.Features
     testRunner.When("I handle a LeaveTable command for player \"player-1\"", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 123
-    testRunner.Then("the result is a PlayerLeft event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.PlayerLeft event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 124
     testRunner.And("the table event has chips_cashed_out 500", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -593,7 +593,7 @@ namespace Tests.Features
     testRunner.When("I handle a StartHand command", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 153
-    testRunner.Then("the result is a HandStarted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.HandStarted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 154
     testRunner.And("the table event has hand_number 1", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -641,7 +641,7 @@ namespace Tests.Features
     testRunner.When("I handle a StartHand command", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 164
-    testRunner.Then("the result is a HandStarted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.HandStarted event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 165
     testRunner.And("the table event has hand_number 2", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -764,7 +764,7 @@ namespace Tests.Features
     testRunner.When("I handle an EndHand command with winner \"player-1\" winning 50", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "When ");
 #line hidden
 #line 197
-    testRunner.Then("the result is a HandEnded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.HandEnded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 198
     testRunner.And("player \"player-1\" stack change is 50", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");
@@ -854,7 +854,7 @@ namespace Tests.Features
     testRunner.When("I handle an EndHand command with results:", ((string)(null)), table17, "When ");
 #line hidden
 #line 217
-    testRunner.Then("the result is a HandEnded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
+    testRunner.Then("the result is a examples.HandEnded event", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "Then ");
 #line hidden
 #line 218
     testRunner.And("player \"player-1\" stack change is 150", ((string)(null)), ((TechTalk.SpecFlow.Table)(null)), "And ");

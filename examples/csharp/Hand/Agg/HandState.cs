@@ -232,10 +232,51 @@ public class HandState
                 state.CurrentBet = 0;
             }
         )
+        .On<BettingRoundComplete>(
+            (state, evt) =>
+            {
+                // Reset for next round
+                foreach (var p in state.Players.Values)
+                {
+                    p.BetThisRound = 0;
+                    p.HasActed = false;
+                }
+                state.CurrentBet = 0;
+            }
+        )
         .On<ShowdownStarted>(
             (state, _) =>
             {
                 state.Status = "showdown";
+            }
+        )
+        .On<DrawCompleted>(
+            (state, evt) =>
+            {
+                // Update player's hole cards after draw
+                var player = state.GetPlayer(evt.PlayerRoot);
+                if (player != null && evt.NewCards.Count > 0)
+                {
+                    // Remove discarded cards and add new ones
+                    for (int i = 0; i < evt.CardsDrawn; i++)
+                    {
+                        if (i < player.HoleCards.Count && i < evt.NewCards.Count)
+                        {
+                            player.HoleCards[i] = (evt.NewCards[i].Suit, evt.NewCards[i].Rank);
+                        }
+                    }
+                }
+            }
+        )
+        .On<CardsRevealed>(
+            (state, evt) => {
+                // Revealing cards during showdown
+                // Could store revealed hands for display
+            }
+        )
+        .On<CardsMucked>(
+            (state, evt) => {
+                // Player mucked their cards
             }
         )
         .On<PotAwarded>(
