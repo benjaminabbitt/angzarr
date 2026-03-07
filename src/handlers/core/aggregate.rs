@@ -189,7 +189,7 @@ impl EventHandler for AggregateCommandHandler {
 /// The CommandBook is serialized as `google.protobuf.Any` with type_url
 /// `type.googleapis.com/angzarr.CommandBook`.
 pub fn wrap_command_for_bus(command: &CommandBook) -> EventBook {
-    use crate::proto::{event_page, event_page::Payload, EventPage};
+    use crate::proto::{event_page::Payload, page_header::SequenceType, EventPage, PageHeader};
     use prost_types::Any;
 
     let any = Any {
@@ -200,7 +200,9 @@ pub fn wrap_command_for_bus(command: &CommandBook) -> EventBook {
     EventBook {
         cover: command.cover.clone(),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(any)),
         }],

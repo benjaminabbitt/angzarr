@@ -16,7 +16,7 @@
 //! - Reason type classification for metrics
 
 use super::*;
-use crate::proto::{command_page, CommandPage, Uuid as ProtoUuid};
+use crate::proto::{command_page, page_header, CommandPage, PageHeader, Uuid as ProtoUuid};
 use uuid::Uuid;
 
 fn make_test_command(domain: &str, root: Uuid) -> CommandBook {
@@ -28,17 +28,17 @@ fn make_test_command(domain: &str, root: Uuid) -> CommandBook {
             }),
             correlation_id: "test-corr-123".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: "test.Command".to_string(),
                 value: vec![1, 2, 3],
             })),
             merge_strategy: MergeStrategy::MergeManual as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -130,7 +130,6 @@ fn test_from_event_processing_failure() {
             }),
             correlation_id: "test-corr".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

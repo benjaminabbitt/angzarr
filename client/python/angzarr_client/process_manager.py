@@ -138,15 +138,15 @@ class ProcessManager(Generic[StateT], ABC):
     """
 
     name: str
-    _dispatch_table: dict[
-        str, tuple[str, type, str, str]
-    ] = {}  # suffix -> (method, type, input_domain, output_domain)
+    _dispatch_table: dict[str, tuple[str, type, str, str]] = (
+        {}
+    )  # suffix -> (method, type, input_domain, output_domain)
     _prepare_table: dict[str, tuple[str, type]] = {}  # suffix -> (method, type)
     _input_domains: dict[str, list[str]] = {}  # domain -> [event types]
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
-    _applier_table: dict[
-        str, tuple[str, type]
-    ] = {}  # suffix -> (method_name, event_type)
+    _applier_table: dict[str, tuple[str, type]] = (
+        {}
+    )  # suffix -> (method_name, event_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

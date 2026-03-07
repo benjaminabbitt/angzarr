@@ -15,7 +15,7 @@ use crate::proto::{
 /// Contains the fact events to record and the aggregate's prior events.
 #[derive(Debug, Clone)]
 pub struct FactContext {
-    /// The fact events to record (with FactSequence markers).
+    /// The fact events to record (with ExternalDeferredSequence markers in PageHeader).
     pub facts: EventBook,
     /// Prior events for this aggregate root (for state reconstruction).
     pub prior_events: Option<EventBook>,
@@ -71,17 +71,17 @@ pub trait CommandHandler: Send + Sync + 'static {
 
     /// Handle fact events from external systems.
     ///
-    /// Called when fact events (with FactSequence markers) are injected into
+    /// Called when fact events (with ExternalDeferredSequence markers) are injected into
     /// the aggregate. Facts represent external realities that cannot be rejected.
     /// The aggregate should update its state to reflect these facts.
     ///
     /// The coordinator will:
-    /// 1. Check idempotency via `Cover.external_id`
+    /// 1. Check idempotency via `PageHeader.external_deferred.external_id`
     /// 2. Call this method to let aggregate update state
-    /// 3. Assign real sequence numbers (replacing FactSequence markers)
+    /// 3. Assign real sequence numbers (replacing ExternalDeferredSequence markers)
     /// 4. Persist and publish the events
     ///
-    /// Return events to persist. The events SHOULD have FactSequence markers
+    /// Return events to persist. The events SHOULD have ExternalDeferredSequence markers
     /// (same as input) - the coordinator will replace them with real sequences.
     ///
     /// Default: Returns the input facts unchanged (pass-through).
@@ -166,10 +166,10 @@ pub trait CommandHandler: Send + Sync + 'static {
     /// }
     /// ```
     fn handle_revocation(&self, notification: &Notification) -> BusinessResponse {
-        let issuer_name = extract_issuer_name(notification);
+        let source_domain = extract_source_domain(notification);
         BusinessResponse {
             result: Some(crate::proto::business_response::Result::Revocation(
-                build_command_handler_revocation_response(&issuer_name),
+                build_command_handler_revocation_response(&source_domain),
             )),
         }
     }
@@ -177,45 +177,34 @@ pub trait CommandHandler: Send + Sync + 'static {
 
 pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 
-/// Saga handler for cross-aggregate workflows using two-phase protocol.
+/// Saga handler for stateless cross-domain translation.
 ///
-/// Three possible outcomes for each event:
-/// 1. **Fetch destinations**: `prepare` returns covers → framework fetches state → calls `execute`
-/// 2. **No fetch needed**: `prepare` returns empty → framework calls `execute` directly
-/// 3. **No-op**: `execute` returns empty commands → saga doesn't act on this event
+/// Sagas are **pure translators**: they receive source events and produce commands
+/// for target domains. They do NOT receive destination state — the framework handles
+/// sequence stamping and delivery retries.
 ///
-/// # Two-Phase Protocol
+/// # Contract
 ///
-/// Phase 1 (`prepare`): Saga examines source events and declares what destination
-/// aggregate roots it needs. Return covers for aggregates whose state you need.
-/// Return empty vec if you don't need external state.
+/// - **Input**: Source EventBook (events from one domain)
+/// - **Output**: SagaResponse with commands (for target domains) and facts (for injection)
+/// - **Sequences**: Commands use `angzarr_deferred` (framework stamps explicit sequences on delivery)
+/// - **Stateless**: Each event is processed independently with no memory of previous events
 ///
-/// Phase 2 (`execute`): Saga receives source events plus any destination state
-/// it requested, and produces commands to execute.
-///
-/// # Example - Simple saga (no destination state needed)
+/// # Example
 ///
 /// ```ignore
 /// use angzarr::standalone::SagaHandler;
-/// use angzarr::proto::{Cover, EventBook, SagaResponse, CommandBook};
+/// use angzarr::proto::{EventBook, SagaResponse};
 ///
 /// struct FulfillmentSaga;
 ///
 /// #[async_trait::async_trait]
 /// impl SagaHandler for FulfillmentSaga {
-///     async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, tonic::Status> {
-///         // We don't need any destination state
-///         Ok(vec![])
-///     }
-///
-///     async fn handle(
-///         &self,
-///         source: &EventBook,
-///         _destinations: &[EventBook],
-///     ) -> Result<SagaResponse, tonic::Status> {
+///     async fn handle(&self, source: &EventBook) -> Result<SagaResponse, tonic::Status> {
 ///         let mut commands = Vec::new();
 ///         for page in &source.pages {
 ///             if is_order_placed(&page.event) {
+///                 // Command will have angzarr_deferred set by framework
 ///                 commands.push(create_shipment_command(&page.event));
 ///             }
 ///         }
@@ -224,60 +213,25 @@ pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 /// }
 /// ```
 ///
-/// # Example - Saga that needs destination state
+/// # Framework Responsibilities
 ///
-/// ```ignore
-/// struct ReservationSaga;
-///
-/// #[async_trait::async_trait]
-/// impl SagaHandler for ReservationSaga {
-///     async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, tonic::Status> {
-///         // We need the current inventory state for each product
-///         let mut covers = Vec::new();
-///         for page in &source.pages {
-///             if let Some(product_id) = extract_product_id(&page.event) {
-///                 covers.push(Cover {
-///                     domain: "inventory".to_string(),
-///                     root: Some(product_id),
-///                 });
-///             }
-///         }
-///         Ok(covers)
-///     }
-///
-///     async fn handle(
-///         &self,
-///         source: &EventBook,
-///         destinations: &[EventBook],
-///     ) -> Result<SagaResponse, tonic::Status> {
-///         // Use destination state to make decisions
-///         for dest in destinations {
-///             let stock = compute_available_stock(dest);
-///             // Generate commands based on current inventory
-///         }
-///         Ok(SagaResponse { commands, ..Default::default() })
-///     }
-/// }
-/// ```
+/// The framework handles:
+/// 1. **Sequence stamping**: Converts `angzarr_deferred` to explicit sequences on delivery
+/// 2. **Delivery retry**: Retries command delivery on sequence conflict (not saga re-execution)
+/// 3. **Idempotency**: Uses `angzarr_deferred` source info as idempotency key
+/// 4. **Provenance tracking**: Links commands back to source event for compensation routing
 #[async_trait]
 pub trait SagaHandler: Send + Sync + 'static {
-    /// Phase 1: Examine source events and declare destination aggregates needed.
+    /// Translate source events into commands for target domains.
     ///
-    /// Return covers for aggregates whose state you need before producing commands.
-    /// Return empty vec if you don't need any destination state.
-    async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status>;
-
-    /// Phase 2: Produce commands given source events and destination state.
-    ///
-    /// Called after framework fetches any destinations you declared in `prepare`.
-    /// If prepare returned empty, destinations will be empty slice.
+    /// Commands should have `cover` set to identify the target aggregate.
+    /// The framework will stamp `angzarr_deferred` with source info for:
+    /// - Provenance tracking (which event triggered this command)
+    /// - Compensation routing (where to send rejections)
+    /// - Idempotency (prevent duplicate processing on retry)
     ///
     /// Return empty commands vec if saga doesn't act on this event (no-op).
-    async fn handle(
-        &self,
-        source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status>;
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status>;
 }
 
 /// Configuration for a projector.
@@ -456,9 +410,9 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
         notification: &Notification,
         _process_state: Option<&EventBook>,
     ) -> (Option<EventBook>, RevocationResponse) {
-        let issuer_name = extract_issuer_name(notification);
+        let source_domain = extract_source_domain(notification);
         // Default: no PM events, delegate to framework
-        (None, build_pm_revocation_response(&issuer_name))
+        (None, build_pm_revocation_response(&source_domain))
     }
 }
 
@@ -491,11 +445,13 @@ impl ProcessManagerConfig {
 // Pure Helper Functions (testable without infrastructure)
 // ============================================================================
 
-/// Extract issuer name from a notification payload.
+/// Extract source domain from a notification payload.
 ///
-/// Returns the issuer_name field from RejectionNotification, or "unknown"
-/// if the notification payload cannot be decoded.
-pub(crate) fn extract_issuer_name(notification: &Notification) -> String {
+/// Returns the source domain from the rejected command's angzarr_deferred header,
+/// or "unknown" if the notification payload cannot be decoded.
+pub(crate) fn extract_source_domain(notification: &Notification) -> String {
+    use crate::proto::page_header::SequenceType;
+
     notification
         .payload
         .as_ref()
@@ -503,7 +459,14 @@ pub(crate) fn extract_issuer_name(notification: &Notification) -> String {
             use prost::Message;
             RejectionNotification::decode(p.value.as_slice()).ok()
         })
-        .map(|r| r.issuer_name)
+        .and_then(|r| r.rejected_command)
+        .and_then(|cmd| cmd.pages.first().cloned())
+        .and_then(|page| page.header)
+        .and_then(|h| h.sequence_type)
+        .and_then(|st| match st {
+            SequenceType::AngzarrDeferred(ad) => ad.source.map(|c| c.domain),
+            _ => None,
+        })
         .unwrap_or_else(|| "unknown".to_string())
 }
 

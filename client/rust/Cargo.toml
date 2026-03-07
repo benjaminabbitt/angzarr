@@ -27,6 +27,7 @@ uuid = { version = "1", features = ["v4", "v5"] }
 chrono = "0.4"
 hex = "0.4"
 thiserror = "2"
+backon = "1"
 
 # Serialization (for descriptor types)
 serde = { version = "1", features = ["derive"] }

@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use angzarr::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqConfig};
 use angzarr::proto::{
-    command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
-    Uuid as ProtoUuid,
+    command_page, event_page, page_header, CommandBook, CommandPage, Cover, EventBook, EventPage,
+    MergeStrategy, PageHeader, Uuid as ProtoUuid,
 };
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -71,17 +71,17 @@ impl DlqWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+                }),
                 payload: Some(command_page::Payload::Command(Any {
                     type_url: "type.test/TestCommand".to_string(),
                     value: vec![1, 2, 3],
                 })),
                 merge_strategy: MergeStrategy::MergeManual as i32,
             }],
-            saga_origin: None,
         }
     }
 
@@ -95,17 +95,17 @@ impl DlqWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence: 0,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: Some(command_page::Payload::Command(Any {
                     type_url: "type.test/TestCommand".to_string(),
                     value: vec![1, 2, 3],
                 })),
                 merge_strategy: MergeStrategy::MergeManual as i32,
             }],
-            saga_origin: None,
         }
     }
 
@@ -119,11 +119,12 @@ impl DlqWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: "type.test/TestEvent".to_string(),
@@ -170,7 +171,15 @@ async fn given_command_with_sequence(world: &mut DlqWorld, sequence: u32, domain
 #[when(expr = "the aggregate rejects it with actual sequence {int}")]
 async fn when_aggregate_rejects_with_actual(world: &mut DlqWorld, actual_sequence: u32) {
     let cmd = world.last_command.as_ref().expect("No command created");
-    let expected_sequence = cmd.pages.first().map(|p| p.sequence).unwrap_or(0);
+    let expected_sequence = cmd
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| match &h.sequence_type {
+            Some(page_header::SequenceType::Sequence(s)) => Some(*s),
+            _ => None,
+        })
+        .unwrap_or(0);
 
     let dead_letter = AngzarrDeadLetter::from_sequence_mismatch(
         cmd,

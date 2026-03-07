@@ -95,10 +95,11 @@ impl ProcessManagerHandler for StateTrackingPM {
                 root: pm_root,
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(next_seq)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(next_seq)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: "pm.Invoked".to_string(),

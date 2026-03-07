@@ -26,7 +26,6 @@ fn test_routing_key_generation() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

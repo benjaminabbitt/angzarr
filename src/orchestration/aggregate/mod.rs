@@ -50,8 +50,9 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::proto::{
-    command_handler_service_client::CommandHandlerServiceClient, BusinessResponse, CommandBook,
-    CommandResponse, ContextualCommand, EventBook, MergeStrategy, Projection, ReplayRequest,
+    command_handler_service_client::CommandHandlerServiceClient, page_header::SequenceType,
+    AngzarrDeferredSequence, BusinessResponse, CommandBook, CommandResponse, ContextualCommand,
+    EventBook, MergeStrategy, Projection, ReplayRequest,
 };
 use crate::proto_ext::{
     calculate_set_next_seq, CommandBookExt, CoverExt, EventBookExt, EventPageExt,
@@ -190,6 +191,23 @@ pub trait AggregateContext: Send + Sync {
     ) -> Result<(), Status> {
         Ok(())
     }
+
+    /// Check if a saga-produced command has already been processed.
+    ///
+    /// For commands with `angzarr_deferred` sequences, checks if events exist
+    /// with matching source info (edition, domain, root, sequence).
+    /// Returns `Some(events)` if already processed, None if new.
+    ///
+    /// Default implementation returns None (no idempotency checking).
+    async fn check_deferred_idempotency(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _deferred: &AngzarrDeferredSequence,
+    ) -> Result<Option<EventBook>, Status> {
+        Ok(None)
+    }
 }
 
 /// Context for fact event handling.
@@ -197,7 +215,7 @@ pub trait AggregateContext: Send + Sync {
 /// Contains the fact events to record and the aggregate's prior events.
 #[derive(Debug, Clone)]
 pub struct FactContext {
-    /// The fact events to record (with FactSequence markers).
+    /// The fact events to record (with ExternalDeferredSequence markers in PageHeader).
     pub facts: EventBook,
     /// Prior events for this aggregate root (for state reconstruction).
     pub prior_events: Option<EventBook>,
@@ -214,7 +232,7 @@ pub trait ClientLogic: Send + Sync {
 
     /// Invoke client logic to handle fact events.
     ///
-    /// Called when fact events (with FactSequence markers) are injected.
+    /// Called when fact events (with ExternalDeferredSequence markers) are injected.
     /// The aggregate updates its state based on the facts and returns
     /// events to persist. The coordinator will assign real sequence numbers.
     ///
@@ -316,8 +334,80 @@ pub fn parse_command_cover(command: &CommandBook) -> Result<(String, Uuid), Stat
 }
 
 /// Extract expected sequence from the first command page.
+///
+/// Handles both explicit sequences and deferred sequences:
+/// - Explicit sequence: returns the sequence number
+/// - Deferred sequences: returns 0 (framework will stamp on receipt)
 pub fn extract_command_sequence(command: &CommandBook) -> u32 {
-    command.pages.first().map(|p| p.sequence).unwrap_or(0)
+    use crate::proto::page_header::SequenceType;
+    command
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+        .map(|st| match st {
+            SequenceType::Sequence(seq) => *seq,
+            // Deferred sequences don't have a fixed sequence yet
+            SequenceType::ExternalDeferred(_) | SequenceType::AngzarrDeferred(_) => 0,
+        })
+        .unwrap_or(0)
+}
+
+/// Check if command has a deferred sequence (saga-produced or external).
+///
+/// Commands with deferred sequences need special handling:
+/// - Framework stamps actual sequence before execution
+/// - Idempotency checking may be required
+fn has_deferred_sequence(command: &CommandBook) -> bool {
+    command
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+        .map(|st| {
+            matches!(
+                st,
+                SequenceType::AngzarrDeferred(_) | SequenceType::ExternalDeferred(_)
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// Extract AngzarrDeferredSequence from command if present.
+///
+/// Used for idempotency checking - the source info uniquely identifies
+/// the saga invocation that produced this command.
+fn extract_angzarr_deferred(command: &CommandBook) -> Option<&AngzarrDeferredSequence> {
+    command
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+        .and_then(|st| match st {
+            SequenceType::AngzarrDeferred(ad) => Some(ad),
+            _ => None,
+        })
+}
+
+/// Stamp actual sequence onto all command pages with deferred sequences.
+///
+/// Converts deferred sequences to explicit sequences while preserving
+/// the provenance information in the header.
+fn stamp_deferred_sequences(command: &mut CommandBook, actual_sequence: u32) {
+    for (i, page) in command.pages.iter_mut().enumerate() {
+        if let Some(header) = &mut page.header {
+            if let Some(st) = &header.sequence_type {
+                if matches!(
+                    st,
+                    SequenceType::AngzarrDeferred(_) | SequenceType::ExternalDeferred(_)
+                ) {
+                    // Stamp the actual sequence while preserving deferred info
+                    // The sequence becomes actual_sequence + page_index
+                    header.sequence_type = Some(SequenceType::Sequence(actual_sequence + i as u32));
+                }
+            }
+        }
+    }
 }
 
 /// Default edition name for the canonical (main) timeline.
@@ -335,41 +425,41 @@ fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
     Ok(edition)
 }
 
-/// Result of attempting a commutative merge.
+/// Result of commutative merge check.
 #[derive(Debug)]
 enum CommutativeMergeResult {
-    /// Fields changed by intervening events don't overlap with command's fields.
+    /// Fields changed by intervening events don't overlap with command's changes.
     Disjoint,
     /// Fields overlap - command must retry with fresh state.
     Overlap,
 }
 
-/// Attempt commutative merge by comparing state fields.
+/// Check for field overlap after command execution (post-execution commutative merge).
 ///
-/// # Why Commutative Merge Exists
+/// # Why Post-Execution Check
 ///
 /// Strict sequence validation rejects commands whenever `expected != actual`, even
 /// when the intervening events touched completely different fields. This is safe
 /// but wasteful — many concurrent writes are actually non-conflicting.
 ///
 /// Commutative merge detects when changes are **disjoint**: if events from
-/// `expected` to `actual` only touched `field_a`, and our command only changes
-/// `field_b`, there's no conflict. We can proceed without retry.
+/// `expected` to `actual` only touched `field_a`, and our command only changed
+/// `field_b`, there's no conflict. We can persist without retry.
 ///
 /// # Algorithm
 ///
 /// 1. Replay aggregate state at `expected` sequence (what command assumed)
 /// 2. Replay aggregate state at `actual` sequence (current reality)
-/// 3. Diff these states to find which fields changed between them
-/// 4. Extract which fields our command would modify
-/// 5. If disjoint → proceed; if overlap → retry
+/// 3. Replay aggregate state after applying command's events
+/// 4. Diff (expected, actual) → fields changed by intervening events
+/// 5. Diff (actual, after_command) → fields changed by this command
+/// 6. If disjoint → persist; if overlap → reject and retry
 ///
-/// # Why Compare at Expected vs Actual (Not Actual vs Current)
+/// # Why Check Post-Execution
 ///
-/// We compare states at `expected` and `actual` because we want to know what
-/// changed SINCE the command was prepared. The command was built assuming state
-/// at `expected`. If fields changed between `expected` and `actual` don't overlap
-/// with what the command modifies, the command's assumptions are still valid.
+/// We check AFTER command execution because we can observe what fields the command
+/// actually changed, rather than trying to predict from command metadata. This is
+/// more accurate and requires no annotations or naming conventions.
 ///
 /// # Graceful Degradation
 ///
@@ -378,105 +468,71 @@ enum CommutativeMergeResult {
 /// incorrect merges.
 ///
 /// Returns:
-/// - `Ok(Disjoint)` if changes don't overlap → command can proceed
-/// - `Ok(Overlap)` if changes overlap → command must retry
+/// - `Ok(Disjoint)` if changes don't overlap → safe to persist
+/// - `Ok(Overlap)` if changes overlap → must retry
 /// - `Err(_)` if Replay unavailable → degrade to STRICT behavior
-async fn try_commutative_merge(
+async fn check_commutative_overlap(
     business: &dyn ClientLogic,
     prior_events: &EventBook,
-    command: &CommandBook,
+    received_events: &EventBook,
     expected: u32,
-    _actual: u32,
 ) -> Result<CommutativeMergeResult, Status> {
     // Build EventBook with events up to `expected` sequence
     let events_at_expected = build_events_up_to_sequence(prior_events, expected);
 
-    // Get state at expected sequence
+    // Get state at expected sequence (what command assumed)
     let state_at_expected = business.replay(&events_at_expected).await?;
 
-    // Get state at actual sequence (use all prior_events)
+    // Get state at actual sequence (current reality before command)
     let state_at_actual = business.replay(prior_events).await?;
+
+    // Build combined events: prior + command's new events
+    let events_after_command = build_combined_events(prior_events, received_events);
+
+    // Get state after applying command's events
+    let state_after_command = business.replay(&events_after_command).await?;
 
     // Diff states to find fields changed by intervening events
     let intervening_changed = diff_state_fields(&state_at_expected, &state_at_actual);
 
-    // Determine what field(s) the command would change
-    let command_fields = extract_command_fields(command);
+    // Diff states to find fields changed by command
+    let command_changed = diff_state_fields(&state_at_actual, &state_after_command);
 
     // Check if intervening changes and command changes are disjoint
-    // Use field-level granularity: "field_a" vs "field_a" = overlap
-    // Wildcard "*" means all fields → always overlaps
-    let has_overlap = if intervening_changed.contains("*") || command_fields.contains("*") {
+    // Wildcard "*" means all fields → always overlaps (type change, decode failure, etc.)
+    let has_overlap = if intervening_changed.contains("*") || command_changed.contains("*") {
         true
     } else {
-        !intervening_changed.is_disjoint(&command_fields)
+        !intervening_changed.is_disjoint(&command_changed)
     };
 
     if has_overlap {
         tracing::debug!(
             intervening_fields = ?intervening_changed,
-            command_fields = ?command_fields,
+            command_fields = ?command_changed,
             "COMMUTATIVE: field overlap detected"
         );
         Ok(CommutativeMergeResult::Overlap)
     } else {
         tracing::debug!(
             intervening_fields = ?intervening_changed,
-            command_fields = ?command_fields,
+            command_fields = ?command_changed,
             "COMMUTATIVE: fields are disjoint"
         );
         Ok(CommutativeMergeResult::Disjoint)
     }
 }
 
-/// Extract field names that a command would modify.
-///
-/// # Why Wildcard "*" for Unknown Commands
-///
-/// When we can't determine which fields a command modifies, we return "*" (all fields).
-/// This is conservative: if we don't know what the command changes, we must assume
-/// it could conflict with anything. Better to trigger a retry than to allow a
-/// potentially conflicting merge.
-///
-/// # Current Implementation
-///
-/// For test commands with type_url like "test.UpdateFieldA", extracts "field_a".
-/// For real applications, this should either:
-/// 1. Use proto reflection to inspect command field semantics
-/// 2. Have aggregates declare which fields each command type modifies
-/// 3. Use naming conventions that encode field information
-///
-/// The wildcard fallback ensures correctness while field extraction is refined.
-fn extract_command_fields(command: &CommandBook) -> std::collections::HashSet<String> {
-    use std::collections::HashSet;
+/// Build combined EventBook: prior events + new events from command response.
+fn build_combined_events(prior_events: &EventBook, received_events: &EventBook) -> EventBook {
+    let mut combined_pages = prior_events.pages.clone();
+    combined_pages.extend(received_events.pages.iter().cloned());
 
-    let mut fields = HashSet::new();
-
-    for page in &command.pages {
-        if let Some(crate::proto::command_page::Payload::Command(cmd)) = &page.payload {
-            // Check for test command patterns
-            if cmd.type_url.contains("UpdateFieldA") || cmd.type_url.contains("FieldAUpdated") {
-                fields.insert("field_a".to_string());
-            } else if cmd.type_url.contains("UpdateFieldB")
-                || cmd.type_url.contains("FieldBUpdated")
-            {
-                fields.insert("field_b".to_string());
-            } else if cmd.type_url.contains("UpdateBoth") {
-                fields.insert("field_a".to_string());
-                fields.insert("field_b".to_string());
-            } else {
-                // Unknown command type - assume it might touch any field
-                // This is conservative: better to retry than to corrupt state
-                fields.insert("*".to_string());
-            }
-        }
-    }
-
-    if fields.is_empty() {
-        // No command pages - treat as no fields modified
-        fields
-    } else {
-        fields
+    EventBook {
+        cover: prior_events.cover.clone(),
+        pages: combined_pages,
+        snapshot: received_events.snapshot.clone(), // Use new snapshot if provided
+        next_sequence: received_events.next_sequence,
     }
 }
 
@@ -697,7 +753,7 @@ pub async fn execute_command_with_retry(
 async fn execute_mode(
     ctx: &dyn AggregateContext,
     business: &dyn ClientLogic,
-    command_book: CommandBook,
+    mut command_book: CommandBook,
 ) -> Result<CommandResponse, Status> {
     let (domain, root_uuid) = parse_command_cover(&command_book)?;
     let edition = extract_edition(&command_book)?;
@@ -710,11 +766,33 @@ async fn execute_mode(
     span.record("root_uuid", tracing::field::display(&root_uuid));
     span.record("merge_strategy", tracing::field::debug(&merge_strategy));
 
+    // Check for deferred sequences (saga-produced commands)
+    let is_deferred = has_deferred_sequence(&command_book);
+
+    // For angzarr_deferred, check idempotency first
+    if let Some(deferred) = extract_angzarr_deferred(&command_book) {
+        if let Some(existing_events) = ctx
+            .check_deferred_idempotency(&domain, &edition, root_uuid, deferred)
+            .await?
+        {
+            tracing::debug!(
+                source_domain = deferred.source.as_ref().map(|c| c.domain.as_str()),
+                source_seq = deferred.source_seq,
+                "Deferred command already processed, returning cached result"
+            );
+            return Ok(CommandResponse {
+                events: Some(existing_events),
+                ..Default::default()
+            });
+        }
+    }
+
     let expected = extract_command_sequence(&command_book);
 
     // For AGGREGATE_HANDLES, skip all coordinator-level sequence validation.
     // The aggregate is responsible for its own concurrency control.
-    if merge_strategy != MergeStrategy::MergeAggregateHandles {
+    // For deferred sequences, we also skip pre-validation (we'll stamp after loading).
+    if merge_strategy != MergeStrategy::MergeAggregateHandles && !is_deferred {
         // Pre-validate sequence (gRPC fast-path, no-op for local)
         ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
             .await?;
@@ -728,9 +806,26 @@ async fn execute_mode(
     // Transform events (upcasting)
     let prior_events = ctx.transform_events(&domain, prior_events).await?;
 
-    // Sequence validation based on merge strategy
+    // Get actual sequence
     let actual = prior_events.next_sequence();
-    if expected != actual {
+
+    // For deferred sequences, stamp actual sequence onto command pages
+    if is_deferred {
+        stamp_deferred_sequences(&mut command_book, actual);
+        tracing::debug!(
+            actual,
+            "Stamped deferred sequence with actual sequence number"
+        );
+    }
+
+    // Sequence validation based on merge strategy (skip for deferred)
+    let sequence_mismatch = !is_deferred && expected != actual;
+
+    // Track if we need post-execution commutative check
+    let needs_commutative_check =
+        sequence_mismatch && merge_strategy == MergeStrategy::MergeCommutative;
+
+    if sequence_mismatch {
         match merge_strategy {
             MergeStrategy::MergeStrict => {
                 // STRICT: Return FAILED_PRECONDITION (retryable) for update-and-retry flow.
@@ -741,48 +836,13 @@ async fn execute_mode(
                 )));
             }
             MergeStrategy::MergeCommutative => {
-                // COMMUTATIVE: Attempt field-level merge detection.
-                // If Replay RPC is available, compare states to detect field overlap.
-                // If fields are disjoint → proceed, else → retry.
-                match try_commutative_merge(
-                    business,
-                    &prior_events,
-                    &command_book,
+                // COMMUTATIVE: Proceed to execution, check field overlap afterward.
+                // We'll verify after command execution whether the changes are disjoint.
+                tracing::debug!(
                     expected,
                     actual,
-                )
-                .await
-                {
-                    Ok(CommutativeMergeResult::Disjoint) => {
-                        // Fields don't overlap - proceed with command
-                        tracing::debug!(
-                            expected,
-                            actual,
-                            "COMMUTATIVE: disjoint fields detected, allowing stale sequence"
-                        );
-                        // Continue to command execution below
-                    }
-                    Ok(CommutativeMergeResult::Overlap) => {
-                        // Fields overlap - need retry
-                        return Err(Status::failed_precondition(format!(
-                            "{}{expected}, aggregate at {actual}",
-                            crate::orchestration::errmsg::SEQUENCE_MISMATCH_OVERLAP
-                        )));
-                    }
-                    Err(e) => {
-                        // Replay unavailable or error - degrade to STRICT behavior
-                        tracing::debug!(
-                            expected,
-                            actual,
-                            error = %e,
-                            "COMMUTATIVE: degrading to STRICT due to Replay failure"
-                        );
-                        return Err(Status::failed_precondition(format!(
-                            "{}{expected}, aggregate at {actual}",
-                            crate::orchestration::errmsg::SEQUENCE_MISMATCH
-                        )));
-                    }
-                }
+                    "COMMUTATIVE: sequence mismatch, will check field overlap post-execution"
+                );
             }
             MergeStrategy::MergeManual => {
                 // MANUAL: Send to DLQ for human review, return ABORTED (non-retryable).
@@ -811,6 +871,39 @@ async fn execute_mode(
         e
     })?;
     let received_events = extract_events_from_response(response, correlation_id.to_string())?;
+
+    // Post-execution commutative check: verify field overlap after we know what changed
+    if needs_commutative_check {
+        match check_commutative_overlap(business, &prior_events, &received_events, expected).await {
+            Ok(CommutativeMergeResult::Disjoint) => {
+                tracing::debug!(
+                    expected,
+                    actual,
+                    "COMMUTATIVE: disjoint fields confirmed, proceeding to persist"
+                );
+            }
+            Ok(CommutativeMergeResult::Overlap) => {
+                // Fields overlap - discard result and retry
+                return Err(Status::failed_precondition(format!(
+                    "{}{expected}, aggregate at {actual}",
+                    crate::orchestration::errmsg::SEQUENCE_MISMATCH_OVERLAP
+                )));
+            }
+            Err(e) => {
+                // Replay unavailable or error - degrade to STRICT behavior
+                tracing::debug!(
+                    expected,
+                    actual,
+                    error = %e,
+                    "COMMUTATIVE: degrading to STRICT due to Replay failure"
+                );
+                return Err(Status::failed_precondition(format!(
+                    "{}{expected}, aggregate at {actual}",
+                    crate::orchestration::errmsg::SEQUENCE_MISMATCH
+                )));
+            }
+        }
+    }
 
     // Persist (compares prior with received to detect new events/snapshot)
     let mut persisted = ctx
@@ -917,18 +1010,17 @@ fn extract_event_edition(event_book: &EventBook) -> Result<String, Status> {
 ///
 /// Fact events are external realities that cannot be rejected. The pipeline:
 /// 1. Validates Cover and extracts identifiers
-/// 2. Checks idempotency via `Cover.external_id`
+/// 2. Checks idempotency via `PageHeader.external_deferred.external_id`
 /// 3. Loads prior events for aggregate state
 /// 4. Optionally routes to aggregate for state update
-/// 5. Assigns real sequence numbers (replacing FactSequence markers)
+/// 5. Assigns real sequence numbers (replacing ExternalDeferredSequence markers)
 /// 6. Persists and publishes events
 ///
 /// # Arguments
 ///
 /// * `ctx` - Aggregate context for storage access
 /// * `business` - Optional client logic for state update (None = direct persist)
-/// * `fact_events` - EventBook containing fact events with FactSequence markers
-/// * `idempotency_store` - Store for checking/recording external_ids
+/// * `fact_events` - EventBook containing fact events with ExternalDeferredSequence markers
 ///
 /// # Returns
 ///
@@ -943,15 +1035,21 @@ pub async fn execute_fact_pipeline(
     business: Option<&dyn ClientLogic>,
     fact_events: EventBook,
 ) -> Result<FactResponse, Status> {
-    use crate::proto::event_page;
+    use crate::proto::page_header::SequenceType;
 
     let (domain, root_uuid) = parse_event_cover(&fact_events)?;
     let edition = extract_event_edition(&fact_events)?;
     let correlation_id = fact_events.correlation_id().to_string();
+
+    // Extract external_id from first page's header if it has external_deferred
     let external_id = fact_events
-        .cover
-        .as_ref()
-        .map(|c| c.external_id.clone())
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| match &h.sequence_type {
+            Some(SequenceType::ExternalDeferred(ext)) => Some(ext.external_id.clone()),
+            _ => None,
+        })
         .unwrap_or_default();
 
     let span = tracing::Span::current();
@@ -984,7 +1082,9 @@ pub async fn execute_fact_pipeline(
                 .pages
                 .into_iter()
                 .filter(|p| {
-                    if let Some(event_page::SequenceType::Sequence(seq)) = &p.sequence_type {
+                    if let Some(SequenceType::Sequence(seq)) =
+                        p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
+                    {
                         *seq >= first_seq && *seq <= last_seq
                     } else {
                         false
@@ -1000,11 +1100,13 @@ pub async fn execute_fact_pipeline(
         }
     }
 
-    // Validate that at least one page has FactSequence
-    let has_fact_marker = fact_events
-        .pages
-        .iter()
-        .any(|p| matches!(&p.sequence_type, Some(event_page::SequenceType::Fact(_))));
+    // Validate that at least one page has ExternalDeferred (fact marker)
+    let has_fact_marker = fact_events.pages.iter().any(|p| {
+        matches!(
+            p.header.as_ref().and_then(|h| h.sequence_type.as_ref()),
+            Some(SequenceType::ExternalDeferred(_))
+        )
+    });
     if !has_fact_marker {
         return Err(Status::invalid_argument(
             crate::orchestration::errmsg::FACT_EVENTS_MISSING_MARKER,
@@ -1033,13 +1135,22 @@ pub async fn execute_fact_pipeline(
         fact_events.clone()
     };
 
-    // Assign real sequence numbers, replacing FactSequence markers
+    // Assign real sequence numbers, replacing ExternalDeferredSequence markers.
+    // Timestamps default to "now" if not provided by the external source.
+    //
+    // NOTE: External facts from historical systems (replays, migrations) should provide
+    // their original timestamps. If `created_at` is missing, we default to current time
+    // which may misrepresent when the fact actually occurred. Temporal queries against
+    // such facts would return incorrect results. Callers injecting historical facts
+    // should always include the original timestamp.
     let mut final_pages = Vec::with_capacity(processed_events.pages.len());
     let mut current_seq = next_seq;
 
     for page in processed_events.pages {
         let new_page = crate::proto::EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(current_seq)),
+            header: Some(crate::proto::PageHeader {
+                sequence_type: Some(SequenceType::Sequence(current_seq)),
+            }),
             created_at: page
                 .created_at
                 .or_else(|| Some(prost_types::Timestamp::from(std::time::SystemTime::now()))),
@@ -1077,7 +1188,9 @@ pub async fn execute_fact_pipeline(
             .pages
             .first()
             .and_then(|p| {
-                if let Some(event_page::SequenceType::Sequence(s)) = &p.sequence_type {
+                if let Some(SequenceType::Sequence(s)) =
+                    p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
+                {
                     Some(*s)
                 } else {
                     None
@@ -1088,7 +1201,9 @@ pub async fn execute_fact_pipeline(
             .pages
             .last()
             .and_then(|p| {
-                if let Some(event_page::SequenceType::Sequence(s)) = &p.sequence_type {
+                if let Some(SequenceType::Sequence(s)) =
+                    p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
+                {
                     Some(*s)
                 } else {
                     None

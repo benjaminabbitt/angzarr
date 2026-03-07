@@ -13,8 +13,8 @@ use crate::proto::{
     projector_service_server::ProjectorService, saga_service_server::SagaService,
     upcaster_service_server::UpcasterService, BusinessResponse, ContextualCommand, EventBook,
     ProcessManagerHandleRequest, ProcessManagerHandleResponse, ProcessManagerPrepareRequest,
-    ProcessManagerPrepareResponse, Projection, ReplayRequest, ReplayResponse, SagaExecuteRequest,
-    SagaPrepareRequest, SagaPrepareResponse, SagaResponse, UpcastRequest, UpcastResponse,
+    ProcessManagerPrepareResponse, Projection, ReplayRequest, ReplayResponse, SagaHandleRequest,
+    SagaResponse, UpcastRequest, UpcastResponse,
 };
 use crate::router::{
     CloudEventsRouter, CommandHandlerDomainHandler, CommandHandlerRouter, ProcessManagerRouter,
@@ -137,18 +137,9 @@ impl<H: SagaDomainHandler + 'static> SagaHandler<H> {
 
 #[tonic::async_trait]
 impl<H: SagaDomainHandler + 'static> SagaService for SagaHandler<H> {
-    async fn prepare(
+    async fn handle(
         &self,
-        request: Request<SagaPrepareRequest>,
-    ) -> Result<Response<SagaPrepareResponse>, Status> {
-        let req = request.into_inner();
-        let destinations = self.router.prepare_destinations(&req.source);
-        Ok(Response::new(SagaPrepareResponse { destinations }))
-    }
-
-    async fn execute(
-        &self,
-        request: Request<SagaExecuteRequest>,
+        request: Request<SagaHandleRequest>,
     ) -> Result<Response<SagaResponse>, Status> {
         let req = request.into_inner();
         let source = req
@@ -156,7 +147,7 @@ impl<H: SagaDomainHandler + 'static> SagaService for SagaHandler<H> {
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Missing source event book"))?;
 
-        let response = self.router.dispatch(source, &req.destinations)?;
+        let response = self.router.dispatch(source)?;
         Ok(Response::new(response))
     }
 }

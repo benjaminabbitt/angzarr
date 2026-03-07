@@ -1,6 +1,7 @@
 //! Cucumber step definitions for interface tests.
 
 pub mod aggregate_handler;
+pub mod aggregate_orchestration;
 pub mod dlq;
 pub mod dlq_publishers;
 pub mod editions;

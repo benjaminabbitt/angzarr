@@ -9,8 +9,7 @@
 //! with default implementations tested via integration tests.
 
 use super::traits::*;
-use crate::proto::{CommandBook, EventBook, Notification, RejectionNotification};
-use prost::Message;
+use crate::proto::{CommandBook, EventBook};
 
 // ============================================================================
 // ProjectorConfig Tests
@@ -167,53 +166,10 @@ fn test_pm_handle_result_debug() {
 }
 
 // ============================================================================
-// extract_issuer_name Tests
+// RejectionNotification Tests
 // ============================================================================
-
-#[test]
-fn test_extract_issuer_name_with_valid_notification() {
-    let rejection = RejectionNotification {
-        issuer_name: "orders".to_string(),
-        rejection_reason: "insufficient stock".to_string(),
-        ..Default::default()
-    };
-
-    let notification = Notification {
-        payload: Some(prost_types::Any {
-            type_url: "angzarr.RejectionNotification".to_string(),
-            value: rejection.encode_to_vec(),
-        }),
-        ..Default::default()
-    };
-
-    let issuer = extract_issuer_name(&notification);
-    assert_eq!(issuer, "orders");
-}
-
-#[test]
-fn test_extract_issuer_name_with_no_payload() {
-    let notification = Notification {
-        payload: None,
-        ..Default::default()
-    };
-
-    let issuer = extract_issuer_name(&notification);
-    assert_eq!(issuer, "unknown");
-}
-
-#[test]
-fn test_extract_issuer_name_with_invalid_payload() {
-    let notification = Notification {
-        payload: Some(prost_types::Any {
-            type_url: "some.OtherType".to_string(),
-            value: vec![0xFF, 0xFF, 0xFF], // Invalid protobuf
-        }),
-        ..Default::default()
-    };
-
-    let issuer = extract_issuer_name(&notification);
-    assert_eq!(issuer, "unknown");
-}
+// Note: issuer_name was removed from RejectionNotification.
+// Source info is now in rejected_command.pages[].header.angzarr_deferred.
 
 // ============================================================================
 // build_command_handler_revocation_response Tests

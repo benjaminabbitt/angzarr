@@ -30,7 +30,6 @@ fn make_event_book() -> EventBook {
             root: Some(ProtoUuid { value: vec![1; 16] }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

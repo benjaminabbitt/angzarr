@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use angzarr::dlq::{AngzarrDeadLetter, DeadLetterPublisher};
 use angzarr::proto::{
-    command_page, CommandBook, CommandPage, Cover, EventBook, MergeStrategy, Uuid as ProtoUuid,
+    command_page, page_header, CommandBook, CommandPage, Cover, EventBook, MergeStrategy,
+    PageHeader, Uuid as ProtoUuid,
 };
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -69,17 +70,17 @@ impl DlqPublisherWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+                }),
                 payload: Some(command_page::Payload::Command(Any {
                     type_url: "type.test/TestCommand".to_string(),
                     value: vec![1, 2, 3],
                 })),
                 merge_strategy: MergeStrategy::MergeManual as i32,
             }],
-            saga_origin: None,
         }
     }
 
@@ -93,17 +94,17 @@ impl DlqPublisherWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence: 0,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: Some(command_page::Payload::Command(Any {
                     type_url: "type.test/TestCommand".to_string(),
                     value: vec![1, 2, 3],
                 })),
                 merge_strategy: MergeStrategy::MergeManual as i32,
             }],
-            saga_origin: None,
         }
     }
 
@@ -117,7 +118,6 @@ impl DlqPublisherWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![],

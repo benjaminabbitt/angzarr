@@ -63,3 +63,60 @@ deploy:
           applications.business[2].image.tag: latest
           applications.business[2].domain: hand
           applications.business[2].port: 50303
+
+profiles:
+  # Debug profile - debugpy enabled for remote debugging
+  - name: debug
+    build:
+      local:
+        push: false
+      artifacts:
+        - image: ghcr.io/angzarr-io/poker-python-player
+          context: ../..
+          docker:
+            dockerfile: examples/python/Containerfile
+            target: agg-player-debug
+
+        - image: ghcr.io/angzarr-io/poker-python-table
+          context: ../..
+          docker:
+            dockerfile: examples/python/Containerfile
+            target: agg-table-debug
+
+        - image: ghcr.io/angzarr-io/poker-python-hand
+          context: ../..
+          docker:
+            dockerfile: examples/python/Containerfile
+            target: agg-hand-debug
+    deploy:
+      helm:
+        releases:
+          - name: poker-python
+            chartPath: ../../deploy/k8s/helm/angzarr
+            namespace: angzarr
+            createNamespace: true
+            valuesFiles:
+              - values.yaml
+              - values-debug.yaml
+            setValues:
+              # Player aggregate with debug port
+              applications.business[0].name: poker-player
+              applications.business[0].image.repository: ghcr.io/angzarr-io/poker-python-player
+              applications.business[0].image.tag: latest
+              applications.business[0].domain: player
+              applications.business[0].port: 50301
+              applications.business[0].debugPort: 56780
+              # Table aggregate with debug port
+              applications.business[1].name: poker-table
+              applications.business[1].image.repository: ghcr.io/angzarr-io/poker-python-table
+              applications.business[1].image.tag: latest
+              applications.business[1].domain: table
+              applications.business[1].port: 50302
+              applications.business[1].debugPort: 56781
+              # Hand aggregate with debug port
+              applications.business[2].name: poker-hand
+              applications.business[2].image.repository: ghcr.io/angzarr-io/poker-python-hand
+              applications.business[2].image.tag: latest
+              applications.business[2].domain: hand
+              applications.business[2].port: 50303
+              applications.business[2].debugPort: 56782

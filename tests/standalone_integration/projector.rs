@@ -461,15 +461,7 @@ async fn test_projector_and_saga_both_receive_events() {
 
     #[async_trait]
     impl SagaHandler for RecordingSaga {
-        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-            Ok(vec![]) // No destination state needed
-        }
-
-        async fn handle(
-            &self,
-            source: &EventBook,
-            _destinations: &[EventBook],
-        ) -> Result<SagaResponse, Status> {
+        async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
             if let Some(cover) = &source.cover {
                 if let Some(proto_uuid) = &cover.root {
                     let root = Uuid::from_slice(&proto_uuid.value).unwrap_or_default();
@@ -489,16 +481,8 @@ async fn test_projector_and_saga_both_receive_events() {
 
     #[async_trait]
     impl SagaHandler for SagaWrapper {
-        async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
-            self.0.prepare(source).await
-        }
-
-        async fn handle(
-            &self,
-            source: &EventBook,
-            destinations: &[EventBook],
-        ) -> Result<SagaResponse, Status> {
-            self.0.handle(source, destinations).await
+        async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+            self.0.handle(source).await
         }
     }
 

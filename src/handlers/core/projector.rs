@@ -192,16 +192,17 @@ fn create_projection_event_book(
             root: None,
             correlation_id: correlation_id.to_string(),
             edition: source_edition,
-            external_id: String::new(),
         }),
     };
 
     EventBook {
         cover,
         pages: vec![crate::proto::EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(
-                projection.sequence,
-            )),
+            header: Some(crate::proto::PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(
+                    projection.sequence,
+                )),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(Any {
                 type_url: PROJECTION_TYPE_URL.to_string(),
                 value: projection_bytes,

@@ -15,8 +15,7 @@ use crate::config::SagaCompensationConfig;
 use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::saga_service_client::SagaServiceClient;
 use crate::proto::{
-    CommandBook, CommandRequest, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest,
-    SagaResponse,
+    CommandBook, CommandRequest, Cover, EventBook, SagaHandleRequest, SagaResponse,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::box_err;
@@ -63,40 +62,15 @@ impl GrpcSagaContext {
 
 #[async_trait]
 impl SagaRetryContext for GrpcSagaContext {
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = self.source.correlation_id();
         let edition = self.source.edition().to_string();
         let mut client = self.saga_client.lock().await;
-        let request = SagaPrepareRequest {
+        let request = SagaHandleRequest {
             source: Some(self.source.clone()),
-        };
-        let response = client
-            .prepare(correlated_request(request, correlation_id))
-            .await
-            .map_err(box_err)?;
-
-        let mut covers = response.into_inner().destinations;
-        for cover in &mut covers {
-            cover.stamp_edition_if_empty(&edition);
-        }
-        Ok(covers)
-    }
-
-    async fn handle(
-        &self,
-        destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let correlation_id = self.source.correlation_id();
-        let edition = self.source.edition().to_string();
-        let mut client = self.saga_client.lock().await;
-        let request = SagaExecuteRequest {
-            source: Some(self.source.clone()),
-            destinations,
         };
         let mut response = client
-            .execute(correlated_request(request, correlation_id))
+            .handle(correlated_request(request, correlation_id))
             .await
             .map_err(box_err)?
             .into_inner();
@@ -112,6 +86,16 @@ impl SagaRetryContext for GrpcSagaContext {
 
     fn source_cover(&self) -> Option<&Cover> {
         self.source.cover.as_ref()
+    }
+
+    fn source_max_sequence(&self) -> u32 {
+        use crate::proto_ext::EventPageExt;
+        self.source
+            .pages
+            .iter()
+            .map(|p| p.sequence_num())
+            .max()
+            .unwrap_or(0)
     }
 
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str) {
@@ -134,7 +118,7 @@ impl SagaRetryContext for GrpcSagaContext {
 
 /// Handle a rejected saga command by initiating compensation flow.
 ///
-/// If the command has a saga_origin (meaning it came from a saga),
+/// If the command has angzarr_deferred provenance (meaning it came from a saga/PM),
 /// sends a Notification with RejectionNotification payload to the
 /// triggering aggregate via HandleCompensation RPC, then processes the
 /// BusinessResponse through handle_business_response with EscalationHandler.
@@ -157,16 +141,22 @@ async fn handle_command_rejection(
         return;
     };
 
-    let saga_name = &context.saga_origin.saga_name;
-    let domain = rejected_command
+    let source_domain = context
+        .source
+        .source
+        .as_ref()
+        .map(|c| c.domain.as_str())
+        .unwrap_or("?");
+    let target_domain = rejected_command
         .cover
         .as_ref()
         .map(|c| c.domain.as_str())
         .unwrap_or("unknown");
 
     warn!(
-        saga = %saga_name,
-        domain = %domain,
+        source_domain = %source_domain,
+        source_seq = context.source.source_seq,
+        target_domain = %target_domain,
         reason = %rejection_reason,
         "Saga command rejected, initiating compensation"
     );
@@ -175,7 +165,7 @@ async fn handle_command_rejection(
         Ok(cmd) => cmd,
         Err(e) => {
             error!(
-                saga = %saga_name,
+                source_domain = %source_domain,
                 error = %e,
                 "Failed to build notification, emitting fallback event"
             );
@@ -188,7 +178,7 @@ async fn handle_command_rejection(
     let correlation_id = notification_command.correlation_id().to_string();
 
     info!(
-        saga = %saga_name,
+        source_domain = %source_domain,
         triggering_domain = %triggering_domain,
         "Sending rejection Notification to triggering aggregate via HandleCompensation"
     );
@@ -208,7 +198,7 @@ async fn handle_command_rejection(
         &context,
         config,
         publisher,
-        saga_name,
+        source_domain,
         &triggering_domain,
     )
     .await;
@@ -274,18 +264,26 @@ async fn emit_fallback_event(
 ) {
     use crate::utils::saga_compensation::build_compensation_failed_event_book;
 
+    let source_domain = context
+        .source
+        .source
+        .as_ref()
+        .map(|c| c.domain.as_str())
+        .unwrap_or("?");
+
     let event_book = build_compensation_failed_event_book(context, reason, config);
 
     info!(
-        saga = %context.saga_origin.saga_name,
-        domain = %config.fallback_domain,
+        source_domain = %source_domain,
+        source_seq = context.source.source_seq,
+        fallback_domain = %config.fallback_domain,
         reason = %reason,
         "Emitting SagaCompensationFailed event"
     );
 
     if let Err(e) = publisher.publish(Arc::new(event_book)).await {
         error!(
-            saga = %context.saga_origin.saga_name,
+            source_domain = %source_domain,
             error = %e,
             "Failed to publish SagaCompensationFailed event"
         );

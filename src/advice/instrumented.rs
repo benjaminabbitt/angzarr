@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::proto::{EventBook, EventPage, Snapshot};
-use crate::storage::{AddOutcome, EventStore, PositionStore, Result, SnapshotStore};
+use crate::storage::{AddOutcome, EventStore, PositionStore, Result, SnapshotStore, SourceInfo};
 
 // Re-export constants for backwards compatibility
 #[allow(unused_imports)]
@@ -83,13 +83,22 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         events: Vec<EventPage>,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&SourceInfo>,
     ) -> Result<AddOutcome> {
         let start = Instant::now();
         let count = events.len();
 
         let result = self
             .inner
-            .add(domain, edition, root, events, correlation_id, external_id)
+            .add(
+                domain,
+                edition,
+                root,
+                events,
+                correlation_id,
+                external_id,
+                source_info,
+            )
             .await;
 
         #[cfg(feature = "otel")]
@@ -358,6 +367,19 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         let _ = start;
 
         result
+    }
+
+    async fn find_by_source(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // Delegate to inner - no separate metrics for now
+        self.inner
+            .find_by_source(domain, edition, root, source_info)
+            .await
     }
 }
 

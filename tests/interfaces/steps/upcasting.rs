@@ -4,9 +4,9 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use angzarr::proto::event_page;
 use angzarr::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
-use angzarr::proto::{EventPage, UpcastRequest, UpcastResponse};
+use angzarr::proto::{event_page, page_header};
+use angzarr::proto::{EventPage, PageHeader, UpcastRequest, UpcastResponse};
 use angzarr::proto_ext::EventPageExt;
 use angzarr::services::upcaster::Upcaster;
 use cucumber::{given, then, when, World};
@@ -56,7 +56,9 @@ impl UpcasterWorld {
 
     fn make_event_page(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
         EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: type_url.to_string(),

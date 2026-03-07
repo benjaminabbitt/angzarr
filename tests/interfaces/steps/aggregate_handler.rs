@@ -16,8 +16,8 @@ use angzarr::orchestration::aggregate::{
     AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery,
 };
 use angzarr::proto::{
-    business_response, event_page, BusinessResponse, CommandBook, CommandResponse, Cover,
-    EventBook, EventPage, Projection, Uuid as ProtoUuid,
+    business_response, event_page, page_header, BusinessResponse, CommandBook, CommandResponse,
+    Cover, EventBook, EventPage, PageHeader, Projection, Uuid as ProtoUuid,
 };
 use angzarr::standalone::{ProjectionMode, ProjectorHandler};
 use async_trait::async_trait;
@@ -83,7 +83,6 @@ fn make_cover(domain: &str) -> Cover {
         }),
         correlation_id: "test-correlation".to_string(),
         edition: None,
-        external_id: String::new(),
     }
 }
 
@@ -95,7 +94,6 @@ fn make_cover_with_correlation(domain: &str, correlation: &str) -> Cover {
         }),
         correlation_id: correlation.to_string(),
         edition: None,
-        external_id: String::new(),
     }
 }
 
@@ -103,7 +101,6 @@ fn make_command_book(domain: &str) -> CommandBook {
     CommandBook {
         cover: Some(make_cover(domain)),
         pages: vec![],
-        saga_origin: None,
     }
 }
 
@@ -111,7 +108,6 @@ fn make_command_book_with_correlation(domain: &str, correlation: &str) -> Comman
     CommandBook {
         cover: Some(make_cover_with_correlation(domain, correlation)),
         pages: vec![],
-        saga_origin: None,
     }
 }
 
@@ -172,7 +168,9 @@ impl MockClientLogic {
             EventBook {
                 cover: Some(make_cover("test")),
                 pages: vec![EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(1)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(1)),
+                    }),
                     created_at: None,
                     payload: Some(event_page::Payload::Event(Any {
                         type_url,
@@ -393,7 +391,9 @@ async fn given_event_book_with_type_url(world: &mut AggregateHandlerWorld, type_
     world.last_wrapped = Some(EventBook {
         cover: Some(make_cover("test")),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url,
@@ -409,7 +409,9 @@ async fn given_event_book_missing_payload(world: &mut AggregateHandlerWorld) {
     world.last_wrapped = Some(EventBook {
         cover: Some(make_cover("test")),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: None,
         }],

@@ -6,6 +6,44 @@ use uuid::Uuid;
 use super::Result;
 use crate::proto::EventPage;
 
+/// Source tracking info for saga-produced events.
+///
+/// Used for idempotency: if events exist with matching source info,
+/// the saga command was already processed.
+#[derive(Debug, Clone, Default)]
+pub struct SourceInfo {
+    /// Source edition (usually "angzarr")
+    pub edition: String,
+    /// Source domain (e.g., "order")
+    pub domain: String,
+    /// Source aggregate root UUID
+    pub root: Uuid,
+    /// Source event sequence that triggered the saga
+    pub seq: u32,
+}
+
+impl SourceInfo {
+    /// Create new source info from saga origin.
+    pub fn new(
+        edition: impl Into<String>,
+        domain: impl Into<String>,
+        root: Uuid,
+        seq: u32,
+    ) -> Self {
+        Self {
+            edition: edition.into(),
+            domain: domain.into(),
+            root,
+            seq,
+        }
+    }
+
+    /// Check if this source info is empty/unset.
+    pub fn is_empty(&self) -> bool {
+        self.edition.is_empty() && self.domain.is_empty()
+    }
+}
+
 /// Outcome of an `add()` operation.
 ///
 /// Distinguishes between newly added events and duplicates detected via external_id.
@@ -93,6 +131,13 @@ pub trait EventStore: Send + Sync {
     ///   with the original sequence range (no new events persisted)
     ///
     /// If `external_id` is `None` or `Some("")`: events are always persisted.
+    ///
+    /// # Source Tracking
+    ///
+    /// If `source_info` is `Some(info)` where info is non-empty:
+    /// - Source info is stored with each event for saga provenance tracking
+    /// - Enables idempotency checking for saga-produced commands
+    #[allow(clippy::too_many_arguments)]
     async fn add(
         &self,
         domain: &str,
@@ -101,6 +146,7 @@ pub trait EventStore: Send + Sync {
         events: Vec<EventPage>,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&SourceInfo>,
     ) -> Result<AddOutcome>;
 
     /// Retrieve all events for an aggregate.
@@ -154,6 +200,20 @@ pub trait EventStore: Send + Sync {
         &self,
         correlation_id: &str,
     ) -> Result<Vec<crate::proto::EventBook>>;
+
+    /// Find events by source info (for saga idempotency checking).
+    ///
+    /// Queries for events within the target aggregate that were produced by
+    /// the specified source (saga trigger). Used to detect duplicate saga commands.
+    ///
+    /// Returns `Some(events)` if matching events exist, `None` if not found.
+    async fn find_by_source(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>>;
 
     /// Delete all events for an edition+domain combination.
     ///

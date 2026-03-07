@@ -28,17 +28,17 @@ fn create_command_with_strategy(
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.TestCommand".to_string(),
                 value: vec![1, 2, 3],
             })),
             merge_strategy: strategy as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -503,10 +503,8 @@ async fn test_empty_pages_defaults_to_commutative() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
-        saga_origin: None,
     };
 
     // Extract strategy should return COMMUTATIVE
@@ -743,9 +741,11 @@ impl CommandHandler for StatefulAggregate {
                 if cmd_value.starts_with("update_field_a:") {
                     let value = cmd_value.strip_prefix("update_field_a:").unwrap_or("0");
                     event_pages.push(EventPage {
-                        sequence_type: Some(event_page::SequenceType::Sequence(
-                            next_seq + event_pages.len() as u32,
-                        )),
+                        header: Some(PageHeader {
+                            sequence_type: Some(page_header::SequenceType::Sequence(
+                                next_seq + event_pages.len() as u32,
+                            )),
+                        }),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldAUpdated".to_string(),
                             value: value.as_bytes().to_vec(),
@@ -755,9 +755,11 @@ impl CommandHandler for StatefulAggregate {
                 } else if cmd_value.starts_with("update_field_b:") {
                     let value = cmd_value.strip_prefix("update_field_b:").unwrap_or("");
                     event_pages.push(EventPage {
-                        sequence_type: Some(event_page::SequenceType::Sequence(
-                            next_seq + event_pages.len() as u32,
-                        )),
+                        header: Some(PageHeader {
+                            sequence_type: Some(page_header::SequenceType::Sequence(
+                                next_seq + event_pages.len() as u32,
+                            )),
+                        }),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldBUpdated".to_string(),
                             value: value.as_bytes().to_vec(),
@@ -774,9 +776,11 @@ impl CommandHandler for StatefulAggregate {
                     let b_val = parts.get(1).unwrap_or(&"default");
 
                     event_pages.push(EventPage {
-                        sequence_type: Some(event_page::SequenceType::Sequence(
-                            next_seq + event_pages.len() as u32,
-                        )),
+                        header: Some(PageHeader {
+                            sequence_type: Some(page_header::SequenceType::Sequence(
+                                next_seq + event_pages.len() as u32,
+                            )),
+                        }),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldAUpdated".to_string(),
                             value: a_val.as_bytes().to_vec(),
@@ -784,9 +788,11 @@ impl CommandHandler for StatefulAggregate {
                         created_at: None,
                     });
                     event_pages.push(EventPage {
-                        sequence_type: Some(event_page::SequenceType::Sequence(
-                            next_seq + event_pages.len() as u32,
-                        )),
+                        header: Some(PageHeader {
+                            sequence_type: Some(page_header::SequenceType::Sequence(
+                                next_seq + event_pages.len() as u32,
+                            )),
+                        }),
                         payload: Some(event_page::Payload::Event(Any {
                             type_url: "test.FieldBUpdated".to_string(),
                             value: b_val.as_bytes().to_vec(),
@@ -801,9 +807,11 @@ impl CommandHandler for StatefulAggregate {
                         None
                     };
                     event_pages.push(EventPage {
-                        sequence_type: Some(event_page::SequenceType::Sequence(
-                            next_seq + event_pages.len() as u32,
-                        )),
+                        header: Some(PageHeader {
+                            sequence_type: Some(page_header::SequenceType::Sequence(
+                                next_seq + event_pages.len() as u32,
+                            )),
+                        }),
                         payload: event.map(event_page::Payload::Event),
                         created_at: None,
                     });
@@ -835,17 +843,17 @@ fn create_field_a_command(domain: &str, root: Uuid, sequence: u32, value: i32) -
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.UpdateFieldA".to_string(),
                 value: format!("update_field_a:{}", value).into_bytes(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -859,17 +867,17 @@ fn create_field_b_command(domain: &str, root: Uuid, sequence: u32, value: &str) 
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.UpdateFieldB".to_string(),
                 value: format!("update_field_b:{}", value).into_bytes(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 

@@ -291,7 +291,7 @@ mod resource_limits_validation {
     //! - Explicit limits catch oversized messages early
 
     use super::*;
-    use crate::proto::{command_page, CommandPage, Cover, MergeStrategy};
+    use crate::proto::{command_page, page_header, CommandPage, Cover, MergeStrategy, PageHeader};
     use prost_types::Any;
 
     fn make_command_book(pages: Vec<CommandPage>) -> CommandBook {
@@ -301,16 +301,16 @@ mod resource_limits_validation {
                 root: None,
                 correlation_id: String::new(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages,
-            saga_origin: None,
         }
     }
 
     fn make_page_with_payload(size: usize) -> CommandPage {
         CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test/Command".to_string(),
                 value: vec![0u8; size],

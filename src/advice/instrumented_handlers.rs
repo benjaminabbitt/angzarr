@@ -117,16 +117,7 @@ impl<T> InstrumentedSagaHandler<T> {
 
 #[async_trait]
 impl<T: SagaHandler> SagaHandler for InstrumentedSagaHandler<T> {
-    async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
-        // Prepare is typically fast, no metrics needed
-        self.inner.prepare(source).await
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
         let start = Instant::now();
         let domain = source
             .cover
@@ -134,7 +125,7 @@ impl<T: SagaHandler> SagaHandler for InstrumentedSagaHandler<T> {
             .map(|c| c.domain.as_str())
             .unwrap_or("unknown");
 
-        let result = self.inner.handle(source, destinations).await;
+        let result = self.inner.handle(source).await;
 
         #[cfg(feature = "otel")]
         {

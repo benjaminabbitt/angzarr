@@ -18,7 +18,7 @@
 use prost::Message;
 
 use super::*;
-use crate::proto::{command_page, CommandBook, CommandPage};
+use crate::proto::{command_page, page_header, CommandBook, CommandPage, PageHeader};
 
 // ============================================================================
 // is_notification_command Tests
@@ -114,11 +114,12 @@ fn make_contextual_command_with_any(any: prost_types::Any) -> ContextualCommand 
         command: Some(CommandBook {
             cover: None,
             pages: vec![CommandPage {
-                sequence: 0,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: Some(command_page::Payload::Command(any)),
                 merge_strategy: 0,
             }],
-            saga_origin: None,
         }),
         events: None,
     }
@@ -176,7 +177,6 @@ fn test_extract_notification_from_command_with_empty_pages() {
         command: Some(CommandBook {
             cover: None,
             pages: vec![],
-            saga_origin: None,
         }),
         events: None,
     };

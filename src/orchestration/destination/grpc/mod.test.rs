@@ -25,7 +25,6 @@ fn make_cover(domain: &str, with_root: bool) -> Cover {
         },
         correlation_id: "corr-123".to_string(),
         edition: None,
-        external_id: String::new(),
     }
 }
 

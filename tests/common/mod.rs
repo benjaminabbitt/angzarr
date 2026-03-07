@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 pub use angzarr::proto::{
     aggregate_coordinator_service_client::AggregateCoordinatorServiceClient,
-    event_query_service_client::EventQueryServiceClient, CommandBook, CommandPage, CommandResponse,
-    Cover, EventBook, Query, Uuid as ProtoUuid,
+    event_query_service_client::EventQueryServiceClient, page_header, CommandBook, CommandPage,
+    CommandResponse, Cover, EventBook, PageHeader, Query, Uuid as ProtoUuid,
 };
 
 /// Default Angzarr gateway port - exposed via NodePort 30084 -> hostPort 9084
@@ -93,14 +93,15 @@ pub fn build_command_book_at_sequence(
             edition: None,
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: format!("type.googleapis.com/{}", type_url),
                 value: command.encode_to_vec(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 

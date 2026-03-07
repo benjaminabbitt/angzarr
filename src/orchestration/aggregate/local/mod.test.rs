@@ -9,6 +9,7 @@
 use super::*;
 use crate::bus::mock::MockEventBus;
 use crate::discovery::StaticServiceDiscovery;
+use crate::proto::PageHeader;
 use crate::standalone::DomainStorage;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 
@@ -166,7 +167,9 @@ fn test_context_with_sync_mode() {
 #[test]
 fn test_extract_sequence_from_some() {
     let page = crate::proto::EventPage {
-        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(5)),
+        }),
         payload: None,
         created_at: None,
     };
@@ -193,12 +196,16 @@ fn test_build_event_book_with_pages() {
     let root = Uuid::new_v4();
     let pages = vec![
         crate::proto::EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+            }),
             payload: None,
             created_at: None,
         },
         crate::proto::EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(1)),
+            }),
             payload: None,
             created_at: None,
         },

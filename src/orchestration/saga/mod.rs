@@ -1,35 +1,27 @@
 //! Saga orchestration abstraction.
 //!
-//! Sagas translate events from one domain into commands for another domain.
-//! They are stateless — each event is processed independently with no memory
-//! of previous events. This enables horizontal scaling and simple recovery.
+//! Sagas are **pure translators**: they receive source events and produce commands
+//! for target domains. They are stateless — each event is processed independently
+//! with no memory of previous events. This enables horizontal scaling and simple recovery.
 //!
-//! # Two-Phase Execution Model
+//! # Execution Model
 //!
-//! Saga execution follows a prepare-execute pattern:
+//! Sagas receive only source events — NO destination state. The framework handles:
 //!
-//! 1. **Prepare**: Saga declares which destination aggregates it needs to read.
-//!    Returns a list of Covers (domain + root identifiers).
+//! 1. **Sequence stamping**: Commands have `angzarr_deferred`, framework stamps
+//!    explicit sequences on delivery.
 //!
-//! 2. **Execute**: Framework fetches destination EventBooks, passes them to the
-//!    saga along with the triggering event. Saga produces CommandBooks targeting
-//!    those destinations.
+//! 2. **Delivery retry**: On sequence conflict, framework retries command delivery
+//!    with fresh sequence (NOT saga re-execution).
 //!
-//! This separation exists because sagas need destination state to set correct
-//! command sequences (for optimistic concurrency) and to make routing decisions.
+//! 3. **Provenance tracking**: `angzarr_deferred` links commands to source events
+//!    for compensation routing and idempotency.
 //!
 //! # Retry Strategy
 //!
-//! When commands fail due to sequence conflicts (another writer modified the
-//! aggregate), we retry with exponential backoff:
-//!
-//! - **Selective re-fetch**: Only re-fetch state for domains that had conflicts.
-//!   Domains that succeeded keep their cached state.
-//! - **Re-execute saga**: The saga runs again with fresh state, producing new
-//!   commands with updated sequences.
-//!
-//! This minimizes round-trips while ensuring correctness. See [`SagaOperation`]
-//! for implementation details.
+//! When commands fail due to sequence conflicts, we retry at the delivery level
+//! with exponential backoff. The saga is NOT re-executed — commands are produced
+//! once, and the framework handles delivery retries.
 //!
 //! # Module Structure
 //!
@@ -40,7 +32,7 @@ pub mod grpc;
 #[cfg(feature = "sqlite")]
 pub mod local;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -49,7 +41,10 @@ use tracing::{debug, error, warn};
 
 use crate::bus::BusError;
 use crate::bus::CommandBus;
-use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, SagaResponse, SyncMode};
+use crate::proto::{
+    page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook, PageHeader,
+    SagaResponse, SyncMode,
+};
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::{run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -73,60 +68,52 @@ pub trait SagaContextFactory: Send + Sync {
     fn name(&self) -> &str;
 }
 
-/// Operations needed by the saga retry loop.
+/// Operations needed by the saga orchestration.
 ///
 /// Each transport mode implements this trait to provide saga-specific
-/// invocation (prepare, execute, compensation). Command execution and
-/// destination fetching are passed separately to `orchestrate_saga`
-/// and `execute_with_retry`, matching the PM pattern.
+/// invocation and compensation. One instance per saga invocation —
+/// captures the per-invocation context (source event book, saga handler, etc.)
 ///
-/// One instance per saga invocation — captures the per-invocation context
-/// (source event book, saga handler, etc.)
+/// The new model has sagas as pure translators:
+/// - Saga receives only source events (no destination state)
+/// - Saga produces commands with deferred sequences
+/// - Framework stamps explicit sequences on delivery
+/// - Framework retries delivery on conflict (not saga re-execution)
 #[async_trait]
 pub trait SagaRetryContext: Send + Sync {
-    /// Re-invoke the saga's prepare phase to get destination covers.
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>>;
-
-    /// Re-invoke the saga's execute phase with fresh destination state.
-    /// Returns commands to execute and events (facts) to inject.
-    async fn handle(
-        &self,
-        destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>>;
+    /// Execute saga translation: source events → commands + facts.
+    ///
+    /// Returns commands (with angzarr_deferred) to deliver and events (facts)
+    /// to inject. The saga does NOT set explicit sequences — the framework
+    /// stamps them on delivery.
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Handle a permanently rejected command (compensation, logging, etc.)
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str);
 
     /// Cover of the source event that triggered this saga invocation.
     ///
-    /// Used to populate `saga_origin` on outgoing commands, enabling
-    /// the aggregate to skip sequence validation and supporting
-    /// compensation flow on rejection.
+    /// Used to populate `angzarr_deferred` source on outgoing commands,
+    /// enabling rejection routing back to the originating aggregate.
     fn source_cover(&self) -> Option<&Cover>;
+
+    /// Max sequence number from the source EventBook.
+    ///
+    /// Used as the default `source_seq` in `angzarr_deferred` when the saga
+    /// doesn't explicitly set it. Represents "processed up to this point".
+    ///
+    /// Sagas that need precise per-event tracking should set `source_seq`
+    /// explicitly on each command's `PageHeader.angzarr_deferred`.
+    fn source_max_sequence(&self) -> u32;
 }
 
-/// State for a retryable saga command execution operation.
+/// State for retryable saga command delivery.
 ///
-/// # Destination Caching Strategy
+/// Commands have `angzarr_deferred` set — the executor handles converting this
+/// to explicit sequences on delivery and retrying at the delivery level.
 ///
-/// Sagas may target multiple destination aggregates. On retry, we want to minimize
-/// round-trips while ensuring correctness:
-///
-/// - **failed_domains**: Tracks domains that had sequence conflicts. These MUST fetch
-///   fresh state on retry because their EventBook.next_sequence was stale.
-///
-/// - **cached_destinations**: Holds EventBooks from successful fetches. Domains NOT in
-///   failed_domains can reuse cached state since their sequences were correct.
-///
-/// This separation is critical: if domain A fails but domain B succeeds, we only
-/// re-fetch A's state. Without this, we'd either:
-/// 1. Re-fetch everything (wasteful - O(n) fetches per retry)
-/// 2. Cache everything (incorrect - stale sequences cause infinite retry loops)
-///
-/// The cache key includes both domain AND root (via `cache_key()`) because a saga
-/// might target multiple aggregates in the same domain.
+/// This struct tracks which commands have been delivered and handles rejection
+/// callbacks for permanently failed commands.
 #[cfg_attr(not(feature = "otel"), allow(dead_code))]
 struct SagaOperation<'a> {
     context: &'a dyn SagaRetryContext,
@@ -135,7 +122,6 @@ struct SagaOperation<'a> {
     /// When `sync_mode == Async` and this is `Some`, commands are published
     /// to the bus (fire-and-forget) instead of executed directly.
     command_bus: Option<&'a dyn CommandBus>,
-    fetcher: Option<&'a dyn DestinationFetcher>,
     saga_name: &'a str,
     correlation_id: &'a str,
     /// Sync mode for command execution.
@@ -145,21 +131,15 @@ struct SagaOperation<'a> {
     sync_mode: SyncMode,
     commands: Vec<CommandBook>,
     /// Events (facts) to inject after all commands succeed.
-    /// Updated by prepare_for_retry alongside commands.
+    #[allow(dead_code)]
     events: Vec<EventBook>,
-    /// Domains that had sequence conflicts on the last attempt.
-    /// Cleared at the start of each try_execute, populated during execution.
-    /// Used by prepare_for_retry to decide which destinations need fresh fetches.
+    /// Tracks which domains had sequence conflicts for retry logging.
     failed_domains: HashSet<String>,
-    /// Cached destination EventBooks from successful fetches.
-    /// Keyed by cache_key (domain:root_hex) to support multiple aggregates per domain.
-    /// Survives across retries; updated when we fetch fresh state for failed domains.
-    cached_destinations: HashMap<String, EventBook>,
 }
 
 #[async_trait]
 impl<'a> RetryableOperation for SagaOperation<'a> {
-    type Success = ();
+    type Success = Vec<EventBook>;
     type Failure = String;
 
     fn name(&self) -> &str {
@@ -222,7 +202,7 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         if !self.failed_domains.is_empty() {
             RetryOutcome::Retryable("Sequence conflict".to_string())
         } else {
-            RetryOutcome::Success(())
+            RetryOutcome::Success(vec![])
         }
     }
 
@@ -234,73 +214,21 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
             SAGA_RETRY_TOTAL.add(1, &[name_attr(self.saga_name)]);
         }
 
-        // Re-prepare: get fresh destination covers from the saga.
-        // Why re-prepare? The saga might return different destinations based on its
-        // internal logic. While rare, we call prepare_destinations() to ensure the
-        // saga has a chance to adjust targets if needed.
-        let covers = self
-            .context
-            .prepare_destinations()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        // Selective fetching strategy: minimize round-trips while ensuring correctness.
+        // In the new model, sagas are NOT re-executed on retry.
+        // Commands are produced once with angzarr_deferred sequences.
+        // Retry happens at the delivery level (executor handles sequence stamping).
         //
-        // The key insight: sequence conflicts happen because our cached EventBook had
-        // a stale next_sequence. Only domains that FAILED need fresh state. Domains
-        // that succeeded had correct sequences, so their cached state is still valid.
-        //
-        // Three cases for each destination:
-        // 1. Domain in failed_domains → MUST fetch fresh (sequence was wrong)
-        // 2. Domain has cache hit → use cached (sequence was correct)
-        // 3. Domain has no cache → fetch and cache (first time seeing this domain)
-        let mut destinations = Vec::with_capacity(covers.len());
-        for cover in &covers {
-            let domain = &cover.domain;
-            let cache_key = cover.cache_key();
-
-            if self.failed_domains.contains(domain) {
-                // Case 1: Domain had sequence conflict on last attempt.
-                // We MUST fetch fresh state to get the current next_sequence.
-                // Update cache so subsequent retries benefit if this domain succeeds.
-                if let Some(f) = self.fetcher {
-                    if let Some(dest) = f.fetch(cover).await {
-                        self.cached_destinations.insert(cache_key, dest.clone());
-                        destinations.push(dest);
-                    }
-                }
-            } else if let Some(cached) = self.cached_destinations.get(&cache_key) {
-                // Case 2: Domain succeeded last time, cache is valid.
-                // Reuse cached state to avoid unnecessary fetch.
-                destinations.push(cached.clone());
-            } else if let Some(f) = self.fetcher {
-                // Case 3: First time seeing this domain (shouldn't happen in practice
-                // since initial orchestrate_saga populates the cache, but handle it).
-                if let Some(dest) = f.fetch(cover).await {
-                    self.cached_destinations.insert(cache_key, dest.clone());
-                    destinations.push(dest);
-                }
-            }
-        }
-
-        // Re-execute saga with fresh/cached destination state.
-        // The saga handler is responsible for setting command.pages[0].sequence
-        // from destination.next_sequence(). This is NOT auto-stamped by the framework
-        // to force saga authors to engage with destination state.
-        let response = self
-            .context
-            .handle(destinations)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        self.commands = response.commands;
-        self.events = response.events;
+        // This prepare_for_retry just clears the failed domains for the next attempt.
+        self.failed_domains.clear();
 
         Ok(())
     }
 }
 
-/// Builder for saga command execution with retry.
+/// Builder for saga command delivery with retry.
+///
+/// Commands have angzarr_deferred set — the executor handles sequence stamping
+/// and delivery-level retry.
 struct SagaRetryBuilder<'a> {
     context: &'a dyn SagaRetryContext,
     executor: &'a dyn CommandExecutor,
@@ -308,10 +236,8 @@ struct SagaRetryBuilder<'a> {
     saga_name: &'a str,
     correlation_id: &'a str,
     sync_mode: SyncMode,
-    fetcher: Option<&'a dyn DestinationFetcher>,
     commands: Vec<CommandBook>,
     events: Vec<EventBook>,
-    destinations: Vec<EventBook>,
     backoff: ExponentialBuilder,
 }
 
@@ -330,21 +256,14 @@ impl<'a> SagaRetryBuilder<'a> {
             saga_name,
             correlation_id,
             sync_mode,
-            fetcher: None,
             commands: Vec::new(),
             events: Vec::new(),
-            destinations: Vec::new(),
             backoff: ExponentialBuilder::default(),
         }
     }
 
     fn command_bus(mut self, command_bus: Option<&'a dyn CommandBus>) -> Self {
         self.command_bus = command_bus;
-        self
-    }
-
-    fn fetcher(mut self, fetcher: Option<&'a dyn DestinationFetcher>) -> Self {
-        self.fetcher = fetcher;
         self
     }
 
@@ -358,17 +277,12 @@ impl<'a> SagaRetryBuilder<'a> {
         self
     }
 
-    fn destinations(mut self, destinations: Vec<EventBook>) -> Self {
-        self.destinations = destinations;
-        self
-    }
-
     fn backoff(mut self, backoff: ExponentialBuilder) -> Self {
         self.backoff = backoff;
         self
     }
 
-    /// Execute saga commands with retry on sequence conflicts.
+    /// Deliver saga commands with retry on sequence conflicts.
     #[tracing::instrument(name = "saga.retry", skip_all, fields(saga_name = %self.saga_name, correlation_id = %self.correlation_id))]
     async fn execute(self) {
         if self.commands.is_empty() {
@@ -379,18 +293,12 @@ impl<'a> SagaRetryBuilder<'a> {
             context: self.context,
             executor: self.executor,
             command_bus: self.command_bus,
-            fetcher: self.fetcher,
             saga_name: self.saga_name,
             correlation_id: self.correlation_id,
             sync_mode: self.sync_mode,
             commands: self.commands,
             events: self.events,
             failed_domains: HashSet::new(),
-            cached_destinations: self
-                .destinations
-                .into_iter()
-                .map(|d| (d.cache_key(), d))
-                .collect(),
         };
 
         if let Err(e) = run_with_retry(operation, self.backoff).await {
@@ -399,14 +307,19 @@ impl<'a> SagaRetryBuilder<'a> {
     }
 }
 
-/// Full two-phase saga orchestration.
+/// Saga orchestration with delivery-retry model.
 ///
-/// 1. Prepare: get destination covers from saga
-/// 2. Fetch destination state
-/// 3. Execute saga with source + destinations
-/// 4. Validate output domains (if validator provided)
-/// 5. Execute commands with retry
-/// 6. Inject facts into target aggregates
+/// 1. Execute saga translation: source events → commands with angzarr_deferred
+/// 2. Stamp provenance (source cover + seq) on commands
+/// 3. Validate output domains (if validator provided)
+/// 4. Deliver commands with retry on sequence conflict
+/// 5. Inject facts into target aggregates
+///
+/// Sagas are **pure translators** — they receive only source events, not
+/// destination state. The framework handles:
+/// - Sequence stamping on delivery (converts angzarr_deferred → explicit)
+/// - Delivery retry on conflict (not saga re-execution)
+/// - Idempotency via angzarr_deferred source info
 ///
 /// `sync_mode` controls how commands are executed:
 /// - `Async`: Commands published to bus (fire-and-forget), results via RejectionNotification
@@ -421,7 +334,7 @@ pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
     command_bus: Option<&dyn CommandBus>,
-    fetcher: Option<&dyn DestinationFetcher>,
+    _fetcher: Option<&dyn DestinationFetcher>,
     fact_executor: Option<&dyn FactExecutor>,
     saga_name: &str,
     correlation_id: &str,
@@ -429,56 +342,63 @@ pub async fn orchestrate_saga(
     sync_mode: SyncMode,
     backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
-    // Phase 1: Prepare — get destination covers
-    let destination_covers = ctx
-        .prepare_destinations()
-        .await
-        .map_err(|e| BusError::Publish(e.to_string()))?;
-
-    debug!(
-        destinations = destination_covers.len(),
-        "Saga prepare returned destinations"
-    );
-
-    // Phase 2: Fetch destination EventBooks
-    let destinations = if let Some(f) = fetcher {
-        super::shared::fetch_destinations(f, &destination_covers, correlation_id).await
-    } else {
-        vec![]
-    };
-
-    // Phase 3: Execute saga with source + destinations
-    // Saga handler must set correct sequences on commands from destination.next_sequence()
+    // Phase 1: Execute saga translation
+    // Saga receives only source events and produces commands with angzarr_deferred.
+    // No destination state fetching — sagas are pure translators.
     let saga_response = ctx
-        .handle(destinations.clone())
+        .handle()
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
 
     let mut commands = saga_response.commands;
     let events = saga_response.events;
 
-    // Stamp saga_origin on commands for two purposes:
+    // Stamp angzarr_deferred on commands for provenance and compensation routing:
     //
-    // 1. **Compensation routing**: When a command is permanently rejected, the aggregate
-    //    coordinator uses saga_origin to route the rejection back to the originating
-    //    saga for compensation handling (e.g., rollback, dead-letter queue).
+    // 1. **Compensation routing**: When a command is rejected, the aggregate coordinator
+    //    uses angzarr_deferred.source to route the rejection back for compensation.
     //
-    // 2. **Traceability**: Links the command to its triggering event for debugging
-    //    and audit trails. The triggering_aggregate identifies which event book
-    //    started this saga flow.
+    // 2. **Traceability**: Links the command to its triggering event for debugging/audit.
     //
-    // Why triggering_event_sequence = 0? Currently we don't track which specific
-    // event in the source book triggered the saga. The cover (domain + root) is
-    // sufficient for routing. Sequence tracking could enable finer-grained replay
-    // but adds complexity we don't need yet.
+    // 3. **Idempotency**: The source + source_seq form the idempotency key for
+    //    saga-produced commands, preventing duplicate processing on retry.
+    //
+    // Stamping strategy (per spec):
+    // - Saga already set angzarr_deferred with source_seq → preserve it entirely
+    // - Saga set angzarr_deferred but source is None → fill in source Cover, keep source_seq
+    // - Saga didn't set angzarr_deferred → use source Cover + source_max_sequence
     let source_cover = ctx.source_cover().cloned();
+    let source_max_seq = ctx.source_max_sequence();
+
     for cmd in &mut commands {
-        if cmd.saga_origin.is_none() {
-            cmd.saga_origin = Some(SagaCommandOrigin {
-                saga_name: saga_name.to_string(),
-                triggering_aggregate: source_cover.clone(),
-                triggering_event_sequence: 0,
-            });
+        for page in &mut cmd.pages {
+            match page.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+                Some(SequenceType::AngzarrDeferred(existing)) => {
+                    // Saga set angzarr_deferred - fill in source if missing, preserve source_seq
+                    if existing.source.is_none() {
+                        page.header = Some(PageHeader {
+                            sequence_type: Some(SequenceType::AngzarrDeferred(
+                                AngzarrDeferredSequence {
+                                    source: source_cover.clone(),
+                                    source_seq: existing.source_seq,
+                                },
+                            )),
+                        });
+                    }
+                    // else: saga set everything, don't touch
+                }
+                _ => {
+                    // Saga didn't set angzarr_deferred - use defaults
+                    page.header = Some(PageHeader {
+                        sequence_type: Some(SequenceType::AngzarrDeferred(
+                            AngzarrDeferredSequence {
+                                source: source_cover.clone(),
+                                source_seq: source_max_seq,
+                            },
+                        )),
+                    });
+                }
+            }
         }
     }
 
@@ -496,13 +416,13 @@ pub async fn orchestrate_saga(
         }
     }
 
-    // Phase 5: Execute commands with retry
+    // Phase 4: Execute commands with retry
+    // Commands have angzarr_deferred set — the executor handles sequence stamping
+    // and retry on conflict at the delivery level.
     SagaRetryBuilder::new(ctx, executor, saga_name, correlation_id, sync_mode)
         .command_bus(command_bus)
-        .fetcher(fetcher)
         .commands(commands)
         .events(events.clone())
-        .destinations(destinations)
         .backoff(backoff)
         .execute()
         .await;

@@ -7,7 +7,7 @@
 //! - Cover parsing: Extract domain and root_id from commands/events
 //! - Sequence handling: Track aggregate version for optimistic concurrency
 //! - Merge strategies: Determine how concurrent commands are handled
-//! - Field extraction: Identify which state fields a command modifies (commutative merge)
+//! - Event combining: Merge prior events with command output for state replay
 //! - State diffing: Compare before/after state to detect field changes
 //!
 //! These utilities are framework plumbing — business logic uses higher-level
@@ -15,7 +15,8 @@
 
 use super::*;
 use crate::proto::{
-    command_page, event_page, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid,
+    command_page, event_page, page_header, CommandPage, Cover, MergeStrategy, PageHeader,
+    Uuid as ProtoUuid,
 };
 use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, EventBookExt};
 use prost_types::Any;
@@ -42,17 +43,17 @@ fn make_command_book_with_strategy(
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
             })),
             merge_strategy: strategy as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -61,7 +62,9 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
 
     let pages = if let Some(seq) = last_sequence {
         vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event".to_string(),
                 value: vec![],
@@ -80,7 +83,6 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages,
         snapshot: None,
@@ -118,7 +120,6 @@ fn test_parse_command_cover_missing_cover() {
     let command = CommandBook {
         cover: None,
         pages: vec![],
-        saga_origin: None,
     };
 
     let result = parse_command_cover(&command);
@@ -141,10 +142,8 @@ fn test_parse_command_cover_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
-        saga_origin: None,
     };
 
     let result = parse_command_cover(&command);
@@ -178,7 +177,6 @@ fn test_extract_command_sequence_empty_pages() {
     let command = CommandBook {
         cover: None,
         pages: vec![],
-        saga_origin: None,
     };
 
     assert_eq!(extract_command_sequence(&command), 0);
@@ -279,7 +277,6 @@ fn test_merge_strategy_empty_pages_defaults_to_commutative() {
     let command = CommandBook {
         cover: None,
         pages: vec![],
-        saga_origin: None,
     };
 
     // Empty pages should default to Commutative
@@ -287,153 +284,112 @@ fn test_merge_strategy_empty_pages_defaults_to_commutative() {
 }
 
 // ============================================================================
-// Commutative Merge Field Extraction Tests
+// Combined Events Builder Tests
 // ============================================================================
 //
-// Commutative merge requires knowing which fields each command modifies.
-// The framework extracts field sets from command type URLs and uses them
-// to detect conflicts. Only overlapping field modifications conflict.
+// For post-execution commutative merge checks, we combine prior events with
+// the command's new events to replay the aggregate state after the command.
 
-/// UpdateFieldA command modifies only field_a.
+/// Combines prior events with new events from command response.
 #[test]
-fn test_extract_command_fields_field_a() {
+fn test_build_combined_events_merges_pages() {
     let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "test".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
+    let cover = Some(Cover {
+        domain: "test".to_string(),
+        root: Some(ProtoUuid {
+            value: root.as_bytes().to_vec(),
         }),
-        pages: vec![CommandPage {
-            sequence: 0,
-            payload: Some(command_page::Payload::Command(Any {
-                type_url: "test.UpdateFieldA".to_string(),
-                value: vec![],
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
-        saga_origin: None,
+        correlation_id: String::new(),
+        edition: None,
+    });
+
+    let prior = EventBook {
+        cover: cover.clone(),
+        pages: vec![
+            crate::proto::EventPage {
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
+                payload: None,
+                created_at: None,
+            },
+            crate::proto::EventPage {
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(1)),
+                }),
+                payload: None,
+                created_at: None,
+            },
+        ],
+        snapshot: None,
+        next_sequence: 2,
     };
 
-    let fields = extract_command_fields(&command);
-    assert!(fields.contains("field_a"));
-    assert!(!fields.contains("field_b"));
-    assert!(!fields.contains("*"));
-}
-
-/// UpdateFieldB command modifies only field_b.
-#[test]
-fn test_extract_command_fields_field_b() {
-    let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "test".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
+    let received = EventBook {
+        cover: cover.clone(),
+        pages: vec![crate::proto::EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(2)),
             }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![CommandPage {
-            sequence: 0,
-            payload: Some(command_page::Payload::Command(Any {
-                type_url: "test.UpdateFieldB".to_string(),
-                value: vec![],
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            payload: None,
+            created_at: None,
         }],
-        saga_origin: None,
+        snapshot: None,
+        next_sequence: 3,
     };
 
-    let fields = extract_command_fields(&command);
-    assert!(!fields.contains("field_a"));
-    assert!(fields.contains("field_b"));
-    assert!(!fields.contains("*"));
+    let combined = build_combined_events(&prior, &received);
+
+    assert_eq!(combined.pages.len(), 3, "should have 3 total pages");
+    assert_eq!(combined.next_sequence, 3, "next_sequence from received");
 }
 
-/// UpdateBoth modifies both fields — conflicts with either single-field update.
+/// Uses snapshot from received events if present.
 #[test]
-fn test_extract_command_fields_update_both() {
+fn test_build_combined_events_uses_received_snapshot() {
     let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "test".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
+    let cover = Some(Cover {
+        domain: "test".to_string(),
+        root: Some(ProtoUuid {
+            value: root.as_bytes().to_vec(),
         }),
-        pages: vec![CommandPage {
-            sequence: 0,
-            payload: Some(command_page::Payload::Command(Any {
-                type_url: "test.UpdateBoth".to_string(),
-                value: vec![],
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
-        saga_origin: None,
-    };
+        correlation_id: String::new(),
+        edition: None,
+    });
 
-    let fields = extract_command_fields(&command);
-    assert!(fields.contains("field_a"));
-    assert!(fields.contains("field_b"));
-    assert!(!fields.contains("*"));
-}
-
-/// Unknown command types return wildcard — conservative fallback.
-///
-/// If the framework doesn't recognize a command type, it assumes the command
-/// could modify any field. This prevents silent corruption but reduces
-/// concurrency for unregistered command types.
-#[test]
-fn test_extract_command_fields_unknown_returns_wildcard() {
-    let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "test".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![CommandPage {
-            sequence: 0,
-            payload: Some(command_page::Payload::Command(Any {
-                type_url: "test.UnknownCommand".to_string(),
-                value: vec![],
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
-        saga_origin: None,
-    };
-
-    let fields = extract_command_fields(&command);
-    assert!(
-        fields.contains("*"),
-        "unknown command should return wildcard"
-    );
-}
-
-/// Empty pages return empty field set — no fields modified.
-#[test]
-fn test_extract_command_fields_empty_pages() {
-    let command = CommandBook {
-        cover: None,
+    let prior = EventBook {
+        cover: cover.clone(),
         pages: vec![],
-        saga_origin: None,
+        snapshot: Some(crate::proto::Snapshot {
+            sequence: 0,
+            state: Some(Any {
+                type_url: "old.Snapshot".to_string(),
+                value: vec![1, 2, 3],
+            }),
+            retention: 0,
+        }),
+        next_sequence: 1,
     };
 
-    let fields = extract_command_fields(&command);
-    assert!(fields.is_empty(), "empty pages should return empty set");
+    let received = EventBook {
+        cover: cover.clone(),
+        pages: vec![],
+        snapshot: Some(crate::proto::Snapshot {
+            sequence: 1,
+            state: Some(Any {
+                type_url: "new.Snapshot".to_string(),
+                value: vec![4, 5, 6],
+            }),
+            retention: 0,
+        }),
+        next_sequence: 2,
+    };
+
+    let combined = build_combined_events(&prior, &received);
+
+    assert!(combined.snapshot.is_some());
+    let snap = combined.snapshot.unwrap();
+    assert_eq!(snap.sequence, 1, "should use received snapshot");
 }
 
 // ============================================================================
@@ -456,26 +412,33 @@ fn test_build_events_up_to_sequence_filters_correctly() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![
             crate::proto::EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: None,
                 created_at: None,
             },
             crate::proto::EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(1)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(1)),
+                }),
                 payload: None,
                 created_at: None,
             },
             crate::proto::EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(2)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(2)),
+                }),
                 payload: None,
                 created_at: None,
             },
             crate::proto::EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(3)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(3)),
+                }),
                 payload: None,
                 created_at: None,
             },
@@ -501,10 +464,11 @@ fn test_build_events_up_to_sequence_zero_returns_empty() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![crate::proto::EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: None,
             created_at: None,
         }],
@@ -717,7 +681,6 @@ fn test_parse_event_cover_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

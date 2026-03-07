@@ -108,7 +108,9 @@ impl CommandHandler for SelectiveFailAggregate {
         Ok(EventBook {
             cover,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(next_seq)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(next_seq)),
+                }),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
             }],
@@ -257,7 +259,6 @@ async fn test_missing_cover_returns_error() {
     let cmd = CommandBook {
         cover: None,
         pages: vec![],
-        saga_origin: None,
     };
 
     let result = client.execute(cmd).await;
@@ -282,10 +283,8 @@ async fn test_missing_root_uuid_returns_error() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
-        saga_origin: None,
     };
 
     let result = client.execute(cmd).await;

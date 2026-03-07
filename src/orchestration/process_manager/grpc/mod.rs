@@ -142,6 +142,7 @@ impl ProcessManagerContext for GrpcPMContext {
                 process_events.pages.clone(),
                 correlation_id,
                 None, // No idempotency key for PM events
+                None, // No source tracking for PM events
             )
             .await
         {

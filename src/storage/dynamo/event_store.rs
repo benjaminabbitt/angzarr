@@ -23,7 +23,7 @@ use uuid::Uuid;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::storage::helpers::is_main_timeline;
-use crate::storage::{EventStore, Result, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
 /// DynamoDB implementation of EventStore.
 pub struct DynamoEventStore {
@@ -223,9 +223,14 @@ impl EventStore for DynamoEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        _external_id: Option<&str>,
+        _source_info: Option<&SourceInfo>,
+    ) -> Result<AddOutcome> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
         }
 
         let pk = Self::pk(domain, edition, root);
@@ -240,6 +245,8 @@ impl EventStore for DynamoEventStore {
                 actual: first_seq,
             });
         }
+
+        let last_seq = events.last().map(Self::get_sequence).unwrap_or(first_seq);
 
         // Write events using batch write
         for event in &events {
@@ -286,7 +293,10 @@ impl EventStore for DynamoEventStore {
             "Stored events in DynamoDB"
         );
 
-        Ok(())
+        Ok(AddOutcome::Added {
+            first_sequence: first_seq,
+            last_sequence: last_seq,
+        })
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
@@ -623,5 +633,17 @@ impl EventStore for DynamoEventStore {
         );
 
         Ok(deleted_count)
+    }
+
+    async fn find_by_source(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // DynamoDB doesn't store source tracking - saga idempotency not supported
+        // Use SQLite or PostgreSQL for saga source tracking
+        Ok(None)
     }
 }

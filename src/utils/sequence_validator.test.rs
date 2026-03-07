@@ -133,7 +133,7 @@ fn test_handle_storage_error_other_error() {
 /// Clients can extract it to see current aggregate state for retry.
 #[test]
 fn test_sequence_mismatch_error_with_state_roundtrip() {
-    use crate::proto::{Cover, EventPage, Uuid as ProtoUuid};
+    use crate::proto::{Cover, EventPage, PageHeader, Uuid as ProtoUuid};
 
     let event_book = EventBook {
         cover: Some(Cover {
@@ -143,10 +143,11 @@ fn test_sequence_mismatch_error_with_state_roundtrip() {
             }),
             correlation_id: "corr-123".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(5)),
+            }),
             created_at: None,
             payload: None,
         }],

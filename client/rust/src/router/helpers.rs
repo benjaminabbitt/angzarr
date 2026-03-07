@@ -3,12 +3,16 @@
 use prost::Message;
 use prost_types::Any;
 
-use crate::proto::{event_page, CommandBook, EventBook, EventPage};
+use crate::proto::{
+    event_page, page_header::SequenceType, CommandBook, EventBook, EventPage, PageHeader,
+};
 
 /// Helper to create an event page with proper sequence.
 pub fn event_page(seq: u32, event: Any) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(seq)),
+        }),
         created_at: Some(crate::now()),
         payload: Some(event_page::Payload::Event(event)),
     }

@@ -23,9 +23,10 @@ use crate::handlers::core::AggregateCommandHandler;
 use crate::orchestration::aggregate::{
     AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery,
 };
+use crate::proto::page_header;
 use crate::proto::{
     business_response, event_page, BusinessResponse, CommandBook, ContextualCommand, EventBook,
-    EventPage, Projection,
+    EventPage, PageHeader, Projection,
 };
 use crate::test_utils::{make_command_book, make_cover};
 
@@ -83,7 +84,9 @@ impl MockClientLogic {
             events: EventBook {
                 cover: Some(make_cover(domain)),
                 pages: vec![EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(1)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(1)),
+                    }),
                     created_at: None,
                     payload: Some(event_page::Payload::Event(prost_types::Any {
                         type_url: "test.Event".to_string(),

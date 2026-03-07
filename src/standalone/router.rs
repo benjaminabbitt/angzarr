@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use tonic::Status;
 use tracing::{debug, info, warn, Instrument};
+#[cfg(test)]
 use uuid::Uuid;
 
 use crate::bus::EventBus;
@@ -275,63 +276,10 @@ impl CommandRouter {
             let edition = events.edition().to_string();
 
             for entry in matching_sagas {
-                // Phase 1: Prepare - get destination covers
-                let mut covers = match entry.handler.prepare(events).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        warn!(
-                            saga = %entry.name,
-                            error = %e,
-                            "Sync saga prepare failed"
-                        );
-                        continue;
-                    }
-                };
-
-                // Stamp edition on covers
-                for cover in &mut covers {
-                    cover.stamp_edition_if_empty(&edition);
-                }
-
-                // Fetch destination state
-                let mut destinations = Vec::with_capacity(covers.len());
-                for cover in &covers {
-                    let dest_domain = &cover.domain;
-                    let dest_root = cover
-                        .root
-                        .as_ref()
-                        .map(|r| Uuid::from_slice(&r.value).unwrap_or_default())
-                        .unwrap_or_default();
-
-                    if let Some(storage) = self.stores.get(dest_domain) {
-                        match storage
-                            .event_store
-                            .get(dest_domain, &edition, dest_root)
-                            .await
-                        {
-                            Ok(pages) => {
-                                let mut book = crate::proto::EventBook {
-                                    cover: Some(cover.clone()),
-                                    pages,
-                                    ..Default::default()
-                                };
-                                crate::proto_ext::calculate_set_next_seq(&mut book);
-                                destinations.push(book);
-                            }
-                            Err(e) => {
-                                warn!(
-                                    saga = %entry.name,
-                                    domain = %dest_domain,
-                                    error = %e,
-                                    "Failed to fetch destination state"
-                                );
-                            }
-                        }
-                    }
-                }
-
-                // Phase 2: Handle - get commands
-                let mut response = match entry.handler.handle(events, &destinations).await {
+                // Sagas are pure translators — just call handle with source events.
+                // No destination fetching needed. Commands have angzarr_deferred,
+                // framework stamps explicit sequences on delivery.
+                let mut response = match entry.handler.handle(events).await {
                     Ok(r) => r,
                     Err(e) => {
                         warn!(
@@ -622,10 +570,11 @@ pub fn create_command_book(
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![crate::proto::CommandPage {
-            sequence: 0,
+            header: Some(crate::proto::PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(crate::proto::command_page::Payload::Command(
                 prost_types::Any {
                     type_url: command_type.to_string(),
@@ -634,7 +583,6 @@ pub fn create_command_book(
             )),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 

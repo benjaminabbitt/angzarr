@@ -26,7 +26,6 @@ fn make_cover(domain: &str) -> Cover {
         root: None,
         correlation_id: String::new(),
         edition: None,
-        external_id: String::new(),
     }
 }
 
@@ -81,12 +80,8 @@ fn create_projection_event_book_sets_sequence() {
 
     assert_eq!(event_book.pages.len(), 1);
     let page = &event_book.pages[0];
-    match &page.sequence_type {
-        Some(crate::proto::event_page::SequenceType::Sequence(seq)) => {
-            assert_eq!(*seq, 42);
-        }
-        _ => panic!("Expected Sequence type"),
-    }
+    use crate::proto_ext::EventPageExt;
+    assert_eq!(page.sequence_num(), 42);
 }
 
 /// Projection type URL is fixed for deserialization.
@@ -456,7 +451,6 @@ fn make_event_book(domain: &str) -> EventBook {
             root: None,
             correlation_id: "test-corr".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

@@ -1,5 +1,7 @@
 //! Default client implementations wrapping tonic gRPC clients.
 
+use std::time::Duration;
+
 use crate::error::{ClientError, Result};
 use crate::proto::{
     command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient as TonicCommandHandlerClient,
@@ -9,16 +11,20 @@ use crate::proto::{
     saga_coordinator_service_client::SagaCoordinatorServiceClient as TonicSagaClient, CommandBook,
     CommandRequest, CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query,
     SagaResponse, SpeculateCommandHandlerRequest, SpeculatePmRequest, SpeculateProjectorRequest,
-    SpeculateSagaRequest,
+    SpeculateSagaRequest, SyncMode,
 };
 use crate::traits;
 use async_trait::async_trait;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use tonic::transport::{Channel, Endpoint, Uri};
+use tracing::warn;
 
 /// Create a gRPC channel from an endpoint string.
 ///
 /// Supports both TCP (host:port or http://host:port) and Unix Domain Sockets.
 /// UDS paths are detected by leading '/' or './' and use a custom connector.
+///
+/// Retries connection with exponential backoff (100ms-5s, 10 attempts) on failure.
 async fn create_channel(endpoint: &str) -> Result<Channel> {
     let uds_path = if endpoint.starts_with('/') || endpoint.starts_with("./") {
         Some(endpoint.to_string())
@@ -26,29 +32,66 @@ async fn create_channel(endpoint: &str) -> Result<Channel> {
         endpoint.strip_prefix("unix://").map(str::to_string)
     };
 
-    if let Some(path) = uds_path {
-        // Unix Domain Socket - use custom connector
-        // The URI doesn't matter for UDS, but tonic requires a valid one
-        let channel = Endpoint::try_from("http://[::]:50051")
-            .map_err(|e| ClientError::Connection { msg: e.to_string() })?
-            .connect_with_connector(tower::service_fn(move |_: Uri| {
-                let path = path.clone();
-                async move {
-                    tokio::net::UnixStream::connect(path)
-                        .await
-                        .map(hyper_util::rt::TokioIo::new)
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(100))
+        .with_max_delay(Duration::from_secs(5))
+        .with_max_times(10)
+        .with_jitter()
+        .build();
+
+    let mut last_error: Option<ClientError> = None;
+
+    for (attempt, delay) in std::iter::once(Duration::ZERO).chain(backoff).enumerate() {
+        if attempt > 0 {
+            warn!(
+                endpoint = %endpoint,
+                attempt = attempt,
+                backoff_ms = %delay.as_millis(),
+                "gRPC connection failed, retrying after backoff"
+            );
+            tokio::time::sleep(delay).await;
+        }
+
+        let result = if let Some(ref path) = uds_path {
+            // Unix Domain Socket - use custom connector
+            // NOTE: The URI is ignored for UDS, but tonic requires a valid one.
+            // We use a dummy URI and override the connector to use UnixStream.
+            let path = path.clone();
+            Endpoint::try_from("http://[::]:50051")
+                .map_err(|e| ClientError::Connection { msg: e.to_string() })?
+                .connect_with_connector(tower::service_fn(move |_: Uri| {
+                    let path = path.clone();
+                    async move {
+                        tokio::net::UnixStream::connect(path)
+                            .await
+                            .map(hyper_util::rt::TokioIo::new)
+                    }
+                }))
+                .await
+        } else {
+            // TCP endpoint
+            match Channel::from_shared(endpoint.to_string()) {
+                Ok(ep) => ep.connect().await,
+                Err(e) => {
+                    // Invalid URI is not retryable
+                    return Err(ClientError::Connection { msg: e.to_string() });
                 }
-            }))
-            .await?;
-        Ok(channel)
-    } else {
-        // TCP endpoint
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection { msg: e.to_string() })?
-            .connect()
-            .await?;
-        Ok(channel)
+            }
+        };
+
+        match result {
+            Ok(channel) => return Ok(channel),
+            Err(e) => {
+                last_error = Some(ClientError::Connection {
+                    msg: format!("Connection failed: {}", e),
+                });
+            }
+        }
     }
+
+    Err(last_error.unwrap_or_else(|| ClientError::Connection {
+        msg: "Connection failed after max retries".to_string(),
+    }))
 }
 
 /// Default event query client using tonic gRPC.
@@ -123,9 +166,9 @@ impl CommandHandlerClient {
 
     /// Execute a command with specified sync mode.
     ///
-    /// Use `SyncMode::Unspecified` (0) for async fire-and-forget.
-    /// Use `SyncMode::Simple` (1) to wait for sync projectors.
-    /// Use `SyncMode::Cascade` (2) for full sync including saga cascade.
+    /// Use `SyncMode::Async` for fire-and-forget (default).
+    /// Use `SyncMode::Simple` to wait for sync projectors.
+    /// Use `SyncMode::Cascade` for full sync including saga cascade.
     pub async fn handle_command(&self, command: CommandRequest) -> Result<CommandResponse> {
         let response = self.inner.clone().handle_command(command).await?;
         Ok(response.into_inner())
@@ -133,11 +176,11 @@ impl CommandHandlerClient {
 
     /// Execute a command asynchronously (fire-and-forget).
     ///
-    /// Convenience method that wraps CommandBook in CommandRequest with default sync mode.
+    /// Convenience method that wraps CommandBook in CommandRequest with async sync mode.
     pub async fn handle(&self, command: CommandBook) -> Result<CommandResponse> {
         self.handle_command(CommandRequest {
             command: Some(command),
-            sync_mode: 0, // Unspecified = async
+            sync_mode: SyncMode::Async as i32,
         })
         .await
     }
@@ -159,17 +202,22 @@ impl traits::GatewayClient for CommandHandlerClient {
     }
 }
 
-/// Per-domain client combining command handler coordinator and event query.
+/// Per-domain client combining command execution, event querying, and speculative operations.
 ///
-/// Connects to a single domain's endpoint and provides both command execution
-/// and event querying. Matches the distributed architecture where each domain
-/// has its own coordinator service.
+/// Connects to a single domain's endpoint and provides:
+/// - Command execution via `command_handler`
+/// - Event querying via `query`
+/// - Speculative (what-if) execution via `speculative`
+///
+/// Matches the distributed architecture where each domain has its own coordinator service.
 #[derive(Clone)]
 pub struct DomainClient {
     /// Command handler client for command execution.
     pub command_handler: CommandHandlerClient,
     /// Query client for event retrieval.
     pub query: QueryClient,
+    /// Speculative client for dry-run and what-if scenarios.
+    pub speculative: SpeculativeClient,
 }
 
 impl DomainClient {
@@ -191,13 +239,33 @@ impl DomainClient {
     pub fn from_channel(channel: Channel) -> Self {
         Self {
             command_handler: CommandHandlerClient::from_channel(channel.clone()),
-            query: QueryClient::from_channel(channel),
+            query: QueryClient::from_channel(channel.clone()),
+            speculative: SpeculativeClient::from_channel(channel),
         }
     }
 
     /// Execute a command (delegates to command handler client).
     pub async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
         self.command_handler.handle(command).await
+    }
+
+    /// Query events (delegates to query client).
+    pub async fn get_events(&self, query: Query) -> Result<EventBook> {
+        self.query.get_events(query).await
+    }
+}
+
+#[async_trait]
+impl traits::GatewayClient for DomainClient {
+    async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
+        self.execute(command).await
+    }
+}
+
+#[async_trait]
+impl traits::QueryClient for DomainClient {
+    async fn get_events(&self, query: Query) -> Result<EventBook> {
+        self.get_events(query).await
     }
 }
 
@@ -269,65 +337,5 @@ impl traits::SpeculativeClient for SpeculativeClient {
     ) -> Result<ProcessManagerHandleResponse> {
         let response = self.pm.clone().handle_speculative(request).await?;
         Ok(response.into_inner())
-    }
-}
-
-/// Combined client providing command handler, query, and speculative operations.
-#[derive(Clone)]
-pub struct Client {
-    /// Command handler client for command execution.
-    pub command_handler: CommandHandlerClient,
-    /// Query client for event retrieval.
-    pub query: QueryClient,
-    /// Speculative client for dry-run and what-if scenarios.
-    pub speculative: SpeculativeClient,
-}
-
-impl Client {
-    /// Connect to a server providing command handler, query, and speculative services.
-    ///
-    /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
-    pub async fn connect(endpoint: &str) -> Result<Self> {
-        let channel = create_channel(endpoint).await?;
-        Ok(Self::from_channel(channel))
-    }
-
-    /// Connect using an endpoint from environment variable with fallback.
-    pub async fn from_env(env_var: &str, default: &str) -> Result<Self> {
-        let endpoint = std::env::var(env_var).unwrap_or_else(|_| default.to_string());
-        Self::connect(&endpoint).await
-    }
-
-    /// Create a client from an existing channel.
-    pub fn from_channel(channel: Channel) -> Self {
-        Self {
-            command_handler: CommandHandlerClient::from_channel(channel.clone()),
-            query: QueryClient::from_channel(channel.clone()),
-            speculative: SpeculativeClient::from_channel(channel),
-        }
-    }
-
-    /// Execute a command (delegates to command handler client).
-    pub async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
-        self.command_handler.handle(command).await
-    }
-
-    /// Query events (delegates to query client).
-    pub async fn get_events(&self, query: Query) -> Result<EventBook> {
-        self.query.get_events(query).await
-    }
-}
-
-#[async_trait]
-impl traits::GatewayClient for Client {
-    async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
-        self.execute(command).await
-    }
-}
-
-#[async_trait]
-impl traits::QueryClient for Client {
-    async fn get_events(&self, query: Query) -> Result<EventBook> {
-        self.get_events(query).await
     }
 }

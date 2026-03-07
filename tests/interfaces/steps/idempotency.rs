@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use angzarr::proto::{event_page, EventPage};
+use angzarr::proto::{event_page, page_header, EventPage, PageHeader};
 use angzarr::proto_ext::EventPageExt;
 use angzarr::storage::{AddOutcome, EventStore};
 use cucumber::{given, then, when, World};
@@ -60,7 +60,9 @@ impl IdempotencyWorld {
 
     fn make_event_page(&self, seq: u32, type_url: &str, payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
@@ -206,6 +208,7 @@ async fn when_add_events_with_external_id(
             pages,
             "test-correlation",
             ext_id,
+            None,
         )
         .await
     {
@@ -261,6 +264,7 @@ async fn when_add_events_without_external_id(world: &mut IdempotencyWorld, count
             world.current_root,
             pages,
             "test-correlation",
+            None,
             None,
         )
         .await
@@ -327,6 +331,7 @@ async fn when_add_event_to_root_with_external_id(
             pages,
             "test-correlation",
             ext_id,
+            None,
         )
         .await
     {
@@ -394,6 +399,7 @@ async fn when_add_event_to_root_in_domain_with_external_id(
             pages,
             "test-correlation",
             ext_id,
+            None,
         )
         .await
     {
@@ -461,6 +467,7 @@ async fn when_add_event_to_root_in_edition_with_external_id(
             pages,
             "test-correlation",
             ext_id,
+            None,
         )
         .await
     {
@@ -522,6 +529,7 @@ async fn when_add_events_concurrently(
                         pages_clone,
                         "test-correlation",
                         Some(&external_id_clone),
+                        None,
                     )
                     .await
             }

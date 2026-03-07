@@ -5,7 +5,7 @@ use crate::common::*;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-use angzarr::proto::{command_page, event_page, MergeStrategy};
+use angzarr::proto::{command_page, event_page, page_header, MergeStrategy, PageHeader};
 use async_trait::async_trait;
 use prost_types::Any;
 use tonic::Status;
@@ -36,16 +36,7 @@ impl FulfillmentSaga {
 
 #[async_trait]
 impl SagaHandler for FulfillmentSaga {
-    /// This saga doesn't need destination state - returns empty covers
-    async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-        Ok(vec![])
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
         self.triggered.store(true, Ordering::SeqCst);
 
         let mut commands = Vec::new();
@@ -66,10 +57,11 @@ impl SagaHandler for FulfillmentSaga {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id.clone(),
                             edition: None,
-                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
-                            sequence: 0,
+                            header: Some(PageHeader {
+                                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                            }),
                             payload: Some(command_page::Payload::Command(Any {
                                 type_url: "inventory.ReserveStock".to_string(),
                                 value: event.value.clone(),
@@ -95,16 +87,8 @@ struct SagaWrapper(Arc<FulfillmentSaga>);
 
 #[async_trait]
 impl SagaHandler for SagaWrapper {
-    async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
-        self.0.prepare(source).await
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
-        self.0.handle(source, destinations).await
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+        self.0.handle(source).await
     }
 }
 
@@ -125,15 +109,7 @@ impl OrdersToInventorySaga {
 
 #[async_trait]
 impl SagaHandler for OrdersToInventorySaga {
-    async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-        Ok(vec![]) // No destination state needed
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
         self.step_count.fetch_add(1, Ordering::SeqCst);
 
         let source_correlation_id = source
@@ -153,10 +129,11 @@ impl SagaHandler for OrdersToInventorySaga {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id.clone(),
                             edition: None,
-                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
-                            sequence: 0,
+                            header: Some(PageHeader {
+                                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                            }),
                             payload: Some(command_page::Payload::Command(Any {
                                 type_url: "inventory.ReserveStock".to_string(),
                                 value: event.value.clone(),
@@ -189,15 +166,7 @@ impl InventoryToShippingSaga {
 
 #[async_trait]
 impl SagaHandler for InventoryToShippingSaga {
-    async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-        Ok(vec![]) // No destination state needed
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
         self.step_count.fetch_add(1, Ordering::SeqCst);
 
         let source_correlation_id = source
@@ -217,10 +186,11 @@ impl SagaHandler for InventoryToShippingSaga {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id.clone(),
                             edition: None,
-                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
-                            sequence: 0,
+                            header: Some(PageHeader {
+                                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                            }),
                             payload: Some(command_page::Payload::Command(Any {
                                 type_url: "shipping.CreateShipment".to_string(),
                                 value: event.value.clone(),
@@ -244,16 +214,8 @@ struct OrdersToInventoryWrapper(Arc<OrdersToInventorySaga>);
 
 #[async_trait]
 impl SagaHandler for OrdersToInventoryWrapper {
-    async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
-        self.0.prepare(source).await
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
-        self.0.handle(source, destinations).await
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+        self.0.handle(source).await
     }
 }
 
@@ -261,16 +223,8 @@ struct InventoryToShippingWrapper(Arc<InventoryToShippingSaga>);
 
 #[async_trait]
 impl SagaHandler for InventoryToShippingWrapper {
-    async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
-        self.0.prepare(source).await
-    }
-
-    async fn handle(
-        &self,
-        source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
-        self.0.handle(source, destinations).await
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+        self.0.handle(source).await
     }
 }
 
@@ -609,95 +563,27 @@ async fn test_saga_only_receives_events_from_input_domain() {
 // Two-Phase Protocol Tests: Demonstrating Three Saga Outcomes
 // ========================================================================
 
-/// Outcome 1: Saga needs destination state
-/// - prepare() returns covers of aggregates to fetch
-/// - framework fetches those EventBooks from event store
-/// - execute() receives source + destinations
+/// Saga translates source events to commands.
+///
+/// In the delivery-retry model:
+/// - Saga receives only source events (no destination state)
+/// - Saga produces commands with deferred sequences
+/// - Framework handles delivery retry on sequence conflicts
 #[tokio::test]
-async fn test_two_phase_saga_fetches_destinations() {
-    // Track whether prepare and execute were called with correct data
-    let prepare_called = Arc::new(AtomicBool::new(false));
-    let execute_called = Arc::new(AtomicBool::new(false));
-    let destinations_received = Arc::new(AtomicBool::new(false));
+async fn test_saga_translates_source_to_commands() {
+    let handle_called = Arc::new(AtomicBool::new(false));
+    let handle_called_clone = handle_called.clone();
 
-    let prepare_called_clone = prepare_called.clone();
-    let execute_called_clone = execute_called.clone();
-    let destinations_received_clone = destinations_received.clone();
-
-    /// Saga that needs to check inventory state before reserving
-    struct InventoryCheckingSaga {
-        prepare_called: Arc<AtomicBool>,
-        execute_called: Arc<AtomicBool>,
-        destinations_received: Arc<AtomicBool>,
-        inventory_root: Uuid,
+    /// Saga that produces commands from source events
+    struct TranslatorSaga {
+        handle_called: Arc<AtomicBool>,
     }
 
     #[async_trait]
-    impl SagaHandler for InventoryCheckingSaga {
-        async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
-            self.prepare_called.store(true, Ordering::SeqCst);
+    impl SagaHandler for TranslatorSaga {
+        async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+            self.handle_called.store(true, Ordering::SeqCst);
 
-            // Check if this is an OrderPlaced event
-            let has_order_placed = source.pages.iter().any(|p| {
-                matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("OrderPlaced"))
-            });
-
-            if has_order_placed {
-                // Request the inventory aggregate's current state
-                Ok(vec![Cover {
-                    domain: "inventory".to_string(),
-                    root: Some(ProtoUuid {
-                        value: self.inventory_root.as_bytes().to_vec(),
-                    }),
-                    correlation_id: String::new(),
-                    edition: None,
-                    external_id: String::new(),
-                }])
-            } else {
-                Ok(vec![])
-            }
-        }
-
-        async fn handle(
-            &self,
-            source: &EventBook,
-            destinations: &[EventBook],
-        ) -> Result<SagaResponse, Status> {
-            self.execute_called.store(true, Ordering::SeqCst);
-
-            // Verify we received the correct destination state
-            if !destinations.is_empty() {
-                self.destinations_received.store(true, Ordering::SeqCst);
-
-                // Validate the destination is the inventory aggregate we requested
-                let dest = &destinations[0];
-                let cover = dest.cover.as_ref().expect("Destination should have cover");
-                assert_eq!(cover.domain, "inventory", "Should fetch inventory domain");
-
-                let root = cover.root.as_ref().expect("Destination should have root");
-                let fetched_root = Uuid::from_slice(&root.value).unwrap();
-                assert_eq!(
-                    fetched_root, self.inventory_root,
-                    "Should fetch the exact aggregate we requested in prepare()"
-                );
-
-                // Verify it has the event we created earlier
-                assert!(
-                    !dest.pages.is_empty(),
-                    "Destination should have events from the inventory aggregate we created"
-                );
-                let event_page::Payload::Event(first_event) =
-                    dest.pages[0].payload.as_ref().expect("Should have payload")
-                else {
-                    panic!("Expected event payload");
-                };
-                assert!(
-                    first_event.type_url.contains("CreateProduct"),
-                    "Fetched inventory should contain the CreateProduct event we stored"
-                );
-            }
-
-            // Generate reservation command based on inventory state
             let has_order_placed = source.pages.iter().any(|p| {
                 matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("OrderPlaced"))
             });
@@ -715,10 +601,11 @@ async fn test_two_phase_saga_fetches_destinations() {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id,
                             edition: None,
-                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
-                            sequence: 0,
+                            header: Some(PageHeader {
+                                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                            }),
                             payload: Some(command_page::Payload::Command(Any {
                                 type_url: "inventory.Reserve".to_string(),
                                 value: b"reserve".to_vec(),
@@ -735,12 +622,8 @@ async fn test_two_phase_saga_fetches_destinations() {
         }
     }
 
-    let inventory_root = Uuid::new_v4();
-    let saga = InventoryCheckingSaga {
-        prepare_called: prepare_called_clone,
-        execute_called: execute_called_clone,
-        destinations_received: destinations_received_clone,
-        inventory_root,
+    let saga = TranslatorSaga {
+        handle_called: handle_called_clone,
     };
 
     let mut runtime = RuntimeBuilder::new()
@@ -748,7 +631,7 @@ async fn test_two_phase_saga_fetches_destinations() {
         .register_command_handler("orders", EchoAggregate::new())
         .register_command_handler("inventory", EchoAggregate::new())
         .register_saga(
-            "inventory-checker",
+            "order-to-inventory",
             saga,
             SagaConfig::new("orders", "inventory"),
         )
@@ -758,35 +641,7 @@ async fn test_two_phase_saga_fetches_destinations() {
 
     runtime.start().await.expect("Failed to start runtime");
 
-    // First, create some inventory state so there's something to fetch
     let client = runtime.command_client();
-    let inv_cmd = CommandBook {
-        cover: Some(Cover {
-            domain: "inventory".to_string(),
-            root: Some(ProtoUuid {
-                value: inventory_root.as_bytes().to_vec(),
-            }),
-            correlation_id: "setup".to_string(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![CommandPage {
-            sequence: 0,
-            payload: Some(command_page::Payload::Command(Any {
-                type_url: "inventory.CreateProduct".to_string(),
-                value: b"product-data".to_vec(),
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
-        ..Default::default()
-    };
-    client
-        .execute(inv_cmd)
-        .await
-        .expect("Inventory setup failed");
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Now execute an order (triggers saga)
     let mut order_cmd = create_test_command("orders", Uuid::new_v4(), b"order-data", 0);
     order_cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
@@ -796,61 +651,30 @@ async fn test_two_phase_saga_fetches_destinations() {
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Verify two-phase protocol was followed
     assert!(
-        prepare_called.load(Ordering::SeqCst),
-        "prepare() should have been called"
-    );
-    assert!(
-        execute_called.load(Ordering::SeqCst),
-        "execute() should have been called"
-    );
-    assert!(
-        destinations_received.load(Ordering::SeqCst),
-        "execute() should have received destination EventBooks from prepare()"
+        handle_called.load(Ordering::SeqCst),
+        "handle() should have been called"
     );
 }
 
-/// Outcome 2: Saga doesn't need destination state
-/// - prepare() returns empty vec
-/// - framework calls execute() immediately (no fetch)
-/// - execute() produces commands from source events only
+/// Saga produces commands from source events only.
+///
+/// The framework handles all delivery concerns - saga is a pure translator.
 #[tokio::test]
-async fn test_two_phase_saga_no_destinations_needed() {
-    let prepare_called = Arc::new(AtomicBool::new(false));
-    let execute_called = Arc::new(AtomicBool::new(false));
+async fn test_saga_produces_commands_from_source() {
+    let handle_called = Arc::new(AtomicBool::new(false));
+    let handle_called_clone = handle_called.clone();
 
-    let prepare_called_clone = prepare_called.clone();
-    let execute_called_clone = execute_called.clone();
-
-    /// Simple saga that doesn't need any destination state
+    /// Simple saga that produces commands based on source events
     struct SimpleFulfillmentSaga {
-        prepare_called: Arc<AtomicBool>,
-        execute_called: Arc<AtomicBool>,
+        handle_called: Arc<AtomicBool>,
     }
 
     #[async_trait]
     impl SagaHandler for SimpleFulfillmentSaga {
-        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-            self.prepare_called.store(true, Ordering::SeqCst);
-            // No destinations needed - we just react to events
-            Ok(vec![])
-        }
+        async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+            self.handle_called.store(true, Ordering::SeqCst);
 
-        async fn handle(
-            &self,
-            source: &EventBook,
-            destinations: &[EventBook],
-        ) -> Result<SagaResponse, Status> {
-            self.execute_called.store(true, Ordering::SeqCst);
-
-            // Verify no destinations were passed (since we didn't request any)
-            assert!(
-                destinations.is_empty(),
-                "Should receive no destinations when prepare() returns empty"
-            );
-
-            // Produce command based only on source events
             let has_order = source.pages.iter().any(|p| {
                 matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("OrderPlaced"))
             });
@@ -868,10 +692,11 @@ async fn test_two_phase_saga_no_destinations_needed() {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id,
                             edition: None,
-                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
-                            sequence: 0,
+                            header: Some(PageHeader {
+                                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                            }),
                             payload: Some(command_page::Payload::Command(Any {
                                 type_url: "shipping.CreateShipment".to_string(),
                                 value: b"ship".to_vec(),
@@ -889,8 +714,7 @@ async fn test_two_phase_saga_no_destinations_needed() {
     }
 
     let saga = SimpleFulfillmentSaga {
-        prepare_called: prepare_called_clone,
-        execute_called: execute_called_clone,
+        handle_called: handle_called_clone,
     };
 
     let mut runtime = RuntimeBuilder::new()
@@ -919,41 +743,29 @@ async fn test_two_phase_saga_no_destinations_needed() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     assert!(
-        prepare_called.load(Ordering::SeqCst),
-        "prepare() should have been called"
-    );
-    assert!(
-        execute_called.load(Ordering::SeqCst),
-        "execute() should have been called"
+        handle_called.load(Ordering::SeqCst),
+        "handle() should have been called"
     );
 }
 
-/// Outcome 3: Saga doesn't act on this event (no-op)
-/// - prepare() may or may not be called
-/// - execute() returns empty commands vec
-/// - No commands are executed
+/// Saga no-op: returns empty commands for irrelevant events.
+///
+/// Sagas may legitimately produce zero commands when source events
+/// don't require translation to the target domain.
 #[tokio::test]
-async fn test_two_phase_saga_noop_returns_empty_commands() {
-    let execute_called = Arc::new(AtomicBool::new(false));
-    let execute_called_clone = execute_called.clone();
+async fn test_saga_noop_returns_empty_commands() {
+    let handle_called = Arc::new(AtomicBool::new(false));
+    let handle_called_clone = handle_called.clone();
 
     /// Saga that only acts on specific events - returns empty for others
     struct SelectiveSaga {
-        execute_called: Arc<AtomicBool>,
+        handle_called: Arc<AtomicBool>,
     }
 
     #[async_trait]
     impl SagaHandler for SelectiveSaga {
-        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-            Ok(vec![])
-        }
-
-        async fn handle(
-            &self,
-            source: &EventBook,
-            _destinations: &[EventBook],
-        ) -> Result<SagaResponse, Status> {
-            self.execute_called.store(true, Ordering::SeqCst);
+        async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+            self.handle_called.store(true, Ordering::SeqCst);
 
             // Only act on "SpecialEvent", ignore everything else
             let has_special = source.pages.iter().any(|p| {
@@ -973,10 +785,11 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
                             root: source.cover.as_ref().and_then(|c| c.root.clone()),
                             correlation_id: source_correlation_id,
                             edition: None,
-                            external_id: String::new(),
                         }),
                         pages: vec![CommandPage {
-                            sequence: 0,
+                            header: Some(PageHeader {
+                                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                            }),
                             payload: Some(command_page::Payload::Command(Any {
                                 type_url: "target.DoSomething".to_string(),
                                 value: b"data".to_vec(),
@@ -995,7 +808,7 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
     }
 
     let saga = SelectiveSaga {
-        execute_called: execute_called_clone,
+        handle_called: handle_called_clone,
     };
 
     let mut runtime = RuntimeBuilder::new()
@@ -1032,8 +845,8 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     assert!(
-        execute_called.load(Ordering::SeqCst),
-        "execute() should still be called even for no-op"
+        handle_called.load(Ordering::SeqCst),
+        "handle() should still be called even for no-op"
     );
 
     // Verify no commands went to target domain

@@ -24,8 +24,9 @@ use crate::bus::MockEventBus;
 use crate::discovery::StaticServiceDiscovery;
 use crate::orchestration::aggregate::{ClientLogic, FactContext};
 use crate::proto::{
-    business_response, command_page, event_page, CommandBook, CommandPage, ContextualCommand,
-    Cover, EventBook, EventPage, MergeStrategy, SyncMode, Uuid as ProtoUuid,
+    business_response, command_page, event_page, page_header, CommandBook, CommandPage,
+    ContextualCommand, Cover, EventBook, EventPage, MergeStrategy, PageHeader, SyncMode,
+    Uuid as ProtoUuid,
 };
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use prost_types::Any;
@@ -108,7 +109,6 @@ fn make_cover(domain: &str, root: Uuid) -> Cover {
         root: Some(make_proto_uuid(root)),
         correlation_id: String::new(),
         edition: None,
-        external_id: String::new(),
     }
 }
 
@@ -116,20 +116,23 @@ fn make_command_book(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
     CommandBook {
         cover: Some(make_cover(domain, root)),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 
 fn make_event_page(seq: u32) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+        }),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -139,12 +142,16 @@ fn make_event_page(seq: u32) -> EventPage {
 }
 
 fn make_fact_page() -> EventPage {
-    use crate::proto::FactSequence;
+    use crate::proto::ExternalDeferredSequence;
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Fact(FactSequence {
-            source: "test".to_string(),
-            description: "Test fact".to_string(),
-        })),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::ExternalDeferred(
+                ExternalDeferredSequence {
+                    external_id: "test-external-id".to_string(),
+                    description: "Test fact".to_string(),
+                },
+            )),
+        }),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Fact".to_string(),
             value: vec![],

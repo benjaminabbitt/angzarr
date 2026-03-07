@@ -114,3 +114,121 @@ fn test_parse_temporal_query_empty_point_in_time() {
     assert!(seq.is_none());
     assert!(ts.is_none());
 }
+
+// ============================================================================
+// parse_query_cover Tests
+// ============================================================================
+
+/// Query without cover returns InvalidArgument.
+///
+/// Every query must specify which aggregate to query.
+#[test]
+fn test_parse_query_cover_missing_cover_returns_error() {
+    use crate::proto::Query;
+
+    let query = Query {
+        cover: None,
+        selection: None,
+    };
+    let result = parse_query_cover(&query);
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
+
+/// Query with cover but missing root returns InvalidArgument.
+///
+/// Root ID identifies the aggregate instance.
+#[test]
+fn test_parse_query_cover_missing_root_returns_error() {
+    use crate::proto::{Cover, Query};
+
+    let query = Query {
+        cover: Some(Cover {
+            domain: "orders".to_string(),
+            root: None,
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        selection: None,
+    };
+    let result = parse_query_cover(&query);
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
+
+/// Query with invalid UUID bytes returns InvalidArgument.
+///
+/// UUID must be exactly 16 bytes.
+#[test]
+fn test_parse_query_cover_invalid_uuid_returns_error() {
+    use crate::proto::{Cover, Query, Uuid as ProtoUuid};
+
+    let query = Query {
+        cover: Some(Cover {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: vec![1, 2, 3], // Too short
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        selection: None,
+    };
+    let result = parse_query_cover(&query);
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    assert!(status.message().contains("UUID"));
+}
+
+/// Valid query returns edition and root UUID.
+#[test]
+fn test_parse_query_cover_valid_query_returns_edition_and_root() {
+    use crate::proto::{Cover, Edition, Query, Uuid as ProtoUuid};
+
+    let root = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+    let query = Query {
+        cover: Some(Cover {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: Some(Edition {
+                name: "test-edition".to_string(),
+                divergences: vec![],
+            }),
+        }),
+        selection: None,
+    };
+    let result = parse_query_cover(&query);
+    assert!(result.is_ok());
+    let (edition, parsed_root) = result.unwrap();
+    assert_eq!(edition, Some("test-edition"));
+    assert_eq!(parsed_root, root);
+}
+
+/// Query without edition returns None for edition.
+#[test]
+fn test_parse_query_cover_no_edition_returns_none() {
+    use crate::proto::{Cover, Query, Uuid as ProtoUuid};
+
+    let root = uuid::Uuid::new_v4();
+    let query = Query {
+        cover: Some(Cover {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        selection: None,
+    };
+    let result = parse_query_cover(&query);
+    assert!(result.is_ok());
+    let (edition, _) = result.unwrap();
+    assert!(edition.is_none());
+}

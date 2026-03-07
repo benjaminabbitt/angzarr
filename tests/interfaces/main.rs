@@ -45,6 +45,7 @@ mod steps;
 
 use cucumber::World;
 use steps::aggregate_handler::AggregateHandlerWorld;
+use steps::aggregate_orchestration::AggregateOrchestrationWorld;
 use steps::dlq::DlqWorld;
 use steps::dlq_publishers::DlqPublisherWorld;
 use steps::editions::EditionWorld;
@@ -173,5 +174,12 @@ async fn main() {
     IdempotencyWorld::cucumber()
         .fail_on_skipped()
         .run("tests/interfaces/features/idempotency.feature")
+        .await;
+
+    // Run Aggregate Orchestration tests
+    println!("\n=== Running Aggregate Orchestration Interface Tests ===\n");
+    AggregateOrchestrationWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/aggregate_orchestration.feature")
         .await;
 }

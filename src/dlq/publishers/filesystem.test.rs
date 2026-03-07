@@ -21,6 +21,7 @@ use crate::dlq::{AngzarrDeadLetter, DeadLetterPayload};
 use crate::proto::{
     command_page, CommandBook, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid,
 };
+use crate::proto::{page_header, PageHeader};
 use std::collections::HashMap;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -39,17 +40,17 @@ fn make_test_command(domain: &str, correlation_id: &str) -> CommandBook {
             }),
             correlation_id: correlation_id.to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: "test.Command".to_string(),
                 value: vec![1, 2, 3],
             })),
             merge_strategy: MergeStrategy::MergeManual as i32,
         }],
-        saga_origin: None,
     }
 }
 

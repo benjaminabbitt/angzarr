@@ -13,7 +13,7 @@
 //! - Sparse queries filter to requested sequences
 
 use super::*;
-use crate::proto::{event_page, EventPage, Snapshot, SnapshotRetention};
+use crate::proto::{event_page, page_header, EventPage, PageHeader, Snapshot, SnapshotRetention};
 use crate::proto_ext::EventPageExt;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use crate::test_utils::{make_event_book_with_root, make_event_page};
@@ -79,6 +79,7 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
             (0..5).map(make_event_page).collect(),
             "",
             None,
+            None,
         )
         .await
         .unwrap();
@@ -126,6 +127,7 @@ async fn test_get_from_to_returns_range() {
             root,
             (0..10).map(make_event_page).collect(),
             "",
+            None,
             None,
         )
         .await
@@ -176,7 +178,6 @@ async fn test_put_missing_root_returns_error() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -203,7 +204,6 @@ async fn test_put_invalid_uuid_returns_error() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -268,6 +268,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
             (0..5).map(make_event_page).collect(),
             "",
             None,
+            None,
         )
         .await
         .unwrap();
@@ -311,6 +312,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
             root,
             (0..5).map(make_event_page).collect(),
             "",
+            None,
             None,
         )
         .await
@@ -360,6 +362,7 @@ async fn test_with_config_defaults_match_new_constructor() {
             (0..3).map(make_event_page).collect(),
             "",
             None,
+            None,
         )
         .await
         .unwrap();
@@ -402,7 +405,9 @@ mod mock_integration {
 
     fn test_event(sequence: u32, event_type: &str) -> EventPage {
         EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             created_at: Some(Timestamp {
                 seconds: 1704067200 + sequence as i64,
                 nanos: 0,
@@ -465,6 +470,7 @@ mod mock_integration {
                 ],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -509,6 +515,7 @@ mod mock_integration {
                 ],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -548,6 +555,7 @@ mod mock_integration {
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
+                None,
                 None,
             )
             .await
@@ -590,6 +598,7 @@ mod mock_integration {
                 ],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -628,6 +637,7 @@ mod mock_integration {
                 ],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -661,6 +671,7 @@ mod mock_integration {
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -692,6 +703,7 @@ mod mock_integration {
                 ],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -722,6 +734,7 @@ mod mock_integration {
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
+                None,
                 None,
             )
             .await
@@ -759,6 +772,7 @@ mod mock_integration {
                     test_event(3, "Event3"),
                 ],
                 "",
+                None,
                 None,
             )
             .await

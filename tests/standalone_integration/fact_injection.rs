@@ -1,10 +1,10 @@
 //! Tests for fact event injection.
 //!
 //! Verifies that:
-//! - Fact events (with FactSequence marker) can be submitted to the coordinator
+//! - External fact events (with ExternalDeferredSequence marker) can be submitted
 //! - The coordinator assigns real sequence numbers at persistence time
-//! - Downstream consumers receive events with valid sequences (not FactSequence)
-//! - Idempotency checking via Cover.external_id prevents duplicate facts
+//! - Downstream consumers receive events with valid sequences
+//! - Idempotency checking via external_id prevents duplicate facts
 //!
 //! ## Implementation Required
 //!
@@ -13,20 +13,19 @@
 //! 1. `RuntimeBuilder::route_facts_to_aggregate(bool)` - config option (default: true)
 //! 2. `Runtime::inject_fact(EventBook)` - method to inject fact events
 //! 3. Coordinator logic to:
-//!    - Check idempotency via Cover.external_id
+//!    - Check idempotency via external_id in PageHeader
 //!    - Route to aggregate for state update (if configured)
-//!    - Assign next sequence number, replacing FactSequence
+//!    - Assign next sequence number, replacing ExternalDeferred
 //!    - Persist and publish with real sequence
 
 use crate::common::*;
-use angzarr::proto::{event_page, FactSequence};
+use angzarr::proto::{event_page, page_header, ExternalDeferredSequence, PageHeader};
 
-/// Helper to create a fact event book with FactSequence marker.
+/// Helper to create a fact event book with ExternalDeferredSequence marker.
 pub fn create_fact_event_book(
     domain: &str,
     root: Uuid,
     external_id: &str,
-    source: &str,
     description: &str,
 ) -> EventBook {
     EventBook {
@@ -37,14 +36,16 @@ pub fn create_fact_event_book(
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: external_id.to_string(),
         }),
         pages: vec![EventPage {
-            // FactSequence marker instead of explicit sequence number
-            sequence_type: Some(event_page::SequenceType::Fact(FactSequence {
-                source: source.to_string(),
-                description: description.to_string(),
-            })),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::ExternalDeferred(
+                    ExternalDeferredSequence {
+                        external_id: external_id.to_string(),
+                        description: description.to_string(),
+                    },
+                )),
+            }),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.FactEvent".to_string(),
                 value: vec![42, 43, 44],
@@ -56,7 +57,7 @@ pub fn create_fact_event_book(
     }
 }
 
-/// Test that FactSequence events can be created with the new proto structure.
+/// Test that ExternalDeferredSequence events can be created with the new proto structure.
 #[tokio::test]
 async fn test_fact_event_proto_structure() {
     let domain = "fact-proto-test";
@@ -66,22 +67,21 @@ async fn test_fact_event_proto_structure() {
         domain,
         root,
         "stripe_pi_abc123",
-        "stripe",
         "Payment confirmed by webhook",
     );
 
     // Verify the structure
     let cover = fact.cover.as_ref().expect("Cover should exist");
-    assert_eq!(cover.external_id, "stripe_pi_abc123");
     assert_eq!(cover.domain, domain);
 
     let page = fact.pages.first().expect("Should have page");
-    match &page.sequence_type {
-        Some(event_page::SequenceType::Fact(fs)) => {
-            assert_eq!(fs.source, "stripe");
-            assert_eq!(fs.description, "Payment confirmed by webhook");
+    let header = page.header.as_ref().expect("Should have header");
+    match &header.sequence_type {
+        Some(page_header::SequenceType::ExternalDeferred(ext)) => {
+            assert_eq!(ext.external_id, "stripe_pi_abc123");
+            assert_eq!(ext.description, "Payment confirmed by webhook");
         }
-        _ => panic!("Expected FactSequence marker"),
+        _ => panic!("Expected ExternalDeferred marker"),
     }
 }
 
@@ -94,27 +94,13 @@ async fn test_regular_event_has_sequence() {
     let event = create_test_event_book(domain, root, 5);
 
     let page = event.pages.first().expect("Should have page");
-    match &page.sequence_type {
-        Some(event_page::SequenceType::Sequence(seq)) => {
+    let header = page.header.as_ref().expect("Should have header");
+    match &header.sequence_type {
+        Some(page_header::SequenceType::Sequence(seq)) => {
             assert_eq!(*seq, 5);
         }
         _ => panic!("Expected regular sequence number"),
     }
-}
-
-/// Test that Cover.external_id defaults to empty for regular events.
-#[tokio::test]
-async fn test_regular_event_empty_external_id() {
-    let domain = "regular-ext-id-test";
-    let root = Uuid::new_v4();
-
-    let event = create_test_event_book(domain, root, 0);
-    let cover = event.cover.as_ref().expect("Cover should exist");
-
-    assert!(
-        cover.external_id.is_empty(),
-        "Regular events should have empty external_id"
-    );
 }
 
 // ============================================================================

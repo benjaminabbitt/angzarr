@@ -76,7 +76,7 @@ impl ClientLogic for CommandHandlerAdapter {
 /// Notification commands (for compensation), not regular commands.
 ///
 /// Flow:
-/// 1. PM command rejected → saga_origin.triggering_aggregate = PM cover
+/// 1. PM command rejected → angzarr_deferred.source = PM cover
 /// 2. Notification command routes to PM domain
 /// 3. CommandRouter invokes this adapter
 /// 4. PM's handle_revocation() processes the Notification

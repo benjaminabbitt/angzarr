@@ -20,7 +20,7 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
-use crate::storage::{EventStore, Result, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
 /// Decode a BLOB column from immudb.
 ///
@@ -308,9 +308,14 @@ impl EventStore for ImmudbEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        _external_id: Option<&str>,
+        _source_info: Option<&SourceInfo>,
+    ) -> Result<AddOutcome> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
         }
 
         let root_str = root.to_string();
@@ -323,6 +328,8 @@ impl EventStore for ImmudbEventStore {
             .unwrap_or(0);
 
         let mut auto_sequence = base_sequence;
+        let mut first_sequence = None;
+        let mut last_sequence = 0u32;
 
         // Insert events one by one (immudb may not support multi-row INSERT well)
         for event in events {
@@ -333,6 +340,11 @@ impl EventStore for ImmudbEventStore {
                 &mut auto_sequence,
             )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
+
+            if first_sequence.is_none() {
+                first_sequence = Some(sequence);
+            }
+            last_sequence = sequence;
 
             // Format event_data as hex for immudb BLOB type (x'...' format)
             let event_data_hex = format!("x'{}'", hex::encode(&event_data));
@@ -367,7 +379,10 @@ impl EventStore for ImmudbEventStore {
             self.pool.execute(sqlx::raw_sql(&query)).await?;
         }
 
-        Ok(())
+        Ok(AddOutcome::Added {
+            first_sequence: first_sequence.unwrap_or(0),
+            last_sequence,
+        })
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
@@ -560,6 +575,18 @@ impl EventStore for ImmudbEventStore {
         Err(StorageError::NotImplemented(
             "immudb does not support deletion - events are immutable".to_string(),
         ))
+    }
+
+    async fn find_by_source(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // ImmuDB doesn't store source tracking - saga idempotency not supported
+        // Use SQLite or PostgreSQL for saga source tracking
+        Ok(None)
     }
 }
 

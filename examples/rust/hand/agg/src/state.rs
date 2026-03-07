@@ -426,14 +426,14 @@ mod tests {
             }),
             pages: vec![
                 EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
                     payload: Some(event_page::Payload::Event(
                         pack_event(&cards_dealt, "examples.CardsDealt")
                     )),
                     created_at: None,
                 },
                 EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(1)),
+                    sequence_type: Some(page_header::SequenceType::Sequence(1)),
                     payload: Some(event_page::Payload::Event(
                         pack_event(&community, "examples.CommunityCardsDealt")
                     )),

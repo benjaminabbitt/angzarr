@@ -77,8 +77,8 @@ class CoverW:
         return self.domain()
 
     def cache_key(self) -> str:
-        """Generate a cache key based on domain + root."""
-        return f"{self.domain()}:{self.root_id_hex()}"
+        """Generate a cache key based on edition + domain + root."""
+        return f"{self.edition()}:{self.domain()}:{self.root_id_hex()}"
 
 
 class EventBookW:
@@ -148,8 +148,8 @@ class EventBookW:
         return self.domain()
 
     def cache_key(self) -> str:
-        """Generate a cache key based on domain + root."""
-        return f"{self.domain()}:{self.root_id_hex()}"
+        """Generate a cache key based on edition + domain + root."""
+        return f"{self.edition()}:{self.domain()}:{self.root_id_hex()}"
 
     def cover_wrapper(self) -> "CoverW":
         """Return a CoverW wrapping the cover."""
@@ -203,16 +203,23 @@ class CommandBookW:
         except ValueError:
             return None
 
+    def edition(self) -> str:
+        """Return the edition name, defaulting to DEFAULT_EDITION."""
+        cover = self._cover()
+        if cover is None or not cover.HasField("edition") or not cover.edition.name:
+            return DEFAULT_EDITION
+        return cover.edition.name
+
     def routing_key(self) -> str:
         """Compute the bus routing key."""
         return self.domain()
 
     def cache_key(self) -> str:
-        """Generate a cache key based on domain + root."""
+        """Generate a cache key based on edition + domain + root."""
         cover = self._cover()
         if cover is None or not cover.HasField("root"):
-            return f"{self.domain()}:"
-        return f"{self.domain()}:{cover.root.value.hex()}"
+            return f"{self.edition()}:{self.domain()}:"
+        return f"{self.edition()}:{self.domain()}:{cover.root.value.hex()}"
 
     def cover_wrapper(self) -> "CoverW":
         """Return a CoverW wrapping the cover."""

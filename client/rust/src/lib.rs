@@ -69,7 +69,7 @@ pub mod traits;
 pub mod validation;
 
 // Re-export main types at crate root
-pub use client::{Client, CommandHandlerClient, DomainClient, QueryClient, SpeculativeClient};
+pub use client::{CommandHandlerClient, DomainClient, QueryClient, SpeculativeClient};
 pub use error::{ClientError, Result};
 
 // Re-export builder extension traits for fluent API

@@ -46,7 +46,9 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
         let events = EventBook {
             cover: cmd.cover,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
             }],
@@ -76,7 +78,9 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
                 .into_iter()
                 .enumerate()
                 .map(|(i, mut p)| {
-                    p.sequence_type = Some(event_page::SequenceType::Sequence(i as u32));
+                    p.header = Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(i as u32)),
+                    });
                     p
                 })
                 .collect(),
@@ -123,7 +127,9 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
         let events = EventBook {
             cover: cmd.cover,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
             }],

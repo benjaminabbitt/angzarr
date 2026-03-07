@@ -49,15 +49,7 @@ struct MockSagaHandler;
 
 #[async_trait]
 impl SagaHandler for MockSagaHandler {
-    async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-        Ok(vec![])
-    }
-
-    async fn handle(
-        &self,
-        _source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, _source: &EventBook) -> Result<SagaResponse, Status> {
         Ok(SagaResponse::default())
     }
 }
@@ -299,4 +291,139 @@ fn test_with_kafka_returns_configured_builder() {
     let builder = RuntimeBuilder::new().with_kafka("kafka:9092");
     assert_eq!(builder.messaging.messaging_type, "kafka");
     assert_eq!(builder.messaging.kafka.bootstrap_servers, "kafka:9092");
+}
+
+// ============================================================================
+// Generic Setter Tests (for mutation coverage)
+// ============================================================================
+
+/// with_storage() sets custom storage configuration.
+#[test]
+fn test_with_storage_sets_config() {
+    let config = StorageConfig {
+        storage_type: "custom-storage".to_string(),
+        ..Default::default()
+    };
+    let builder = RuntimeBuilder::new().with_storage(config);
+    assert_eq!(builder.storage.storage_type, "custom-storage");
+}
+
+/// with_domain_storage() sets storage for a specific domain.
+#[test]
+fn test_with_domain_storage_sets_domain_config() {
+    let config = StorageConfig {
+        storage_type: "domain-specific".to_string(),
+        ..Default::default()
+    };
+    let builder = RuntimeBuilder::new().with_domain_storage("my-domain", config);
+    assert!(builder.domain_storage.contains_key("my-domain"));
+    assert_eq!(
+        builder
+            .domain_storage
+            .get("my-domain")
+            .unwrap()
+            .storage_type,
+        "domain-specific"
+    );
+}
+
+/// with_messaging() sets custom messaging configuration.
+#[test]
+fn test_with_messaging_sets_config() {
+    let config = MessagingConfig {
+        messaging_type: "custom-messaging".to_string(),
+        ..Default::default()
+    };
+    let builder = RuntimeBuilder::new().with_messaging(config);
+    assert_eq!(builder.messaging.messaging_type, "custom-messaging");
+}
+
+/// with_transport() sets custom transport configuration.
+#[test]
+fn test_with_transport_sets_config() {
+    let config = TransportConfig {
+        transport_type: TransportType::Tcp,
+        ..Default::default()
+    };
+    let builder = RuntimeBuilder::new().with_transport(config);
+    assert_eq!(builder.transport.transport_type, TransportType::Tcp);
+}
+
+/// with_uds_path() sets UDS base path.
+#[test]
+fn test_with_uds_path_sets_path() {
+    let builder = RuntimeBuilder::new().with_uds_path("/custom/path");
+    assert_eq!(builder.transport.transport_type, TransportType::Uds);
+    assert_eq!(
+        builder.transport.uds.base_path,
+        std::path::PathBuf::from("/custom/path")
+    );
+}
+
+/// with_limits() sets resource limits.
+#[test]
+fn test_with_limits_sets_limits() {
+    let limits = ResourceLimits {
+        max_pages_per_book: 999,
+        ..Default::default()
+    };
+    let builder = RuntimeBuilder::new().with_limits(limits);
+    assert_eq!(builder.limits.max_pages_per_book, 999);
+}
+
+/// with_channel_messaging() preserves other builder state.
+///
+/// Tests that chain is preserved when switching messaging types.
+#[test]
+fn test_with_channel_messaging_preserves_chain() {
+    let builder = RuntimeBuilder::new()
+        .with_postgres("postgres://test")
+        .with_channel_messaging();
+
+    // Storage should still be postgres, not reset to default sqlite
+    assert_eq!(builder.storage.storage_type, "postgres");
+    assert_eq!(builder.messaging.messaging_type, "channel");
+}
+
+/// with_uds() preserves other builder state.
+///
+/// Tests that chain is preserved when switching transport.
+#[test]
+fn test_with_uds_preserves_chain() {
+    let builder = RuntimeBuilder::new()
+        .with_postgres("postgres://test")
+        .with_uds();
+
+    // Storage should still be postgres, not reset to default sqlite
+    assert_eq!(builder.storage.storage_type, "postgres");
+    assert_eq!(builder.transport.transport_type, TransportType::Uds);
+}
+
+/// with_event_bus() sets custom event bus.
+#[test]
+fn test_with_event_bus_sets_custom_bus() {
+    use crate::bus::{ChannelConfig, ChannelEventBus};
+    use std::sync::Arc;
+
+    let bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
+    let builder = RuntimeBuilder::new().with_event_bus(bus);
+
+    // Verify custom bus was set (presence check - can't easily test identity)
+    assert!(builder.custom_event_bus.is_some());
+}
+
+/// with_event_bus() preserves other builder state.
+#[test]
+fn test_with_event_bus_preserves_chain() {
+    use crate::bus::{ChannelConfig, ChannelEventBus};
+    use std::sync::Arc;
+
+    let bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
+    let builder = RuntimeBuilder::new()
+        .with_postgres("postgres://test")
+        .with_event_bus(bus);
+
+    // Storage should still be postgres
+    assert_eq!(builder.storage.storage_type, "postgres");
+    assert!(builder.custom_event_bus.is_some());
 }

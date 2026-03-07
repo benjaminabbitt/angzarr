@@ -1,0 +1,18 @@
+# Rust poker example - debug configuration
+# Enables debug ports for remote debugging with gdbserver
+
+# Enable client debug ports
+ports:
+  clientDebug:
+    enabled: true
+
+# Relax security context for debugging
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: true
+  capabilities:
+    add:
+      - SYS_PTRACE
+    drop: []

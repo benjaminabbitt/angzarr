@@ -1,6 +1,6 @@
 use super::*;
 use crate::descriptor::Target;
-use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
+use crate::proto::{event_page, page_header, Cover, EventPage, PageHeader, Uuid as ProtoUuid};
 use prost_types::Any;
 
 fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
@@ -12,13 +12,14 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
             }),
             correlation_id: "test-correlation".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: event_types
             .iter()
             .enumerate()
             .map(|(i, et)| EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(i as u32)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(i as u32)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.googleapis.com/example.{}", et),

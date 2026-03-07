@@ -6,15 +6,20 @@ use std::collections::HashMap;
 /// Mock event for testing.
 #[derive(Debug, Clone)]
 struct MockEvent {
+    #[allow(dead_code)]
     sequence: u32,
+    #[allow(dead_code)]
     event_type: String,
 }
 
 /// Mock EventBook for testing.
 #[derive(Debug, Clone, Default)]
 struct MockEventBook {
+    #[allow(dead_code)]
     domain: String,
+    #[allow(dead_code)]
     root: String,
+    #[allow(dead_code)]
     events: Vec<MockEvent>,
 }
 

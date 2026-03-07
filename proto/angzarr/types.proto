@@ -23,9 +23,7 @@ message Cover {
   UUID root = 1;
   string correlation_id = 3;  // Workflow correlation - flows through all commands/events
   Edition edition = 4;        // Edition for diverged timelines; empty name = main timeline
-  string external_id = 5;     // Idempotency key for fact events (e.g., Stripe payment ID, tracking number)
-                              // Used by coordinator for deduplication when FactSequence is set.
-                              // Propagates through entire system alongside correlation_id.
+  // Field 5 removed: external_id moved to ExternalDeferredSequence in PageHeader
 }
 // docs:end:cover
 
@@ -104,34 +102,42 @@ message PayloadReference {
 }
 // docs:end:payload_reference
 
-// docs:start:fact_sequence
-// Marker for fact events - external realities that must be recorded.
-// Facts are events that already happened in the external world and cannot be rejected.
-// The coordinator assigns the actual sequence number on receipt.
-//
-// IMPORTANT: When using FactSequence, set Cover.external_id for idempotency.
-// The coordinator uses Cover.external_id to deduplicate fact events.
-// Cover.external_id propagates through the entire system for tracing.
-message FactSequence {
-  string source = 1;       // Origin system identifier (e.g., "stripe", "fedex", "scheduler")
-  string description = 2;  // Human-readable description of why this is a fact (optional)
+// docs:start:page_header
+// Shared header for CommandPage and EventPage.
+// Encodes sequence type and provenance for framework processing.
+message PageHeader {
+  oneof sequence_type {
+    uint32 sequence = 1;                              // Explicit sequence (aggregate handlers, legacy)
+    ExternalDeferredSequence external_deferred = 2;   // External fact (Stripe, FedEx, etc.)
+    AngzarrDeferredSequence angzarr_deferred = 3;     // Saga-produced command/fact
+  }
 }
-// docs:end:fact_sequence
+
+// For facts from external systems (webhooks, integrations).
+// Framework stamps sequence on delivery; idempotency via external_id.
+message ExternalDeferredSequence {
+  string external_id = 1;    // Idempotency key from external system (e.g., "pi_1234" from Stripe)
+  string description = 2;    // Human-readable origin (e.g., "Stripe webhook")
+}
+
+// For saga-produced commands and facts.
+// Framework stamps sequence on delivery; idempotency derived from source info.
+// Rejections route back to source aggregate.
+message AngzarrDeferredSequence {
+  Cover source = 1;        // Full source aggregate (domain + root + edition) - rejection routes here
+  uint32 source_seq = 2;   // Sequence of the triggering event
+}
+// docs:end:page_header
 
 // docs:start:event_page
 message EventPage {
-  // Sequence type distinguishes commands (sequenced) from facts (external realities).
-  // - sequence: Normal event with explicit position in stream (for command results)
-  // - fact: External fact where coordinator assigns sequence (for saga/external system facts)
-  oneof sequence_type {
-    uint32 sequence = 1;      // Normal: explicit position in event stream
-    FactSequence fact = 5;    // Fact: coordinator assigns next sequence
-  }
+  PageHeader header = 1;      // Sequence type and provenance
   google.protobuf.Timestamp created_at = 2;
   oneof payload {
     google.protobuf.Any event = 3;
     PayloadReference external = 4;  // Claim check: payload stored externally
   }
+  // Field 5 removed: FactSequence replaced by PageHeader.external_deferred
 }
 // docs:end:event_page
 
@@ -176,10 +182,7 @@ message Projection {
 }
 
 message CommandPage {
-  // Expected sequence number for this command's events.
-  // Must match the aggregate's current next sequence (i.e., events.len()).
-  // For new aggregates, use 0.
-  uint32 sequence = 1;
+  PageHeader header = 1;      // Sequence type and provenance
   MergeStrategy merge_strategy = 2;
   oneof payload {
     google.protobuf.Any command = 3;
@@ -191,7 +194,7 @@ message CommandBook {
   Cover cover = 1;
   repeated CommandPage pages = 2;
   // Field 3 removed: correlation_id moved to Cover
-  SagaCommandOrigin saga_origin = 4;  // Tracks origin for compensation flow
+  // Field 4 removed: saga_origin moved to PageHeader.angzarr_deferred
   // Field 5 removed: 'fact' was unused
 }
 
@@ -259,12 +262,10 @@ message EventStreamFilter {
 }
 // docs:end:event_stream_filter
 
-// Track saga command origin for compensation flow
-message SagaCommandOrigin {
-  string saga_name = 1;                 // Name of the saga that issued the command
-  Cover triggering_aggregate = 2;       // Domain+root of aggregate that triggered the saga
-  uint32 triggering_event_sequence = 3; // Sequence number of the triggering event
-}
+// SagaCommandOrigin removed - replaced by AngzarrDeferredSequence in PageHeader
+// - triggering_aggregate → PageHeader.angzarr_deferred.source
+// - triggering_event_sequence → PageHeader.angzarr_deferred.source_seq
+// - saga_name removed (source aggregate handles compensation)
 
 // ============================================================================
 // Notifications - Non-persisted messages for signaling
@@ -294,13 +295,14 @@ message Notification {
 // docs:start:rejection_notification
 // Notification payload for command rejection scenarios.
 // Embedded in Notification.payload when a saga/PM command is rejected.
+//
+// Source info for compensation is in rejected_command.pages[].header.angzarr_deferred:
+// - source.domain, source.root, source.edition → where to route rejection
+// - source_seq → which event triggered the command
 message RejectionNotification {
   CommandBook rejected_command = 1;         // The command that was rejected (full context)
   string rejection_reason = 2;              // Why: "insufficient_funds", "out_of_stock", etc.
-  string issuer_name = 3;                   // Saga/PM name that issued the command
-  string issuer_type = 4;                   // "saga" | "process_manager"
-  Cover source_aggregate = 5;               // Aggregate that originally triggered the flow
-  uint32 source_event_sequence = 6;         // Event sequence that triggered the saga/PM
+  // Fields 3-6 removed: source info now in rejected_command.pages[].header.angzarr_deferred
 }
 // docs:end:rejection_notification
 

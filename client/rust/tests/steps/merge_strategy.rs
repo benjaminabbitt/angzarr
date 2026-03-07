@@ -5,14 +5,13 @@ use cucumber::{given, then, when, World};
 /// Mock event for testing.
 #[derive(Debug, Clone)]
 struct MockEvent {
-    sequence: u32,
+    #[allow(dead_code)]
     event_type: String,
 }
 
 /// Mock command for testing.
 #[derive(Debug, Clone)]
 struct MockCommand {
-    command_type: String,
     merge_strategy: MergeStrategy,
     target_sequence: u32,
     aggregate_accepts: bool,
@@ -64,15 +63,12 @@ async fn given_aggregate_with_events(world: &mut MergeStrategyWorld) {
     // Table: PlayerRegistered at 0, FundsDeposited at 1, FundsDeposited at 2
     world.aggregate_events = vec![
         MockEvent {
-            sequence: 0,
             event_type: "PlayerRegistered".to_string(),
         },
         MockEvent {
-            sequence: 1,
             event_type: "FundsDeposited".to_string(),
         },
         MockEvent {
-            sequence: 2,
             event_type: "FundsDeposited".to_string(),
         },
     ];
@@ -116,14 +112,12 @@ async fn given_concurrent_increments(world: &mut MergeStrategyWorld) {
     // Table: A -> 5, B -> 3
     world.concurrent_commands = vec![
         MockCommand {
-            command_type: "IncrementBy".to_string(),
             merge_strategy: MergeStrategy::AggregateHandles,
             target_sequence: 0,
             aggregate_accepts: true,
             aggregate_rejects: false,
         },
         MockCommand {
-            command_type: "IncrementBy".to_string(),
             merge_strategy: MergeStrategy::AggregateHandles,
             target_sequence: 0,
             aggregate_accepts: true,
@@ -147,14 +141,12 @@ async fn given_set_aggregate(world: &mut MergeStrategyWorld, items: String) {
 async fn given_concurrent_add_items(world: &mut MergeStrategyWorld, _item: String) {
     world.concurrent_commands = vec![
         MockCommand {
-            command_type: "AddItem".to_string(),
             merge_strategy: MergeStrategy::AggregateHandles,
             target_sequence: 0,
             aggregate_accepts: true,
             aggregate_rejects: false,
         },
         MockCommand {
-            command_type: "AddItem".to_string(),
             merge_strategy: MergeStrategy::AggregateHandles,
             target_sequence: 0,
             aggregate_accepts: true,
@@ -167,7 +159,6 @@ async fn given_concurrent_add_items(world: &mut MergeStrategyWorld, _item: Strin
 async fn given_saga_emits_commutative(world: &mut MergeStrategyWorld) {
     world.saga_mode = true;
     world.command = Some(MockCommand {
-        command_type: "SagaCommand".to_string(),
         merge_strategy: MergeStrategy::Commutative,
         target_sequence: 0,
         aggregate_accepts: true,
@@ -186,7 +177,6 @@ async fn given_destination_advanced(world: &mut MergeStrategyWorld) {
 #[given("a command with no explicit merge_strategy")]
 async fn given_no_explicit_strategy(world: &mut MergeStrategyWorld) {
     world.command = Some(MockCommand {
-        command_type: "TestCommand".to_string(),
         merge_strategy: MergeStrategy::Commutative, // Default
         target_sequence: 3,
         aggregate_accepts: true,
@@ -203,7 +193,6 @@ async fn given_command_with_strategy(world: &mut MergeStrategyWorld, strategy: S
         _ => MergeStrategy::Commutative,
     };
     world.command = Some(MockCommand {
-        command_type: "TestCommand".to_string(),
         merge_strategy,
         target_sequence: 0,
         aggregate_accepts: true,
@@ -221,21 +210,18 @@ async fn given_commands_for_same_aggregate(world: &mut MergeStrategyWorld) {
     // Table: ReserveFunds -> STRICT, AddBonusPoints -> COMMUTATIVE, IncrementVisits -> AGGREGATE_HANDLES
     world.commands = vec![
         MockCommand {
-            command_type: "ReserveFunds".to_string(),
             merge_strategy: MergeStrategy::Strict,
             target_sequence: 1,
             aggregate_accepts: true,
             aggregate_rejects: false,
         },
         MockCommand {
-            command_type: "AddBonusPoints".to_string(),
             merge_strategy: MergeStrategy::Commutative,
             target_sequence: 1,
             aggregate_accepts: true,
             aggregate_rejects: false,
         },
         MockCommand {
-            command_type: "IncrementVisits".to_string(),
             merge_strategy: MergeStrategy::AggregateHandles,
             target_sequence: 1,
             aggregate_accepts: true,
@@ -263,14 +249,12 @@ async fn given_aggregate_with_snapshot(world: &mut MergeStrategyWorld, seq: u32)
 }
 
 #[given(expr = "events at sequences {int}, {int}")]
-async fn given_events_at_sequences(world: &mut MergeStrategyWorld, s1: u32, s2: u32) {
+async fn given_events_at_sequences(world: &mut MergeStrategyWorld, _s1: u32, _s2: u32) {
     world.aggregate_events = vec![
         MockEvent {
-            sequence: s1,
             event_type: "Event".to_string(),
         },
         MockEvent {
-            sequence: s2,
             event_type: "Event".to_string(),
         },
     ];
@@ -423,7 +407,6 @@ async fn when_command_uses_strategy(world: &mut MergeStrategyWorld, strategy: St
         _ => MergeStrategy::Commutative,
     };
     world.command = Some(MockCommand {
-        command_type: "TestCommand".to_string(),
         merge_strategy,
         target_sequence: 0,
         aggregate_accepts: true,
@@ -436,7 +419,6 @@ async fn when_command_uses_strategy(world: &mut MergeStrategyWorld, strategy: St
 #[when(expr = "a STRICT command targets sequence {int}")]
 async fn when_strict_targets_sequence(world: &mut MergeStrategyWorld, seq: u32) {
     world.command = Some(MockCommand {
-        command_type: "TestCommand".to_string(),
         merge_strategy: MergeStrategy::Strict,
         target_sequence: seq,
         aggregate_accepts: true,

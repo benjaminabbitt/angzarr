@@ -7,6 +7,15 @@
 //! - Building Notification messages with RejectionNotification payload
 //! - Emitting SagaCompensationFailed events
 //! - Escalation via configurable handlers (EventBus, webhook, etc.)
+//!
+//! # New Provenance Model
+//!
+//! Command provenance is now stored in each page's `PageHeader.angzarr_deferred`:
+//! - `source`: Cover identifying the source aggregate (domain + root)
+//! - `source_seq`: Sequence of the triggering event
+//!
+//! The old `CommandBook.saga_origin` field is removed. The compensation flow
+//! extracts source info from the first command page's header.
 
 use std::sync::Arc;
 
@@ -18,9 +27,9 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
 use crate::proto::{
-    business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage, MergeStrategy,
-    Notification, RejectionNotification, RevocationResponse, SagaCommandOrigin,
-    SagaCompensationFailed, Uuid as ProtoUuid,
+    business_response, page_header::SequenceType, AngzarrDeferredSequence, BusinessResponse,
+    CommandBook, Cover, EventBook, EventPage, MergeStrategy, Notification, PageHeader,
+    RejectionNotification, RevocationResponse, SagaCompensationFailed, Uuid as ProtoUuid,
 };
 use crate::proto_ext::type_url;
 use crate::proto_ext::CoverExt;
@@ -30,8 +39,9 @@ pub type Result<T> = std::result::Result<T, CompensationError>;
 
 /// Error message constants for compensation operations.
 pub mod errmsg {
-    pub const MISSING_SAGA_ORIGIN: &str = "Command missing saga origin - not a saga command";
-    pub const MISSING_TRIGGERING_AGGREGATE: &str = "Missing triggering aggregate in saga origin";
+    pub const MISSING_PROVENANCE: &str =
+        "Command missing angzarr_deferred provenance - not a saga/PM command";
+    pub const MISSING_SOURCE: &str = "Missing source Cover in angzarr_deferred";
     pub const ABORTED: &str = "Compensation aborted: ";
     pub const ESCALATION_FAILED: &str = "Escalation failed: ";
     pub const EVENT_STORE_ERROR: &str = "Event store error: ";
@@ -40,11 +50,11 @@ pub mod errmsg {
 /// Errors that can occur during saga compensation.
 #[derive(Debug, thiserror::Error)]
 pub enum CompensationError {
-    #[error("{}", errmsg::MISSING_SAGA_ORIGIN)]
-    MissingSagaOrigin,
+    #[error("{}", errmsg::MISSING_PROVENANCE)]
+    MissingProvenance,
 
-    #[error("{}", errmsg::MISSING_TRIGGERING_AGGREGATE)]
-    MissingTriggeringAggregate,
+    #[error("{}", errmsg::MISSING_SOURCE)]
+    MissingSource,
 
     #[error("{}{}", errmsg::ABORTED, .0)]
     Aborted(String),
@@ -112,14 +122,15 @@ impl EscalationHandler for DefaultEscalationHandler {
     ) -> std::result::Result<(), CompensationError> {
         let Some(ref dlq_url) = self.config.dead_letter_queue_url else {
             warn!(
-                saga = %context.saga_origin.saga_name,
+                source_domain = %context.source.source.as_ref().map(|c| c.domain.as_str()).unwrap_or("?"),
                 "Quarantine requested but dead_letter_queue_url not configured"
             );
             return Ok(());
         };
 
         info!(
-            saga = %context.saga_origin.saga_name,
+            source_domain = %context.source.source.as_ref().map(|c| c.domain.as_str()).unwrap_or("?"),
+            source_seq = context.source.source_seq,
             dlq_url = %dlq_url,
             reason = %reason,
             "Quarantining compensation failure"
@@ -142,39 +153,37 @@ impl EscalationHandler for DefaultEscalationHandler {
         reason: &str,
     ) -> std::result::Result<(), CompensationError> {
         // Always log at ERROR for notifications
+        let source_cover = context.source.source.as_ref();
         error!(
-            saga = %context.saga_origin.saga_name,
-            triggering_aggregate = ?context.saga_origin.triggering_aggregate,
-            triggering_sequence = context.saga_origin.triggering_event_sequence,
+            source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
+            source_seq = context.source.source_seq,
             rejection_reason = %context.rejection_reason,
             compensation_reason = %reason,
-            "NOTIFY: Saga compensation failed"
+            "NOTIFY: Saga/PM compensation failed"
         );
 
         let Some(ref webhook_url) = self.config.escalation_webhook_url else {
             warn!(
-                saga = %context.saga_origin.saga_name,
+                source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
                 "Notification requested but escalation_webhook_url not configured"
             );
             return Ok(());
         };
 
         // Build webhook payload
-        let triggering_aggregate = context.saga_origin.triggering_aggregate.as_ref();
         let payload = serde_json::json!({
-            "saga_name": context.saga_origin.saga_name,
-            "triggering_domain": triggering_aggregate.map(|c| &c.domain),
-            "triggering_root_id": triggering_aggregate
+            "source_domain": source_cover.map(|c| &c.domain),
+            "source_root_id": source_cover
                 .and_then(|c| c.root.as_ref())
                 .map(|u| hex::encode(&u.value)),
-            "triggering_event_sequence": context.saga_origin.triggering_event_sequence,
+            "source_seq": context.source.source_seq,
             "rejection_reason": context.rejection_reason,
             "compensation_reason": reason,
             "correlation_id": context.correlation_id,
             "occurred_at": chrono::Utc::now().to_rfc3339(),
         });
 
-        // POST to webhook (best-effort, don't fail on errors)
+        // POST to webhook with retry (best-effort, don't fail on errors)
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -183,38 +192,82 @@ impl EscalationHandler for DefaultEscalationHandler {
                 CompensationError::EscalationFailed(format!("HTTP client error: {}", e))
             })?;
 
-        match client
-            .post(webhook_url)
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()
-            .await
-        {
-            Ok(response) if response.status().is_success() => {
-                info!(
-                    saga = %context.saga_origin.saga_name,
-                    webhook = %webhook_url,
-                    status = %response.status(),
-                    "Webhook notification sent successfully"
-                );
+        // Retry with exponential backoff: 100ms -> 1s, max 3 attempts
+        let max_attempts = 3;
+        let mut attempt = 0;
+        let mut last_error = None;
+
+        while attempt < max_attempts {
+            attempt += 1;
+
+            match client
+                .post(webhook_url)
+                .header("Content-Type", "application/json")
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => {
+                    info!(
+                        source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
+                        webhook = %webhook_url,
+                        status = %response.status(),
+                        attempt,
+                        "Webhook notification sent successfully"
+                    );
+                    return Ok(());
+                }
+                Ok(response) if response.status().is_server_error() => {
+                    // Server error (5xx) - retry
+                    last_error = Some(format!("HTTP {}", response.status()));
+                    warn!(
+                        source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
+                        webhook = %webhook_url,
+                        status = %response.status(),
+                        attempt,
+                        max_attempts,
+                        "Webhook returned server error, will retry"
+                    );
+                }
+                Ok(response) => {
+                    // Client error (4xx) - don't retry, log and return
+                    warn!(
+                        source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
+                        webhook = %webhook_url,
+                        status = %response.status(),
+                        "Webhook returned client error (not retrying)"
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    // Network error - retry
+                    last_error = Some(e.to_string());
+                    warn!(
+                        source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
+                        webhook = %webhook_url,
+                        error = %e,
+                        attempt,
+                        max_attempts,
+                        "Webhook request failed, will retry"
+                    );
+                }
             }
-            Ok(response) => {
-                warn!(
-                    saga = %context.saga_origin.saga_name,
-                    webhook = %webhook_url,
-                    status = %response.status(),
-                    "Webhook returned non-success status"
-                );
-            }
-            Err(e) => {
-                error!(
-                    saga = %context.saga_origin.saga_name,
-                    webhook = %webhook_url,
-                    error = %e,
-                    "Failed to send webhook notification"
-                );
+
+            // Exponential backoff: 100ms, 200ms, 400ms...
+            if attempt < max_attempts {
+                let delay = std::time::Duration::from_millis(100 * (1 << (attempt - 1)));
+                tokio::time::sleep(delay).await;
             }
         }
+
+        // All retries exhausted
+        error!(
+            source_domain = %source_cover.map(|c| c.domain.as_str()).unwrap_or("?"),
+            webhook = %webhook_url,
+            last_error = ?last_error,
+            attempts = max_attempts,
+            "Webhook notification failed after all retries"
+        );
 
         Ok(())
     }
@@ -233,7 +286,8 @@ impl EscalationHandler for NoopEscalationHandler {
         reason: &str,
     ) -> std::result::Result<(), CompensationError> {
         warn!(
-            saga = %context.saga_origin.saga_name,
+            source_domain = %context.source.source.as_ref().map(|c| c.domain.as_str()).unwrap_or("?"),
+            source_seq = context.source.source_seq,
             reason = %reason,
             "Quarantine requested but using NoopEscalationHandler (logging only)"
         );
@@ -246,7 +300,8 @@ impl EscalationHandler for NoopEscalationHandler {
         reason: &str,
     ) -> std::result::Result<(), CompensationError> {
         warn!(
-            saga = %context.saga_origin.saga_name,
+            source_domain = %context.source.source.as_ref().map(|c| c.domain.as_str()).unwrap_or("?"),
+            source_seq = context.source.source_seq,
             reason = %reason,
             "Notification requested but using NoopEscalationHandler (logging only)"
         );
@@ -260,8 +315,9 @@ impl EscalationHandler for NoopEscalationHandler {
 /// and route failures.
 #[derive(Debug, Clone)]
 pub struct CompensationContext {
-    /// The saga origin from the rejected command.
-    pub saga_origin: SagaCommandOrigin,
+    /// The source provenance from the rejected command's page header.
+    /// Identifies which aggregate/event triggered this command.
+    pub source: AngzarrDeferredSequence,
     /// Why the command was rejected.
     pub rejection_reason: String,
     /// The rejected command.
@@ -273,14 +329,21 @@ pub struct CompensationContext {
 impl CompensationContext {
     /// Create a new compensation context from a rejected command.
     ///
-    /// Returns None if the command doesn't have a saga origin
-    /// (indicating it's not a saga-issued command).
+    /// Returns None if the command doesn't have angzarr_deferred provenance
+    /// in its page headers (indicating it's not a saga/PM-issued command).
     pub fn from_rejected_command(command: &CommandBook, rejection_reason: String) -> Option<Self> {
-        let saga_origin = command.saga_origin.as_ref()?.clone();
+        // Extract angzarr_deferred from first page's header
+        let source = command.pages.first().and_then(|page| {
+            page.header.as_ref().and_then(|h| match &h.sequence_type {
+                Some(SequenceType::AngzarrDeferred(ad)) => Some(ad.clone()),
+                _ => None,
+            })
+        })?;
+
         let correlation_id = command.correlation_id().to_string();
 
         Some(Self {
-            saga_origin,
+            source,
             rejection_reason,
             rejected_command: command.clone(),
             correlation_id,
@@ -288,29 +351,32 @@ impl CompensationContext {
     }
 }
 
-/// Build a RejectionNotification for a rejected saga command.
+/// Build a RejectionNotification for a rejected saga/PM command.
 ///
-/// This is the payload for the Notification sent to the original aggregate
-/// that triggered the saga, allowing it to emit compensation events.
+/// This is the payload for the Notification sent to the source aggregate
+/// (identified by angzarr_deferred.source), allowing it to emit compensation events.
+///
+/// The new RejectionNotification structure is simpler:
+/// - `rejected_command`: The command that was rejected
+/// - `rejection_reason`: Why it was rejected
+///
+/// Source provenance is already in the rejected_command's page headers.
 pub fn build_rejection_notification(context: &CompensationContext) -> RejectionNotification {
     RejectionNotification {
         rejected_command: Some(context.rejected_command.clone()),
         rejection_reason: context.rejection_reason.clone(),
-        issuer_name: context.saga_origin.saga_name.clone(),
-        issuer_type: "saga".to_string(),
-        source_aggregate: context.saga_origin.triggering_aggregate.clone(),
-        source_event_sequence: context.saga_origin.triggering_event_sequence,
     }
 }
 
 /// Build a Notification wrapping a RejectionNotification.
 ///
-/// This is the new pattern for compensation - Notification with typed payload.
+/// This is the pattern for compensation - Notification with typed payload.
+/// Routes to the source aggregate identified in angzarr_deferred.
 pub fn build_notification(context: &CompensationContext) -> Notification {
     let rejection = build_rejection_notification(context);
 
-    // Build cover from triggering aggregate
-    let cover = context.saga_origin.triggering_aggregate.clone();
+    // Build cover from source (the aggregate that triggered the saga/PM)
+    let cover = context.source.source.clone();
 
     Notification {
         cover,
@@ -323,18 +389,18 @@ pub fn build_notification(context: &CompensationContext) -> Notification {
     }
 }
 
-/// Build a CommandBook to send the Notification to the triggering aggregate.
+/// Build a CommandBook to send the Notification to the source aggregate.
 pub fn build_notification_command_book(context: &CompensationContext) -> Result<CommandBook> {
-    let triggering_aggregate = context
-        .saga_origin
-        .triggering_aggregate
+    let source_aggregate = context
+        .source
+        .source
         .as_ref()
-        .ok_or(CompensationError::MissingTriggeringAggregate)?;
+        .ok_or(CompensationError::MissingSource)?;
 
     let notification = build_notification(context);
 
-    // Clone triggering aggregate and set correlation_id on cover
-    let mut cover = triggering_aggregate.clone();
+    // Clone source aggregate and set correlation_id on cover
+    let mut cover = source_aggregate.clone();
     if cover.correlation_id.is_empty() {
         cover.correlation_id = context.correlation_id.clone();
     }
@@ -342,7 +408,15 @@ pub fn build_notification_command_book(context: &CompensationContext) -> Result<
     Ok(CommandBook {
         cover: Some(cover),
         pages: vec![crate::proto::CommandPage {
-            sequence: 0,
+            // Notifications use deferred sequence - the aggregate will stamp on receipt
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::AngzarrDeferred(AngzarrDeferredSequence {
+                    // Source is the same aggregate receiving this notification
+                    // (compensation loops back to source)
+                    source: Some(source_aggregate.clone()),
+                    source_seq: context.source.source_seq,
+                })),
+            }),
             payload: Some(crate::proto::command_page::Payload::Command(
                 prost_types::Any {
                     type_url: type_url::NOTIFICATION.to_string(),
@@ -351,7 +425,6 @@ pub fn build_notification_command_book(context: &CompensationContext) -> Result<
             )),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None, // Notifications don't have their own saga origin
     })
 }
 
@@ -364,9 +437,11 @@ pub fn build_compensation_failed_event(
     compensation_failure_reason: &str,
 ) -> SagaCompensationFailed {
     SagaCompensationFailed {
-        triggering_aggregate: context.saga_origin.triggering_aggregate.clone(),
-        triggering_event_sequence: context.saga_origin.triggering_event_sequence,
-        saga_name: context.saga_origin.saga_name.clone(),
+        // Source info now comes from angzarr_deferred
+        triggering_aggregate: context.source.source.clone(),
+        triggering_event_sequence: context.source.source_seq,
+        // saga_name removed from new model - source aggregate handles compensation
+        saga_name: String::new(),
         rejection_reason: context.rejection_reason.clone(),
         compensation_failure_reason: compensation_failure_reason.to_string(),
         rejected_command: Some(context.rejected_command.clone()),
@@ -393,10 +468,11 @@ pub fn build_compensation_failed_event_book(
             }),
             correlation_id: context.correlation_id.clone(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(0)),
+            }),
             created_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: type_url::SAGA_COMPENSATION_FAILED.to_string(),
@@ -435,21 +511,28 @@ pub async fn handle_business_response(
     config: &SagaCompensationConfig,
     escalation_handler: &dyn EscalationHandler,
 ) -> Result<CompensationOutcome> {
+    let source_domain = context
+        .source
+        .source
+        .as_ref()
+        .map(|c| c.domain.as_str())
+        .unwrap_or("?");
+
     let revocation = match response {
         Ok(BusinessResponse {
             result: Some(business_response::Result::Events(book)),
         }) if !book.pages.is_empty() => {
             // Business provided compensation events - use them
             info!(
-                saga = %context.saga_origin.saga_name,
+                source_domain = %source_domain,
+                source_seq = context.source.source_seq,
                 events = book.pages.len(),
                 "Business provided compensation events"
             );
             #[cfg(feature = "otel")]
             {
                 use crate::advice::metrics::{self, SAGA_COMPENSATION_TOTAL};
-                SAGA_COMPENSATION_TOTAL
-                    .add(1, &[metrics::name_attr(&context.saga_origin.saga_name)]);
+                SAGA_COMPENSATION_TOTAL.add(1, &[metrics::name_attr(source_domain)]);
             }
             return Ok(CompensationOutcome::Events(book));
         }
@@ -459,7 +542,7 @@ pub async fn handle_business_response(
         Ok(_) => {
             // Empty events → use config-based fallback flags
             warn!(
-                saga = %context.saga_origin.saga_name,
+                source_domain = %source_domain,
                 "Business returned empty response, using fallback"
             );
             RevocationResponse {
@@ -473,7 +556,7 @@ pub async fn handle_business_response(
         Err(status) => {
             // gRPC error → use config-based fallback flags
             error!(
-                saga = %context.saga_origin.saga_name,
+                source_domain = %source_domain,
                 error = %status,
                 "gRPC error from client logic, using fallback"
             );
@@ -498,8 +581,16 @@ async fn process_revocation_flags(
     config: &SagaCompensationConfig,
     escalation_handler: &dyn EscalationHandler,
 ) -> Result<CompensationOutcome> {
+    let source_domain = context
+        .source
+        .source
+        .as_ref()
+        .map(|c| c.domain.as_str())
+        .unwrap_or("?");
+
     info!(
-        saga = %context.saga_origin.saga_name,
+        source_domain = %source_domain,
+        source_seq = context.source.source_seq,
         emit = revocation.emit_system_revocation,
         dlq = revocation.send_to_dead_letter_queue,
         escalate = revocation.escalate,
@@ -538,7 +629,7 @@ async fn process_revocation_flags(
         #[cfg(feature = "otel")]
         {
             use crate::advice::metrics::{self, SAGA_COMPENSATION_TOTAL};
-            SAGA_COMPENSATION_TOTAL.add(1, &[metrics::name_attr(&context.saga_origin.saga_name)]);
+            SAGA_COMPENSATION_TOTAL.add(1, &[metrics::name_attr(source_domain)]);
         }
         return Ok(CompensationOutcome::EmitSystemRevocation(event_book));
     }

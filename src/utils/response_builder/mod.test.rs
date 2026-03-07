@@ -13,8 +13,8 @@ use super::*;
 use crate::bus::MockEventBus;
 use crate::orchestration::correlation::extract_correlation_id;
 use crate::proto::{
-    command_page, CommandBook, CommandPage, Cover, MergeStrategy, RevocationResponse,
-    Uuid as ProtoUuid,
+    command_page, page_header, CommandBook, CommandPage, Cover, MergeStrategy, PageHeader,
+    RevocationResponse, Uuid as ProtoUuid,
 };
 use prost_types::Any;
 
@@ -35,17 +35,17 @@ fn make_command_book(with_correlation: bool) -> CommandBook {
                 String::new()
             },
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -91,7 +91,6 @@ fn test_extract_events_from_response_with_events() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -166,7 +165,6 @@ fn test_extract_events_from_response_notification() {
                 root: None,
                 correlation_id: "upstream-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             ..Default::default()
         })),
@@ -197,7 +195,6 @@ async fn test_publish_and_build_response_success() {
             root: None,
             correlation_id: "test-correlation".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,

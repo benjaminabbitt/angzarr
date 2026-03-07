@@ -2,7 +2,9 @@
 //!
 //! Tests for the new handler-based router API.
 
-use angzarr_client::proto::{event_page, CommandBook, CommandPage, Cover, EventBook, EventPage};
+use angzarr_client::proto::{
+    event_page, page_header, CommandBook, CommandPage, Cover, EventBook, EventPage, PageHeader,
+};
 use angzarr_client::{
     type_url, CommandHandlerDomainHandler, CommandHandlerRouter, CommandRejectedError,
     CommandResult, ProcessManagerDomainHandler, ProcessManagerResponse, ProcessManagerRouter,
@@ -21,6 +23,7 @@ use uuid::Uuid;
 struct TestState {
     exists: bool,
     item_count: u32,
+    #[allow(dead_code)]
     status: String,
 }
 
@@ -48,7 +51,6 @@ fn make_event_book(domain: &str, events: Vec<EventPage>) -> EventBook {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: events,
         snapshot: None,
@@ -61,7 +63,9 @@ fn make_event_page(seq: u32, type_url: &str, data: &str) -> EventPage {
         data: data.to_string(),
     };
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: type_url.to_string(),
@@ -82,17 +86,17 @@ fn make_command_book(domain: &str, type_url: &str, data: &str, seq: u32) -> Comm
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: seq,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
             merge_strategy: 0,
             payload: Some(angzarr_client::proto::command_page::Payload::Command(Any {
                 type_url: type_url.to_string(),
                 value: cmd.encode_to_vec(),
             })),
         }],
-        saga_origin: None,
     }
 }
 
@@ -150,7 +154,9 @@ impl CommandHandlerDomainHandler for TestAggregateHandler {
                 data: "created".to_string(),
             };
             let page = EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: type_url("test.OrderCreated"),
@@ -165,7 +171,9 @@ impl CommandHandlerDomainHandler for TestAggregateHandler {
                 data: "item_added".to_string(),
             };
             let page = EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: type_url("test.ItemAdded"),
@@ -220,16 +228,7 @@ impl SagaDomainHandler for TestSagaHandler {
         vec![self.handler1_type.clone(), self.handler2_type.clone()]
     }
 
-    fn prepare(&self, _source: &EventBook, _event: &Any) -> Vec<Cover> {
-        vec![]
-    }
-
-    fn execute(
-        &self,
-        _source: &EventBook,
-        event: &Any,
-        _destinations: &[EventBook],
-    ) -> CommandResult<SagaHandlerResponse> {
+    fn handle(&self, _source: &EventBook, event: &Any) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with(&self.handler1_type) {
             self.handler_invoked.store(true, Ordering::SeqCst);
         }
@@ -278,6 +277,7 @@ impl ProjectorDomainHandler for TestProjectorHandler {
 /// Test PM state.
 #[derive(Clone, Default)]
 struct TestPMState {
+    #[allow(dead_code)]
     events_received: u32,
 }
 
@@ -413,7 +413,9 @@ async fn given_aggregate_with_events(world: &mut RouterWorld) {
         data: "created".to_string(),
     };
     let page = EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(0)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: type_url("test.OrderCreated"),
@@ -431,7 +433,9 @@ async fn given_aggregate_at_sequence(world: &mut RouterWorld, seq: u32) {
     let mut pages = vec![];
     for i in 0..seq {
         pages.push(EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(i)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(i)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url("test.OrderCreated"),

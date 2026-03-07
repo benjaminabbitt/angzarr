@@ -90,7 +90,7 @@ mod tests {
 
         let page = EventPage {
             payload: Some(event_page::Payload::Event(event.clone())),
-            sequence_type: Some(event_page::SequenceType::Sequence(1)),
+            sequence_type: Some(page_header::SequenceType::Sequence(1)),
             created_at: None,
         };
 
@@ -114,7 +114,7 @@ mod tests {
                     type_url: format!("type.googleapis.com/examples.Event{}", i),
                     value: vec![i as u8],
                 })),
-                sequence_type: Some(event_page::SequenceType::Sequence(i)),
+                sequence_type: Some(page_header::SequenceType::Sequence(i)),
                 created_at: None,
             })
             .collect();

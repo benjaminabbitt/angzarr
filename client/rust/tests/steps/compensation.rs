@@ -4,7 +4,9 @@
 //! Since some proto types may not be directly available, we use simplified
 //! representations to test the behavioral patterns.
 
-use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, MergeStrategy};
+use angzarr_client::proto::{
+    command_page, page_header, CommandBook, CommandPage, Cover, MergeStrategy, PageHeader,
+};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use prost_types::Any;
@@ -34,7 +36,6 @@ struct TestRejectionNotification {
     issuer_name: String,
     issuer_type: String,
     source_domain: String,
-    source_root: Option<String>,
     source_event_sequence: u32,
 }
 
@@ -42,8 +43,6 @@ struct TestRejectionNotification {
 #[derive(Debug, Clone)]
 struct TestNotification {
     cover_domain: String,
-    cover_root: Option<String>,
-    correlation_id: String,
     sent_at: i64,
     payload_type_url: String,
 }
@@ -99,7 +98,6 @@ impl CompensationContext {
                 .unwrap_or_default(),
             issuer_type: "saga".to_string(),
             source_domain: self.source_domain.clone(),
-            source_root: Some(self.source_root.clone()),
             source_event_sequence: self.source_sequence,
         }
     }
@@ -107,8 +105,6 @@ impl CompensationContext {
     fn build_notification(&self) -> TestNotification {
         TestNotification {
             cover_domain: self.source_domain.clone(),
-            cover_root: Some(self.source_root.clone()),
-            correlation_id: self.correlation_id.clone(),
             sent_at: chrono::Utc::now().timestamp(),
             payload_type_url: "type.googleapis.com/angzarr.RejectionNotification".to_string(),
         }
@@ -123,17 +119,17 @@ impl CompensationContext {
                 }),
                 correlation_id: self.correlation_id.clone(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence: 0,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
                 payload: Some(command_page::Payload::Command(Any {
                     type_url: "type.googleapis.com/angzarr.Notification".to_string(),
                     value: vec![],
                 })),
             }],
-            saga_origin: None,
         }
     }
 }
@@ -164,17 +160,17 @@ fn make_saga_command(
             }),
             correlation_id: "workflow-123".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             merge_strategy: 0,
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "type.googleapis.com/test.SagaCommand".to_string(),
                 value: cmd.encode_to_vec(),
             })),
         }],
-        saga_origin: None,
     };
 
     (book, origin)

@@ -2,6 +2,12 @@
 //!
 //! Reacts to HandComplete events from Hand domain.
 //! Sends EndHand commands to Table domain.
+//!
+//! This saga is a pure translator - it receives source events and produces
+//! commands without knowing destination state. The framework handles:
+//! - Sequence assignment (via angzarr_deferred)
+//! - Idempotency checking
+//! - Delivery retry on sequence conflicts
 
 use angzarr_client::proto::examples::{EndHand, HandComplete, PotResult};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
@@ -21,55 +27,25 @@ impl SagaDomainHandler for HandTableSagaHandler {
         vec!["HandComplete".into()]
     }
 
-    fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover> {
+    fn handle(&self, source: &EventBook, event: &Any) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with("HandComplete") {
-            return Self::prepare_hand_complete(source, event);
-        }
-        vec![]
-    }
-
-    fn execute(
-        &self,
-        source: &EventBook,
-        event: &Any,
-        destinations: &[EventBook],
-    ) -> CommandResult<SagaHandlerResponse> {
-        if event.type_url.ends_with("HandComplete") {
-            return Self::handle_hand_complete(source, event, destinations);
+            return Self::handle_hand_complete(source, event);
         }
         Ok(SagaHandlerResponse::default())
     }
 }
 
 impl HandTableSagaHandler {
-    /// Prepare handler: return the destination cover to fetch (table aggregate).
-    fn prepare_hand_complete(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
-        if let Ok(event) = HandComplete::decode(event_any.value.as_slice()) {
-            vec![Cover {
-                domain: "table".to_string(),
-                root: Some(Uuid { value: event.table_root }),
-                ..Default::default()
-            }]
-        } else {
-            vec![]
-        }
-    }
-
-    /// Execute handler: translate HandComplete → EndHand.
+    /// Translate HandComplete → EndHand.
+    ///
+    /// Commands use deferred sequences - framework assigns on delivery.
     fn handle_hand_complete(
         source: &EventBook,
         event_any: &Any,
-        destinations: &[EventBook],
     ) -> CommandResult<SagaHandlerResponse> {
         let event: HandComplete = event_any
             .unpack()
             .map_err(|e| CommandRejectedError::new(format!("Failed to decode HandComplete: {}", e)))?;
-
-        // Get the destination's next sequence
-        let dest_seq = destinations
-            .first()
-            .map(|eb| eb.next_sequence)
-            .unwrap_or(0);
 
         // Get hand_root from source cover
         let hand_root = source
@@ -109,12 +85,12 @@ impl HandTableSagaHandler {
                     root: Some(Uuid { value: event.table_root }),
                     ..Default::default()
                 }),
+                // Framework will stamp angzarr_deferred with source info
+                // and assign sequence on delivery
                 pages: vec![CommandPage {
-                    sequence: dest_seq,
                     payload: Some(command_page::Payload::Command(command_any)),
                     ..Default::default()
                 }],
-                saga_origin: None,
             }],
             events: vec![],
         })

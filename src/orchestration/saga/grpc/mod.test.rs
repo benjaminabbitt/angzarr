@@ -24,7 +24,6 @@ fn make_source_event_book(domain: &str) -> EventBook {
                 name: "v1".to_string(),
                 divergences: vec![],
             }),
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -73,10 +72,10 @@ fn test_saga_context_factory_name_concept() {
 
 /// Non-saga commands don't create compensation context.
 ///
-/// Direct API commands (without saga_origin) are rejected directly
+/// Direct API commands (without angzarr_deferred provenance) are rejected directly
 /// to the caller, not through the compensation flow.
 #[test]
-fn test_compensation_context_requires_saga_origin() {
+fn test_compensation_context_requires_angzarr_deferred() {
     use crate::proto::CommandBook;
 
     let command = CommandBook {
@@ -85,10 +84,8 @@ fn test_compensation_context_requires_saga_origin() {
             root: None,
             correlation_id: "corr-123".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
-        saga_origin: None, // No saga origin
     };
 
     let context =
@@ -100,10 +97,13 @@ fn test_compensation_context_requires_saga_origin() {
     );
 }
 
-/// Saga commands create compensation context with origin info.
+/// Saga commands create compensation context with source info.
 #[test]
-fn test_compensation_context_captures_saga_origin() {
-    use crate::proto::{CommandBook, SagaCommandOrigin};
+fn test_compensation_context_captures_saga_source() {
+    use crate::proto::{
+        command_page, page_header, AngzarrDeferredSequence, CommandBook, CommandPage,
+        MergeStrategy, PageHeader,
+    };
 
     let command = CommandBook {
         cover: Some(Cover {
@@ -113,22 +113,29 @@ fn test_compensation_context_captures_saga_origin() {
             }),
             correlation_id: "corr-456".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
-        pages: vec![],
-        saga_origin: Some(SagaCommandOrigin {
-            saga_name: "saga-order-customer".to_string(),
-            triggering_aggregate: Some(Cover {
-                domain: "orders".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1, 2, 3, 4],
-                }),
-                correlation_id: "corr-456".to_string(),
-                edition: None,
-                external_id: String::new(),
+        pages: vec![CommandPage {
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::AngzarrDeferred(
+                    AngzarrDeferredSequence {
+                        source: Some(Cover {
+                            domain: "orders".to_string(),
+                            root: Some(ProtoUuid {
+                                value: vec![1, 2, 3, 4],
+                            }),
+                            correlation_id: "corr-456".to_string(),
+                            edition: None,
+                        }),
+                        source_seq: 5,
+                    },
+                )),
             }),
-            triggering_event_sequence: 5,
-        }),
+            payload: Some(command_page::Payload::Command(prost_types::Any {
+                type_url: "test.SomeCommand".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
     };
 
     let context =
@@ -136,7 +143,8 @@ fn test_compensation_context_captures_saga_origin() {
 
     assert!(context.is_some());
     let ctx = context.unwrap();
-    assert_eq!(ctx.saga_origin.saga_name, "saga-order-customer");
+    assert_eq!(ctx.source.source_seq, 5);
+    assert_eq!(ctx.source.source.as_ref().unwrap().domain, "orders");
     assert_eq!(ctx.rejection_reason, "customer not found");
     assert_eq!(ctx.correlation_id, "corr-456");
 }

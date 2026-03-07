@@ -42,7 +42,8 @@ pub mod errmsg {
     pub const SEQUENCE_MISMATCH_OVERLAP: &str =
         "Sequence mismatch with overlapping fields: command expects ";
     pub const SEQUENCE_MISMATCH_DLQ_SUFFIX: &str = ". Sent to DLQ for manual review.";
-    pub const FACT_EVENTS_MISSING_MARKER: &str = "Fact events must have FactSequence markers";
+    pub const FACT_EVENTS_MISSING_MARKER: &str =
+        "Fact events must have ExternalDeferredSequence markers";
 }
 
 /// Error type for fact injection failures.

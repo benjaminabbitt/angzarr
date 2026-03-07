@@ -137,6 +137,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "lapin",
+ "mutants",
  "nix",
  "opentelemetry",
  "opentelemetry-appender-tracing",
@@ -180,6 +181,7 @@ name = "angzarr-client"
 version = "0.1.1"
 dependencies = [
  "async-trait",
+ "backon",
  "chrono",
  "cucumber",
  "hex",
@@ -4033,6 +4035,12 @@ name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
+name = "mutants"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "add0ac067452ff1aca8c5002111bd6b1c895baee6e45fcbc44e0193aea17be56"
 
 [[package]]
 name = "native-tls"

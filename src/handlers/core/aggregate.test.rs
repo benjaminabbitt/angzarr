@@ -10,9 +10,10 @@
 
 use super::*;
 use crate::proto::{
-    command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
-    Uuid as ProtoUuid,
+    command_page, event_page, page_header, CommandBook, CommandPage, Cover, EventBook, EventPage,
+    MergeStrategy, PageHeader, Uuid as ProtoUuid,
 };
+use crate::proto_ext::CommandPageExt;
 use prost::Message;
 use prost_types::Any;
 use uuid::Uuid;
@@ -33,7 +34,6 @@ fn make_cover(domain: &str, root: Uuid, correlation_id: &str) -> Cover {
         root: Some(make_proto_uuid(root)),
         correlation_id: correlation_id.to_string(),
         edition: None,
-        external_id: String::new(),
     }
 }
 
@@ -41,14 +41,15 @@ fn make_command_book(domain: &str, root: Uuid, command_type: &str, data: Vec<u8>
     CommandBook {
         cover: Some(make_cover(domain, root, "test-correlation")),
         pages: vec![CommandPage {
-            sequence: 5,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(5)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: command_type.to_string(),
                 value: data,
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -123,7 +124,7 @@ fn test_wrap_command_payload_is_valid_protobuf() {
         let decoded =
             CommandBook::decode(any.value.as_slice()).expect("Should decode back to CommandBook");
         assert_eq!(decoded.pages.len(), 1);
-        assert_eq!(decoded.pages[0].sequence, 5);
+        assert_eq!(decoded.pages[0].sequence_num(), 5);
     } else {
         panic!("Expected Event payload");
     }
@@ -150,7 +151,7 @@ fn test_extract_command_roundtrip() {
         Some("player")
     );
     assert_eq!(extracted.pages.len(), 1);
-    assert_eq!(extracted.pages[0].sequence, 5);
+    assert_eq!(extracted.pages[0].sequence_num(), 5);
 }
 
 /// Extract returns None for empty EventBook.
@@ -172,7 +173,9 @@ fn test_extract_command_regular_event_returns_none() {
     let regular_event = EventBook {
         cover: Some(make_cover("player", Uuid::new_v4(), "corr-123")),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "type.googleapis.com/test.PlayerCreated".to_string(),
@@ -193,7 +196,9 @@ fn test_extract_command_no_payload_returns_none() {
     let no_payload = EventBook {
         cover: Some(make_cover("player", Uuid::new_v4(), "corr-123")),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: None,
         }],
@@ -213,7 +218,9 @@ fn test_extract_command_invalid_protobuf_returns_none() {
     let invalid = EventBook {
         cover: Some(make_cover("player", Uuid::new_v4(), "corr-123")),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "type.googleapis.com/angzarr.CommandBook".to_string(),

@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use angzarr::proto::{
-    event_page, CommandBook, Cover, EventBook, EventPage, Projection, SagaResponse,
-    Uuid as ProtoUuid,
+    event_page, page_header, CommandBook, Cover, EventBook, EventPage, PageHeader, Projection,
+    SagaResponse, Uuid as ProtoUuid,
 };
 use angzarr::standalone::{
     DomainStateSpec, PmSpeculativeResult, ProcessManagerHandleResult, ProcessManagerHandler,
@@ -88,7 +88,9 @@ impl SpeculativeWorld {
     fn make_event_book(domain: &str, root: Uuid, num_events: u32) -> EventBook {
         let pages: Vec<EventPage> = (0..num_events)
             .map(|seq| EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+                }),
                 payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: format!("test.Event{}", seq),
                     value: vec![],
@@ -105,7 +107,6 @@ impl SpeculativeWorld {
                 }),
                 correlation_id: String::new(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages,
             snapshot: None,
@@ -146,29 +147,10 @@ struct MockSaga {
 
 #[async_trait]
 impl SagaHandler for MockSaga {
-    async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-        if let Some(domain) = &self.needs_destination {
-            Ok(vec![Cover {
-                domain: domain.clone(),
-                root: Some(ProtoUuid {
-                    value: Uuid::new_v4().as_bytes().to_vec(),
-                }),
-                correlation_id: String::new(),
-                edition: None,
-                external_id: String::new(),
-            }])
-        } else {
-            Ok(vec![])
-        }
-    }
-
-    async fn handle(
-        &self,
-        _source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, _source: &EventBook) -> Result<SagaResponse, Status> {
         self.invoked.store(true, Ordering::SeqCst);
-        *self.destinations_received.lock().unwrap() = destinations.to_vec();
+        // Sagas are now stateless - no destinations received
+        *self.destinations_received.lock().unwrap() = vec![];
         Ok(SagaResponse {
             commands: vec![CommandBook::default()],
             ..Default::default()
@@ -244,7 +226,10 @@ async fn when_resolve_at_sequence(world: &mut SpeculativeWorld, max_seq: u32) {
     // Filter events to max_seq
     if let Some(ref mut book) = world.resolved_state {
         book.pages.retain(|p| {
-            matches!(p.sequence_type, Some(event_page::SequenceType::Sequence(s)) if s <= max_seq)
+            matches!(
+                p.header.as_ref().and_then(|h| h.sequence_type.as_ref()),
+                Some(page_header::SequenceType::Sequence(s)) if *s <= max_seq
+            )
         });
     }
 }
@@ -295,8 +280,9 @@ async fn then_resolved_state_count(world: &mut SpeculativeWorld, expected: u32) 
 async fn then_last_event_sequence(world: &mut SpeculativeWorld, expected: u32) {
     let book = world.resolved_state.as_ref().expect("No resolved state");
     let last = book.pages.last().expect("No events");
-    match &last.sequence_type {
-        Some(event_page::SequenceType::Sequence(seq)) => {
+    let header = last.header.as_ref().expect("No header");
+    match &header.sequence_type {
+        Some(page_header::SequenceType::Sequence(seq)) => {
             assert_eq!(*seq, expected, "Last sequence should match");
         }
         _ => panic!("Expected sequence type"),
@@ -456,8 +442,8 @@ async fn when_speculate_saga(world: &mut SpeculativeWorld) {
     };
 
     let source = world.resolved_state.as_ref().cloned().unwrap_or_default();
-    let destinations = vec![];
-    let result = saga.handle(&source, &destinations).await;
+    // Sagas are now stateless - no destinations
+    let result = saga.handle(&source).await;
     world.saga_commands_result = Some(result.map(|r| r.commands));
 }
 
@@ -529,7 +515,7 @@ async fn when_speculate_saga_by_domain(world: &mut SpeculativeWorld, _domain: St
     };
 
     let source = world.resolved_state.as_ref().cloned().unwrap_or_default();
-    let _ = saga.handle(&source, &[]).await;
+    let _ = saga.handle(&source).await;
 }
 
 #[then("the saga handler is invoked")]
@@ -711,7 +697,7 @@ async fn when_speculate_that_saga(world: &mut SpeculativeWorld) {
     };
 
     let source = world.resolved_state.as_ref().cloned().unwrap_or_default();
-    let _ = saga.handle(&source, &[]).await;
+    let _ = saga.handle(&source).await;
 }
 
 #[then("the same handler instance is invoked")]

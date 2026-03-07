@@ -2,20 +2,23 @@
   "mcpServers": {
     "mcp-tasks": {
       "command": "npx",
-      "args": ["-y", "mcp-tasks"]
-    },
-    "scm": {
-      "command": "/home/babbitt/.local/bin/scm",
-      "args": ["mcp"]
+      "args": [
+        "-y",
+        "mcp-tasks"
+      ]
     },
     "qdrant": {
       "command": "uvx",
-      "args": ["mcp-server-qdrant"],
-      "env": {
-        "QDRANT_LOCAL_PATH": ".vectors/qdrant",
-        "COLLECTION_NAME": "angzarr-codebase",
-        "EMBEDDING_MODEL": "sentence-transformers/all-MiniLM-L6-v2"
-      }
+      "args": [
+        "mcp-server-qdrant"
+      ]
+    },
+    "scm": {
+      "command": "./.scm/bin/scm",
+      "args": [
+        "mcp"
+      ],
+      "_scm": "scm-auto"
     }
   }
 }

@@ -20,7 +20,7 @@
 //!
 //! - `fetcher.fetch_by_correlation(pm_domain, correlation_id)` returns the PM's own state
 //! - All PM events are stored under `(pm_domain, correlation_id)` as root
-//! - Commands rejected route back via `saga_origin.triggering_aggregate.root = correlation_id`
+//! - Commands rejected route back via `angzarr_deferred.source.root = correlation_id`
 //!
 //! # Execution Flow
 //!
@@ -47,7 +47,10 @@ use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
-use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, SyncMode, Uuid as ProtoUuid};
+use crate::proto::{
+    page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook, PageHeader,
+    SyncMode, Uuid as ProtoUuid,
+};
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -174,7 +177,7 @@ pub trait PMContextFactory: Send + Sync {
 /// 3. Fetch destination event books
 /// 4. Handle: PM produces commands + PM events + facts
 /// 5. Persist PM events (retries on sequence conflict)
-/// 6. Execute commands with saga_origin stamped for compensation routing
+/// 6. Execute commands with angzarr_deferred stamped for compensation routing
 /// 7. Inject facts into target aggregates
 ///
 /// `sync_mode` controls how commands are executed:
@@ -327,6 +330,24 @@ pub async fn orchestrate_pm(
         //    create duplicate PM events
         // 2. The PM's job is to observe outcomes and react, not guarantee delivery
         // 3. Compensation is the PM's mechanism for handling failures
+        //
+        // Compute PM source_seq for angzarr_deferred stamping:
+        // - If we just persisted process_events, use max seq from those (our current decision)
+        // - Otherwise use max seq from pm_state (existing PM state)
+        // - Otherwise 0 (new PM with no events yet)
+        use crate::proto_ext::EventPageExt;
+        let pm_source_seq = response
+            .process_events
+            .as_ref()
+            .filter(|e| !e.pages.is_empty())
+            .map(|e| e.pages.iter().map(|p| p.sequence_num()).max().unwrap_or(0))
+            .or_else(|| {
+                pm_state
+                    .as_ref()
+                    .map(|s| s.pages.iter().map(|p| p.sequence_num()).max().unwrap_or(0))
+            })
+            .unwrap_or(0);
+
         execute_pm_commands(
             ctx,
             executor,
@@ -334,6 +355,7 @@ pub async fn orchestrate_pm(
             correlation_id,
             pm_name,
             pm_domain,
+            pm_source_seq,
             sync_mode,
         )
         .await;
@@ -371,9 +393,9 @@ pub async fn orchestrate_pm(
     Ok(())
 }
 
-/// Execute PM commands with saga_origin stamped for compensation routing.
+/// Execute PM commands with angzarr_deferred stamped for compensation routing.
 ///
-/// Stamps each command with `saga_origin` pointing to the PM itself, so that
+/// Stamps each command with `angzarr_deferred` pointing to the PM itself, so that
 /// if a command is rejected, the compensation Notification routes back to the
 /// PM through the standard aggregate coordinator infrastructure.
 ///
@@ -382,19 +404,24 @@ pub async fn orchestrate_pm(
 /// `sync_mode` controls how commands are executed:
 /// - `Cascade`: Sync execution, no bus publishing
 /// - `Simple`/`Unspecified`: Standard execution with bus publishing
+///
+/// `pm_source_seq` is the PM's max sequence after persisting its events. This
+/// identifies which PM state produced these commands, enabling idempotency checks.
+#[allow(clippy::too_many_arguments)]
 async fn execute_pm_commands(
     ctx: &dyn ProcessManagerContext,
     executor: &dyn CommandExecutor,
     mut commands: Vec<CommandBook>,
     correlation_id: &str,
-    pm_name: &str,
+    _pm_name: &str,
     pm_domain: &str,
+    pm_source_seq: u32,
     sync_mode: SyncMode,
 ) {
     use super::shared::fill_correlation_id;
     fill_correlation_id(&mut commands, correlation_id);
 
-    // Build PM cover for saga_origin — PM is the triggering aggregate
+    // Build PM cover for angzarr_deferred — PM is the triggering aggregate
     // PM root = correlation_id by design (PM is identified by the workflow it coordinates)
     let pm_cover = Cover {
         domain: pm_domain.to_string(),
@@ -406,17 +433,43 @@ async fn execute_pm_commands(
         }),
         correlation_id: correlation_id.to_string(),
         edition: None,
-        external_id: String::new(),
     };
 
-    // Stamp saga_origin on all PM commands so compensation routes back to PM
+    // Stamp angzarr_deferred on commands for provenance and compensation routing.
+    //
+    // Stamping strategy (per spec):
+    // - PM handler already set angzarr_deferred with source_seq → preserve it entirely
+    // - PM handler set angzarr_deferred but source is None → fill in PM cover, keep source_seq
+    // - PM handler didn't set angzarr_deferred → use PM cover + pm_source_seq
     for cmd in &mut commands {
-        if cmd.saga_origin.is_none() {
-            cmd.saga_origin = Some(SagaCommandOrigin {
-                saga_name: pm_name.to_string(),
-                triggering_aggregate: Some(pm_cover.clone()),
-                triggering_event_sequence: 0,
-            });
+        for page in &mut cmd.pages {
+            match page.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+                Some(SequenceType::AngzarrDeferred(existing)) => {
+                    // PM handler set angzarr_deferred - fill in source if missing, preserve source_seq
+                    if existing.source.is_none() {
+                        page.header = Some(PageHeader {
+                            sequence_type: Some(SequenceType::AngzarrDeferred(
+                                AngzarrDeferredSequence {
+                                    source: Some(pm_cover.clone()),
+                                    source_seq: existing.source_seq,
+                                },
+                            )),
+                        });
+                    }
+                    // else: PM handler set everything, don't touch
+                }
+                _ => {
+                    // PM handler didn't set angzarr_deferred - use defaults
+                    page.header = Some(PageHeader {
+                        sequence_type: Some(SequenceType::AngzarrDeferred(
+                            AngzarrDeferredSequence {
+                                source: Some(pm_cover.clone()),
+                                source_seq: pm_source_seq,
+                            },
+                        )),
+                    });
+                }
+            }
         }
     }
 

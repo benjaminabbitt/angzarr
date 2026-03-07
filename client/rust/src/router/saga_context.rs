@@ -90,13 +90,15 @@ fn make_key(domain: &str, root: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{event_page, Cover, EventPage, Uuid};
+    use crate::proto::{page_header, Cover, EventPage, PageHeader, Uuid};
 
     fn make_event_book(domain: &str, root: &[u8], events: u32) -> EventBook {
         let mut pages = Vec::new();
         for i in 1..=events {
             pages.push(EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(i)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(i)),
+                }),
                 ..Default::default()
             });
         }

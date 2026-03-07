@@ -78,3 +78,137 @@ test-acceptance:
 
 # Run all tests for all languages
 test: test-unit test-acceptance
+
+# =============================================================================
+# Debug Container Commands
+# =============================================================================
+# Build and run debug containers for remote debugging.
+#
+# Usage:
+#   just examples debug-build python player   # Build Python player debug image
+#   just examples debug-run python player     # Run Python player with debugpy
+#   just examples debug go player             # Build + run Go player with delve
+#   just examples debug rust player           # Build + run Rust player with gdbserver
+#
+# Connect with VSCode:
+#   1. Run: just examples debug <lang> <component>
+#   2. In VSCode: Run > Start Debugging > select "<Lang>: Attach <component>"
+#
+# Connect with CLI:
+#   Python: python -m debugpy --connect localhost:56780
+#   Go:     dlv connect localhost:40000
+#   Rust:   gdb -ex "target remote localhost:20000"
+# =============================================================================
+
+CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null`
+
+# Build a debug container image
+debug-build LANG COMPONENT:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{TOP}}"
+    case "{{LANG}}" in
+        python)
+            TARGET="agg-{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == saga-* ]] && TARGET="{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == pmg-* ]] && TARGET="{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == prj-* ]] && TARGET="{{COMPONENT}}-debug"
+            {{CONTAINER_CMD}} build --target "$TARGET" \
+                -t "angzarr-debug-python-{{COMPONENT}}:latest" \
+                -f examples/python/Containerfile .
+            ;;
+        go)
+            TARGET="agg-{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == saga-* ]] && TARGET="{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == pmg-* ]] && TARGET="{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == prj-* ]] && TARGET="{{COMPONENT}}-debug"
+            {{CONTAINER_CMD}} build --target "$TARGET" \
+                -t "angzarr-debug-go-{{COMPONENT}}:latest" \
+                -f examples/go/Containerfile .
+            ;;
+        rust)
+            # First build base image
+            just images build-rust
+            RUST_IMAGE=$(just images _image-tag angzarr-rust)
+            TARGET="agg-{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == saga-* ]] && TARGET="{{COMPONENT}}-debug"
+            [[ "{{COMPONENT}}" == prj-* ]] && TARGET="{{COMPONENT}}-debug"
+            {{CONTAINER_CMD}} build --target "$TARGET" \
+                --build-arg "RUST_IMAGE=$RUST_IMAGE" \
+                -t "angzarr-debug-rust-{{COMPONENT}}:latest" \
+                -f examples/rust/Containerfile .
+            ;;
+        *)
+            echo "Unknown language: {{LANG}}" >&2
+            exit 1
+            ;;
+    esac
+    echo "Built: angzarr-debug-{{LANG}}-{{COMPONENT}}:latest"
+
+# Run a debug container (build first if needed)
+debug-run LANG COMPONENT:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IMAGE="angzarr-debug-{{LANG}}-{{COMPONENT}}:latest"
+
+    # Build if image doesn't exist
+    if ! {{CONTAINER_CMD}} image exists "$IMAGE" 2>/dev/null; then
+        just examples debug-build {{LANG}} {{COMPONENT}}
+    fi
+
+    # Determine ports based on language and component
+    case "{{LANG}}" in
+        python)
+            case "{{COMPONENT}}" in
+                player) DEBUG_PORT=56780; APP_PORT=50301 ;;
+                table)  DEBUG_PORT=56781; APP_PORT=50302 ;;
+                hand)   DEBUG_PORT=56782; APP_PORT=50303 ;;
+                saga-table-hand) DEBUG_PORT=56783; APP_PORT=50311 ;;
+                saga-hand-table) DEBUG_PORT=56784; APP_PORT=50312 ;;
+                pmg-hand-flow)   DEBUG_PORT=56787; APP_PORT=50391 ;;
+                prj-output)      DEBUG_PORT=56788; APP_PORT=50390 ;;
+                *) echo "Unknown component: {{COMPONENT}}" >&2; exit 1 ;;
+            esac
+            ;;
+        go)
+            case "{{COMPONENT}}" in
+                player) DEBUG_PORT=40000; APP_PORT=50201 ;;
+                table)  DEBUG_PORT=40001; APP_PORT=50202 ;;
+                hand)   DEBUG_PORT=40002; APP_PORT=50203 ;;
+                saga-table-hand) DEBUG_PORT=40003; APP_PORT=50211 ;;
+                pmg-hand-flow)   DEBUG_PORT=40007; APP_PORT=50291 ;;
+                prj-output)      DEBUG_PORT=40008; APP_PORT=50290 ;;
+                *) echo "Unknown component: {{COMPONENT}}" >&2; exit 1 ;;
+            esac
+            ;;
+        rust)
+            case "{{COMPONENT}}" in
+                player) DEBUG_PORT=20000; APP_PORT=50001 ;;
+                table)  DEBUG_PORT=20001; APP_PORT=50002 ;;
+                hand)   DEBUG_PORT=20002; APP_PORT=50003 ;;
+                saga-table-hand) DEBUG_PORT=20003; APP_PORT=50011 ;;
+                prj-output)      DEBUG_PORT=20007; APP_PORT=50090 ;;
+                *) echo "Unknown component: {{COMPONENT}}" >&2; exit 1 ;;
+            esac
+            ;;
+    esac
+
+    echo "Starting {{LANG}} {{COMPONENT}} debug container..."
+    echo "  App port:   $APP_PORT"
+    echo "  Debug port: $DEBUG_PORT"
+    echo ""
+    echo "Connect with:"
+    case "{{LANG}}" in
+        python) echo "  VSCode: Run 'Python: Attach poker-{{COMPONENT}}'" ;;
+        go)     echo "  VSCode: Run 'Go: Attach poker-{{COMPONENT}}'" ;;
+        rust)   echo "  VSCode: Run 'Rust: Attach poker-{{COMPONENT}} (gdbserver)'" ;;
+    esac
+    echo ""
+
+    {{CONTAINER_CMD}} run --rm -it --network=host \
+        -p "$APP_PORT:$APP_PORT" \
+        -p "$DEBUG_PORT:$DEBUG_PORT" \
+        "$IMAGE"
+
+# Build and run a debug container (shorthand)
+debug LANG COMPONENT: (debug-build LANG COMPONENT) (debug-run LANG COMPONENT)

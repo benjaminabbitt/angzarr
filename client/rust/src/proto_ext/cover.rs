@@ -83,13 +83,15 @@ pub trait CoverExt {
         self.domain().to_string()
     }
 
-    /// Generate a cache key for this entity based on domain + root.
+    /// Generate a cache key for this entity based on edition + domain + root.
     ///
     /// Used for caching aggregate state during saga retry to avoid redundant fetches.
+    /// Includes edition to prevent collision between aggregates in different timelines.
     fn cache_key(&self) -> String {
+        let edition = self.edition();
         let domain = self.domain();
         let root = self.root_id_hex().unwrap_or_default();
-        format!("{domain}:{root}")
+        format!("{edition}:{domain}:{root}")
     }
 }
 

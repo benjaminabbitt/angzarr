@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
-use crate::proto::{CommandBook, Cover, EventBook, SagaResponse};
+use crate::proto::{CommandBook, EventBook, SagaResponse};
 use crate::proto_ext::CoverExt;
 use crate::standalone::CommandRouter;
 use crate::standalone::SagaHandler;
@@ -69,30 +69,11 @@ impl LocalSagaContext {
 
 #[async_trait]
 impl SagaRetryContext for LocalSagaContext {
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = self.source.edition().to_string();
-        let mut covers = self
-            .saga_handler
-            .prepare(&self.source)
-            .await
-            .map_err(box_err)?;
-
-        for cover in &mut covers {
-            cover.stamp_edition_if_empty(&edition);
-        }
-        Ok(covers)
-    }
-
-    async fn handle(
-        &self,
-        destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = self.source.edition().to_string();
         let mut response = self
             .saga_handler
-            .handle(&self.source, &destinations)
+            .handle(&self.source)
             .await
             .map_err(box_err)?;
 
@@ -109,6 +90,16 @@ impl SagaRetryContext for LocalSagaContext {
         self.source.cover.as_ref()
     }
 
+    fn source_max_sequence(&self) -> u32 {
+        use crate::proto_ext::EventPageExt;
+        self.source
+            .pages
+            .iter()
+            .map(|p| p.sequence_num())
+            .max()
+            .unwrap_or(0)
+    }
+
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str) {
         let (Some(router), Some(event_bus)) = (&self.router, &self.event_bus) else {
             error!(reason = %reason, "Saga command permanently rejected (no compensation path)");
@@ -121,16 +112,22 @@ impl SagaRetryContext for LocalSagaContext {
             return;
         };
 
-        let saga_name = &context.saga_origin.saga_name;
-        let domain = command
+        let source_domain = context
+            .source
+            .source
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("?");
+        let target_domain = command
             .cover
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("unknown");
 
         warn!(
-            saga = %saga_name,
-            domain = %domain,
+            source_domain = %source_domain,
+            source_seq = context.source.source_seq,
+            target_domain = %target_domain,
             reason = %reason,
             "Saga command rejected, initiating compensation"
         );
@@ -139,7 +136,7 @@ impl SagaRetryContext for LocalSagaContext {
             Ok(cmd) => cmd,
             Err(e) => {
                 error!(
-                    saga = %saga_name,
+                    source_domain = %source_domain,
                     error = %e,
                     "Failed to build notification"
                 );
@@ -150,7 +147,7 @@ impl SagaRetryContext for LocalSagaContext {
         let triggering_domain = notification_command.domain().to_string();
 
         info!(
-            saga = %saga_name,
+            source_domain = %source_domain,
             triggering_domain = %triggering_domain,
             "Sending rejection Notification to triggering aggregate via execute_compensation"
         );
@@ -164,7 +161,7 @@ impl SagaRetryContext for LocalSagaContext {
             &context,
             &self.compensation_config,
             event_bus,
-            saga_name,
+            source_domain,
             &triggering_domain,
         )
         .await;

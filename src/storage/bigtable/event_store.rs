@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::storage::helpers::is_main_timeline;
-use crate::storage::{EventStore, Result, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
 const COLUMN_FAMILY: &str = "event";
 const COL_DATA: &[u8] = b"data";
@@ -434,9 +434,14 @@ impl EventStore for BigtableEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        _external_id: Option<&str>,
+        _source_info: Option<&SourceInfo>,
+    ) -> Result<AddOutcome> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
         }
 
         // Validate sequence continuity
@@ -452,6 +457,7 @@ impl EventStore for BigtableEventStore {
 
         let mut client = self.client.lock().await;
         let table_name = client.get_full_table_name(&self.table_name);
+        let last_seq = events.last().map(Self::get_sequence).unwrap_or(first_seq);
 
         for event in &events {
             let seq = Self::get_sequence(event);
@@ -477,7 +483,10 @@ impl EventStore for BigtableEventStore {
             "Stored events in Bigtable"
         );
 
-        Ok(())
+        Ok(AddOutcome::Added {
+            first_sequence: first_seq,
+            last_sequence: last_seq,
+        })
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
@@ -820,5 +829,17 @@ impl EventStore for BigtableEventStore {
         );
 
         Ok(deleted_count)
+    }
+
+    async fn find_by_source(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // Bigtable doesn't store source tracking - saga idempotency not supported
+        // Use SQLite or PostgreSQL for saga source tracking
+        Ok(None)
     }
 }

@@ -175,3 +175,139 @@ ENV PATH=/app/.venv/bin:$PATH \
     PYTHONPATH=/app:/app/client/python
 EXPOSE 50390
 CMD ["python", "prj-output/main.py"]
+
+# ============================================================================
+# Debug dependencies - install debugpy
+# ============================================================================
+FROM deps AS deps-debug
+
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+    uv pip install debugpy>=1.8.0
+
+# ============================================================================
+# Debug runtime base - includes debug tools
+# ============================================================================
+FROM docker.io/library/python:${PYTHON_VERSION}-slim AS runtime-debug-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1000 angzarr
+
+WORKDIR /app
+USER angzarr
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# ============================================================================
+# Debug Aggregates
+# ============================================================================
+FROM runtime-debug-base AS agg-player-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/player /app/player
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50301 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56780
+EXPOSE 50301 56780
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56780", "--wait-for-client", "player/agg/main.py"]
+
+FROM runtime-debug-base AS agg-table-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/table /app/table
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50302 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56781
+EXPOSE 50302 56781
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56781", "--wait-for-client", "table/agg/main.py"]
+
+FROM runtime-debug-base AS agg-hand-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/hand /app/hand
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50303 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56782
+EXPOSE 50303 56782
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56782", "--wait-for-client", "hand/agg/main.py"]
+
+# ============================================================================
+# Debug Sagas
+# ============================================================================
+FROM runtime-debug-base AS saga-table-hand-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/table /app/table
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50311 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56783
+EXPOSE 50311 56783
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56783", "--wait-for-client", "table/saga-hand/main.py"]
+
+FROM runtime-debug-base AS saga-hand-table-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/hand /app/hand
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50312 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56784
+EXPOSE 50312 56784
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56784", "--wait-for-client", "hand/saga-table/main.py"]
+
+FROM runtime-debug-base AS saga-table-player-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/table /app/table
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50313 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56785
+EXPOSE 50313 56785
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56785", "--wait-for-client", "table/saga-player/main.py"]
+
+FROM runtime-debug-base AS saga-hand-player-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/hand /app/hand
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50314 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56786
+EXPOSE 50314 56786
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56786", "--wait-for-client", "hand/saga-player/main.py"]
+
+# ============================================================================
+# Debug Process Manager
+# ============================================================================
+FROM runtime-debug-base AS pmg-hand-flow-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/hand-flow /app/hand-flow
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50391 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56787
+EXPOSE 50391 56787
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56787", "--wait-for-client", "hand-flow/main.py"]
+
+# ============================================================================
+# Debug Projector
+# ============================================================================
+FROM runtime-debug-base AS prj-output-debug
+COPY --from=deps-debug --chown=angzarr:angzarr /app/.venv /app/.venv
+COPY --from=deps-debug --chown=angzarr:angzarr /app/client/python /app/client/python
+COPY --from=source --chown=angzarr:angzarr /app/prj-output /app/prj-output
+ENV PATH=/app/.venv/bin:$PATH \
+    PORT=50390 \
+    PYTHONPATH=/app:/app/client/python \
+    DEBUGPY_PORT=56788
+EXPOSE 50390 56788
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:56788", "--wait-for-client", "prj-output/main.py"]

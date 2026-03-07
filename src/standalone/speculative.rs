@@ -196,21 +196,17 @@ impl SpeculativeExecutor {
     }
 
     /// Execute saga speculatively (shared implementation).
+    ///
+    /// Sagas are pure translators — they receive only source events and produce
+    /// commands. No destination state is needed.
     async fn execute_saga_speculative(
         &self,
         handler: &dyn SagaHandler,
         source: &EventBook,
-        domain_specs: &HashMap<String, DomainStateSpec>,
+        _domain_specs: &HashMap<String, DomainStateSpec>,
     ) -> Result<Vec<CommandBook>, Status> {
-        // Phase 1: prepare — declare destination covers
-        let covers = handler.prepare(source).await?;
-
-        // Phase 2: resolve destinations
-        let destinations = self.resolve_destinations(&covers, domain_specs).await?;
-
-        // Phase 3: handle — produce commands
-        let response = handler.handle(source, &destinations).await?;
-
+        // Sagas just translate source events to commands
+        let response = handler.handle(source).await?;
         Ok(response.commands)
     }
 
@@ -437,7 +433,6 @@ impl SpeculativeExecutor {
                     name: DEFAULT_EDITION.to_string(),
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             snapshot: None,
             pages,

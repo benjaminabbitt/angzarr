@@ -14,7 +14,7 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
-use crate::storage::{AddOutcome, EventStore, Result};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo};
 
 /// PostgreSQL implementation of EventStore.
 pub struct PostgresEventStore {
@@ -102,6 +102,7 @@ impl EventStore for PostgresEventStore {
         events: Vec<EventPage>,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&SourceInfo>,
     ) -> Result<AddOutcome> {
         if events.is_empty() {
             return Ok(AddOutcome::Added {
@@ -169,6 +170,19 @@ impl EventStore for PostgresEventStore {
         let mut first_sequence = None;
         let mut last_sequence = 0u32;
 
+        // Prepare source tracking values
+        let (source_edition, source_domain, source_root, source_seq) =
+            if let Some(info) = source_info.filter(|s| !s.is_empty()) {
+                (
+                    Some(info.edition.clone()),
+                    Some(info.domain.clone()),
+                    Some(info.root.to_string()),
+                    Some(info.seq as i32),
+                )
+            } else {
+                (None, None, None, None)
+            };
+
         for event in events {
             let event_data = event.encode_to_vec();
             let sequence = crate::storage::helpers::resolve_sequence(
@@ -194,6 +208,10 @@ impl EventStore for PostgresEventStore {
                     Events::EventData,
                     Events::CorrelationId,
                     Events::ExternalId,
+                    Events::SourceEdition,
+                    Events::SourceDomain,
+                    Events::SourceRoot,
+                    Events::SourceSeq,
                 ])
                 .values_panic([
                     edition.into(),
@@ -204,6 +222,10 @@ impl EventStore for PostgresEventStore {
                     event_data.into(),
                     correlation_id.into(),
                     external_id.into(),
+                    source_edition.clone().into(),
+                    source_domain.clone().into(),
+                    source_root.clone().into(),
+                    source_seq.into(),
                 ])
                 .to_string(PostgresQueryBuilder);
 
@@ -454,5 +476,48 @@ impl EventStore for PostgresEventStore {
 
         let count: i32 = row.get(0);
         Ok(count as u32)
+    }
+
+    async fn find_by_source(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        if source_info.is_empty() {
+            return Ok(None);
+        }
+
+        let root_str = root.to_string();
+        let source_root_str = source_info.root.to_string();
+
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(&root_str))
+            .and_where(Expr::col(Events::SourceEdition).eq(&source_info.edition))
+            .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
+            .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
+            .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(PostgresQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(Some(events))
     }
 }

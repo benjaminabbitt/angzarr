@@ -21,10 +21,8 @@ fn make_command_for_domain(domain: &str) -> CommandBook {
             }),
             correlation_id: "corr-123".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
-        saga_origin: None,
     }
 }
 

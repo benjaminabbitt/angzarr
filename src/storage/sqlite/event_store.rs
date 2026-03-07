@@ -14,7 +14,7 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
-use crate::storage::{AddOutcome, EventStore, Result};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo};
 
 /// SQLite implementation of EventStore.
 pub struct SqliteEventStore {
@@ -171,6 +171,7 @@ impl SqliteEventStore {
 
     /// Insert events within an already-started transaction.
     /// Returns (first_sequence, last_sequence) of inserted events.
+    #[allow(clippy::too_many_arguments)]
     async fn insert_events(
         conn: &mut SqliteConnection,
         domain: &str,
@@ -179,6 +180,7 @@ impl SqliteEventStore {
         events: Vec<EventPage>,
         correlation_id: &str,
         external_id: &str,
+        source_info: Option<&SourceInfo>,
     ) -> Result<(u32, u32)> {
         let base_sequence = {
             let query = Query::select()
@@ -204,6 +206,12 @@ impl SqliteEventStore {
         let mut first_sequence = None;
         let mut last_sequence = 0u32;
 
+        // Prepare source info values (empty strings for None)
+        let source_edition = source_info.map(|s| s.edition.as_str()).unwrap_or("");
+        let source_domain = source_info.map(|s| s.domain.as_str()).unwrap_or("");
+        let source_root = source_info.map(|s| s.root.to_string()).unwrap_or_default();
+        let source_seq = source_info.map(|s| s.seq as i32);
+
         for event in events {
             let event_data = event.encode_to_vec();
             let sequence = crate::storage::helpers::resolve_sequence(
@@ -218,29 +226,64 @@ impl SqliteEventStore {
             }
             last_sequence = sequence;
 
-            let query = Query::insert()
-                .into_table(Events::Table)
-                .columns([
-                    Events::Edition,
-                    Events::Domain,
-                    Events::Root,
-                    Events::Sequence,
-                    Events::CreatedAt,
-                    Events::EventData,
-                    Events::CorrelationId,
-                    Events::ExternalId,
-                ])
-                .values_panic([
-                    edition.into(),
-                    domain.into(),
-                    root_str.to_string().into(),
-                    sequence.into(),
-                    created_at.into(),
-                    event_data.into(),
-                    correlation_id.into(),
-                    external_id.into(),
-                ])
-                .to_string(SqliteQueryBuilder);
+            // Build insert with source columns if provided
+            let query = if source_info.is_some() && !source_edition.is_empty() {
+                Query::insert()
+                    .into_table(Events::Table)
+                    .columns([
+                        Events::Edition,
+                        Events::Domain,
+                        Events::Root,
+                        Events::Sequence,
+                        Events::CreatedAt,
+                        Events::EventData,
+                        Events::CorrelationId,
+                        Events::ExternalId,
+                        Events::SourceEdition,
+                        Events::SourceDomain,
+                        Events::SourceRoot,
+                        Events::SourceSeq,
+                    ])
+                    .values_panic([
+                        edition.into(),
+                        domain.into(),
+                        root_str.to_string().into(),
+                        sequence.into(),
+                        created_at.into(),
+                        event_data.into(),
+                        correlation_id.into(),
+                        external_id.into(),
+                        source_edition.into(),
+                        source_domain.into(),
+                        source_root.clone().into(),
+                        source_seq.into(),
+                    ])
+                    .to_string(SqliteQueryBuilder)
+            } else {
+                Query::insert()
+                    .into_table(Events::Table)
+                    .columns([
+                        Events::Edition,
+                        Events::Domain,
+                        Events::Root,
+                        Events::Sequence,
+                        Events::CreatedAt,
+                        Events::EventData,
+                        Events::CorrelationId,
+                        Events::ExternalId,
+                    ])
+                    .values_panic([
+                        edition.into(),
+                        domain.into(),
+                        root_str.to_string().into(),
+                        sequence.into(),
+                        created_at.into(),
+                        event_data.into(),
+                        correlation_id.into(),
+                        external_id.into(),
+                    ])
+                    .to_string(SqliteQueryBuilder)
+            };
 
             sqlx::query(&query).execute(&mut *conn).await?;
         }
@@ -293,6 +336,7 @@ impl EventStore for SqliteEventStore {
         events: Vec<EventPage>,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&SourceInfo>,
     ) -> Result<AddOutcome> {
         if events.is_empty() {
             return Ok(AddOutcome::Added {
@@ -330,6 +374,7 @@ impl EventStore for SqliteEventStore {
             events,
             correlation_id,
             external_id,
+            source_info,
         )
         .await;
 
@@ -571,6 +616,49 @@ impl EventStore for SqliteEventStore {
         }
 
         Ok(assemble_event_books(books_map, correlation_id))
+    }
+
+    async fn find_by_source(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        if source_info.is_empty() {
+            return Ok(None);
+        }
+
+        let root_str = root.to_string();
+        let source_root_str = source_info.root.to_string();
+
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(&root_str))
+            .and_where(Expr::col(Events::SourceEdition).eq(&source_info.edition))
+            .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
+            .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
+            .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(SqliteQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(Some(events))
     }
 
     async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {

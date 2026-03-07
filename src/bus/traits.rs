@@ -201,7 +201,8 @@ pub fn domain_matches_any(domain: &str, patterns: &[String]) -> bool {
         if pattern == "*" {
             true
         } else if let Some(prefix) = pattern.strip_suffix(".*") {
-            // Hierarchical match: domain must start with "prefix." (note the dot)
+            // Hierarchical match: "game.*" matches "game.player" but not "game" or "gameplay"
+            // Domain must be exactly "{prefix}.{something}", not just start with prefix.
             domain.starts_with(prefix)
                 && domain.len() > prefix.len()
                 && domain.as_bytes().get(prefix.len()) == Some(&b'.')

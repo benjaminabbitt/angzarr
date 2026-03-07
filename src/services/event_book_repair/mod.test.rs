@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{EventPage, Snapshot, SnapshotRetention};
+use crate::proto::{page_header, EventPage, PageHeader, Snapshot, SnapshotRetention};
 use crate::test_utils::{make_cover, make_event_page};
 
 // ============================================================================
@@ -179,7 +179,6 @@ fn test_extract_identity_success() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -212,7 +211,6 @@ fn test_extract_identity_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -233,7 +231,6 @@ fn test_extract_identity_invalid_uuid() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -252,7 +249,6 @@ fn test_extract_identity_empty_uuid_bytes() {
             root: Some(ProtoUuid { value: vec![] }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -277,7 +273,6 @@ fn test_extract_identity_preserves_domain() {
                 }),
                 correlation_id: String::new(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
@@ -397,7 +392,9 @@ mod grpc_integration {
 
     fn test_event(sequence: u32, event_type: &str) -> EventPage {
         EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             created_at: Some(Timestamp {
                 seconds: 1704067200 + sequence as i64,
                 nanos: 0,
@@ -460,6 +457,7 @@ mod grpc_integration {
                 ],
                 "",
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -513,7 +511,7 @@ mod grpc_integration {
             .map(|i| test_event(i, &format!("Event{}", i)))
             .collect();
         event_store
-            .add(domain, DEFAULT_EDITION, root, events, "", None)
+            .add(domain, DEFAULT_EDITION, root, events, "", None, None)
             .await
             .unwrap();
 

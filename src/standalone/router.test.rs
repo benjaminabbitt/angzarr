@@ -88,13 +88,16 @@ fn test_create_command_book_empty_data() {
     }
 }
 
-/// Commands created directly (not from saga) have no saga_origin.
+/// Commands created directly have no angzarr_deferred provenance (they use explicit sequence).
 #[test]
-fn test_create_command_book_no_saga_origin() {
+fn test_create_command_book_explicit_sequence() {
+    use crate::proto_ext::CommandPageExt;
     let root = Uuid::new_v4();
     let command = create_command_book("orders", root, "CreateOrder", vec![]);
 
-    assert!(command.saga_origin.is_none());
+    // Direct commands get explicit sequence 0, not deferred
+    assert_eq!(command.pages[0].sequence_num(), 0);
+    assert!(!command.pages[0].is_deferred());
 }
 
 // ============================================================================

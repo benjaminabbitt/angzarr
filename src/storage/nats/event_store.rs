@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::storage::helpers::is_main_timeline;
-use crate::storage::{EventStore, Result, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
 use super::DEFAULT_PREFIX;
 
@@ -404,9 +404,14 @@ impl EventStore for NatsEventStore {
         root: Uuid,
         events: Vec<EventPage>,
         correlation_id: &str,
-    ) -> Result<()> {
+        _external_id: Option<&str>,
+        _source_info: Option<&SourceInfo>,
+    ) -> Result<AddOutcome> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(AddOutcome::Added {
+                first_sequence: 0,
+                last_sequence: 0,
+            });
         }
 
         self.ensure_stream(domain).await?;
@@ -473,7 +478,10 @@ impl EventStore for NatsEventStore {
             "Published EventBook to NATS"
         );
 
-        Ok(())
+        Ok(AddOutcome::Added {
+            first_sequence: first_seq,
+            last_sequence: last_seq,
+        })
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
@@ -714,5 +722,17 @@ impl EventStore for NatsEventStore {
         );
 
         Ok(deleted)
+    }
+
+    async fn find_by_source(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // NATS doesn't store source tracking - saga idempotency not supported
+        // Use SQLite or PostgreSQL for saga source tracking
+        Ok(None)
     }
 }

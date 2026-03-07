@@ -55,7 +55,6 @@ pub fn assemble_event_books(
                     name: edition,
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             pages,
             snapshot: None,

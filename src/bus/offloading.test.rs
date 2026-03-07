@@ -19,7 +19,7 @@
 use super::*;
 use crate::bus::MockEventBus;
 use crate::payload_store::FilesystemPayloadStore;
-use crate::proto::event_page;
+use crate::proto::{event_page, PageHeader};
 use tempfile::TempDir;
 
 // ============================================================================
@@ -36,7 +36,9 @@ fn make_event_book(payload_size: usize) -> EventBook {
     EventBook {
         cover: None,
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
@@ -218,7 +220,9 @@ async fn test_resolving_handler_resolves_external_payloads() {
     let offloaded_book = EventBook {
         cover: None,
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::External(reference)),
         }],

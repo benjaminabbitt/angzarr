@@ -79,7 +79,6 @@ fn make_cover(domain: &str, root: Uuid, correlation_id: &str) -> Cover {
             name: "main".to_string(),
             divergences: vec![],
         }),
-        external_id: String::new(),
     }
 }
 
@@ -154,7 +153,6 @@ async fn test_fetch_local_domain_missing_root_returns_none() {
         root: None, // Missing root
         correlation_id: "corr-123".to_string(),
         edition: None,
-        external_id: String::new(),
     };
     let result = fetcher.fetch(&cover).await;
 
@@ -174,7 +172,6 @@ async fn test_fetch_local_domain_invalid_root_returns_none() {
         }),
         correlation_id: "corr-123".to_string(),
         edition: None,
-        external_id: String::new(),
     };
     let result = fetcher.fetch(&cover).await;
 

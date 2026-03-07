@@ -5,8 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::proto::{
-    command_page, event_page, CommandBook, CommandPage, CommandResponse, ContextualCommand, Cover,
-    EventBook, EventPage, MergeStrategy, Projection, SagaResponse, Uuid as ProtoUuid,
+    command_page, event_page, page_header, CommandBook, CommandPage, CommandResponse,
+    ContextualCommand, Cover, EventBook, EventPage, MergeStrategy, PageHeader, Projection,
+    SagaResponse, Uuid as ProtoUuid,
 };
 use angzarr::proto_ext::EventPageExt;
 use angzarr::standalone::{
@@ -140,7 +141,11 @@ impl CommandHandler for EchoAggregate {
                     _ => None,
                 };
                 EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i as u32)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(
+                            next_seq + i as u32,
+                        )),
+                    }),
                     payload: event.map(event_page::Payload::Event),
                     created_at: None,
                 }
@@ -186,7 +191,9 @@ impl CommandHandler for MultiEventAggregate {
 
         let pages: Vec<EventPage> = (0..self.events_per_command)
             .map(|i| EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(next_seq + i)),
+                }),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("test.Event{}", i),
                     value: vec![i as u8],
@@ -271,15 +278,7 @@ impl RecordingSaga {
 
 #[async_trait]
 impl SagaHandler for RecordingSaga {
-    async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-        Ok(vec![])
-    }
-
-    async fn handle(
-        &self,
-        _source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    async fn handle(&self, _source: &EventBook) -> Result<SagaResponse, Status> {
         self.state.triggered.store(true, Ordering::SeqCst);
         self.state.commands_emitted.fetch_add(1, Ordering::SeqCst);
         Ok(SagaResponse::default())
@@ -295,17 +294,17 @@ fn create_test_command(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.TestCommand".to_string(),
                 value: b"test-data".to_vec(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 

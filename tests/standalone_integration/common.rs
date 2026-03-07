@@ -14,8 +14,8 @@ pub use angzarr::bus::ipc::{IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus};
 pub use angzarr::bus::{EventBus, EventHandler};
 pub use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 pub use angzarr::proto::{
-    command_page, event_page, CommandBook, CommandPage, ContextualCommand, Cover, EventBook,
-    EventPage, MergeStrategy, Projection, SagaResponse, Uuid as ProtoUuid,
+    command_page, event_page, page_header, CommandBook, CommandPage, ContextualCommand, Cover,
+    EventBook, EventPage, MergeStrategy, PageHeader, Projection, SagaResponse, Uuid as ProtoUuid,
 };
 pub use angzarr::proto_ext::EventPageExt;
 pub use angzarr::standalone::{
@@ -74,7 +74,11 @@ impl CommandHandler for EchoAggregate {
                     _ => None,
                 };
                 EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i as u32)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(
+                            next_seq + i as u32,
+                        )),
+                    }),
                     payload: event.map(event_page::Payload::Event),
                     created_at: None,
                 }
@@ -130,7 +134,9 @@ impl CommandHandler for MultiEventAggregate {
 
         let pages: Vec<EventPage> = (0..self.events_per_command)
             .map(|i| EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(next_seq + i)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(next_seq + i)),
+                }),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("test.Event{}", i),
                     value: vec![i as u8],
@@ -203,17 +209,17 @@ pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32)
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.TestCommand".to_string(),
                 value: data.to_vec(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -226,10 +232,11 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
             }),
             correlation_id: Uuid::new_v4().to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+            }),
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.TestEvent".to_string(),
                 value: vec![1, 2, 3],

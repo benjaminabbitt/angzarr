@@ -8,7 +8,9 @@
 //! - Validate format when non-empty to prevent injection issues
 
 use super::*;
-use crate::proto::{command_page, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid};
+use crate::proto::{
+    command_page, page_header, CommandPage, Cover, MergeStrategy, PageHeader, Uuid as ProtoUuid,
+};
 use prost_types::Any;
 
 fn make_command_book(with_correlation: bool) -> CommandBook {
@@ -24,17 +26,17 @@ fn make_command_book(with_correlation: bool) -> CommandBook {
                 String::new()
             },
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None,
     }
 }
 
@@ -77,10 +79,8 @@ fn test_extract_rejects_invalid_format() {
             }),
             correlation_id: "invalid/chars!here".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
-        saga_origin: None,
     };
 
     let result = extract_correlation_id(&command);

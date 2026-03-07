@@ -34,7 +34,9 @@ async fn start_event_query_server(
 
 fn test_event(sequence: u32, event_type: &str) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: format!("type.googleapis.com/{}", event_type),
@@ -57,7 +59,7 @@ async fn test_repairer_fetches_missing_history() {
         .map(|i| test_event(i, &format!("Event{}", i)))
         .collect();
     event_store
-        .add(domain, DEFAULT_EDITION, root, events, "", None)
+        .add(domain, DEFAULT_EDITION, root, events, "", None, None)
         .await
         .unwrap();
 
@@ -78,7 +80,6 @@ async fn test_repairer_fetches_missing_history() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![test_event(4, "Event4")],
         snapshot: None,
@@ -127,7 +128,6 @@ async fn test_repairer_passes_through_complete_book() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![test_event(0, "Created"), test_event(1, "Updated")],
         snapshot: None,
@@ -166,7 +166,6 @@ async fn test_repairer_handles_empty_aggregate() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![test_event(5, "LateEvent")], // Missing 0-4
         snapshot: None,
@@ -200,7 +199,7 @@ async fn test_discovery_resolves_event_query_via_env_var() {
         .map(|i| test_event(i, &format!("Event{}", i)))
         .collect();
     event_store
-        .add(domain, DEFAULT_EDITION, root, events, "", None)
+        .add(domain, DEFAULT_EDITION, root, events, "", None, None)
         .await
         .unwrap();
 
@@ -228,7 +227,6 @@ async fn test_discovery_resolves_event_query_via_env_var() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![test_event(2, "Event2")],
         snapshot: None,
@@ -266,7 +264,7 @@ async fn test_discovery_resolves_registered_aggregate() {
         .map(|i| test_event(i, &format!("ProductEvent{}", i)))
         .collect();
     event_store
-        .add(domain, DEFAULT_EDITION, root, events, "", None)
+        .add(domain, DEFAULT_EDITION, root, events, "", None, None)
         .await
         .unwrap();
 
@@ -294,7 +292,6 @@ async fn test_discovery_resolves_registered_aggregate() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![test_event(1, "ProductEvent1")],
         snapshot: None,

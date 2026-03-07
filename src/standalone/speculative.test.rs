@@ -24,6 +24,7 @@ use uuid::Uuid;
 
 use super::*;
 use crate::proto::event_page;
+use crate::proto::{page_header, PageHeader};
 use crate::proto_ext::EventPageExt;
 
 // ============================================================================
@@ -150,7 +151,9 @@ fn test_build_event_book_structure() {
 fn test_build_event_book_with_pages() {
     let root = Uuid::new_v4();
     let page = EventPage {
-        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
         payload: Some(event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![1, 2, 3],
@@ -169,7 +172,9 @@ fn test_build_event_book_multiple_pages() {
     let root = Uuid::new_v4();
     let pages: Vec<EventPage> = (0..5)
         .map(|seq| EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
             payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: format!("test.Event{}", seq),
                 value: vec![],
@@ -236,7 +241,6 @@ fn test_root_from_event_book_missing_root() {
             root: None,
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -256,7 +260,6 @@ fn test_root_from_event_book_invalid_uuid_bytes() {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![],
         snapshot: None,
@@ -271,17 +274,23 @@ fn test_build_event_book_preserves_page_order() {
     let root = Uuid::new_v4();
     let pages: Vec<EventPage> = vec![
         EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(5)),
+            }),
             payload: None,
             created_at: None,
         },
         EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(3)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(3)),
+            }),
             payload: None,
             created_at: None,
         },
         EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(7)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(7)),
+            }),
             payload: None,
             created_at: None,
         },
@@ -324,15 +333,7 @@ mod domain_routing {
 
     #[async_trait]
     impl super::super::SagaHandler for MockSaga {
-        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
-            Ok(vec![])
-        }
-
-        async fn handle(
-            &self,
-            _source: &EventBook,
-            _destinations: &[EventBook],
-        ) -> Result<SagaResponse, Status> {
+        async fn handle(&self, _source: &EventBook) -> Result<SagaResponse, Status> {
             Ok(SagaResponse::default())
         }
     }

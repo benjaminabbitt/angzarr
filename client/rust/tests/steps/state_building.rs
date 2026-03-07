@@ -1,6 +1,9 @@
 //! State building step definitions.
 
-use angzarr_client::proto::{event_page, Cover, EventBook, EventPage, Snapshot, SnapshotRetention};
+use angzarr_client::proto::{
+    event_page, page_header, Cover, EventBook, EventPage, PageHeader, Snapshot, SnapshotRetention,
+};
+use angzarr_client::proto_ext::EventPageExt;
 use angzarr_client::EventBookExt;
 use cucumber::{given, then, when, World};
 use prost::Message;
@@ -40,7 +43,6 @@ fn make_event_book(domain: &str, events: Vec<EventPage>) -> EventBook {
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: events,
         snapshot: None,
@@ -54,7 +56,9 @@ fn make_event_page(seq: u32, type_url: &str, data: &str) -> EventPage {
         increment: 0,
     };
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: type_url.to_string(),
@@ -69,7 +73,9 @@ fn make_increment_event(seq: u32, increment: i32) -> EventPage {
         increment,
     };
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: "type.googleapis.com/test.Increment".to_string(),
@@ -79,10 +85,7 @@ fn make_increment_event(seq: u32, increment: i32) -> EventPage {
 }
 
 fn get_sequence(page: &EventPage) -> u32 {
-    match &page.sequence_type {
-        Some(event_page::SequenceType::Sequence(seq)) => *seq,
-        _ => 0,
-    }
+    page.sequence_num()
 }
 
 fn build_state(event_book: &EventBook) -> TestState {
@@ -129,7 +132,6 @@ pub struct StateBuildingWorld {
     event_book: Option<EventBook>,
     built_state: Option<TestState>,
     initial_state: TestState,
-    events_applied: Vec<String>,
     next_sequence: u32,
     original_event_book: Option<EventBook>,
 }
@@ -140,7 +142,6 @@ impl StateBuildingWorld {
             event_book: None,
             built_state: None,
             initial_state: TestState::default(),
-            events_applied: Vec::new(),
             next_sequence: 0,
             original_event_book: None,
         }
@@ -296,7 +297,9 @@ async fn given_event_with_type_url(world: &mut StateBuildingWorld, type_url: Str
 #[given("an event with corrupted payload bytes")]
 async fn given_corrupted_payload(world: &mut StateBuildingWorld) {
     let events = vec![EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(0)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: "type.googleapis.com/test.Event".to_string(),

@@ -6,7 +6,6 @@ use uuid::Uuid;
 /// Mock aggregate for testing.
 #[derive(Debug, Clone, Default)]
 struct MockAggregate {
-    domain: String,
     root_id: Uuid,
     events: Vec<MockEvent>,
     next_sequence: u32,
@@ -14,14 +13,13 @@ struct MockAggregate {
 
 #[derive(Debug, Clone)]
 struct MockEvent {
-    sequence: u32,
+    #[allow(dead_code)]
     event_type: String,
 }
 
 /// Mock saga for testing.
 #[derive(Debug, Clone, Default)]
 struct MockSaga {
-    name: String,
     emitted_facts: Vec<MockFact>,
     error: Option<String>,
     target_domain: String,
@@ -60,10 +58,8 @@ pub struct FactFlowWorld {
 async fn given_registered_player(world: &mut FactFlowWorld, name: String) {
     world.player_name = name;
     world.player_aggregate = Some(MockAggregate {
-        domain: "player".to_string(),
         root_id: Uuid::new_v4(),
         events: vec![MockEvent {
-            sequence: 0,
             event_type: "PlayerRegistered".to_string(),
         }],
         next_sequence: 1,
@@ -75,14 +71,12 @@ async fn given_player_with_events(world: &mut FactFlowWorld, count: u32) {
     // Feature uses 1-indexed sequences, so 3 existing events means seqs 1, 2, 3
     // and next_sequence = 4
     let mut events = vec![];
-    for i in 1..=count {
+    for _ in 1..=count {
         events.push(MockEvent {
-            sequence: i,
             event_type: "SomeEvent".to_string(),
         });
     }
     world.player_aggregate = Some(MockAggregate {
-        domain: "player".to_string(),
         root_id: Uuid::new_v4(),
         events,
         next_sequence: count + 1,
@@ -98,15 +92,12 @@ async fn given_hand_in_progress(world: &mut FactFlowWorld, name: String) {
     world.player_name = name;
     world.hand_in_progress = true;
     world.hand_aggregate = Some(MockAggregate {
-        domain: "hand".to_string(),
         root_id: Uuid::new_v4(),
         events: vec![
             MockEvent {
-                sequence: 0,
                 event_type: "HandStarted".to_string(),
             },
             MockEvent {
-                sequence: 1,
                 event_type: "TurnChanged".to_string(),
             },
         ],
@@ -122,10 +113,8 @@ async fn given_hand_in_progress(world: &mut FactFlowWorld, name: String) {
 async fn given_player_seated(world: &mut FactFlowWorld, name: String, _table_id: String) {
     world.player_name = name;
     world.table_aggregate = Some(MockAggregate {
-        domain: "table".to_string(),
         root_id: Uuid::nil(),
         events: vec![MockEvent {
-            sequence: 0,
             event_type: "PlayerSeated".to_string(),
         }],
         next_sequence: 1,
@@ -136,15 +125,12 @@ async fn given_player_seated(world: &mut FactFlowWorld, name: String, _table_id:
 async fn given_player_sitting_out(world: &mut FactFlowWorld, name: String, _table_id: String) {
     world.player_name = name;
     world.table_aggregate = Some(MockAggregate {
-        domain: "table".to_string(),
         root_id: Uuid::nil(),
         events: vec![
             MockEvent {
-                sequence: 0,
                 event_type: "PlayerSeated".to_string(),
             },
             MockEvent {
-                sequence: 1,
                 event_type: "PlayerSatOut".to_string(),
             },
         ],
@@ -159,7 +145,6 @@ async fn given_player_sitting_out(world: &mut FactFlowWorld, name: String, _tabl
 #[given("a saga that emits a fact")]
 async fn given_saga_emits_fact(world: &mut FactFlowWorld) {
     world.saga = Some(MockSaga {
-        name: "test-saga".to_string(),
         emitted_facts: vec![],
         error: None,
         target_domain: "test".to_string(),
@@ -169,7 +154,6 @@ async fn given_saga_emits_fact(world: &mut FactFlowWorld) {
 #[given(expr = "a saga that emits a fact to domain {string}")]
 async fn given_saga_emits_to_domain(world: &mut FactFlowWorld, domain: String) {
     world.saga = Some(MockSaga {
-        name: "test-saga".to_string(),
         emitted_facts: vec![],
         error: None,
         target_domain: domain,
@@ -192,7 +176,6 @@ async fn when_hand_player_saga_processes(world: &mut FactFlowWorld) {
 
     if world.saga.is_none() {
         world.saga = Some(MockSaga {
-            name: "hand-player-saga".to_string(),
             emitted_facts: vec![],
             error: None,
             target_domain: "player".to_string(),
@@ -220,7 +203,6 @@ async fn when_hand_player_saga_processes(world: &mut FactFlowWorld) {
 async fn when_action_requested_injected(world: &mut FactFlowWorld) {
     if world.player_aggregate.is_none() {
         world.player_aggregate = Some(MockAggregate {
-            domain: "player".to_string(),
             root_id: Uuid::new_v4(),
             events: vec![],
             next_sequence: 0,
@@ -231,7 +213,6 @@ async fn when_action_requested_injected(world: &mut FactFlowWorld) {
     let next_seq = agg.next_sequence;
     let root_id = agg.root_id;
     agg.events.push(MockEvent {
-        sequence: next_seq,
         event_type: "ActionRequested".to_string(),
     });
     agg.next_sequence += 1;
@@ -250,7 +231,6 @@ async fn when_player_emits_sitting_out(world: &mut FactFlowWorld, _name: String)
     if let Some(ref mut table_agg) = world.table_aggregate {
         world.fact_sequence = Some(table_agg.next_sequence);
         table_agg.events.push(MockEvent {
-            sequence: table_agg.next_sequence,
             event_type: "PlayerSatOut".to_string(),
         });
         table_agg.next_sequence += 1;
@@ -268,7 +248,6 @@ async fn when_player_emits_returning(world: &mut FactFlowWorld, _name: String) {
     if let Some(ref mut table_agg) = world.table_aggregate {
         world.fact_sequence = Some(table_agg.next_sequence);
         table_agg.events.push(MockEvent {
-            sequence: table_agg.next_sequence,
             event_type: "PlayerSatIn".to_string(),
         });
         table_agg.next_sequence += 1;

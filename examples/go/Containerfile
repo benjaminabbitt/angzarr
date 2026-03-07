@@ -208,3 +208,143 @@ COPY --from=build-prj-output --chown=nonroot:nonroot /out/server ./server
 ENV PORT=50290
 EXPOSE 50290
 ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Debug builds - with debug symbols (no -ldflags stripping)
+# ============================================================================
+FROM deps-fetcher AS build-player-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./player/agg
+
+FROM deps-fetcher AS build-table-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./table/agg
+
+FROM deps-fetcher AS build-hand-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./hand/agg
+
+FROM deps-fetcher AS build-saga-table-hand-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./table/saga-hand
+
+FROM deps-fetcher AS build-saga-table-player-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./table/saga-player
+
+FROM deps-fetcher AS build-saga-hand-table-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./hand/saga-table
+
+FROM deps-fetcher AS build-saga-hand-player-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./hand/saga-player
+
+FROM deps-fetcher AS build-pmg-hand-flow-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./pmg-hand-flow
+
+FROM deps-fetcher AS build-prj-output-debug
+WORKDIR /app/examples/go
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./prj-output
+
+# ============================================================================
+# Debug runtime - Alpine with Delve
+# ============================================================================
+FROM docker.io/library/golang:${GO_VERSION}-alpine AS runtime-debug
+RUN apk add --no-cache ca-certificates && \
+    go install github.com/go-delve/delve/cmd/dlv@latest
+WORKDIR /app
+
+# ============================================================================
+# Debug Aggregates
+# ============================================================================
+FROM runtime-debug AS agg-player-debug
+COPY --from=build-player-debug /out/server ./server
+ENV PORT=50201 DLV_PORT=40000
+EXPOSE 50201 40000
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40000", "--api-version=2", "--accept-multiclient", "./server"]
+
+FROM runtime-debug AS agg-table-debug
+COPY --from=build-table-debug /out/server ./server
+ENV PORT=50202 DLV_PORT=40001
+EXPOSE 50202 40001
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40001", "--api-version=2", "--accept-multiclient", "./server"]
+
+FROM runtime-debug AS agg-hand-debug
+COPY --from=build-hand-debug /out/server ./server
+ENV PORT=50203 DLV_PORT=40002
+EXPOSE 50203 40002
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40002", "--api-version=2", "--accept-multiclient", "./server"]
+
+# ============================================================================
+# Debug Sagas
+# ============================================================================
+FROM runtime-debug AS saga-table-hand-debug
+COPY --from=build-saga-table-hand-debug /out/server ./server
+ENV PORT=50211 DLV_PORT=40003
+EXPOSE 50211 40003
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40003", "--api-version=2", "--accept-multiclient", "./server"]
+
+FROM runtime-debug AS saga-table-player-debug
+COPY --from=build-saga-table-player-debug /out/server ./server
+ENV PORT=50212 DLV_PORT=40004
+EXPOSE 50212 40004
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40004", "--api-version=2", "--accept-multiclient", "./server"]
+
+FROM runtime-debug AS saga-hand-table-debug
+COPY --from=build-saga-hand-table-debug /out/server ./server
+ENV PORT=50213 DLV_PORT=40005
+EXPOSE 50213 40005
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40005", "--api-version=2", "--accept-multiclient", "./server"]
+
+FROM runtime-debug AS saga-hand-player-debug
+COPY --from=build-saga-hand-player-debug /out/server ./server
+ENV PORT=50214 DLV_PORT=40006
+EXPOSE 50214 40006
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40006", "--api-version=2", "--accept-multiclient", "./server"]
+
+# ============================================================================
+# Debug Process Manager
+# ============================================================================
+FROM runtime-debug AS pmg-hand-flow-debug
+COPY --from=build-pmg-hand-flow-debug /out/server ./server
+ENV PORT=50291 DLV_PORT=40007
+EXPOSE 50291 40007
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40007", "--api-version=2", "--accept-multiclient", "./server"]
+
+# ============================================================================
+# Debug Projector
+# ============================================================================
+FROM runtime-debug AS prj-output-debug
+COPY --from=build-prj-output-debug /out/server ./server
+ENV PORT=50290 DLV_PORT=40008
+EXPOSE 50290 40008
+ENTRYPOINT ["dlv", "exec", "--headless", "--listen=:40008", "--api-version=2", "--accept-multiclient", "./server"]

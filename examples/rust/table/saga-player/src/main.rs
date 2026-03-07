@@ -2,6 +2,12 @@
 //!
 //! Reacts to HandEnded events from Table domain.
 //! Sends ReleaseFunds commands to Player domain.
+//!
+//! This saga is a pure translator - it receives source events and produces
+//! commands without knowing destination state. The framework handles:
+//! - Sequence assignment (via angzarr_deferred)
+//! - Idempotency checking
+//! - Delivery retry on sequence conflicts
 
 use angzarr_client::proto::examples::{HandEnded, ReleaseFunds};
 use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
@@ -21,51 +27,21 @@ impl SagaDomainHandler for TablePlayerSagaHandler {
         vec!["HandEnded".into()]
     }
 
-    fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover> {
+    fn handle(&self, source: &EventBook, event: &Any) -> CommandResult<SagaHandlerResponse> {
         if event.type_url.ends_with("HandEnded") {
-            return Self::prepare_hand_ended(source, event);
-        }
-        vec![]
-    }
-
-    fn execute(
-        &self,
-        source: &EventBook,
-        event: &Any,
-        destinations: &[EventBook],
-    ) -> CommandResult<SagaHandlerResponse> {
-        if event.type_url.ends_with("HandEnded") {
-            return Self::handle_hand_ended(source, event, destinations);
+            return Self::handle_hand_ended(source, event);
         }
         Ok(SagaHandlerResponse::default())
     }
 }
 
 impl TablePlayerSagaHandler {
-    /// Prepare handler: return destination covers for all players in StackChanges.
-    fn prepare_hand_ended(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
-        if let Ok(event) = HandEnded::decode(event_any.value.as_slice()) {
-            event
-                .stack_changes
-                .keys()
-                .filter_map(|player_hex| {
-                    hex::decode(player_hex).ok().map(|player_root| Cover {
-                        domain: "player".to_string(),
-                        root: Some(Uuid { value: player_root }),
-                        ..Default::default()
-                    })
-                })
-                .collect()
-        } else {
-            vec![]
-        }
-    }
-
-    /// Execute handler: translate HandEnded → ReleaseFunds for each player.
+    /// Translate HandEnded → ReleaseFunds for each player.
+    ///
+    /// Commands use deferred sequences - framework assigns on delivery.
     fn handle_hand_ended(
         source: &EventBook,
         event_any: &Any,
-        destinations: &[EventBook],
     ) -> CommandResult<SagaHandlerResponse> {
         let event: HandEnded = event_any
             .unpack()
@@ -78,29 +54,13 @@ impl TablePlayerSagaHandler {
             .map(|c| c.correlation_id.clone())
             .unwrap_or_default();
 
-        // Build a map from player root to destination for sequence lookup
-        let dest_map: std::collections::HashMap<Vec<u8>, &EventBook> = destinations
-            .iter()
-            .filter_map(|eb| {
-                eb.cover
-                    .as_ref()
-                    .and_then(|c| c.root.as_ref())
-                    .map(|u| (u.value.clone(), eb))
-            })
-            .collect();
-
         // Create ReleaseFunds commands for all players
+        // Note: No explicit sequence - framework stamps via angzarr_deferred
         let commands: Vec<CommandBook> = event
             .stack_changes
             .keys()
             .filter_map(|player_hex| {
                 let player_root = hex::decode(player_hex).ok()?;
-
-                // Get sequence from destination state
-                let dest_seq = dest_map
-                    .get(&player_root)
-                    .map(|eb| eb.next_sequence)
-                    .unwrap_or(0);
 
                 let release_funds = ReleaseFunds {
                     table_root: event.hand_root.clone(),
@@ -118,12 +78,12 @@ impl TablePlayerSagaHandler {
                         correlation_id: correlation_id.clone(),
                         ..Default::default()
                     }),
+                    // Framework will stamp angzarr_deferred with source info
+                    // and assign sequence on delivery
                     pages: vec![CommandPage {
-                        sequence: dest_seq,
                         payload: Some(command_page::Payload::Command(command_any)),
                         ..Default::default()
                     }],
-                    saga_origin: None,
                 })
             })
             .collect();

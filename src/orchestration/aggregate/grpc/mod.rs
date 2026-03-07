@@ -243,7 +243,6 @@ impl AggregateContext for GrpcAggregateContext {
                     }),
                     correlation_id: correlation_id.to_string(),
                     edition: None,
-                    external_id: String::new(),
                 })
             });
             let events_to_persist = EventBook {
@@ -300,7 +299,6 @@ impl AggregateContext for GrpcAggregateContext {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             })
         });
         Ok(EventBook {

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use angzarr::orchestration::aggregate::DEFAULT_EDITION;
-use angzarr::proto::{event_page, EventPage};
+use angzarr::proto::{event_page, page_header, EventPage, PageHeader};
 use angzarr::proto_ext::EventPageExt;
 use angzarr::storage::EventStore;
 use cucumber::{given, then, when, World};
@@ -62,7 +62,9 @@ impl EditionWorld {
 
     fn make_event_page(&self, seq: u32, type_url: &str, payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
@@ -109,7 +111,7 @@ async fn when_add_event_main_timeline(world: &mut EditionWorld, domain: String) 
 
     world
         .store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None, None)
         .await
         .expect("Failed to add event");
 
@@ -136,7 +138,7 @@ async fn when_add_event_with_edition(world: &mut EditionWorld, domain: String, e
 
     world
         .store()
-        .add(&domain, effective, root, pages, "", None)
+        .add(&domain, effective, root, pages, "", None, None)
         .await
         .expect("Failed to add event");
 
@@ -215,7 +217,7 @@ async fn given_aggregate_main_with_events(world: &mut EditionWorld, domain: Stri
 
     world
         .store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None, None)
         .await
         .expect("Failed to add events");
 
@@ -251,6 +253,7 @@ async fn when_add_events_to_edition(world: &mut EditionWorld, count: u32, editio
             world.current_root,
             pages,
             "",
+            None,
             None,
         )
         .await
@@ -343,6 +346,7 @@ async fn when_add_events_in_edition(world: &mut EditionWorld, count: u32, editio
             pages,
             "",
             None,
+            None,
         )
         .await
         .expect("Failed to add events");
@@ -399,6 +403,7 @@ async fn when_add_event_on_main(world: &mut EditionWorld, count: u32) {
             pages,
             "",
             None,
+            None,
         )
         .await
         .expect("Failed to add events");
@@ -418,6 +423,7 @@ async fn when_add_event_in_edition(world: &mut EditionWorld, count: u32, edition
             world.current_root,
             pages,
             "",
+            None,
             None,
         )
         .await
@@ -485,6 +491,7 @@ async fn when_add_single_event_to_edition(world: &mut EditionWorld, edition: Str
             pages,
             "",
             None,
+            None,
         )
         .await
         .expect("Failed to add event");
@@ -540,7 +547,7 @@ async fn when_add_events_to_aggregate_edition(
 
     world
         .store()
-        .add(&domain, &edition, root, pages, "", None)
+        .add(&domain, &edition, root, pages, "", None, None)
         .await
         .expect("Failed to add events");
 }
@@ -594,7 +601,7 @@ async fn given_aggregate_root_main(world: &mut EditionWorld, domain: String, roo
 
     world
         .store()
-        .add(&domain, DEFAULT_EDITION, root, pages, "", None)
+        .add(&domain, DEFAULT_EDITION, root, pages, "", None, None)
         .await
         .expect("Failed to add event");
 
@@ -614,7 +621,7 @@ async fn given_aggregate_root_edition(
 
     world
         .store()
-        .add(&domain, &edition, root, pages, "", None)
+        .add(&domain, &edition, root, pages, "", None, None)
         .await
         .expect("Failed to add event");
 
@@ -688,7 +695,7 @@ async fn given_aggregate_edition_with_events(
 
     world
         .store()
-        .add(&domain, &edition, world.current_root, pages, "", None)
+        .add(&domain, &edition, world.current_root, pages, "", None, None)
         .await
         .expect("Failed to add events");
 }

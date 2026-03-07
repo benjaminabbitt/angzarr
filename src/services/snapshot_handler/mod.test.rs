@@ -1,11 +1,15 @@
 use super::*;
-use crate::proto::{event_page, Cover, EventPage, SnapshotRetention, Uuid as ProtoUuid};
+use crate::proto::{
+    event_page, page_header, Cover, EventPage, PageHeader, SnapshotRetention, Uuid as ProtoUuid,
+};
 use crate::storage::mock::MockSnapshotStore;
 use prost_types::Any;
 
 fn make_event_page(sequence: u32) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(sequence)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
+        }),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -23,7 +27,6 @@ fn make_event_book_with_snapshot(pages: Vec<EventPage>, has_snapshot: bool) -> E
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         pages,
         snapshot: if has_snapshot {

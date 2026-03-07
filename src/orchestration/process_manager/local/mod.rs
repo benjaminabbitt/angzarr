@@ -110,6 +110,7 @@ impl ProcessManagerContext for LocalPMContext {
                 process_events.pages.clone(),
                 correlation_id,
                 None, // No idempotency key for PM events
+                None, // No source tracking for PM events
             )
             .await
         {
@@ -157,7 +158,7 @@ impl ProcessManagerContext for LocalPMContext {
         _correlation_id: &str,
     ) {
         // Compensation now routes through CommandRouter to PM domain.
-        // PM commands have saga_origin stamped (pointing to PM), and PM domain
+        // PM commands have angzarr_deferred.source stamped (pointing to PM), and PM domain
         // is registered in CommandRouter via ProcessManagerHandlerAdapter.
         // When the aggregate rejects, it creates a Notification command that
         // routes to the PM through the standard command infrastructure.

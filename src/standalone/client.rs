@@ -13,9 +13,10 @@ use uuid::Uuid;
 
 use crate::client_traits::{self, ClientError};
 use crate::proto::{
-    CommandBook, CommandPage, CommandResponse, Cover, Edition, EventBook, MergeStrategy,
-    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculateCommandHandlerRequest,
-    SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest, Uuid as ProtoUuid,
+    page_header::SequenceType, CommandBook, CommandPage, CommandResponse, Cover, Edition,
+    EventBook, MergeStrategy, PageHeader, ProcessManagerHandleResponse, Projection, Query,
+    SagaResponse, SpeculateCommandHandlerRequest, SpeculatePmRequest, SpeculateProjectorRequest,
+    SpeculateSagaRequest, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
 
@@ -219,13 +220,11 @@ impl SpeculativeClient {
     /// Returns the events that *would* be produced without persisting them.
     pub async fn speculative_command(
         &self,
-        command: CommandBook,
-        as_of_sequence: Option<u32>,
-        as_of_timestamp: Option<&str>,
+        _command: CommandBook,
+        _as_of_sequence: Option<u32>,
+        _as_of_timestamp: Option<&str>,
     ) -> Result<CommandResponse, Status> {
-        self.router
-            .speculative(command, as_of_sequence, as_of_timestamp)
-            .await
+        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
     }
 
     /// Speculatively run a projector against events.
@@ -320,20 +319,16 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
                 msg: "SagaExecuteRequest missing source".to_string(),
             })?;
 
-        // Convert destinations to domain specs (explicit state)
-        let mut domain_specs = HashMap::new();
-        for dest in execute_request.destinations {
-            if let Some(cover) = &dest.cover {
-                domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(dest));
-            }
-        }
-
+        // Sagas are stateless - they don't receive destinations
         // Route to saga based on source domain
         let source_domain = source
             .cover
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("");
+
+        // Sagas are pure translators - no destination state needed
+        let domain_specs = HashMap::new();
 
         let commands = self
             .executor
@@ -447,6 +442,26 @@ impl CommandBuilder {
         }
     }
 
+    /// Test-only constructor that creates a minimal router.
+    ///
+    /// Enables unit testing of `build()` logic without full runtime setup.
+    #[cfg(test)]
+    pub(crate) fn new_for_testing(domain: String, root: Uuid) -> Self {
+        use crate::bus::{ChannelConfig, ChannelEventBus};
+        use crate::discovery::StaticServiceDiscovery;
+
+        let router = Arc::new(super::router::CommandRouter::new(
+            HashMap::new(),
+            HashMap::new(),
+            Arc::new(StaticServiceDiscovery::new()),
+            Arc::new(ChannelEventBus::new(ChannelConfig::publisher())),
+            vec![],
+            vec![],
+            None,
+        ));
+        Self::new(router, domain, root)
+    }
+
     /// Set the command type URL.
     pub fn with_type(mut self, type_url: impl Into<String>) -> Self {
         self.command_type = Some(type_url.into());
@@ -527,14 +542,14 @@ impl CommandBuilder {
                     name,
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence: self.sequence.unwrap_or(0),
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(self.sequence.unwrap_or(0))),
+                }),
                 payload,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
-            saga_origin: None,
         }
     }
 

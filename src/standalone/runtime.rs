@@ -510,13 +510,13 @@ impl Runtime {
     /// Fact events represent external realities that cannot be rejected. The runtime:
     /// 1. Validates the Cover and extracts domain/root
     /// 2. Routes to the aggregate's fact handler (if registered)
-    /// 3. Assigns real sequence numbers (replacing FactSequence markers)
+    /// 3. Assigns real sequence numbers (replacing ExternalDeferredSequence markers)
     /// 4. Persists and publishes the events
     ///
     /// # Arguments
     ///
-    /// * `fact_events` - EventBook containing fact events with FactSequence markers.
-    ///   Must have `Cover.external_id` set for idempotency.
+    /// * `fact_events` - EventBook containing fact events with ExternalDeferredSequence markers.
+    ///   Must have `PageHeader.external_deferred.external_id` set for idempotency.
     ///
     /// # Returns
     ///
@@ -529,14 +529,15 @@ impl Runtime {
     ///     cover: Some(Cover {
     ///         domain: "payments".into(),
     ///         root: Some(order_id.into()),
-    ///         external_id: "stripe_pi_abc123".into(),
     ///         ..Default::default()
     ///     }),
     ///     pages: vec![EventPage {
-    ///         sequence_type: Some(SequenceType::Fact(FactSequence {
-    ///             source: "stripe".into(),
-    ///             description: "Payment confirmed".into(),
-    ///         })),
+    ///         header: Some(PageHeader {
+    ///             sequence_type: Some(SequenceType::ExternalDeferred(ExternalDeferredSequence {
+    ///                 external_id: "stripe_pi_abc123".into(),
+    ///                 description: "Payment confirmed".into(),
+    ///             })),
+    ///         }),
     ///         payload: Some(Payload::Event(payment_received)),
     ///         ..Default::default()
     ///     }],

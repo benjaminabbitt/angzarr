@@ -284,32 +284,11 @@ impl<H: SagaDomainHandler> SagaRouter<H> {
         vec![(self.domain.clone(), self.event_types())]
     }
 
-    /// Get destinations needed for the given source events.
-    pub fn prepare_destinations(&self, source: &Option<EventBook>) -> Vec<Cover> {
-        let source = match source {
-            Some(s) => s,
-            None => return vec![],
-        };
-
-        let event_page = match source.pages.last() {
-            Some(p) => p,
-            None => return vec![],
-        };
-
-        let event_any = match &event_page.payload {
-            Some(event_page::Payload::Event(e)) => e,
-            _ => return vec![],
-        };
-
-        self.handler.prepare(source, event_any)
-    }
-
     /// Dispatch an event to the saga handler.
-    pub fn dispatch(
-        &self,
-        source: &EventBook,
-        destinations: &[EventBook],
-    ) -> Result<SagaResponse, Status> {
+    ///
+    /// Sagas receive only source events — the framework handles sequence
+    /// stamping and delivery retries.
+    pub fn dispatch(&self, source: &EventBook) -> Result<SagaResponse, Status> {
         let event_page = source
             .pages
             .last()
@@ -325,7 +304,7 @@ impl<H: SagaDomainHandler> SagaRouter<H> {
             return dispatch_saga_notification(&self.handler, event_any);
         }
 
-        let response = self.handler.execute(source, event_any, destinations)?;
+        let response = self.handler.handle(source, event_any)?;
 
         Ok(SagaResponse {
             commands: response.commands,

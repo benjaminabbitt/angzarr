@@ -20,6 +20,7 @@
 //! - max_page_sequence extracts highest sequence from EventBook
 
 use super::*;
+use crate::proto::PageHeader;
 
 // ============================================================================
 // MessageAction Tests
@@ -287,11 +288,13 @@ fn test_max_page_sequence_empty() {
 /// Single page returns its sequence.
 #[test]
 fn test_max_page_sequence_single_page() {
-    use crate::proto::EventPage;
+    use crate::proto::{page_header::SequenceType, EventPage, PageHeader};
     let book = EventBook {
         cover: None,
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(5)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(5)),
+            }),
             payload: None,
             created_at: None,
         }],
@@ -309,17 +312,23 @@ fn test_max_page_sequence_multiple_pages() {
         cover: None,
         pages: vec![
             EventPage {
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(2)),
+                header: Some(PageHeader {
+                    sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(2)),
+                }),
                 payload: None,
                 created_at: None,
             },
             EventPage {
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(7)),
+                header: Some(PageHeader {
+                    sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(7)),
+                }),
                 payload: None,
                 created_at: None,
             },
             EventPage {
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(4)),
+                header: Some(PageHeader {
+                    sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(4)),
+                }),
                 payload: None,
                 created_at: None,
             },

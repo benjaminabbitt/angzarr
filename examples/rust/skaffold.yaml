@@ -111,3 +111,68 @@ profiles:
           requires:
             - image: ghcr.io/angzarr-io/angzarr-rust
               alias: RUST_IMAGE
+
+  # Debug profile - gdbserver enabled for remote debugging
+  - name: debug
+    build:
+      local:
+        push: false
+      artifacts:
+        - image: ghcr.io/angzarr-io/poker-rust-player
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: agg-player-debug
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
+
+        - image: ghcr.io/angzarr-io/poker-rust-table
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: agg-table-debug
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
+
+        - image: ghcr.io/angzarr-io/poker-rust-hand
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: agg-hand-debug
+          requires:
+            - image: ghcr.io/angzarr-io/angzarr-rust
+              alias: RUST_IMAGE
+    deploy:
+      helm:
+        releases:
+          - name: poker-rust
+            chartPath: ../../deploy/k8s/helm/angzarr
+            namespace: angzarr
+            createNamespace: true
+            valuesFiles:
+              - values.yaml
+              - values-debug.yaml
+            setValues:
+              # Player aggregate with debug port
+              applications.business[0].name: poker-player
+              applications.business[0].image.repository: ghcr.io/angzarr-io/poker-rust-player
+              applications.business[0].image.tag: latest
+              applications.business[0].domain: player
+              applications.business[0].port: 50001
+              applications.business[0].debugPort: 20000
+              # Table aggregate with debug port
+              applications.business[1].name: poker-table
+              applications.business[1].image.repository: ghcr.io/angzarr-io/poker-rust-table
+              applications.business[1].image.tag: latest
+              applications.business[1].domain: table
+              applications.business[1].port: 50002
+              applications.business[1].debugPort: 20001
+              # Hand aggregate with debug port
+              applications.business[2].name: poker-hand
+              applications.business[2].image.repository: ghcr.io/angzarr-io/poker-rust-hand
+              applications.business[2].image.tag: latest
+              applications.business[2].domain: hand
+              applications.business[2].port: 50003
+              applications.business[2].debugPort: 20002

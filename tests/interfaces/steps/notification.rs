@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use angzarr::proto::{
-    command_page, CommandBook, CommandPage, Cover, MergeStrategy, Notification,
-    RejectionNotification, SagaCommandOrigin, Uuid as ProtoUuid,
+    command_page, page_header, AngzarrDeferredSequence, CommandBook, CommandPage, Cover,
+    MergeStrategy, Notification, PageHeader, RejectionNotification, Uuid as ProtoUuid,
 };
 use angzarr::utils::saga_compensation::{
     build_notification, build_notification_command_book, build_rejection_notification,
@@ -23,7 +23,8 @@ pub struct NotificationWorld {
     rejected_command: Option<CommandBook>,
     compensation_context: Option<CompensationContext>,
     saga_name: String,
-    saga_origin: Option<SagaCommandOrigin>,
+    /// Source info (replaces saga_origin)
+    source: Option<AngzarrDeferredSequence>,
     correlation_id: String,
 }
 
@@ -46,7 +47,7 @@ impl NotificationWorld {
             rejected_command: None,
             compensation_context: None,
             saga_name: String::new(),
-            saga_origin: None,
+            source: None,
             correlation_id: String::new(),
         }
     }
@@ -59,26 +60,30 @@ impl NotificationWorld {
             }),
             correlation_id: correlation_id.to_string(),
             edition: None, // Main timeline (no edition specified)
-            external_id: String::new(),
         }
     }
 
     fn make_command_book(
         domain: &str,
         root: Uuid,
-        saga_origin: Option<SagaCommandOrigin>,
+        source: Option<AngzarrDeferredSequence>,
     ) -> CommandBook {
+        let sequence_type = match source {
+            Some(src) => page_header::SequenceType::AngzarrDeferred(src),
+            None => page_header::SequenceType::Sequence(0),
+        };
         CommandBook {
             cover: Some(Self::make_cover(domain, root, "")),
             pages: vec![CommandPage {
-                sequence: 0,
+                header: Some(PageHeader {
+                    sequence_type: Some(sequence_type),
+                }),
                 payload: Some(command_page::Payload::Command(prost_types::Any {
                     type_url: "test.Command".to_string(),
                     value: vec![1, 2, 3],
                 })),
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
-            saga_origin,
         }
     }
 }
@@ -264,22 +269,18 @@ async fn then_metadata_has_key_value(world: &mut NotificationWorld, key: String,
 #[given(expr = "a saga command was rejected with reason {string}")]
 async fn given_command_rejected_with_reason(world: &mut NotificationWorld, reason: String) {
     let root = Uuid::new_v4();
-    let saga_origin = SagaCommandOrigin {
-        saga_name: "test-saga".to_string(),
-        triggering_aggregate: Some(NotificationWorld::make_cover("order", root, "")),
-        triggering_event_sequence: 0,
+    let source = AngzarrDeferredSequence {
+        source: Some(NotificationWorld::make_cover("order", root, "")),
+        source_seq: 0,
     };
 
-    let command = NotificationWorld::make_command_book(
-        "inventory",
-        Uuid::new_v4(),
-        Some(saga_origin.clone()),
-    );
+    let command =
+        NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(source.clone()));
     world.rejected_command = Some(command.clone());
-    world.saga_origin = Some(saga_origin.clone());
+    world.source = Some(source.clone());
 
     world.compensation_context = Some(CompensationContext {
-        saga_origin,
+        source,
         rejection_reason: reason,
         rejected_command: command,
         correlation_id: String::new(),
@@ -312,43 +313,32 @@ async fn given_saga_issued_command(world: &mut NotificationWorld, saga_name: Str
     world.saga_name = saga_name.clone();
 
     let root = Uuid::new_v4();
-    let saga_origin = SagaCommandOrigin {
-        saga_name,
-        triggering_aggregate: Some(NotificationWorld::make_cover("order", root, "")),
-        triggering_event_sequence: 0,
+    let source = AngzarrDeferredSequence {
+        source: Some(NotificationWorld::make_cover("order", root, "")),
+        source_seq: 0,
     };
 
-    world.saga_origin = Some(saga_origin.clone());
+    world.source = Some(source.clone());
 
-    let command =
-        NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(saga_origin));
+    let command = NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(source));
     world.rejected_command = Some(command);
 }
 
 #[given("the command was rejected")]
 async fn given_command_rejected(world: &mut NotificationWorld) {
     let command = world.rejected_command.as_ref().expect("No command");
-    let saga_origin = world.saga_origin.clone().expect("No saga origin");
+    let source = world.source.clone().expect("No source");
 
     world.compensation_context = Some(CompensationContext {
-        saga_origin,
+        source,
         rejection_reason: "test_rejection".to_string(),
         rejected_command: command.clone(),
         correlation_id: String::new(),
     });
 }
 
-#[then(expr = "the rejection issuer name should be {string}")]
-async fn then_rejection_issuer_name(world: &mut NotificationWorld, expected: String) {
-    let rejection = world.rejection.as_ref().expect("No rejection");
-    assert_eq!(rejection.issuer_name, expected, "Issuer name should match");
-}
-
-#[then(expr = "the rejection issuer type should be {string}")]
-async fn then_rejection_issuer_type(world: &mut NotificationWorld, expected: String) {
-    let rejection = world.rejection.as_ref().expect("No rejection");
-    assert_eq!(rejection.issuer_type, expected, "Issuer type should match");
-}
+// Issuer name/type fields removed from RejectionNotification proto
+// Source provenance is now in rejected_command.pages[].header.angzarr_deferred
 
 #[given(expr = "a saga triggered by aggregate {string} with root {string} at sequence {int}")]
 async fn given_saga_triggered_by_aggregate(
@@ -359,26 +349,24 @@ async fn given_saga_triggered_by_aggregate(
 ) {
     let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
 
-    let saga_origin = SagaCommandOrigin {
-        saga_name: "test-saga".to_string(),
-        triggering_aggregate: Some(NotificationWorld::make_cover(&domain, root, "")),
-        triggering_event_sequence: sequence,
+    let source = AngzarrDeferredSequence {
+        source: Some(NotificationWorld::make_cover(&domain, root, "")),
+        source_seq: sequence,
     };
 
-    world.saga_origin = Some(saga_origin.clone());
+    world.source = Some(source.clone());
 
-    let command =
-        NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(saga_origin));
+    let command = NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(source));
     world.rejected_command = Some(command);
 }
 
 #[given("the saga command was rejected")]
 async fn given_saga_command_rejected(world: &mut NotificationWorld) {
     let command = world.rejected_command.as_ref().expect("No command");
-    let saga_origin = world.saga_origin.clone().expect("No saga origin");
+    let source = world.source.clone().expect("No source");
 
     world.compensation_context = Some(CompensationContext {
-        saga_origin,
+        source,
         rejection_reason: "test_rejection".to_string(),
         rejected_command: command.clone(),
         correlation_id: String::new(),
@@ -392,10 +380,21 @@ async fn then_rejection_source_aggregate(
     root_name: String,
 ) {
     let rejection = world.rejection.as_ref().expect("No rejection");
-    let source = rejection
-        .source_aggregate
+    // Source info is now in the rejected command's page header
+    let cmd = rejection
+        .rejected_command
         .as_ref()
-        .expect("No source aggregate");
+        .expect("No rejected command");
+    let page = cmd.pages.first().expect("No pages");
+    let header = page.header.as_ref().expect("No header");
+
+    // Extract AngzarrDeferred from sequence_type
+    let source = match &header.sequence_type {
+        Some(page_header::SequenceType::AngzarrDeferred(deferred)) => {
+            deferred.source.as_ref().expect("No source in deferred")
+        }
+        _ => panic!("Expected AngzarrDeferred sequence type"),
+    };
 
     assert_eq!(source.domain, domain, "Source domain should match");
 
@@ -408,31 +407,37 @@ async fn then_rejection_source_aggregate(
 #[then(expr = "the rejection source event sequence should be {int}")]
 async fn then_rejection_source_sequence(world: &mut NotificationWorld, expected: u32) {
     let rejection = world.rejection.as_ref().expect("No rejection");
-    assert_eq!(
-        rejection.source_event_sequence, expected,
-        "Source event sequence should match"
-    );
+    // Source info is now in the rejected command's page header
+    let cmd = rejection
+        .rejected_command
+        .as_ref()
+        .expect("No rejected command");
+    let page = cmd.pages.first().expect("No pages");
+    let header = page.header.as_ref().expect("No header");
+
+    let actual_seq = match &header.sequence_type {
+        Some(page_header::SequenceType::AngzarrDeferred(deferred)) => deferred.source_seq,
+        _ => panic!("Expected AngzarrDeferred sequence type"),
+    };
+
+    assert_eq!(actual_seq, expected, "Source event sequence should match");
 }
 
 #[given("a saga command was rejected")]
 async fn given_saga_command_was_rejected(world: &mut NotificationWorld) {
     let root = Uuid::new_v4();
-    let saga_origin = SagaCommandOrigin {
-        saga_name: "test-saga".to_string(),
-        triggering_aggregate: Some(NotificationWorld::make_cover("order", root, "")),
-        triggering_event_sequence: 0,
+    let source = AngzarrDeferredSequence {
+        source: Some(NotificationWorld::make_cover("order", root, "")),
+        source_seq: 0,
     };
 
-    let command = NotificationWorld::make_command_book(
-        "inventory",
-        Uuid::new_v4(),
-        Some(saga_origin.clone()),
-    );
+    let command =
+        NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(source.clone()));
     world.rejected_command = Some(command.clone());
-    world.saga_origin = Some(saga_origin.clone());
+    world.source = Some(source.clone());
 
     world.compensation_context = Some(CompensationContext {
-        saga_origin,
+        source,
         rejection_reason: "test_rejection".to_string(),
         rejected_command: command,
         correlation_id: String::new(),
@@ -464,16 +469,14 @@ async fn given_saga_triggered_by_aggregate_simple(
 ) {
     let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
 
-    let saga_origin = SagaCommandOrigin {
-        saga_name: "test-saga".to_string(),
-        triggering_aggregate: Some(NotificationWorld::make_cover(&domain, root, "")),
-        triggering_event_sequence: 0,
+    let source = AngzarrDeferredSequence {
+        source: Some(NotificationWorld::make_cover(&domain, root, "")),
+        source_seq: 0,
     };
 
-    world.saga_origin = Some(saga_origin.clone());
+    world.source = Some(source.clone());
 
-    let command =
-        NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(saga_origin));
+    let command = NotificationWorld::make_command_book("inventory", Uuid::new_v4(), Some(source));
     world.rejected_command = Some(command);
 }
 
@@ -511,13 +514,12 @@ async fn given_saga_command_with_correlation(
     let root = Uuid::new_v4();
     let cover = NotificationWorld::make_cover("order", root, &correlation_id);
 
-    let saga_origin = SagaCommandOrigin {
-        saga_name: "test-saga".to_string(),
-        triggering_aggregate: Some(cover),
-        triggering_event_sequence: 0,
+    let source = AngzarrDeferredSequence {
+        source: Some(cover),
+        source_seq: 0,
     };
 
-    world.saga_origin = Some(saga_origin.clone());
+    world.source = Some(source.clone());
 
     let command = CommandBook {
         cover: Some(NotificationWorld::make_cover(
@@ -526,14 +528,15 @@ async fn given_saga_command_with_correlation(
             &correlation_id,
         )),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::AngzarrDeferred(source)),
+            }),
             payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: "test.Command".to_string(),
                 value: vec![1, 2, 3],
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: Some(saga_origin),
     };
 
     world.rejected_command = Some(command);

@@ -25,6 +25,15 @@ pub enum Events {
     CorrelationId,
     #[iden = "external_id"]
     ExternalId,
+    // Source tracking for saga-produced events (angzarr_deferred)
+    #[iden = "source_edition"]
+    SourceEdition,
+    #[iden = "source_domain"]
+    SourceDomain,
+    #[iden = "source_root"]
+    SourceRoot,
+    #[iden = "source_seq"]
+    SourceSeq,
 }
 
 /// Snapshots table schema.

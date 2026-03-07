@@ -17,7 +17,7 @@
 use super::*;
 use crate::proto::event_page;
 use crate::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
-use crate::proto::{UpcastRequest, UpcastResponse};
+use crate::proto::{page_header, PageHeader, UpcastRequest, UpcastResponse};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tonic::transport::Server;
@@ -110,7 +110,9 @@ async fn start_mock_server(service: MockUpcasterService) -> SocketAddr {
 
 fn make_test_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(prost_types::Any {
             type_url: type_url.to_string(),

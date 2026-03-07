@@ -110,8 +110,8 @@ def routing_key(obj: CoverBearer) -> str:
 
 
 def cache_key(obj: CoverBearer) -> str:
-    """Generate a cache key based on domain + root."""
-    return f"{domain(obj)}:{root_id_hex(obj)}"
+    """Generate a cache key based on edition + domain + root."""
+    return f"{edition(obj)}:{domain(obj)}:{root_id_hex(obj)}"
 
 
 # UUID conversion

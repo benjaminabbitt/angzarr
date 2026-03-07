@@ -15,7 +15,6 @@ fn make_command_with_correlation(domain: &str, correlation_id: &str) -> CommandB
             ..Default::default()
         }),
         pages: vec![],
-        saga_origin: None,
     }
 }
 
@@ -96,7 +95,6 @@ fn test_fill_correlation_id_no_cover_skipped() {
         CommandBook {
             cover: None,
             pages: vec![],
-            saga_origin: None,
         },
     ];
     fill_correlation_id(&mut commands, "corr-123");

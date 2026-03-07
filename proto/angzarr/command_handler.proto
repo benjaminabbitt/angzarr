@@ -106,12 +106,12 @@ message SpeculateCommandHandlerRequest {
 // Indicates whether facts were newly persisted or already existed (idempotent).
 //
 // Request uses EventRequest with:
-// - events: EventBook containing fact events (with FactSequence markers)
+// - events: EventBook containing fact events (with ExternalDeferredSequence markers in PageHeader)
 // - sync_mode: Controls sync processing (default: async)
 // - route_to_handler: Whether to invoke command handler's handle_fact (default: true)
 //
-// IMPORTANT: Set Cover.external_id for idempotency. The coordinator uses this
-// to deduplicate fact injections - subsequent requests with the same external_id
+// IMPORTANT: Set PageHeader.external_deferred.external_id for idempotency. The coordinator
+// uses this to deduplicate fact injections - subsequent requests with the same external_id
 // return the original events without re-persisting.
 message FactInjectionResponse {
   EventBook events = 1;                   // Persisted events with real sequence numbers

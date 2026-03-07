@@ -22,7 +22,7 @@ use uuid::Uuid;
 use super::*;
 use crate::proto::command_page;
 use crate::proto::temporal_query::PointInTime;
-use crate::proto::TemporalQuery;
+use crate::proto::{page_header, PageHeader, TemporalQuery};
 
 // ============================================================================
 // extract_temporal_params Tests
@@ -102,56 +102,25 @@ fn test_extract_temporal_params_as_of_time_returns_some_timestamp() {
 // CommandBuilder Tests
 // ============================================================================
 
-/// CommandBuilder sets domain in the Cover.
+/// CommandBuilder.build() sets domain in the Cover.
 ///
 /// Domain routes the command to the correct aggregate handler.
 #[test]
 fn test_command_builder_build_sets_domain() {
     let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "test-domain".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![CommandPage {
-            sequence: 0,
-            payload: Some(command_page::Payload::Command(prost_types::Any {
-                type_url: "TestCommand".to_string(),
-                value: vec![1, 2, 3],
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
-        saga_origin: None,
-    };
+    let command = CommandBuilder::new_for_testing("test-domain".to_string(), root).build();
 
     let cover = command.cover.as_ref().unwrap();
     assert_eq!(cover.domain, "test-domain");
 }
 
-/// CommandBuilder sets root ID in the Cover.
+/// CommandBuilder.build() sets root ID in the Cover.
 ///
 /// Root ID identifies the aggregate instance.
 #[test]
 fn test_command_builder_build_sets_root() {
     let root = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![],
-        saga_origin: None,
-    };
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root).build();
 
     let cover = command.cover.as_ref().unwrap();
     let root_bytes = &cover.root.as_ref().unwrap().value;
@@ -159,86 +128,132 @@ fn test_command_builder_build_sets_root() {
     assert_eq!(parsed, root);
 }
 
-/// CommandBuilder sets correlation ID for cross-domain tracing.
+/// CommandBuilder.with_correlation_id() sets correlation ID for cross-domain tracing.
 #[test]
 fn test_command_builder_build_sets_correlation_id() {
     let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: "corr-123".to_string(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![],
-        saga_origin: None,
-    };
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root)
+        .with_correlation_id("corr-123")
+        .build();
 
     let cover = command.cover.as_ref().unwrap();
     assert_eq!(cover.correlation_id, "corr-123");
 }
 
-/// CommandBuilder sets edition for diverged timeline targeting.
+/// CommandBuilder.with_edition() sets edition for diverged timeline targeting.
 #[test]
 fn test_command_builder_build_sets_edition() {
     let root = Uuid::new_v4();
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: Some(Edition {
-                name: "test-edition".to_string(),
-                divergences: vec![],
-            }),
-            external_id: String::new(),
-        }),
-        pages: vec![],
-        saga_origin: None,
-    };
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root)
+        .with_edition("test-edition")
+        .build();
 
     let cover = command.cover.as_ref().unwrap();
     let edition = cover.edition.as_ref().unwrap();
     assert_eq!(edition.name, "test-edition");
 }
 
-/// CommandBuilder sets command type URL and payload data.
+/// CommandBuilder.with_type() and with_data() set command type URL and payload.
 #[test]
 fn test_command_builder_build_sets_command_type_and_data() {
-    let command = CommandBook {
-        cover: Some(Cover {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-            external_id: String::new(),
-        }),
-        pages: vec![CommandPage {
-            sequence: 5,
-            payload: Some(command_page::Payload::Command(prost_types::Any {
-                type_url: "CreateOrder".to_string(),
-                value: vec![1, 2, 3, 4],
-            })),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
-        saga_origin: None,
-    };
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root)
+        .with_type("CreateOrder")
+        .with_data(vec![1, 2, 3, 4])
+        .with_sequence(5)
+        .build();
 
     let page = &command.pages[0];
-    assert_eq!(page.sequence, 5);
+    use crate::proto_ext::CommandPageExt;
+    assert_eq!(page.sequence_num(), 5);
     if let Some(command_page::Payload::Command(any)) = &page.payload {
         assert_eq!(any.type_url, "CreateOrder");
         assert_eq!(any.value, vec![1, 2, 3, 4]);
     } else {
         panic!("Expected Command payload");
     }
+}
+
+/// CommandBuilder without with_type() uses empty type URL.
+#[test]
+fn test_command_builder_build_no_type_uses_empty() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root)
+        .with_data(vec![1, 2, 3])
+        .build();
+
+    let page = &command.pages[0];
+    if let Some(command_page::Payload::Command(any)) = &page.payload {
+        assert_eq!(any.type_url, "");
+    } else {
+        panic!("Expected Command payload");
+    }
+}
+
+/// CommandBuilder without data has no payload.
+#[test]
+fn test_command_builder_build_no_data_no_payload() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root)
+        .with_type("CreateOrder")
+        .build();
+
+    let page = &command.pages[0];
+    assert!(page.payload.is_none());
+}
+
+/// CommandBuilder.with_sequence() sets explicit sequence number.
+#[test]
+fn test_command_builder_build_with_sequence() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root)
+        .with_sequence(42)
+        .build();
+
+    let page = &command.pages[0];
+    use crate::proto_ext::CommandPageExt;
+    assert_eq!(page.sequence_num(), 42);
+}
+
+/// CommandBuilder without sequence defaults to 0.
+#[test]
+fn test_command_builder_build_default_sequence_zero() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root).build();
+
+    let page = &command.pages[0];
+    use crate::proto_ext::CommandPageExt;
+    assert_eq!(page.sequence_num(), 0);
+}
+
+/// CommandBuilder without correlation_id uses empty string.
+#[test]
+fn test_command_builder_build_default_empty_correlation_id() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root).build();
+
+    let cover = command.cover.as_ref().unwrap();
+    assert_eq!(cover.correlation_id, "");
+}
+
+/// CommandBuilder without edition has None edition.
+#[test]
+fn test_command_builder_build_default_no_edition() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root).build();
+
+    let cover = command.cover.as_ref().unwrap();
+    assert!(cover.edition.is_none());
+}
+
+/// CommandBuilder uses COMMUTATIVE merge strategy.
+#[test]
+fn test_command_builder_build_uses_commutative_merge() {
+    let root = Uuid::new_v4();
+    let command = CommandBuilder::new_for_testing("orders".to_string(), root).build();
+
+    let page = &command.pages[0];
+    assert_eq!(page.merge_strategy, MergeStrategy::MergeCommutative as i32);
 }
 
 // ============================================================================

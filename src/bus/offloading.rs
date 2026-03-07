@@ -115,7 +115,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
                             );
 
                             new_pages.push(EventPage {
-                                sequence_type: page.sequence_type.clone(),
+                                header: page.header.clone(),
                                 created_at: page.created_at,
                                 payload: Some(Payload::External(reference)),
                             });
@@ -220,7 +220,7 @@ async fn resolve_payloads_with_store<S: PayloadStore>(
                     match prost_types::Any::decode(payload_bytes.as_slice()) {
                         Ok(event) => {
                             new_pages.push(EventPage {
-                                sequence_type: page.sequence_type.clone(),
+                                header: page.header.clone(),
                                 created_at: page.created_at,
                                 payload: Some(Payload::Event(event)),
                             });

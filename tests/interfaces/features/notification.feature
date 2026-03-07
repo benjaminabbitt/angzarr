@@ -57,13 +57,6 @@ Feature: Notification transient signals
     Then the rejection should include the original command
     And the rejection reason should be "insufficient_funds"
 
-  Scenario: Rejection notification identifies issuer
-    Given a saga "order-fulfillment" issued a command
-    And the command was rejected
-    When I build a rejection notification
-    Then the rejection issuer name should be "order-fulfillment"
-    And the rejection issuer type should be "saga"
-
   Scenario: Rejection notification links to source aggregate
     Given a saga triggered by aggregate "order" with root "order-123" at sequence 5
     And the saga command was rejected

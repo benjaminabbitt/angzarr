@@ -10,13 +10,14 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{EventBook, EventPage};
 use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
-use crate::storage::{AddOutcome, EventStore, Result, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
 /// Stored event with correlation and idempotency tracking.
 struct StoredEvent {
     page: EventPage,
     correlation_id: String,
     external_id: String,
+    source_info: Option<SourceInfo>,
 }
 
 /// Mock event store that stores events in memory.
@@ -60,6 +61,7 @@ impl EventStore for MockEventStore {
         events: Vec<EventPage>,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&SourceInfo>,
     ) -> Result<AddOutcome> {
         if *self.fail_on_add.read().await {
             return Err(StorageError::NotFound {
@@ -114,6 +116,7 @@ impl EventStore for MockEventStore {
                 page,
                 correlation_id: correlation_id.to_string(),
                 external_id: external_id.to_string(),
+                source_info: source_info.cloned(),
             })
             .collect();
         store.entry(key).or_default().extend(stored);
@@ -278,5 +281,44 @@ impl EventStore for MockEventStore {
             }
         }
         Ok(count)
+    }
+
+    async fn find_by_source(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        source_info: &SourceInfo,
+    ) -> Result<Option<Vec<EventPage>>> {
+        if source_info.is_empty() {
+            return Ok(None);
+        }
+
+        let key = (domain.to_string(), edition.to_string(), root);
+        let store = self.events.read().await;
+
+        if let Some(events) = store.get(&key) {
+            let matching: Vec<EventPage> = events
+                .iter()
+                .filter(|e| {
+                    if let Some(ref stored_source) = e.source_info {
+                        stored_source.edition == source_info.edition
+                            && stored_source.domain == source_info.domain
+                            && stored_source.root == source_info.root
+                            && stored_source.seq == source_info.seq
+                    } else {
+                        false
+                    }
+                })
+                .map(|e| e.page.clone())
+                .collect();
+
+            if matching.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(matching));
+        }
+
+        Ok(None)
     }
 }

@@ -29,6 +29,9 @@ use prost_types::Any;
 
 use crate::proto::{event_page, EventPage};
 
+#[cfg(test)]
+use crate::proto::{page_header::SequenceType, PageHeader};
+
 /// Handler function for upcasting old events to new versions.
 ///
 /// Takes a reference to the old event (packed as Any) and returns
@@ -170,7 +173,7 @@ impl UpcasterRouter {
                         if new_event.type_url != event.type_url {
                             EventPage {
                                 payload: Some(event_page::Payload::Event(new_event)),
-                                sequence_type: page.sequence_type.clone(),
+                                header: page.header.clone(),
                                 created_at: page.created_at,
                             }
                         } else {
@@ -260,7 +263,9 @@ mod tests {
                     type_url: "type.googleapis.com/examples.OrderCreatedV1".to_string(),
                     value: vec![],
                 })),
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(0)),
+                }),
                 created_at: None,
             },
             EventPage {
@@ -268,7 +273,9 @@ mod tests {
                     type_url: "type.googleapis.com/examples.OrderCompleted".to_string(),
                     value: vec![],
                 })),
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(1)),
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(1)),
+                }),
                 created_at: None,
             },
         ];

@@ -482,3 +482,72 @@ COPY --from=builder-release --chown=nonroot:nonroot /tmp/prj-output ./server
 ENV PORT=50090
 EXPOSE 50090
 ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Debug runtime base - with gdb/gdbserver
+# ============================================================================
+FROM docker.io/library/debian:bookworm-slim AS runtime-debug-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    gdb \
+    gdbserver \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ENV RUST_LOG=info
+
+# ============================================================================
+# Debug Aggregates
+# ============================================================================
+FROM runtime-debug-base AS agg-player-debug
+COPY --from=builder-dev /tmp/agg-player ./server
+ENV PORT=50001 GDB_PORT=20000
+EXPOSE 50001 20000
+ENTRYPOINT ["gdbserver", ":20000", "./server"]
+
+FROM runtime-debug-base AS agg-table-debug
+COPY --from=builder-dev /tmp/agg-table ./server
+ENV PORT=50002 GDB_PORT=20001
+EXPOSE 50002 20001
+ENTRYPOINT ["gdbserver", ":20001", "./server"]
+
+FROM runtime-debug-base AS agg-hand-debug
+COPY --from=builder-dev /tmp/agg-hand ./server
+ENV PORT=50003 GDB_PORT=20002
+EXPOSE 50003 20002
+ENTRYPOINT ["gdbserver", ":20002", "./server"]
+
+# ============================================================================
+# Debug Sagas
+# ============================================================================
+FROM runtime-debug-base AS saga-table-hand-debug
+COPY --from=builder-dev /tmp/saga-table-hand ./server
+ENV PORT=50011 GDB_PORT=20003
+EXPOSE 50011 20003
+ENTRYPOINT ["gdbserver", ":20003", "./server"]
+
+FROM runtime-debug-base AS saga-table-player-debug
+COPY --from=builder-dev /tmp/saga-table-player ./server
+ENV PORT=50012 GDB_PORT=20004
+EXPOSE 50012 20004
+ENTRYPOINT ["gdbserver", ":20004", "./server"]
+
+FROM runtime-debug-base AS saga-hand-table-debug
+COPY --from=builder-dev /tmp/saga-hand-table ./server
+ENV PORT=50013 GDB_PORT=20005
+EXPOSE 50013 20005
+ENTRYPOINT ["gdbserver", ":20005", "./server"]
+
+FROM runtime-debug-base AS saga-hand-player-debug
+COPY --from=builder-dev /tmp/saga-hand-player ./server
+ENV PORT=50014 GDB_PORT=20006
+EXPOSE 50014 20006
+ENTRYPOINT ["gdbserver", ":20006", "./server"]
+
+# ============================================================================
+# Debug Projector
+# ============================================================================
+FROM runtime-debug-base AS prj-output-debug
+COPY --from=builder-dev /tmp/prj-output ./server
+ENV PORT=50090 GDB_PORT=20007
+EXPOSE 50090 20007
+ENTRYPOINT ["gdbserver", ":20007", "./server"]

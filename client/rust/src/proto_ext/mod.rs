@@ -37,8 +37,8 @@ pub use uuid::{ProtoUuidExt, UuidExt};
 mod tests {
     use super::*;
     use crate::proto::{
-        event_page::SequenceType, CommandBook, Cover, Edition, EventBook, MergeStrategy,
-        SnapshotRetention, Uuid as ProtoUuid,
+        page_header::SequenceType, CommandBook, CommandPage, Cover, Edition, EventBook,
+        MergeStrategy, PageHeader, SnapshotRetention, Uuid as ProtoUuid,
     };
 
     fn make_cover(domain: &str, correlation_id: &str, root: Option<::uuid::Uuid>) -> Cover {
@@ -49,7 +49,6 @@ mod tests {
                 value: u.as_bytes().to_vec(),
             }),
             edition: None,
-            external_id: String::new(),
         }
     }
 
@@ -91,7 +90,6 @@ mod tests {
         let book = CommandBook {
             cover: Some(make_cover("inventory", "corr-456", None)),
             pages: vec![],
-            saga_origin: None,
         };
 
         assert_eq!(book.domain(), "inventory");
@@ -145,10 +143,12 @@ mod tests {
     // EventPage tests
     #[test]
     fn test_event_page_sequence_num() {
-        use crate::proto::EventPage;
+        use crate::proto::{EventPage, PageHeader};
 
         let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(42)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(42)),
+            }),
             created_at: None,
             payload: None,
         };
@@ -158,10 +158,12 @@ mod tests {
     #[test]
     fn test_event_page_type_url() {
         use crate::proto::event_page::Payload;
-        use crate::proto::EventPage;
+        use crate::proto::{EventPage, PageHeader};
 
         let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/test.Event".to_string(),
@@ -173,10 +175,12 @@ mod tests {
 
     #[test]
     fn test_event_page_type_url_none() {
-        use crate::proto::EventPage;
+        use crate::proto::{EventPage, PageHeader};
 
         let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: None,
         };
@@ -186,10 +190,12 @@ mod tests {
     #[test]
     fn test_event_page_payload() {
         use crate::proto::event_page::Payload;
-        use crate::proto::EventPage;
+        use crate::proto::{EventPage, PageHeader};
 
         let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "test".to_string(),
@@ -201,10 +207,12 @@ mod tests {
 
     #[test]
     fn test_event_page_payload_none() {
-        use crate::proto::EventPage;
+        use crate::proto::{EventPage, PageHeader};
 
         let page = EventPage {
-            sequence_type: Some(SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: None,
         };
@@ -214,10 +222,12 @@ mod tests {
     // CommandPage tests
     #[test]
     fn test_command_page_sequence_num() {
-        use crate::proto::CommandPage;
+        use crate::proto::{CommandPage, PageHeader};
 
         let page = CommandPage {
-            sequence: 77,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(77)),
+            }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
             payload: None,
         };
@@ -227,10 +237,12 @@ mod tests {
     #[test]
     fn test_command_page_type_url() {
         use crate::proto::command_page::Payload;
-        use crate::proto::CommandPage;
+        use crate::proto::{CommandPage, PageHeader};
 
         let page = CommandPage {
-            sequence: 1,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
             payload: Some(Payload::Command(prost_types::Any {
                 type_url: "type.googleapis.com/test.Command".to_string(),
@@ -242,10 +254,12 @@ mod tests {
 
     #[test]
     fn test_command_page_type_url_none() {
-        use crate::proto::CommandPage;
+        use crate::proto::{CommandPage, PageHeader};
 
         let page = CommandPage {
-            sequence: 1,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
             payload: None,
         };
@@ -255,10 +269,12 @@ mod tests {
     #[test]
     fn test_command_page_payload() {
         use crate::proto::command_page::Payload;
-        use crate::proto::CommandPage;
+        use crate::proto::{CommandPage, PageHeader};
 
         let page = CommandPage {
-            sequence: 1,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
             payload: Some(Payload::Command(prost_types::Any {
                 type_url: "test".to_string(),
@@ -312,12 +328,16 @@ mod tests {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence_type: Some(SequenceType::Sequence(1)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(SequenceType::Sequence(1)),
+                    }),
                     payload: None,
                     created_at: None,
                 },
                 EventPage {
-                    sequence_type: Some(SequenceType::Sequence(2)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(SequenceType::Sequence(2)),
+                    }),
                     payload: None,
                     created_at: None,
                 },
@@ -337,12 +357,16 @@ mod tests {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence_type: Some(SequenceType::Sequence(1)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(SequenceType::Sequence(1)),
+                    }),
                     payload: None,
                     created_at: None,
                 },
                 EventPage {
-                    sequence_type: Some(SequenceType::Sequence(2)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(SequenceType::Sequence(2)),
+                    }),
                     payload: None,
                     created_at: None,
                 },
@@ -361,12 +385,16 @@ mod tests {
 
         let pages = vec![
             EventPage {
-                sequence_type: Some(SequenceType::Sequence(5)),
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(5)),
+                }),
                 payload: None,
                 created_at: None,
             },
             EventPage {
-                sequence_type: Some(SequenceType::Sequence(6)),
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(6)),
+                }),
                 payload: None,
                 created_at: None,
             },
@@ -400,7 +428,9 @@ mod tests {
         let mut book = EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence_type: Some(SequenceType::Sequence(10)),
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(10)),
+                }),
                 payload: None,
                 created_at: None,
             }],
@@ -414,16 +444,15 @@ mod tests {
     // CommandBook extension tests
     #[test]
     fn test_command_book_command_sequence() {
-        use crate::proto::CommandPage;
-
         let book = CommandBook {
             cover: None,
             pages: vec![CommandPage {
-                sequence: 25,
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(25)),
+                }),
                 payload: None,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
-            saga_origin: None,
         };
         assert_eq!(book.command_sequence(), 25);
     }
@@ -433,23 +462,21 @@ mod tests {
         let book = CommandBook {
             cover: None,
             pages: vec![],
-            saga_origin: None,
         };
         assert_eq!(book.command_sequence(), 0);
     }
 
     #[test]
     fn test_command_book_first_command() {
-        use crate::proto::CommandPage;
-
         let book = CommandBook {
             cover: None,
             pages: vec![CommandPage {
-                sequence: 1,
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(1)),
+                }),
                 payload: None,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
-            saga_origin: None,
         };
         assert!(book.first_command().is_some());
     }

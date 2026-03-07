@@ -40,17 +40,12 @@
 //! # Saga Example
 //!
 //! ```rust,ignore
-//! use angzarr_macros::{saga, prepares, handles};
+//! use angzarr_macros::{saga, handles};
 //!
 //! #[saga(name = "saga-order-fulfillment", input = "order")]
 //! impl OrderFulfillmentSaga {
-//!     #[prepares(OrderCompleted)]
-//!     fn prepare_order(&self, event: &OrderCompleted) -> Vec<Cover> {
-//!         // ...
-//!     }
-//!
 //!     #[handles(OrderCompleted)]
-//!     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
+//!     fn handle_completed(&self, event: OrderCompleted, source: &EventBook)
 //!         -> CommandResult<SagaHandlerResponse> {
 //!         // ...
 //!     }
@@ -369,6 +364,9 @@ pub fn applies(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Marks an impl block as a saga with event handlers.
 ///
+/// Sagas are pure translators: they receive source events and produce commands
+/// with deferred sequences. The framework handles sequence assignment on delivery.
+///
 /// # Attributes
 /// - `name = "saga-name"` - The saga's name (required)
 /// - `input = "domain"` - Input domain to listen to (required)
@@ -378,8 +376,9 @@ pub fn applies(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// #[saga(name = "saga-order-fulfillment", input = "order")]
 /// impl OrderFulfillmentSaga {
 ///     #[handles(OrderCompleted)]
-///     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
+///     fn handle_completed(&self, event: OrderCompleted, source: &EventBook)
 ///         -> CommandResult<SagaHandlerResponse> {
+///         // Build commands with cover set (framework stamps angzarr_deferred)
 ///         // ...
 ///     }
 /// }
@@ -436,17 +435,12 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
     let self_ty = &input.self_ty;
 
     // Collect handler methods
-    let mut prepare_handlers = Vec::new();
     let mut event_handlers = Vec::new();
 
     for item in &input.items {
         if let ImplItem::Fn(method) = item {
             for attr in &method.attrs {
-                if attr.path().is_ident("prepares") {
-                    if let Ok(event_type) = get_attr_ident(attr) {
-                        prepare_handlers.push((method.sig.ident.clone(), event_type));
-                    }
-                } else if attr.path().is_ident("handles") {
+                if attr.path().is_ident("handles") {
                     if let Ok(event_type) = get_attr_ident(attr) {
                         event_handlers.push((method.sig.ident.clone(), event_type));
                     }
@@ -464,23 +458,8 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
         })
         .collect();
 
-    // Generate prepare dispatch arms
-    let prepare_arms: Vec<_> = prepare_handlers
-        .iter()
-        .map(|(method, event_type)| {
-            let event_str = event_type.to_string();
-            quote! {
-                if event.type_url.ends_with(#event_str) {
-                    if let Ok(evt) = <#event_type as prost::Message>::decode(event.value.as_slice()) {
-                        return self.inner.#method(&evt);
-                    }
-                }
-            }
-        })
-        .collect();
-
-    // Generate execute dispatch arms
-    let execute_arms: Vec<_> = event_handlers
+    // Generate handle dispatch arms
+    let handle_arms: Vec<_> = event_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
@@ -488,7 +467,7 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
                 if event.type_url.ends_with(#event_str) {
                     let evt = <#event_type as prost::Message>::decode(event.value.as_slice())
                         .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
-                    return self.inner.#method(evt, destinations);
+                    return self.inner.#method(evt, source);
                 }
             }
         })
@@ -497,9 +476,7 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
     // Remove our attributes from methods
     for item in &mut input.items {
         if let ImplItem::Fn(method) = item {
-            method.attrs.retain(|attr| {
-                !attr.path().is_ident("prepares") && !attr.path().is_ident("handles")
-            });
+            method.attrs.retain(|attr| !attr.path().is_ident("handles"));
         }
     }
 
@@ -528,22 +505,12 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
                 vec![#(#event_types),*]
             }
 
-            fn prepare(
+            fn handle(
                 &self,
-                _source: &angzarr_client::proto::EventBook,
+                source: &angzarr_client::proto::EventBook,
                 event: &prost_types::Any,
-            ) -> Vec<angzarr_client::proto::Cover> {
-                #(#prepare_arms)*
-                vec![]
-            }
-
-            fn execute(
-                &self,
-                _source: &angzarr_client::proto::EventBook,
-                event: &prost_types::Any,
-                destinations: &[angzarr_client::proto::EventBook],
             ) -> angzarr_client::CommandResult<angzarr_client::SagaHandlerResponse> {
-                #(#execute_arms)*
+                #(#handle_arms)*
                 Ok(angzarr_client::SagaHandlerResponse::default())
             }
         }
@@ -1029,8 +996,10 @@ fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
                             return projection;
                         }
                     }
-                    if let Some(angzarr_client::proto::event_page::SequenceType::Sequence(seq)) = &page.sequence_type {
-                        last_seq = *seq;
+                    if let Some(header) = &page.header {
+                        if let Some(angzarr_client::proto::page_header::SequenceType::Sequence(seq)) = &header.sequence_type {
+                            last_seq = *seq;
+                        }
                     }
                 }
 

@@ -5,50 +5,6 @@ members = [
 ]
 resolver = "2"
 
-[workspace.dependencies]
-# gRPC
-prost = "0.13"
-prost-types = "0.13"
-tonic = "0.12"
-tonic-health = "0.12"
-tokio-stream = { version = "0.1", features = ["net"] }
-
-# Async
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
-futures = "0.3"
-
-# Utilities
-uuid = { version = "1", features = ["v4", "v5"] }
-chrono = "0.4"
-hex = "0.4"
-thiserror = "2"
-
-# HTTP client and serialization for external service calls
-# Using rustls-tls for musl static build compatibility (no OpenSSL dependency)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1", features = ["derive"] }
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-
-# Testing
-cucumber = "0.21"
-
-# Storage (for projectors)
-sqlx = { version = "0.8", features = ["runtime-tokio"] }
-sqlx-postgres = { package = "sqlx", version = "0.8", features = ["runtime-tokio", "postgres"] }
-sqlx-sqlite = { package = "sqlx", version = "0.8", features = ["runtime-tokio", "sqlite"] }
-sea-query = "0.32"
-sea-query-binder = { version = "0.7" }
-sea-query-binder-postgres = { package = "sea-query-binder", version = "0.7", features = ["sqlx-postgres"] }
-sea-query-binder-sqlite = { package = "sea-query-binder", version = "0.7", features = ["sqlx-sqlite"] }
-
-# Local crates
-angzarr = { path = "." }
-angzarr-client = { path = "client/rust" }
-
 [package]
 name = "angzarr"
 version = "0.1.0"
@@ -226,6 +182,7 @@ kube = { version = "0.98", features = ["runtime", "client"], optional = true }
 k8s-openapi = { version = "0.24", features = ["v1_29"], optional = true }
 
 sha2 = "0.10.9"
+mutants = "0.0.4"
 
 # Unix process management (for standalone orchestrator)
 [target.'cfg(unix)'.dependencies]

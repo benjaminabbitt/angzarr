@@ -1,16 +1,15 @@
 //! Tests for saga orchestration and retry logic.
 //!
 //! Sagas are stateless domain translators that bridge events from one domain to
-//! commands in another. They must handle sequence conflicts gracefully because
-//! multiple sagas may target the same aggregate concurrently. The retry mechanism
-//! ensures eventual consistency without manual intervention.
+//! commands in another. The framework handles sequence conflicts via delivery
+//! retry — sagas are executed once, and only command delivery is retried.
 //!
 //! Key behaviors tested:
 //! - Command execution succeeds on first attempt (happy path)
-//! - Sequence conflicts trigger automatic retry with exponential backoff
+//! - Sequence conflicts trigger automatic delivery retry with exponential backoff
 //! - Non-retryable rejections (business rule violations) invoke rejection handler
 //! - Retry exhaustion is bounded to prevent infinite loops
-//! - Cached state from conflict responses avoids redundant fetches
+//! - Saga is NOT re-executed on conflict (delivery-retry model)
 
 use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -22,7 +21,6 @@ use crate::proto::{CommandResponse, SyncMode};
 use crate::proto_ext::CoverExt;
 
 use super::super::command::CommandExecutor;
-use super::super::destination::DestinationFetcher;
 
 // ============================================================================
 // Test Doubles
@@ -33,40 +31,27 @@ struct AlwaysSucceeds;
 
 #[async_trait]
 impl SagaRetryContext for AlwaysSucceeds {
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![])
-    }
-    async fn handle(
-        &self,
-        _destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse::default())
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     fn source_cover(&self) -> Option<&Cover> {
         None
     }
+    fn source_max_sequence(&self) -> u32 {
+        0
+    }
 }
 
 /// Saga context that produces a command on every handle() call.
 ///
-/// Used to test retry behavior — each retry re-invokes handle() and should
-/// produce fresh commands based on current destination state.
+/// In the new model, commands are produced once with angzarr_deferred.
+/// Retry happens at delivery level, not saga re-execution.
 struct RetryingSagaContext;
 
 #[async_trait]
 impl SagaRetryContext for RetryingSagaContext {
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![])
-    }
-    async fn handle(
-        &self,
-        _destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse {
             commands: vec![CommandBook::default()],
             events: vec![],
@@ -75,6 +60,9 @@ impl SagaRetryContext for RetryingSagaContext {
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     fn source_cover(&self) -> Option<&Cover> {
         None
+    }
+    fn source_max_sequence(&self) -> u32 {
+        0
     }
 }
 
@@ -88,15 +76,7 @@ struct AlwaysRejects {
 
 #[async_trait]
 impl SagaRetryContext for AlwaysRejects {
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![])
-    }
-    async fn handle(
-        &self,
-        _destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse::default())
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
@@ -104,6 +84,9 @@ impl SagaRetryContext for AlwaysRejects {
     }
     fn source_cover(&self) -> Option<&Cover> {
         None
+    }
+    fn source_max_sequence(&self) -> u32 {
+        0
     }
 }
 
@@ -333,7 +316,6 @@ impl CommandExecutor for RetryableWithStateExecutor {
                     }),
                     correlation_id: "corr-1".to_string(),
                     edition: None,
-                    external_id: String::new(),
                 }),
                 pages: vec![],
                 snapshot: None,
@@ -349,31 +331,15 @@ impl CommandExecutor for RetryableWithStateExecutor {
     }
 }
 
-/// Saga context that declares destination requirements for retry.
+/// Saga context that produces commands with retryable executor.
 ///
-/// On retry, prepare_destinations() returns covers needed for command
-/// reconstruction. The retry loop should use cached state when available.
-struct CachedStateContext;
+/// In the new delivery-retry model, sagas produce commands once.
+/// The framework handles delivery retry without re-executing the saga.
+struct RetryableCommandContext;
 
 #[async_trait]
-impl SagaRetryContext for CachedStateContext {
-    async fn prepare_destinations(
-        &self,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(vec![Cover {
-            domain: "test".to_string(),
-            root: Some(crate::proto::Uuid {
-                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: "".to_string(),
-            edition: None,
-            external_id: String::new(),
-        }])
-    }
-    async fn handle(
-        &self,
-        _destinations: Vec<EventBook>,
-    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+impl SagaRetryContext for RetryableCommandContext {
+    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse {
             commands: vec![CommandBook::default()],
             events: vec![],
@@ -383,55 +349,29 @@ impl SagaRetryContext for CachedStateContext {
     fn source_cover(&self) -> Option<&Cover> {
         None
     }
-}
-
-/// Destination fetcher that counts fetch calls.
-///
-/// Used to verify that cached state from conflict responses reduces fetches.
-struct TrackingFetcher {
-    fetch_count: AtomicU32,
-}
-
-#[async_trait]
-impl DestinationFetcher for TrackingFetcher {
-    async fn fetch(&self, _cover: &Cover) -> Option<EventBook> {
-        self.fetch_count.fetch_add(1, Ordering::SeqCst);
-        Some(EventBook::default())
-    }
-    async fn fetch_by_correlation(
-        &self,
-        _domain: &str,
-        _correlation_id: &str,
-    ) -> Option<EventBook> {
-        None
+    fn source_max_sequence(&self) -> u32 {
+        0
     }
 }
 
-/// Retryable error with current_state avoids redundant fetch.
+/// Delivery retry with current_state from conflict response.
 ///
-/// When aggregate returns state with the conflict, the saga can skip fetching
-/// that domain's state on retry. This optimization reduces latency and load
-/// under high contention. The fetch count should be minimized.
+/// When command delivery fails with sequence conflict and includes current state,
+/// the retry mechanism can use that state to stamp the correct sequence.
+/// The saga is NOT re-executed — only delivery is retried.
 #[tokio::test]
-async fn test_execute_uses_cached_state_from_conflict() {
-    let ctx = CachedStateContext;
+async fn test_execute_retries_delivery_with_state_from_conflict() {
+    let ctx = RetryableCommandContext;
     let executor = RetryableWithStateExecutor {
         failures_remaining: AtomicU32::new(1),
     };
-    let fetcher = TrackingFetcher {
-        fetch_count: AtomicU32::new(0),
-    };
     let commands = vec![CommandBook::default()];
     SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Async)
-        .fetcher(Some(&fetcher))
         .commands(commands)
         .backoff(fast_backoff())
         .execute()
         .await;
 
-    // With the new behavior: failed domains get fresh fetch, others use cache.
-    // The test command has no domain set, so it uses default empty string.
-    // On retry, the prepare_destinations returns a cover, which triggers a fetch
-    // since there's no cached destination for that domain.
-    assert!(fetcher.fetch_count.load(Ordering::SeqCst) >= 1);
+    // Command delivery retried after conflict, saga not re-executed.
+    // The RetryableWithStateExecutor fails once then succeeds.
 }

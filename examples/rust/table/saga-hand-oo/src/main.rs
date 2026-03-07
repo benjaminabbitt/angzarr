@@ -6,16 +6,21 @@
 //! Reacts to HandStarted events from Table domain.
 //! Sends DealCards commands to Hand domain.
 //!
+//! This saga is a pure translator - it receives source events and produces
+//! commands without knowing destination state. The framework handles:
+//! - Sequence assignment (via angzarr_deferred)
+//! - Idempotency checking
+//! - Delivery retry on sequence conflicts
+//!
 //! This example demonstrates the OO pattern using:
 //! - `#[saga(name = "...", input = "...")]` on impl blocks
-//! - `#[prepares(EventType)]` on prepare methods
 //! - `#[handles(EventType)]` on handler methods
 
 use angzarr_client::proto::examples::{DealCards, HandStarted, PlayerInHand};
 use angzarr_client::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{run_saga_server, CommandResult, SagaHandlerResponse};
 #[allow(unused_imports)]
-use angzarr_macros::{prepares, handles, saga};
+use angzarr_macros::{handles, saga};
 use prost::Message;
 use prost_types::Any;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -26,31 +31,15 @@ pub struct TableHandSaga;
 
 #[saga(name = "saga-table-hand", input = "table")]
 impl TableHandSaga {
-    /// Prepare handler: declare destination cover to fetch.
-    #[prepares(HandStarted)]
-    fn prepare_hand_started(&self, event: &HandStarted) -> Vec<Cover> {
-        vec![Cover {
-            domain: "hand".to_string(),
-            root: Some(Uuid {
-                value: event.hand_root.clone(),
-            }),
-            ..Default::default()
-        }]
-    }
-
-    /// Execute handler: translate HandStarted → DealCards.
+    /// Translate HandStarted → DealCards.
+    ///
+    /// Commands use deferred sequences - framework assigns on delivery.
     #[handles(HandStarted)]
     fn handle_hand_started(
         &self,
         event: HandStarted,
-        destinations: &[EventBook],
+        _source: &EventBook,
     ) -> CommandResult<SagaHandlerResponse> {
-        // Get the destination's next sequence
-        let dest_seq = destinations
-            .first()
-            .map(|eb| eb.next_sequence)
-            .unwrap_or(0);
-
         // Convert SeatSnapshot to PlayerInHand
         let players: Vec<PlayerInHand> = event
             .active_players
@@ -88,12 +77,12 @@ impl TableHandSaga {
                     }),
                     ..Default::default()
                 }),
+                // Framework will stamp angzarr_deferred with source info
+                // and assign sequence on delivery
                 pages: vec![CommandPage {
-                    sequence: dest_seq,
                     payload: Some(angzarr_client::proto::command_page::Payload::Command(command_any)),
                     ..Default::default()
                 }],
-                saga_origin: None,
             }],
             events: vec![],
         })

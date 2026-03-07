@@ -42,7 +42,6 @@ fn build_event_book(
                 name: edition.to_string(),
                 divergences: vec![],
             }),
-            external_id: String::new(),
         }),
         pages,
         snapshot,
@@ -318,6 +317,7 @@ impl AggregateContext for LocalAggregateContext {
                     new_pages.clone(),
                     correlation_id,
                     None,
+                    None, // No source tracking for direct aggregate execution
                 )
                 .await
                 .map_err(|e| match e {

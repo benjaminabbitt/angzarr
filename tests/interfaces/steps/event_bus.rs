@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::bus::EventBus;
-use angzarr::proto::{event_page, Cover, EventBook, EventPage, Uuid as ProtoUuid};
+use angzarr::proto::{
+    event_page, page_header, Cover, EventBook, EventPage, PageHeader, Uuid as ProtoUuid,
+};
 use angzarr::proto_ext::EventPageExt;
 use angzarr::test_utils::{CapturingHandler, FailingHandler};
 use cucumber::{given, then, when, World};
@@ -99,11 +101,12 @@ impl EventBusWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/{}", event_type),
@@ -129,11 +132,12 @@ impl EventBusWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/{}", event_type),
@@ -148,7 +152,9 @@ impl EventBusWorld {
         let root = Uuid::new_v4();
         let pages: Vec<EventPage> = (0..count)
             .map(|i| EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(i as u32)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(i as u32)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/Event{}", i),
@@ -165,7 +171,6 @@ impl EventBusWorld {
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             snapshot: None,
             pages,
@@ -506,11 +511,12 @@ async fn when_events_published_in_order(
                 }),
                 correlation_id: "test-correlation".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.example/Event{}", seq),
@@ -1059,11 +1065,12 @@ async fn when_events_published_concurrently(world: &mut EventBusWorld, count: us
                     }),
                     correlation_id: format!("concurrent-{}", i),
                     edition: None,
-                    external_id: String::new(),
                 }),
                 snapshot: None,
                 pages: vec![EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                    }),
                     created_at: None,
                     payload: Some(event_page::Payload::Event(Any {
                         type_url: format!("type.example/ConcurrentEvent{}", i),

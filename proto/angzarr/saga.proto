@@ -10,19 +10,19 @@ import "angzarr/types.proto";
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
 
-// SagaService: client logic that coordinates across aggregates
-// Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
+// SagaService: stateless translation from source events to commands.
+// Sagas receive only source events — framework handles sequence stamping and delivery.
 service SagaService {
-  // Phase 1: Saga declares which destination aggregates it needs
-  rpc Prepare (SagaPrepareRequest) returns (SagaPrepareResponse);
-  // Phase 2: Execute with source + fetched destination state
-  rpc Execute (SagaExecuteRequest) returns (SagaResponse);
+  // Translate source events into commands for target domains.
+  // Commands use angzarr_deferred — framework stamps explicit sequences on delivery.
+  rpc Handle (SagaHandleRequest) returns (SagaResponse);
 }
 
-// SagaCoordinatorService: orchestrates saga execution
+// SagaCoordinatorService: orchestrates saga execution.
+// Framework handles sequence stamping and delivery retry.
 service SagaCoordinatorService {
-  // Async processing - fire and forget
-  rpc Execute (SagaExecuteRequest) returns (SagaResponse) {
+  // Execute saga: translate source events → commands, deliver to targets
+  rpc Execute (SagaHandleRequest) returns (SagaResponse) {
     option (google.api.http) = {
       post: "/v1/saga/execute"
       body: "*"
@@ -37,37 +37,21 @@ service SagaCoordinatorService {
   }
 }
 
+// Request for saga execution - source events only.
+// Sagas are pure translators: source events → commands with angzarr_deferred.
+message SagaHandleRequest {
+  EventBook source = 1;  // Source events that triggered the saga
+}
+
 // Request for speculative saga execution.
 message SpeculateSagaRequest {
-  SagaExecuteRequest request = 1;
+  SagaHandleRequest request = 1;
 }
 
 // Response from saga - commands for other aggregates
 message SagaResponse {
-  repeated CommandBook commands = 1;  // Commands to execute on other aggregates
-  repeated EventBook events = 2;      // Events to publish directly
-}
-
-// Two-phase saga protocol messages
-message SagaPrepareRequest {
-  EventBook source = 1;  // Source events that triggered the saga
-}
-
-message SagaPrepareResponse {
-  repeated Cover destinations = 1;  // Destination aggregates the saga needs to read
-}
-
-message SagaExecuteRequest {
-  EventBook source = 1;             // Source events (same as prepare)
-  repeated EventBook destinations = 2;  // Fetched destination state
-}
-
-message SagaRetryRequest {
-  EventBook source = 1;
-  repeated EventBook destinations = 2;
-  CommandBook rejected_command = 3;
-  string rejection_reason = 4;
-  uint32 attempt = 5;
+  repeated CommandBook commands = 1;  // Commands to execute on other aggregates (with angzarr_deferred)
+  repeated EventBook events = 2;      // Events (facts) to inject directly
 }
 
 // System event when compensation fails/requested

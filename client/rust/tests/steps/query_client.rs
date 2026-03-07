@@ -14,21 +14,9 @@ struct MockEvent {
 /// Mock EventBook for testing.
 #[derive(Debug, Clone, Default)]
 struct MockEventBook {
-    domain: String,
-    root: String,
     events: Vec<MockEvent>,
     snapshot_sequence: Option<u32>,
     edition: Option<String>,
-}
-
-impl MockEventBook {
-    fn next_sequence(&self) -> u32 {
-        self.events
-            .iter()
-            .map(|e| e.sequence + 1)
-            .max()
-            .unwrap_or(0)
-    }
 }
 
 /// Test context for QueryClient scenarios.
@@ -62,8 +50,6 @@ async fn given_aggregate(world: &mut QueryClientWorld, domain: String, root: Str
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: None,
@@ -90,8 +76,6 @@ async fn given_aggregate_with_events(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events,
             snapshot_sequence: None,
             edition: None,
@@ -111,8 +95,6 @@ async fn given_aggregate_with_specific_event(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events: vec![MockEvent {
                 sequence: 0,
                 event_type,
@@ -142,8 +124,6 @@ async fn given_aggregate_with_timestamps(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events,
             snapshot_sequence: None,
             edition: None,
@@ -170,8 +150,6 @@ async fn given_aggregate_in_edition(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events,
             snapshot_sequence: None,
             edition: Some(edition),
@@ -198,8 +176,6 @@ async fn given_aggregate_in_main(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events,
             snapshot_sequence: None,
             edition: None,
@@ -227,8 +203,6 @@ async fn given_aggregate_in_edition_count(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events,
             snapshot_sequence: None,
             edition: Some(edition),
@@ -258,8 +232,6 @@ async fn given_aggregate_with_snapshot(
     world.aggregates.insert(
         key,
         MockEventBook {
-            domain,
-            root,
             events,
             snapshot_sequence: Some(snap_seq),
             edition: None,
@@ -271,8 +243,6 @@ async fn given_aggregate_with_snapshot(
 async fn given_correlated_events(world: &mut QueryClientWorld, cid: String) {
     let books = vec![
         MockEventBook {
-            domain: "orders".to_string(),
-            root: "order-1".to_string(),
             events: vec![
                 MockEvent {
                     sequence: 0,
@@ -289,8 +259,6 @@ async fn given_correlated_events(world: &mut QueryClientWorld, cid: String) {
             edition: None,
         },
         MockEventBook {
-            domain: "inventory".to_string(),
-            root: "inv-1".to_string(),
             events: vec![MockEvent {
                 sequence: 0,
                 event_type: "Reserved".to_string(),
@@ -322,8 +290,6 @@ async fn when_query_events(world: &mut QueryClientWorld, domain: String, root: S
     let key = format!("{}:{}", domain, root);
     world.result = world.aggregates.get(&key).cloned().or_else(|| {
         Some(MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: None,
@@ -347,16 +313,12 @@ async fn when_query_from_sequence(
             .cloned()
             .collect();
         world.result = Some(MockEventBook {
-            domain,
-            root,
             events: filtered_events,
             snapshot_sequence: book.snapshot_sequence,
             edition: book.edition.clone(),
         });
     } else {
         world.result = Some(MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: None,
@@ -381,16 +343,12 @@ async fn when_query_range(
             .cloned()
             .collect();
         world.result = Some(MockEventBook {
-            domain,
-            root,
             events: filtered_events,
             snapshot_sequence: book.snapshot_sequence,
             edition: book.edition.clone(),
         });
     } else {
         world.result = Some(MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: None,
@@ -414,16 +372,12 @@ async fn when_query_as_of_sequence(
             .cloned()
             .collect();
         world.result = Some(MockEventBook {
-            domain,
-            root,
             events: filtered_events,
             snapshot_sequence: book.snapshot_sequence,
             edition: book.edition.clone(),
         });
     } else {
         world.result = Some(MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: None,
@@ -442,8 +396,6 @@ async fn when_query_as_of_time(
     let key = format!("{}:{}", domain, root);
     world.result = world.aggregates.get(&key).cloned().or_else(|| {
         Some(MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: None,
@@ -461,8 +413,6 @@ async fn when_query_in_edition(
     let key = format!("{}:{}:{}", domain, root, edition);
     world.result = world.aggregates.get(&key).cloned().or_else(|| {
         Some(MockEventBook {
-            domain,
-            root,
             events: vec![],
             snapshot_sequence: None,
             edition: Some(edition),
@@ -479,16 +429,12 @@ async fn when_query_by_correlation(world: &mut QueryClientWorld, cid: String) {
             all_events.extend(book.events.clone());
         }
         world.result = Some(MockEventBook {
-            domain: "correlated".to_string(),
-            root: cid,
             events: all_events,
             snapshot_sequence: None,
             edition: None,
         });
     } else {
         world.result = Some(MockEventBook {
-            domain: "correlated".to_string(),
-            root: cid,
             events: vec![],
             snapshot_sequence: None,
             edition: None,

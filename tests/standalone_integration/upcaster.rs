@@ -111,7 +111,9 @@ async fn start_upcaster_service() -> (String, Arc<TestUpcasterService>) {
 
 fn make_v1_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(prost_types::Any {
             type_url: type_url.to_string(),
@@ -242,7 +244,9 @@ async fn test_upcaster_integration_events_without_payload() {
     let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     let events = vec![EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(page_header::SequenceType::Sequence(0)),
+        }),
         created_at: None,
         payload: None, // No payload
     }];

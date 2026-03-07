@@ -13,7 +13,7 @@
 
 use super::*;
 use crate::handlers::projectors::cloudevents::sink::NullSink;
-use crate::proto::{Cover, EventPage, Uuid as ProtoUuid};
+use crate::proto::{Cover, EventPage, PageHeader, Uuid as ProtoUuid};
 use cloudevents::event::AttributesReader;
 use tokio_stream::StreamExt;
 
@@ -30,10 +30,11 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
             }),
             correlation_id: correlation_id.to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/test.Event".to_string(),
                 value: vec![],
@@ -48,7 +49,9 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
 fn make_multi_page_event_book(correlation_id: &str, page_count: usize) -> EventBook {
     let pages = (0..page_count)
         .map(|i| EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(i as u32)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(i as u32)),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: format!("type.googleapis.com/test.Event{}", i),
                 value: vec![],
@@ -65,7 +68,6 @@ fn make_multi_page_event_book(correlation_id: &str, page_count: usize) -> EventB
             }),
             correlation_id: correlation_id.to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages,
         snapshot: None,

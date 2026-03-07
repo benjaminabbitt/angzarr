@@ -25,7 +25,10 @@
 
     <!-- Include feature files from shared location for Reqnroll code generation -->
     <ItemGroup>
-        <ReqnrollFeatureFiles Include="..\..\features\*.feature" Link="Features\%(Filename)%(Extension)">
+        <ReqnrollFeatureFiles
+            Include="..\..\features\*.feature"
+            Link="Features\%(Filename)%(Extension)"
+        >
             <CodeBehindFile>..\..\features\%(Filename).feature.cs</CodeBehindFile>
             <Visible>true</Visible>
         </ReqnrollFeatureFiles>
@@ -33,6 +36,10 @@
 
     <!-- Copy feature files to output for runtime discovery -->
     <ItemGroup>
-        <None Include="..\..\features\*.feature" Link="Features\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+        <None
+            Include="..\..\features\*.feature"
+            Link="Features\%(Filename)%(Extension)"
+            CopyToOutputDirectory="PreserveNewest"
+        />
     </ItemGroup>
 </Project>

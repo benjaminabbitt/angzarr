@@ -7,7 +7,8 @@ use angzarr::bus::EventHandler;
 use angzarr::handlers::projectors::stream::{StreamEventHandler, StreamService};
 use angzarr::proto::event_stream_service_server::EventStreamService as EventStreamTrait;
 use angzarr::proto::{
-    event_page, Cover, EventBook, EventPage, EventStreamFilter, Uuid as ProtoUuid,
+    event_page, page_header, Cover, EventBook, EventPage, EventStreamFilter, PageHeader,
+    Uuid as ProtoUuid,
 };
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -82,7 +83,9 @@ impl EventStreamServiceWorld {
         let mut pages = Vec::new();
         for seq in 0..page_count {
             pages.push(EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(seq as u32)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(seq as u32)),
+                }),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.test/Event{}", seq),
                     value: vec![seq as u8],
@@ -99,7 +102,6 @@ impl EventStreamServiceWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages,
             snapshot: None,
@@ -121,10 +123,11 @@ impl EventStreamServiceWorld {
                 }),
                 correlation_id: correlation_id.to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: "type.test/Event".to_string(),
                     value: vec![1],
@@ -145,10 +148,11 @@ impl EventStreamServiceWorld {
                 }),
                 correlation_id: String::new(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![EventPage {
-                sequence_type: Some(event_page::SequenceType::Sequence(0)),
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(0)),
+                }),
                 payload: Some(event_page::Payload::Event(Any {
                     type_url: "type.test/Event".to_string(),
                     value: vec![1],

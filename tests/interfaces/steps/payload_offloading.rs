@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::payload_store::{FilesystemPayloadStore, PayloadStore, PayloadStoreError};
-use angzarr::proto::event_page::{self, Payload};
-use angzarr::proto::{EventPage, PayloadReference, PayloadStorageType};
+use angzarr::proto::event_page::Payload;
+use angzarr::proto::{page_header, EventPage, PageHeader, PayloadReference, PayloadStorageType};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use tempfile::TempDir;
@@ -59,7 +59,9 @@ impl PayloadWorld {
 
     fn make_event_page(payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
@@ -94,7 +96,7 @@ impl PayloadWorld {
             match self.store().put(&payload_bytes).await {
                 Ok(reference) => {
                     return EventPage {
-                        sequence_type: page.sequence_type.clone(),
+                        header: page.header.clone(),
                         created_at: page.created_at,
                         payload: Some(Payload::External(reference)),
                     };

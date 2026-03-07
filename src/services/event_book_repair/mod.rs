@@ -110,7 +110,6 @@ pub async fn fetch_complete(
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
         selection: None, // Full query - all events
     };

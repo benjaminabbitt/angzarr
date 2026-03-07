@@ -186,8 +186,9 @@ pub trait CommandHandlerDomainHandler: Send + Sync {
 
 /// Handler for a single domain's events in a saga.
 ///
-/// Sagas translate events from one domain into commands for another.
-/// They are stateless — each event is processed independently.
+/// Sagas are **pure translators**: they receive source events and produce
+/// commands for target domains. They do NOT receive destination state —
+/// the framework handles sequence stamping and delivery retries.
 ///
 /// # Example
 ///
@@ -199,20 +200,12 @@ pub trait CommandHandlerDomainHandler: Send + Sync {
 ///         vec!["OrderCompleted".into(), "OrderCancelled".into()]
 ///     }
 ///
-///     fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover> {
-///         dispatch_event!(event, {
-///             "OrderCompleted" => |e| self.prepare_completed(source, e),
-///             "OrderCancelled" => |e| self.prepare_cancelled(source, e),
-///         })
-///     }
-///
-///     fn execute(
+///     fn handle(
 ///         &self,
 ///         source: &EventBook,
 ///         event: &Any,
-///         destinations: &[EventBook],
 ///     ) -> CommandResult<SagaHandlerResponse> {
-///         dispatch_event!(event, source, destinations, {
+///         dispatch_event!(event, source, {
 ///             "OrderCompleted" => self.handle_completed,
 ///             "OrderCancelled" => self.handle_cancelled,
 ///         })
@@ -225,21 +218,14 @@ pub trait SagaDomainHandler: Send + Sync {
     /// Used for subscription derivation.
     fn event_types(&self) -> Vec<String>;
 
-    /// Prepare phase — declare destination covers needed.
+    /// Translate source events into commands for target domains.
     ///
-    /// Called before execute to fetch destination aggregate state.
-    fn prepare(&self, source: &EventBook, event: &Any) -> Vec<Cover>;
-
-    /// Execute phase — produce commands and/or events.
+    /// Commands should have `cover` set to identify the target aggregate.
+    /// The framework will stamp `angzarr_deferred` with source info and
+    /// handle sequence assignment on delivery.
     ///
-    /// Called with source event and fetched destination state.
     /// Returns commands to send to other aggregates and events/facts to inject.
-    fn execute(
-        &self,
-        source: &EventBook,
-        event: &Any,
-        destinations: &[EventBook],
-    ) -> CommandResult<SagaHandlerResponse>;
+    fn handle(&self, source: &EventBook, event: &Any) -> CommandResult<SagaHandlerResponse>;
 
     /// Handle a rejection notification.
     ///

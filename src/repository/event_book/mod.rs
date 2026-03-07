@@ -129,7 +129,6 @@ impl EventBookRepository {
                     name: edition.to_string(),
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             snapshot,
             pages: events,
@@ -164,7 +163,6 @@ impl EventBookRepository {
                     name: edition.to_string(),
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: events,
@@ -211,7 +209,6 @@ impl EventBookRepository {
                     name: edition.to_string(),
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: events,
@@ -253,7 +250,6 @@ impl EventBookRepository {
                     name: edition.to_string(),
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: events,
@@ -316,7 +312,6 @@ impl EventBookRepository {
                     name: edition.to_string(),
                     divergences: vec![],
                 }),
-                external_id: String::new(),
             }),
             snapshot: None,
             pages: filtered_events,
@@ -339,6 +334,7 @@ impl EventBookRepository {
                 book.pages.clone(),
                 correlation_id,
                 None, // No idempotency key for regular puts
+                None, // No source info for regular puts
             )
             .await
             .map(|_| ()) // Ignore AddOutcome, just succeed

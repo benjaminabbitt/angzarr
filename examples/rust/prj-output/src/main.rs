@@ -7,7 +7,7 @@ use angzarr_client::proto::examples::{
     ActionTaken, BlindPosted, CardsDealt, FundsDeposited, HandComplete, HandStarted,
     PlayerJoined, PlayerRegistered, PotAwarded, TableCreated,
 };
-use angzarr_client::proto::{event_page, EventBook, EventPage, Projection};
+use angzarr_client::proto::{event_page, page_header, EventBook, EventPage, Projection};
 use angzarr_client::{run_projector_server, ProjectorHandler};
 use prost::Message;
 use std::env;
@@ -40,10 +40,14 @@ fn write_log(msg: &str) {
 }
 
 fn get_sequence(page: &EventPage) -> u32 {
-    match &page.sequence_type {
-        Some(event_page::SequenceType::Sequence(seq)) => *seq,
-        _ => 0,
-    }
+    page.header
+        .as_ref()
+        .and_then(|h| h.sequence_type.as_ref())
+        .map(|st| match st {
+            page_header::SequenceType::Sequence(seq) => *seq,
+            _ => 0,
+        })
+        .unwrap_or(0)
 }
 
 // docs:start:projector_functional

@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{Cover, EventPage, Uuid as ProtoUuid};
+use crate::proto::{page_header, Cover, EventPage, PageHeader, Uuid as ProtoUuid};
 use tokio_stream::StreamExt;
 
 fn make_test_event_book(correlation_id: &str) -> EventBook {
@@ -11,10 +11,11 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
             }),
             correlation_id: correlation_id.to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
                 value: vec![],

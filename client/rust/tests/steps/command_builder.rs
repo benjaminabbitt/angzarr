@@ -1,6 +1,7 @@
 //! Command builder step definitions.
 
 use angzarr_client::proto::{CommandBook, CommandResponse, MergeStrategy};
+use angzarr_client::proto_ext::CommandPageExt;
 use angzarr_client::traits::GatewayClient;
 use angzarr_client::{ClientError, CommandBuilderExt, Result};
 use async_trait::async_trait;
@@ -72,7 +73,7 @@ impl CommandBuilderWorld {
         let builder = if let Some(root) = self.root {
             self.mock_client.command(&self.domain, root)
         } else {
-            self.mock_client.command_new(&self.domain)
+            self.mock_client.command(&self.domain, Uuid::new_v4())
         };
 
         let builder = if let Some(ref cid) = self.correlation_id {
@@ -228,7 +229,7 @@ async fn when_build_and_execute(world: &mut CommandBuilderWorld, domain: String)
     };
     let result = world
         .mock_client
-        .command_new(&domain)
+        .command(&domain, Uuid::new_v4())
         .with_command("type.googleapis.com/test.TestCommand", &cmd)
         .execute()
         .await;
@@ -369,7 +370,7 @@ async fn then_command_has_correlation_id(world: &mut CommandBuilderWorld, expect
 async fn then_command_has_sequence(world: &mut CommandBuilderWorld, expected: u32) {
     let cmd = world.built_command.as_ref().expect("command not built");
     let page = cmd.pages.first().expect("no pages");
-    assert_eq!(page.sequence, expected);
+    assert_eq!(page.sequence_num(), expected);
 }
 
 #[then("building should fail")]
@@ -400,7 +401,7 @@ async fn then_chained_values_preserved(world: &mut CommandBuilderWorld) {
     let cover = cmd.cover.as_ref().expect("cover missing");
     assert_eq!(cover.correlation_id, "trace-456");
     let page = cmd.pages.first().expect("no pages");
-    assert_eq!(page.sequence, 3);
+    assert_eq!(page.sequence_num(), 3);
 }
 
 #[then("the command should be sent to the gateway")]

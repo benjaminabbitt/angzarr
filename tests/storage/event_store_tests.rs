@@ -13,7 +13,9 @@ use angzarr::storage::EventStore;
 /// Create a test event with given sequence and type.
 pub fn make_event(seq: u32, event_type: &str) -> EventPage {
     EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        header: Some(PageHeader {
+            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: format!("type.example/{}", event_type),
@@ -203,7 +205,9 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     let original = EventPage {
-        sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+        }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
             type_url: "type.example/TestEvent".to_string(),

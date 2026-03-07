@@ -3,8 +3,9 @@
 use crate::convert::{parse_timestamp, uuid_to_proto};
 use crate::error::{ClientError, Result};
 use crate::proto::{
-    query::Selection, temporal_query::PointInTime, CommandBook, CommandPage, CommandResponse,
-    Cover, Edition, EventBook, EventPage, Query, SequenceRange, TemporalQuery,
+    page_header::SequenceType, query::Selection, temporal_query::PointInTime, CommandBook,
+    CommandPage, CommandResponse, Cover, Edition, EventBook, EventPage, PageHeader, Query,
+    SequenceRange, TemporalQuery,
 };
 use crate::traits;
 use prost::Message;
@@ -14,21 +15,23 @@ use uuid::Uuid;
 pub struct CommandBuilder<'a, C: traits::GatewayClient> {
     client: &'a C,
     domain: String,
-    root: Option<Uuid>,
+    root: Uuid,
     correlation_id: Option<String>,
-    sequence: u32,
+    sequence: Option<u32>,
+    merge_strategy: crate::proto::MergeStrategy,
     type_url: Option<String>,
     payload: Option<Vec<u8>>,
 }
 
 impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
-    pub(crate) fn new(client: &'a C, domain: impl Into<String>, root: Option<Uuid>) -> Self {
+    pub(crate) fn new(client: &'a C, domain: impl Into<String>, root: Uuid) -> Self {
         Self {
             client,
             domain: domain.into(),
             root,
             correlation_id: None,
-            sequence: 0,
+            sequence: None,
+            merge_strategy: crate::proto::MergeStrategy::MergeCommutative,
             type_url: None,
             payload: None,
         }
@@ -42,8 +45,16 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
     }
 
     /// Set the expected sequence number for optimistic locking.
+    /// This is required - the builder will fail without it.
     pub fn with_sequence(mut self, seq: u32) -> Self {
-        self.sequence = seq;
+        self.sequence = Some(seq);
+        self
+    }
+
+    /// Set the merge strategy for conflict resolution.
+    /// Defaults to `MergeCommutative`.
+    pub fn with_merge_strategy(mut self, strategy: crate::proto::MergeStrategy) -> Self {
+        self.merge_strategy = strategy;
         self
     }
 
@@ -56,39 +67,31 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
 
     /// Build the CommandBook without executing.
     pub fn build(self) -> Result<CommandBook> {
-        self.build_inner()
-    }
-
-    fn build_inner(&self) -> Result<CommandBook> {
-        let type_url = self
-            .type_url
-            .clone()
-            .ok_or_else(|| ClientError::InvalidArgument {
-                msg: "command type_url not set".to_string(),
-            })?;
-        let payload = self
-            .payload
-            .clone()
-            .ok_or_else(|| ClientError::InvalidArgument {
-                msg: "command payload not set".to_string(),
-            })?;
-
+        let type_url = self.type_url.ok_or_else(|| ClientError::InvalidArgument {
+            msg: "command type_url not set".to_string(),
+        })?;
+        let payload = self.payload.ok_or_else(|| ClientError::InvalidArgument {
+            msg: "command payload not set".to_string(),
+        })?;
+        let sequence = self.sequence.ok_or_else(|| ClientError::InvalidArgument {
+            msg: "command sequence not set".to_string(),
+        })?;
         let correlation_id = self
             .correlation_id
-            .clone()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         Ok(CommandBook {
             cover: Some(Cover {
-                domain: self.domain.clone(),
-                root: self.root.map(uuid_to_proto),
+                domain: self.domain,
+                root: Some(uuid_to_proto(self.root)),
                 correlation_id,
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![CommandPage {
-                sequence: self.sequence,
-                merge_strategy: crate::proto::MergeStrategy::MergeCommutative as i32,
+                header: Some(PageHeader {
+                    sequence_type: Some(SequenceType::Sequence(sequence)),
+                }),
+                merge_strategy: self.merge_strategy as i32,
                 payload: Some(crate::proto::command_page::Payload::Command(
                     prost_types::Any {
                         type_url,
@@ -96,14 +99,13 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
                     },
                 )),
             }],
-            saga_origin: None,
         })
     }
 
     /// Execute the command.
     pub async fn execute(self) -> Result<CommandResponse> {
         let client = self.client;
-        let command = self.build_inner()?;
+        let command = self.build()?;
         client.execute(command).await
     }
 }
@@ -187,7 +189,6 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
                 root: self.root.map(uuid_to_proto),
                 correlation_id: self.correlation_id.clone().unwrap_or_default(),
                 edition: self.edition.clone().map(Edition::from),
-                external_id: String::new(),
             }),
             selection: self.selection.clone(),
         }
@@ -213,12 +214,7 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
 pub trait CommandBuilderExt: traits::GatewayClient + Sized {
     /// Start building a command for the given domain and root.
     fn command(&self, domain: impl Into<String>, root: Uuid) -> CommandBuilder<'_, Self> {
-        CommandBuilder::new(self, domain, Some(root))
-    }
-
-    /// Start building a command for a new aggregate (no root yet).
-    fn command_new(&self, domain: impl Into<String>) -> CommandBuilder<'_, Self> {
-        CommandBuilder::new(self, domain, None)
+        CommandBuilder::new(self, domain, root)
     }
 }
 
@@ -306,7 +302,6 @@ mod tests {
                 value: u.as_bytes().to_vec(),
             }),
             edition: None,
-            external_id: String::new(),
         }
     }
 
@@ -317,8 +312,7 @@ mod tests {
             response: CommandResponse::default(),
         };
         let root = Uuid::new_v4();
-        let builder =
-            CommandBuilder::new(&client, "orders", Some(root)).with_correlation_id("corr-123");
+        let builder = CommandBuilder::new(&client, "orders", root).with_correlation_id("corr-123");
 
         assert_eq!(builder.correlation_id, Some("corr-123".to_string()));
     }
@@ -328,9 +322,10 @@ mod tests {
         let client = MockGatewayClient {
             response: CommandResponse::default(),
         };
-        let builder = CommandBuilder::new(&client, "orders", None).with_sequence(42);
+        let root = Uuid::new_v4();
+        let builder = CommandBuilder::new(&client, "orders", root).with_sequence(42);
 
-        assert_eq!(builder.sequence, 42);
+        assert_eq!(builder.sequence, Some(42));
     }
 
     #[test]
@@ -338,11 +333,12 @@ mod tests {
         let client = MockGatewayClient {
             response: CommandResponse::default(),
         };
+        let root = Uuid::new_v4();
         let msg = prost_types::Duration {
             seconds: 42,
             nanos: 0,
         };
-        let builder = CommandBuilder::new(&client, "orders", None)
+        let builder = CommandBuilder::new(&client, "orders", root)
             .with_command("type.googleapis.com/test.Command", &msg);
 
         assert_eq!(
@@ -362,7 +358,7 @@ mod tests {
             seconds: 42,
             nanos: 0,
         };
-        let cmd = CommandBuilder::new(&client, "orders", Some(root))
+        let cmd = CommandBuilder::new(&client, "orders", root)
             .with_correlation_id("corr-123")
             .with_sequence(5)
             .with_command("type.googleapis.com/test.Command", &msg)
@@ -374,7 +370,12 @@ mod tests {
         assert_eq!(cover.correlation_id, "corr-123");
         assert!(cover.root.is_some());
         assert_eq!(cmd.pages.len(), 1);
-        assert_eq!(cmd.pages[0].sequence, 5);
+        // Check sequence via header
+        let header = cmd.pages[0].header.as_ref().unwrap();
+        match &header.sequence_type {
+            Some(SequenceType::Sequence(seq)) => assert_eq!(*seq, 5),
+            _ => panic!("expected explicit sequence"),
+        }
     }
 
     #[test]
@@ -382,11 +383,13 @@ mod tests {
         let client = MockGatewayClient {
             response: CommandResponse::default(),
         };
+        let root = Uuid::new_v4();
         let msg = prost_types::Duration {
             seconds: 42,
             nanos: 0,
         };
-        let cmd = CommandBuilder::new(&client, "orders", None)
+        let cmd = CommandBuilder::new(&client, "orders", root)
+            .with_sequence(0)
             .with_command("type.googleapis.com/test.Command", &msg)
             .build()
             .unwrap();
@@ -400,7 +403,10 @@ mod tests {
         let client = MockGatewayClient {
             response: CommandResponse::default(),
         };
-        let result = CommandBuilder::new(&client, "orders", None).build();
+        let root = Uuid::new_v4();
+        let result = CommandBuilder::new(&client, "orders", root)
+            .with_sequence(0)
+            .build();
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -412,11 +418,32 @@ mod tests {
         let client = MockGatewayClient {
             response: CommandResponse::default(),
         };
-        let mut builder = CommandBuilder::new(&client, "orders", None);
+        let root = Uuid::new_v4();
+        let mut builder = CommandBuilder::new(&client, "orders", root);
         builder.type_url = Some("type.googleapis.com/test".to_string());
+        builder.sequence = Some(0);
         let result = builder.build();
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_command_builder_build_missing_sequence() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let root = Uuid::new_v4();
+        let msg = prost_types::Duration {
+            seconds: 42,
+            nanos: 0,
+        };
+        let result = CommandBuilder::new(&client, "orders", root)
+            .with_command("type.googleapis.com/test.Command", &msg)
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.is_invalid_argument());
     }
 
     // QueryBuilder tests
@@ -574,7 +601,6 @@ mod tests {
                 value: vec![1, 2, 3], // invalid - not 16 bytes
             }),
             edition: None,
-            external_id: String::new(),
         };
         assert_eq!(root_from_cover(&cover), None);
     }
@@ -609,7 +635,7 @@ mod tests {
 
     #[test]
     fn test_decode_event_success() {
-        use crate::proto::event_page::{Payload, SequenceType};
+        use crate::proto::event_page::Payload;
 
         // Use prost_types::Duration which implements Message + Default
         let msg = prost_types::Duration {
@@ -617,7 +643,9 @@ mod tests {
             nanos: 0,
         };
         let event = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -632,14 +660,16 @@ mod tests {
 
     #[test]
     fn test_decode_event_type_mismatch() {
-        use crate::proto::event_page::{Payload, SequenceType};
+        use crate::proto::event_page::Payload;
 
         let msg = prost_types::Duration {
             seconds: 42,
             nanos: 0,
         };
         let event = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -653,10 +683,10 @@ mod tests {
 
     #[test]
     fn test_decode_event_nil_event() {
-        use crate::proto::event_page::SequenceType;
-
         let event = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: None,
         };
@@ -667,10 +697,12 @@ mod tests {
 
     #[test]
     fn test_decode_event_invalid_payload() {
-        use crate::proto::event_page::{Payload, SequenceType};
+        use crate::proto::event_page::Payload;
 
         let event = EventPage {
-            sequence_type: Some(SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(1)),
+            }),
             created_at: None,
             payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
@@ -692,18 +724,22 @@ mod tests {
         let builder = client.command("orders", root);
 
         assert_eq!(builder.domain, "orders");
-        assert_eq!(builder.root, Some(root));
+        assert_eq!(builder.root, root);
     }
 
     #[test]
-    fn test_command_builder_ext_command_new() {
+    fn test_command_builder_with_merge_strategy() {
         let client = MockGatewayClient {
             response: CommandResponse::default(),
         };
-        let builder = client.command_new("orders");
+        let root = Uuid::new_v4();
+        let builder = CommandBuilder::new(&client, "orders", root)
+            .with_merge_strategy(crate::proto::MergeStrategy::MergeStrict);
 
-        assert_eq!(builder.domain, "orders");
-        assert!(builder.root.is_none());
+        assert_eq!(
+            builder.merge_strategy,
+            crate::proto::MergeStrategy::MergeStrict
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ use angzarr_client::proto::examples::{
     Currency, DepositFunds, FundsDeposited, FundsReleased, FundsReserved, FundsWithdrawn,
     PlayerRegistered, PlayerType, RegisterPlayer, ReleaseFunds, ReserveFunds, WithdrawFunds,
 };
-use angzarr_client::proto::{CommandBook, EventBook, EventPage, Notification, RejectionNotification};
+use angzarr_client::proto::{event_page, page_header, CommandBook, EventBook, EventPage, Notification, PageHeader, RejectionNotification};
 use angzarr_client::{
     event_page as make_event_page, now, pack_event, run_command_handler_server,
     CommandRejectedError, CommandResult, RejectionHandlerResponse, UnpackAny,
@@ -403,8 +403,10 @@ fn new_event_book<M: prost::Message>(
     EventBook {
         cover: cb.cover.clone(),
         pages: vec![EventPage {
-            sequence_type: Some(angzarr_client::proto::event_page::SequenceType::Sequence(seq)),
-            payload: Some(angzarr_client::proto::event_page::Payload::Event(event_any)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(seq)),
+            }),
+            payload: Some(event_page::Payload::Event(event_any)),
             created_at: Some(now()),
         }],
         snapshot: None,

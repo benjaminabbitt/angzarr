@@ -293,4 +293,42 @@ public abstract class CommandHandler<TState>
         }
         // Unknown event type - silently ignore (forward compatibility)
     }
+
+    /// <summary>
+    /// Rehydrate state from an event book.
+    /// Alternative to constructor injection for testing and simple use cases.
+    /// </summary>
+    public void Rehydrate(Angzarr.EventBook newEventBook)
+    {
+        _eventBook = newEventBook ?? new Angzarr.EventBook();
+        _state = default; // Force rebuild on next State access
+    }
+
+    /// <summary>
+    /// Handle a command and return the resulting event.
+    /// Convenience method for testing and simple use cases.
+    /// </summary>
+    public IMessage HandleCommand(IMessage command)
+    {
+        var commandAny = Any.Pack(command, "type.googleapis.com/");
+        var typeUrl = commandAny.TypeUrl;
+        var dispatchTable = _dispatchTables[GetType()];
+
+        foreach (var (suffix, (method, cmdType)) in dispatchTable)
+        {
+            if (typeUrl.EndsWith(suffix))
+            {
+                _ = State; // Ensure state is built
+                var result = method.Invoke(this, new[] { command });
+                if (result is IMessage msg)
+                {
+                    ApplyAndRecord(msg);
+                    return msg;
+                }
+                throw new InvalidOperationException($"Handler for {suffix} returned null");
+            }
+        }
+
+        throw new InvalidArgumentError($"Unknown command: {typeUrl}");
+    }
 }

@@ -12,7 +12,7 @@
 
 use uuid::Uuid;
 
-use crate::proto::{EventPage, Snapshot};
+use crate::proto::{EventPage, PageHeader, Snapshot};
 use crate::storage::{EventStore, SnapshotStore};
 
 use super::*;
@@ -31,7 +31,9 @@ async fn test_mock_event_store_add_and_get() {
     let root = Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -40,7 +42,7 @@ async fn test_mock_event_store_add_and_get() {
     }];
 
     store
-        .add("orders", "test", root, events, "corr-123", None)
+        .add("orders", "test", root, events, "corr-123", None, None)
         .await
         .unwrap();
 
@@ -64,7 +66,9 @@ async fn test_mock_event_store_get_by_correlation() {
     let root2 = Uuid::new_v4();
 
     let event1 = EventPage {
-        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "orders.Created".to_string(),
             value: vec![],
@@ -73,7 +77,9 @@ async fn test_mock_event_store_get_by_correlation() {
     };
 
     let event2 = EventPage {
-        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "payment.Confirmed".to_string(),
             value: vec![],
@@ -83,11 +89,11 @@ async fn test_mock_event_store_get_by_correlation() {
 
     // Add events with same correlation_id across different domains
     store
-        .add("orders", "test", root1, vec![event1], "tx-abc", None)
+        .add("orders", "test", root1, vec![event1], "tx-abc", None, None)
         .await
         .unwrap();
     store
-        .add("payment", "test", root2, vec![event2], "tx-abc", None)
+        .add("payment", "test", root2, vec![event2], "tx-abc", None, None)
         .await
         .unwrap();
 
@@ -117,7 +123,9 @@ async fn test_get_until_timestamp_filters_by_created_at() {
 
     let events = vec![
         EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event0".to_string(),
                 value: vec![],
@@ -128,7 +136,9 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
         EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(1)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(1)),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event1".to_string(),
                 value: vec![],
@@ -139,7 +149,9 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
         EventPage {
-            sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(2)),
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(2)),
+            }),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event2".to_string(),
                 value: vec![],
@@ -151,7 +163,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
         },
     ];
     store
-        .add("orders", "test", root, events, "", None)
+        .add("orders", "test", root, events, "", None, None)
         .await
         .unwrap();
 
@@ -195,7 +207,9 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
     let root = Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(0)),
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
         payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![],
@@ -203,7 +217,7 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
         created_at: None,
     }];
     store
-        .add("orders", "test", root, events, "", None)
+        .add("orders", "test", root, events, "", None, None)
         .await
         .unwrap();
 

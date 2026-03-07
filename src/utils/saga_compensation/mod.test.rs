@@ -19,25 +19,23 @@
 
 use super::*;
 use crate::config::DEFAULT_SAGA_FALLBACK_DOMAIN;
-use crate::proto::{command_page, event_page, CommandPage, MergeStrategy};
+use crate::proto::{command_page, event_page, page_header, CommandPage, MergeStrategy};
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-fn make_saga_origin() -> SagaCommandOrigin {
-    SagaCommandOrigin {
-        saga_name: "test_saga".to_string(),
-        triggering_aggregate: Some(Cover {
+fn make_angzarr_deferred() -> AngzarrDeferredSequence {
+    AngzarrDeferredSequence {
+        source: Some(Cover {
             domain: "orders".to_string(),
             root: Some(ProtoUuid {
                 value: Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
             edition: None,
-            external_id: String::new(),
         }),
-        triggering_event_sequence: 5,
+        source_seq: 5,
     }
 }
 
@@ -50,23 +48,25 @@ fn make_test_command() -> CommandBook {
             }),
             correlation_id: "corr-123".to_string(),
             edition: None,
-            external_id: String::new(),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::AngzarrDeferred(
+                    make_angzarr_deferred(),
+                )),
+            }),
             payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: "test.AddPoints".to_string(),
                 value: vec![],
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: Some(make_saga_origin()),
     }
 }
 
 fn make_context() -> CompensationContext {
     CompensationContext {
-        saga_origin: make_saga_origin(),
+        source: make_angzarr_deferred(),
         rejection_reason: "Customer not found".to_string(),
         rejected_command: make_test_command(),
         correlation_id: "corr-123".to_string(),
@@ -77,10 +77,10 @@ fn make_context() -> CompensationContext {
 // Compensation Context Tests
 // ============================================================================
 
-/// Saga command creates compensation context with origin info.
+/// Saga command creates compensation context with source info.
 ///
-/// When a saga-originated command is rejected, we extract the saga origin
-/// to route the rejection back to the source aggregate. The context
+/// When a saga-originated command is rejected, we extract the angzarr_deferred
+/// provenance to route the rejection back to the source aggregate. The context
 /// captures everything needed for compensation routing.
 #[test]
 fn test_compensation_context_from_saga_command() {
@@ -90,18 +90,38 @@ fn test_compensation_context_from_saga_command() {
 
     assert!(context.is_some());
     let ctx = context.unwrap();
-    assert_eq!(ctx.saga_origin.saga_name, "test_saga");
+    assert_eq!(ctx.source.source_seq, 5);
+    assert_eq!(ctx.source.source.as_ref().unwrap().domain, "orders");
     assert_eq!(ctx.rejection_reason, "rejection reason");
 }
 
 /// Non-saga command produces no compensation context.
 ///
-/// Direct API commands (not from sagas) don't need compensation routing.
+/// Direct API commands (not from sagas/PMs) don't need compensation routing.
 /// The rejection is returned directly to the caller via gRPC status.
 #[test]
 fn test_compensation_context_from_non_saga_command() {
-    let mut command = make_test_command();
-    command.saga_origin = None;
+    // Command with explicit sequence (not angzarr_deferred) - no provenance
+    let command = CommandBook {
+        cover: Some(Cover {
+            domain: "customer".to_string(),
+            root: Some(ProtoUuid {
+                value: Uuid::new_v4().as_bytes().to_vec(),
+            }),
+            correlation_id: "corr-123".to_string(),
+            edition: None,
+        }),
+        pages: vec![CommandPage {
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(0)),
+            }),
+            payload: Some(command_page::Payload::Command(prost_types::Any {
+                type_url: "test.AddPoints".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
+    };
 
     let context =
         CompensationContext::from_rejected_command(&command, "rejection reason".to_string());
@@ -113,27 +133,34 @@ fn test_compensation_context_from_non_saga_command() {
 // Notification Building Tests
 // ============================================================================
 
-/// Rejection notification includes saga origin and rejected command.
+/// Rejection notification includes rejected command and reason.
 ///
-/// The notification carries full context: which saga, which event triggered
-/// the command, why it was rejected, and the original command itself. This
-/// enables the source aggregate to decide how to compensate.
+/// The notification carries the rejection context. Source provenance is
+/// embedded in the rejected command's page header (angzarr_deferred).
+/// This enables the source aggregate to decide how to compensate.
 #[test]
 fn test_build_rejection_notification() {
     let context = make_context();
     let notification = build_rejection_notification(&context);
 
-    assert_eq!(notification.issuer_name, "test_saga");
-    assert_eq!(notification.source_event_sequence, 5);
     assert_eq!(notification.rejection_reason, "Customer not found");
     assert!(notification.rejected_command.is_some());
+
+    // Source provenance is in the rejected command's page header
+    let cmd = notification.rejected_command.as_ref().unwrap();
+    let header = cmd.pages.first().unwrap().header.as_ref().unwrap();
+    if let Some(page_header::SequenceType::AngzarrDeferred(ad)) = &header.sequence_type {
+        assert_eq!(ad.source_seq, 5);
+        assert_eq!(ad.source.as_ref().unwrap().domain, "orders");
+    } else {
+        panic!("Expected AngzarrDeferred in rejected command header");
+    }
 }
 
-/// Notification command book targets the triggering aggregate's domain.
+/// Notification command book targets the source aggregate's domain.
 ///
 /// The notification routes back to the original domain (not the target
 /// that rejected). This is how the source aggregate learns of rejection.
-/// No saga_origin on the notification — it's terminal, not part of a chain.
 #[test]
 fn test_build_notification_command_book() {
     let context = make_context();
@@ -142,23 +169,19 @@ fn test_build_notification_command_book() {
     assert!(command_book.cover.is_some());
     let cover = command_book.cover.unwrap();
     assert_eq!(cover.domain, "orders");
-    assert!(command_book.saga_origin.is_none());
 }
 
-/// Missing triggering aggregate prevents notification routing.
+/// Missing source prevents notification routing.
 ///
-/// If saga origin doesn't include the triggering aggregate, we can't
-/// route the notification. This is a configuration error in the saga.
+/// If angzarr_deferred doesn't include the source Cover, we can't
+/// route the notification. This is a configuration error.
 #[test]
-fn test_build_notification_command_book_missing_aggregate() {
+fn test_build_notification_command_book_missing_source() {
     let mut context = make_context();
-    context.saga_origin.triggering_aggregate = None;
+    context.source.source = None;
 
     let result = build_notification_command_book(&context);
-    assert!(matches!(
-        result,
-        Err(CompensationError::MissingTriggeringAggregate)
-    ));
+    assert!(matches!(result, Err(CompensationError::MissingSource)));
 }
 
 // ============================================================================
@@ -176,8 +199,13 @@ fn test_build_compensation_failed_event() {
     let context = make_context();
     let event = build_compensation_failed_event(&context, "Business declined");
 
-    assert_eq!(event.saga_name, "test_saga");
+    // saga_name is empty in the new model (source aggregate handles compensation)
+    assert_eq!(event.saga_name, "");
     assert_eq!(event.triggering_event_sequence, 5);
+    assert_eq!(
+        event.triggering_aggregate.as_ref().unwrap().domain,
+        "orders"
+    );
     assert_eq!(event.rejection_reason, "Customer not found");
     assert_eq!(event.compensation_failure_reason, "Business declined");
     assert!(event.occurred_at.is_some());
@@ -223,10 +251,11 @@ async fn test_handle_business_response_with_events() {
                 root: None,
                 correlation_id: "corr-123".to_string(),
                 edition: None,
-                external_id: String::new(),
             }),
             pages: vec![EventPage {
-                sequence_type: Some(crate::proto::event_page::SequenceType::Sequence(6)),
+                header: Some(PageHeader {
+                    sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(6)),
+                }),
                 created_at: None,
                 payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: "test.Compensated".to_string(),
