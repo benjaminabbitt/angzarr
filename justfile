@@ -20,8 +20,9 @@ set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 REGISTRY := "ghcr.io/angzarr-io"
-# Container runtime: prefer podman, fall back to docker
-CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null`
+# Container runtime: prefer podman, fall back to docker, empty if neither available
+# (empty is fine when running inside a container where we don't need nested containers)
+CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null || echo ""`
 
 mod client "client/justfile"
 mod examples "examples/justfile"
@@ -269,6 +270,10 @@ build:
 # Build release binaries
 build-release:
     just _container build-release
+
+# Build standalone binary for integration tests
+build-standalone:
+    just _container build-standalone
 
 # Check code compiles
 check:
