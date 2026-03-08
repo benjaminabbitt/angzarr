@@ -1,0 +1,7 @@
+description: Rust development patterns and best practices for this project
+tags:
+    - rust
+    - development
+    - testing
+bundles:
+    - rust-test-support-pattern

@@ -13,6 +13,8 @@
 //! - Socket path generation for UDS (domain-qualified naming)
 //! - UDS cleanup guard removes socket files on drop
 
+use std::path::PathBuf;
+
 use super::*;
 
 // ============================================================================

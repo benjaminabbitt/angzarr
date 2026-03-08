@@ -9,7 +9,7 @@
 use super::*;
 use crate::bus::mock::MockEventBus;
 use crate::discovery::StaticServiceDiscovery;
-use crate::proto::PageHeader;
+use crate::proto::{ContextualCommand, PageHeader};
 use crate::standalone::DomainStorage;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 
@@ -29,7 +29,7 @@ impl MockClientLogic {
 impl ClientLogic for MockClientLogic {
     async fn invoke(
         &self,
-        _cmd: crate::orchestration::aggregate::ContextualCommand,
+        _cmd: ContextualCommand,
     ) -> Result<crate::proto::BusinessResponse, Status> {
         use crate::proto::business_response::Result as BrResult;
         Ok(crate::proto::BusinessResponse {

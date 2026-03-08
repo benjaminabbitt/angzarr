@@ -1,0 +1,5 @@
+defaults:
+    profiles:
+        - rust-dev
+llm:
+    plugins: {}

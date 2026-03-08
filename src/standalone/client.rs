@@ -442,26 +442,6 @@ impl CommandBuilder {
         }
     }
 
-    /// Test-only constructor that creates a minimal router.
-    ///
-    /// Enables unit testing of `build()` logic without full runtime setup.
-    #[cfg(test)]
-    pub(crate) fn new_for_testing(domain: String, root: Uuid) -> Self {
-        use crate::bus::{ChannelConfig, ChannelEventBus};
-        use crate::discovery::StaticServiceDiscovery;
-
-        let router = Arc::new(super::router::CommandRouter::new(
-            HashMap::new(),
-            HashMap::new(),
-            Arc::new(StaticServiceDiscovery::new()),
-            Arc::new(ChannelEventBus::new(ChannelConfig::publisher())),
-            vec![],
-            vec![],
-            None,
-        ));
-        Self::new(router, domain, root)
-    }
-
     /// Set the command type URL.
     pub fn with_type(mut self, type_url: impl Into<String>) -> Self {
         self.command_type = Some(type_url.into());

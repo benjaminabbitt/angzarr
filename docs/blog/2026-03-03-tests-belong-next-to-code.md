@@ -143,6 +143,78 @@ This gives us:
 
 **Mutation testing benefits:** Separate files pair well with tools like [cargo-mutants](https://mutants.rs/). If a mutation survives (accidentally gets committed), it's in `correlation.rs`; the test file is untouched. Revert the production file, keep the tests. With inline tests, reverting means losing both mutated code and test improvements.
 
+## Test Support Files: When Production Needs Test Logic
+
+Sometimes production code needs to call test-specific logic—mock handlers, test fixtures, specialized parsers for test data. The `#[cfg(test)]` block inside the production function works, but what if it's substantial? Inline test code pollutes the production file.
+
+The solution: **test support files** using the same `#[path]` pattern.
+
+```
+src/orchestration/aggregate/
+├── merge.rs                 # Production code (clean)
+├── merge_test_support.rs    # Test helpers (separate file)
+├── tests.rs                 # Unit tests
+└── mod.rs
+```
+
+The production file stays minimal:
+
+```rust
+// merge.rs - only 4 lines of test boilerplate
+#[cfg(test)]
+#[path = "merge_test_support.rs"]
+pub(crate) mod test_support;
+
+pub(crate) fn diff_state_fields(before: &Any, after: &Any) -> HashSet<String> {
+    // ...
+
+    #[cfg(test)]
+    if before.type_url == "test.StatefulState" {
+        return test_support::diff_test_state_fields(&before.value, &after.value);
+    }
+
+    // ... production logic
+}
+```
+
+The test support file contains the helpers:
+
+```rust
+// merge_test_support.rs
+//! Test support for merge module.
+//! Only compiled during tests via #[path] include.
+
+pub(crate) fn parse_test_state_fields(s: &str) -> HashMap<String, String> { /* ... */ }
+pub(crate) fn diff_test_state_fields(before: &[u8], after: &[u8]) -> HashSet<String> { /* ... */ }
+```
+
+Unit tests import from the support module:
+
+```rust
+// tests.rs
+use super::merge::test_support::{diff_test_state_fields, parse_test_state_fields};
+
+#[test]
+fn test_diff_detects_single_change() {
+    let changed = diff_test_state_fields(
+        r#"{"field_a":100,"field_b":200}"#.as_bytes(),
+        r#"{"field_a":100,"field_b":300}"#.as_bytes(),
+    );
+    assert!(changed.contains("field_b"));
+}
+```
+
+**When to use this pattern:**
+- Production code needs conditional test behavior
+- Test helpers exceed ~20 lines
+- You want readers to see business logic, not test fixtures
+
+**Visibility note:** Use `pub(crate)` if sibling test modules need access; `pub(super)` if only the parent module calls the helpers.
+
+This reduced our `merge.rs` from ~300 lines to ~205 lines—all test code now lives in adjacent files, still colocated but not inline.
+
+**Context window impact:** The same principle from the intro applies here. When an AI assistant reads `merge.rs` to understand commutative merge logic, it gets 205 lines of business logic—not 300 lines where a third is test fixture parsing. The `_test_support.rs` file exists for when context *needs* test helpers; otherwise it's skipped. Every line of test code in a production file is a line competing for attention in a context window that could hold actual implementation details.
+
 ## When Separation Makes Sense
 
 This isn't absolutism. Some tests benefit from separation:

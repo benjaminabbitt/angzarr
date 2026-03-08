@@ -16,13 +16,39 @@
 //! - Edition deletion guards (protect main timeline)
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use uuid::Uuid;
 
 use super::*;
+use crate::bus::{ChannelConfig, ChannelEventBus};
+use crate::discovery::StaticServiceDiscovery;
 use crate::proto::command_page;
 use crate::proto::temporal_query::PointInTime;
-use crate::proto::{page_header, PageHeader, TemporalQuery};
+use crate::proto::TemporalQuery;
+use crate::standalone::CommandRouter;
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+impl CommandBuilder {
+    /// Test-only constructor that creates a minimal router.
+    ///
+    /// Enables unit testing of `build()` logic without full runtime setup.
+    pub(crate) fn new_for_testing(domain: String, root: Uuid) -> Self {
+        let router = Arc::new(CommandRouter::new(
+            HashMap::new(),
+            HashMap::new(),
+            Arc::new(StaticServiceDiscovery::new()),
+            Arc::new(ChannelEventBus::new(ChannelConfig::publisher())),
+            vec![],
+            vec![],
+            None,
+        ));
+        Self::new(router, domain, root)
+    }
+}
 
 // ============================================================================
 // extract_temporal_params Tests

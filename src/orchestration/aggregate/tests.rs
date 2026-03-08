@@ -14,12 +14,15 @@
 //! aggregate traits. Tests here ensure the plumbing is correct.
 
 use super::*;
+// Direct imports from merge module for test utilities
+use super::merge::{build_combined_events, build_events_up_to_sequence, diff_state_fields};
 use crate::proto::{
-    command_page, event_page, page_header, CommandPage, Cover, MergeStrategy, PageHeader,
-    Uuid as ProtoUuid,
+    command_page, event_page, page_header, CommandBook, CommandPage, Cover, EventBook,
+    MergeStrategy, PageHeader, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, EventBookExt};
 use prost_types::Any;
+use uuid::Uuid;
 
 // ============================================================================
 // Test Helpers
@@ -481,89 +484,6 @@ fn test_build_events_up_to_sequence_zero_returns_empty() {
 }
 
 // ============================================================================
-// Test State Parsing Tests
-// ============================================================================
-//
-// These test the JSON-based state diffing used for commutative merge conflict
-// detection. The framework compares before/after state to determine which
-// fields changed, enabling fine-grained conflict detection.
-
-/// Simple JSON parses to field map.
-#[test]
-fn test_parse_test_state_fields_simple() {
-    let fields = parse_test_state_fields(r#"{"field_a":100,"field_b":"hello"}"#);
-    assert_eq!(fields.get("field_a"), Some(&"100".to_string()));
-    assert_eq!(fields.get("field_b"), Some(&"\"hello\"".to_string()));
-}
-
-/// Empty JSON parses to empty map.
-#[test]
-fn test_parse_test_state_fields_empty() {
-    let fields = parse_test_state_fields("{}");
-    assert!(fields.is_empty());
-}
-
-/// Identical states produce empty change set — no conflict possible.
-#[test]
-fn test_diff_test_state_fields_identical() {
-    let before = r#"{"field_a":100}"#.as_bytes();
-    let after = r#"{"field_a":100}"#.as_bytes();
-
-    let changed = diff_test_state_fields(before, after);
-    assert!(
-        changed.is_empty(),
-        "identical states should have no changes"
-    );
-}
-
-/// Single field change returns that field only.
-#[test]
-fn test_diff_test_state_fields_single_change() {
-    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
-    let after = r#"{"field_a":100,"field_b":300}"#.as_bytes();
-
-    let changed = diff_test_state_fields(before, after);
-    assert_eq!(changed.len(), 1);
-    assert!(changed.contains("field_b"));
-    assert!(!changed.contains("field_a"));
-}
-
-/// Multiple field changes returns all changed fields.
-#[test]
-fn test_diff_test_state_fields_multiple_changes() {
-    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
-    let after = r#"{"field_a":999,"field_b":888}"#.as_bytes();
-
-    let changed = diff_test_state_fields(before, after);
-    assert_eq!(changed.len(), 2);
-    assert!(changed.contains("field_a"));
-    assert!(changed.contains("field_b"));
-}
-
-/// Field addition detected as change.
-#[test]
-fn test_diff_test_state_fields_field_added() {
-    let before = r#"{"field_a":100}"#.as_bytes();
-    let after = r#"{"field_a":100,"field_b":200}"#.as_bytes();
-
-    let changed = diff_test_state_fields(before, after);
-    assert!(changed.contains("field_b"), "new field should be detected");
-}
-
-/// Field removal detected as change.
-#[test]
-fn test_diff_test_state_fields_field_removed() {
-    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
-    let after = r#"{"field_a":100}"#.as_bytes();
-
-    let changed = diff_test_state_fields(before, after);
-    assert!(
-        changed.contains("field_b"),
-        "removed field should be detected"
-    );
-}
-
-// ============================================================================
 // Type URL Diff Tests
 // ============================================================================
 //
@@ -742,4 +662,89 @@ fn test_errmsg_format_usage() {
     assert!(error.starts_with(errmsg::SEQUENCE_MISMATCH));
     assert!(error.contains("5"));
     assert!(error.contains("10"));
+}
+
+// ============================================================================
+// Test State Parsing Tests
+// ============================================================================
+//
+// JSON-based state diffing for test aggregates. This enables commutative
+// merge testing without requiring proto reflection. Tests use the test_support
+// module included via #[path] in merge.rs.
+
+use super::merge::test_support::{diff_test_state_fields, parse_test_state_fields};
+
+/// Simple JSON parses to field map.
+#[test]
+fn test_parse_test_state_fields_simple() {
+    let fields = parse_test_state_fields(r#"{"field_a":100,"field_b":"hello"}"#);
+    assert_eq!(fields.get("field_a"), Some(&"100".to_string()));
+    assert_eq!(fields.get("field_b"), Some(&"\"hello\"".to_string()));
+}
+
+/// Empty JSON parses to empty map.
+#[test]
+fn test_parse_test_state_fields_empty() {
+    let fields = parse_test_state_fields("{}");
+    assert!(fields.is_empty());
+}
+
+/// Identical states produce empty change set — no conflict possible.
+#[test]
+fn test_diff_test_state_fields_identical() {
+    let before = r#"{"field_a":100}"#.as_bytes();
+    let after = r#"{"field_a":100}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert!(
+        changed.is_empty(),
+        "identical states should have no changes"
+    );
+}
+
+/// Single field change returns that field only.
+#[test]
+fn test_diff_test_state_fields_single_change() {
+    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+    let after = r#"{"field_a":100,"field_b":300}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert_eq!(changed.len(), 1);
+    assert!(changed.contains("field_b"));
+    assert!(!changed.contains("field_a"));
+}
+
+/// Multiple field changes returns all changed fields.
+#[test]
+fn test_diff_test_state_fields_multiple_changes() {
+    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+    let after = r#"{"field_a":999,"field_b":888}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert_eq!(changed.len(), 2);
+    assert!(changed.contains("field_a"));
+    assert!(changed.contains("field_b"));
+}
+
+/// Field addition detected as change.
+#[test]
+fn test_diff_test_state_fields_field_added() {
+    let before = r#"{"field_a":100}"#.as_bytes();
+    let after = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert!(changed.contains("field_b"), "new field should be detected");
+}
+
+/// Field removal detected as change.
+#[test]
+fn test_diff_test_state_fields_field_removed() {
+    let before = r#"{"field_a":100,"field_b":200}"#.as_bytes();
+    let after = r#"{"field_a":100}"#.as_bytes();
+
+    let changed = diff_test_state_fields(before, after);
+    assert!(
+        changed.contains("field_b"),
+        "removed field should be detected"
+    );
 }

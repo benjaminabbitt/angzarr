@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 use tonic::Status;
 use tracing::{debug, info, warn, Instrument};
-#[cfg(test)]
-use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
@@ -548,41 +546,6 @@ impl FactExecutor for CommandRouter {
         })?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-use crate::proto::{Cover, MergeStrategy, Uuid as ProtoUuid};
-
-/// Helper to create a command book for tests.
-#[cfg(test)]
-pub fn create_command_book(
-    domain: &str,
-    root: Uuid,
-    command_type: &str,
-    command_data: Vec<u8>,
-) -> CommandBook {
-    CommandBook {
-        cover: Some(Cover {
-            domain: domain.to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-        }),
-        pages: vec![crate::proto::CommandPage {
-            header: Some(crate::proto::PageHeader {
-                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
-            }),
-            payload: Some(crate::proto::command_page::Payload::Command(
-                prost_types::Any {
-                    type_url: command_type.to_string(),
-                    value: command_data,
-                },
-            )),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-        }],
     }
 }
 
