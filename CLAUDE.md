@@ -304,6 +304,52 @@ After running `cargo mutants`, you'll see patterns:
 3. If side-effect only (logging): Accept the miss
 4. If framework glue: Verify integration tests exercise the path
 
+### Trivial Delegation Pattern
+
+Single-line delegation functions that just forward to an inner type (optionally with error mapping) are excluded from unit testing and mutation testing via `#[trivial_delegation]`:
+
+```rust
+use crate::trivial_delegation;
+
+#[trivial_delegation]
+pub fn has_domain(&self, domain: &str) -> bool {
+    self.router.has_handler(domain)
+}
+
+#[trivial_delegation]
+pub async fn execute(&self, cmd: Command) -> Result<Response, Error> {
+    self.inner.execute(cmd).await.map_err(Into::into)
+}
+```
+
+**Effects:**
+- `#[mutants::skip]` - excluded from mutation testing (always)
+- `#[coverage(off)]` - excluded from coverage (nightly only, via `coverage_nightly` feature)
+
+**When to use:**
+- Single-line methods that delegate to an inner field
+- Methods that only add error type conversion (`.map_err(Into::into)`)
+- Trait implementations that wrap another implementation
+
+**When NOT to use:**
+- Functions with any branching logic
+- Functions that extract/parse data before delegating
+- Functions with multiple statements
+
+**Running coverage on nightly:**
+```bash
+cargo +nightly llvm-cov --features coverage_nightly
+```
+
+**After adding `#[trivial_delegation]`, regenerate mutation exclusions:**
+```bash
+cargo xtask gen-mutants-exclude
+```
+
+This scans for `#[trivial_delegation]` attributes and updates `.cargo/mutants.toml` with regex patterns to exclude those functions from mutation testing.
+
+These functions are tested implicitly via integration tests that exercise the full stack.
+
 ### Contract Tests
 
 **Contract tests MUST break the build.** This diverges from Fowler's historical position that contract tests shouldn't fail builds because they test external dependencies outside your control. In the modern paradigm with testcontainers and hermetic builds, we control the dependency versions. Contract tests verify our code works with specific, pinned versions of backing services. A failing contract test means real breakage that must be fixed before merge.

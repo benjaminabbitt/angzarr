@@ -11,6 +11,18 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.scm/bin/scm hook inject-context d91ae77c92fa775a",
+            "timeout": 60,
+            "_scm": "e8c0ba2f888cfa0d"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

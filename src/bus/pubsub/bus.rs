@@ -114,13 +114,17 @@ impl EventBus for PubSubEventBus {
         // Build message with attributes using PubsubMessage
         use gcloud_googleapis::pubsub::v1::PubsubMessage;
         let ordering_key = root_id.clone();
-        let attributes: std::collections::HashMap<String, String> = [
+        let mut attributes: std::collections::HashMap<String, String> = [
             (DOMAIN_ATTR.to_string(), domain.to_string()),
             (CORRELATION_ID_ATTR.to_string(), correlation_id.clone()),
             (ROOT_ID_ATTR.to_string(), root_id),
         ]
         .into_iter()
         .collect();
+
+        // Inject trace context
+        #[cfg(feature = "otel")]
+        super::otel::pubsub_inject_trace_context(&mut attributes);
 
         let message = PubsubMessage {
             data,
@@ -200,6 +204,16 @@ impl EventBus for PubSubEventBus {
                                     .get(DOMAIN_ATTR)
                                     .map(|s| s.as_str())
                                     .unwrap_or("unknown");
+
+                                // Extract trace context from attributes
+                                #[cfg(feature = "otel")]
+                                {
+                                    let consume_span = tracing::Span::current();
+                                    super::otel::pubsub_extract_trace_context(
+                                        &message.message.attributes,
+                                        &consume_span,
+                                    );
+                                }
 
                                 match process_message_payload(
                                     data,

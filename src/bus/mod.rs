@@ -42,8 +42,7 @@ pub mod sns_sqs;
 #[cfg(unix)]
 pub use config::IpcBusConfig;
 pub use config::{
-    AmqpBusConfig, EventBusMode, KafkaConfig, MessagingConfig, NatsBusConfig, PubSubBusConfig,
-    SnsSqsBusConfig,
+    AmqpBusConfig, EventBusMode, KafkaConfig, MessagingConfig, PubSubBusConfig, SnsSqsBusConfig,
 };
 
 pub use error::{errmsg, BusError, Result};
@@ -67,10 +66,10 @@ pub use ipc::{
 pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
 pub use mock::MockEventBus;
 #[cfg(feature = "nats")]
-pub use nats::{NatsEventBus, NatsEventBusConfig};
+pub use nats::{NatsBusConfig, NatsEventBus};
 pub use offloading::{OffloadingConfig, OffloadingEventBus};
 #[cfg(feature = "pubsub")]
-pub use pubsub::{PubSubEventBus, PubSubEventBusConfig};
+pub use pubsub::{PubSubConfig, PubSubEventBus};
 #[cfg(feature = "sns-sqs")]
 pub use sns_sqs::{SnsSqsEventBus, SnsSqsEventBusConfig};
 

@@ -70,14 +70,13 @@ impl PubSubDeadLetterPublisher {
     }
 
     /// Create a new Pub/Sub DLQ publisher from config.
+    ///
+    /// Uses Application Default Credentials (ADC) for authentication.
+    /// Project ID is determined from ADC or GOOGLE_CLOUD_PROJECT environment variable.
     pub async fn from_config(
         dlq_config: &super::super::config::PubSubDlqConfig,
     ) -> Result<Self, DlqError> {
-        let mut config = ClientConfig::default();
-        if !dlq_config.project_id.is_empty() {
-            config = config.with_project_id(dlq_config.project_id.clone());
-        }
-        let config = config.with_auth().await.map_err(|e| {
+        let config = ClientConfig::default().with_auth().await.map_err(|e| {
             DlqError::Connection(format!("Failed to configure Pub/Sub auth: {}", e))
         })?;
 

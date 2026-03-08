@@ -14,13 +14,14 @@
 mod bus;
 mod config;
 mod consumer;
+#[cfg(feature = "otel")]
+mod otel;
 
 use std::sync::Arc;
 
 use tracing::info;
 
-use super::config::{EventBusMode, MessagingConfig};
-use super::error::Result;
+use super::config::EventBusMode;
 use super::factory::BusBackend;
 use super::traits::EventBus;
 
@@ -42,42 +43,46 @@ const ROOT_ID_ATTR: &str = "root_id";
 
 inventory::submit! {
     BusBackend {
-        try_create: |config, mode| Box::pin(try_create(config, mode)),
-    }
-}
+        try_create: |config, mode| {
+            // Clone what we need before creating the 'static future
+            let messaging_type = config.messaging_type.clone();
+            let project_id = config.pubsub.project_id.clone();
+            let topic_prefix = config.pubsub.topic_prefix.clone();
+            let domains = config.pubsub.domains.clone();
 
-async fn try_create(
-    config: &MessagingConfig,
-    mode: EventBusMode,
-) -> Option<Result<Arc<dyn EventBus>>> {
-    if config.messaging_type != "pubsub" {
-        return None;
-    }
+            Box::pin(async move {
+                if messaging_type != "pubsub" {
+                    return None;
+                }
 
-    let pubsub_config = match mode {
-        EventBusMode::Publisher => PubSubConfig::publisher(&config.pubsub.project_id)
-            .with_topic_prefix(&config.pubsub.topic_prefix),
-        EventBusMode::Subscriber { queue, domain } => {
-            PubSubConfig::subscriber(&config.pubsub.project_id, queue, vec![domain])
-                .with_topic_prefix(&config.pubsub.topic_prefix)
-        }
-        EventBusMode::SubscriberAll { queue } => {
-            let domains = config.pubsub.domains.clone().unwrap_or_default();
-            if domains.is_empty() {
-                PubSubConfig::subscriber_all(&config.pubsub.project_id, queue)
-            } else {
-                PubSubConfig::subscriber(&config.pubsub.project_id, queue, domains)
-            }
-            .with_topic_prefix(&config.pubsub.topic_prefix)
-        }
-    };
+                let pubsub_config = match mode {
+                    EventBusMode::Publisher => {
+                        PubSubConfig::publisher(&project_id).with_topic_prefix(&topic_prefix)
+                    }
+                    EventBusMode::Subscriber { queue, domain } => {
+                        PubSubConfig::subscriber(&project_id, queue, vec![domain])
+                            .with_topic_prefix(&topic_prefix)
+                    }
+                    EventBusMode::SubscriberAll { queue } => {
+                        let domains = domains.unwrap_or_default();
+                        if domains.is_empty() {
+                            PubSubConfig::subscriber_all(&project_id, queue)
+                        } else {
+                            PubSubConfig::subscriber(&project_id, queue, domains)
+                        }
+                        .with_topic_prefix(&topic_prefix)
+                    }
+                };
 
-    match PubSubEventBus::new(pubsub_config).await {
-        Ok(bus) => {
-            info!(messaging_type = "pubsub", "Event bus initialized");
-            Some(Ok(Arc::new(bus)))
-        }
-        Err(e) => Some(Err(e)),
+                match PubSubEventBus::new(pubsub_config).await {
+                    Ok(bus) => {
+                        info!(messaging_type = "pubsub", "Event bus initialized");
+                        Some(Ok(Arc::new(bus) as Arc<dyn EventBus>))
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            })
+        },
     }
 }
 

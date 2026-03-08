@@ -12,3 +12,7 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # Faster incremental builds
 [build]
 incremental = true
+
+# Custom commands
+[alias]
+xtask = "run --package xtask --"

@@ -332,8 +332,12 @@ cov-full-summary:
 MUTANTS_TIMEOUT := "120"
 MUTANTS_FEATURES := "--features 'sqlite test-utils'"
 
+# Regenerate exclude_re patterns from #[trivial_delegation] attributes
+gen-mutants-exclude:
+    cargo xtask gen-mutants-exclude
+
 # Run mutation tests on a specific file
-mutants FILE:
+mutants FILE: gen-mutants-exclude
     cargo mutants \
         --in-place \
         --timeout {{MUTANTS_TIMEOUT}} \
@@ -341,7 +345,7 @@ mutants FILE:
         -- {{MUTANTS_FEATURES}}
 
 # Run mutation tests on handlers/core (aggregate, projector, saga, PM)
-mutants-core:
+mutants-core: gen-mutants-exclude
     cargo mutants \
         --in-place \
         --timeout {{MUTANTS_TIMEOUT}} \
@@ -356,7 +360,7 @@ mutants-core:
 mutants-handlers: mutants-core
 
 # Run mutation tests on bus module (event routing)
-mutants-bus:
+mutants-bus: gen-mutants-exclude
     cargo mutants \
         --in-place \
         --timeout {{MUTANTS_TIMEOUT}} \
@@ -365,7 +369,7 @@ mutants-bus:
         -- {{MUTANTS_FEATURES}}
 
 # Run mutation tests on orchestration (saga, aggregate, PM)
-mutants-orchestration:
+mutants-orchestration: gen-mutants-exclude
     cargo mutants \
         --in-place \
         --timeout {{MUTANTS_TIMEOUT}} \

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": ["dependencies"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "VERSIONATOR_VERSION:\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "benjaminabbitt/versionator",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "KIND_VERSION:\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "kubernetes-sigs/kind",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "KUBECTL_VERSION:\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "kubernetes/kubernetes",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "matchPackageNames": ["benjaminabbitt/versionator"],
+      "groupName": "versionator"
+    },
+    {
+      "matchPackageNames": ["kubernetes-sigs/kind", "kubernetes/kubernetes"],
+      "groupName": "kubernetes-tooling"
+    }
+  ]
+}

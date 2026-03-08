@@ -155,6 +155,10 @@ impl EventBus for NatsEventBus {
             headers.insert(HEADER_CORRELATION, correlation_id.as_str());
         }
 
+        // Inject trace context
+        #[cfg(feature = "otel")]
+        super::otel::nats_inject_trace_context(&mut headers);
+
         // Publish the EventBook
         let ack_future = self
             .jetstream

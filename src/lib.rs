@@ -1,3 +1,6 @@
+// Enable coverage(off) attribute on nightly when coverage_nightly feature is active
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 //! Angzarr - CQRS/ES Framework
 //!
 //! A Rust implementation of the angzarr framework for building
@@ -47,3 +50,6 @@ pub mod client_traits {
     pub use angzarr_client::error::{ClientError, Result};
     pub use angzarr_client::traits::{GatewayClient, QueryClient, SpeculativeClient};
 }
+
+// Re-export trivial_delegation macro for marking functions excluded from unit testing
+pub use trivial_delegation::trivial_delegation;

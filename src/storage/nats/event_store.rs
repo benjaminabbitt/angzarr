@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::is_main_timeline;
 use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
@@ -238,7 +239,7 @@ impl NatsEventStore {
 
     /// Extract sequence number from an EventPage.
     fn get_sequence(event: &EventPage) -> u32 {
-        event.sequence
+        event.sequence_num()
     }
 
     /// Extract (root UUID, edition name) from a Cover, returning None if invalid.

@@ -286,6 +286,10 @@ lint:
 test:
     just _container test
 
+# Regenerate mutation test exclusions from #[trivial_delegation] attributes
+gen-mutants-exclude:
+    just _container gen-mutants-exclude
+
 # === Storage Contract Tests ===
 # =============================================================================
 # Storage contract tests verify that storage implementations correctly fulfill
@@ -767,6 +771,55 @@ reindex: qdrant-start
     uv run "{{TOP}}/scripts/index_codebase.py" --url http://127.0.0.1:6333
 
 # === Claude Code LSP Setup ===
+
+# Check LSP configuration and server availability
+lsp-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== LSP Configuration Check ==="
+
+    # Check config file
+    CONFIG="{{TOP}}/.claude/.lsp.json"
+    if [ -f "$CONFIG" ]; then
+        echo "✓ Config found: $CONFIG"
+        echo "  Contents:"
+        cat "$CONFIG" | sed 's/^/    /'
+    else
+        echo "✗ Config not found: $CONFIG"
+        echo "  Create .claude/.lsp.json with your LSP server configuration"
+        exit 1
+    fi
+    echo ""
+
+    # Check rust-analyzer
+    echo "=== Language Server Binaries ==="
+    if command -v rust-analyzer &>/dev/null; then
+        echo "✓ rust-analyzer: $(which rust-analyzer)"
+        echo "  Version: $(rust-analyzer --version)"
+    else
+        echo "✗ rust-analyzer not found in PATH"
+    fi
+
+    if command -v pyright &>/dev/null; then
+        echo "✓ pyright: $(which pyright)"
+    fi
+
+    if command -v gopls &>/dev/null; then
+        echo "✓ gopls: $(which gopls)"
+    fi
+
+    if command -v clangd &>/dev/null; then
+        echo "✓ clangd: $(which clangd)"
+    fi
+
+    echo ""
+    echo "=== Next Steps ==="
+    echo "LSP servers auto-start when Claude Code reads the config."
+    echo "If LSP isn't working, restart your Claude Code session:"
+    echo "  1. Exit Claude Code (Ctrl+C or /exit)"
+    echo "  2. Re-run 'claude' in this directory"
+    echo ""
+    echo "The .claude/.lsp.json config will be detected on startup."
 
 # Install all supported language servers and Claude Code plugins
 lsp-all: lsp-rust lsp-python lsp-go lsp-cpp lsp-java lsp-csharp

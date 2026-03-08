@@ -83,6 +83,13 @@ pub(super) fn spawn_message_consumer(
                 }
             };
 
+            // Create consume span and extract trace context
+            let consume_span = tracing::info_span!("bus.consume", subject = %msg.subject);
+            #[cfg(feature = "otel")]
+            if let Some(headers) = msg.headers.as_ref() {
+                super::otel::nats_extract_trace_context(headers, &consume_span);
+            }
+
             // Dispatch to handlers
             crate::bus::dispatch::dispatch_to_handlers(&handlers, &book).await;
 

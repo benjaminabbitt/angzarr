@@ -1,0 +1,227 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  # =============================================================================
+  # Formatting
+  # =============================================================================
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Check Proto formatting
+        run: |
+          cd proto
+          buf format --diff --exit-code
+
+  # =============================================================================
+  # Linting
+  # =============================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Clippy
+        run: cargo clippy --all-targets --features "sqlite test-utils" -- -D warnings
+
+      - name: Buf lint
+        run: |
+          cd proto
+          buf lint
+
+      - name: Buf breaking changes
+        run: |
+          cd proto
+          buf breaking --against 'https://github.com/${{ github.repository }}.git#branch=main'
+        continue-on-error: true  # Warning only, not blocking
+
+  # =============================================================================
+  # Unit Tests
+  # =============================================================================
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        run: cargo test --lib --features "sqlite test-utils"
+
+      - name: Run interface tests
+        run: cargo test --test interfaces --features "sqlite test-utils"
+
+  # =============================================================================
+  # Mutation Tests (Changed Code Only)
+  # =============================================================================
+  # Uses --in-diff for fast PR feedback, testing only changed code
+  # Full mutation testing runs on main branch via integration-matrix.yml
+  mutation:
+    name: Mutation Tests (Changed)
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    needs: test  # Only run if tests pass
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for diff
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      - name: Generate diff
+        run: |
+          git diff origin/${{ github.base_ref }}..HEAD > git.diff
+          echo "Diff stats:"
+          wc -l git.diff
+          head -50 git.diff || true
+
+      - name: Run mutation tests on changed code
+        run: |
+          if [ -s git.diff ]; then
+            cargo mutants --in-place --in-diff git.diff --no-shuffle -vV
+          else
+            echo "No changes to test"
+          fi
+
+      - name: Upload mutation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-results
+          path: mutants.out/
+          retention-days: 7
+
+      - name: Mutation summary
+        if: always()
+        run: |
+          if [ -f mutants.out/outcomes.json ]; then
+            TOTAL=$(jq '.outcomes | length' mutants.out/outcomes.json)
+            KILLED=$(jq '[.outcomes[] | select(.outcome == "Killed")] | length' mutants.out/outcomes.json)
+            SURVIVED=$(jq '[.outcomes[] | select(.outcome == "Survived")] | length' mutants.out/outcomes.json)
+            TIMEOUT=$(jq '[.outcomes[] | select(.outcome == "Timeout")] | length' mutants.out/outcomes.json)
+            UNVIABLE=$(jq '[.outcomes[] | select(.outcome == "Unviable")] | length' mutants.out/outcomes.json)
+
+            echo "## Mutation Test Results (Changed Code)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Outcome | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Killed | $KILLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Survived | $SURVIVED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Timeout | $TIMEOUT |" >> $GITHUB_STEP_SUMMARY
+            echo "| Unviable | $UNVIABLE |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$TOTAL" -gt 0 ]; then
+              # Kill rate excludes unviable mutants
+              TESTABLE=$((TOTAL - UNVIABLE))
+              if [ "$TESTABLE" -gt 0 ]; then
+                SCORE=$((KILLED * 100 / TESTABLE))
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Kill Rate: ${SCORE}%** (excluding unviable)" >> $GITHUB_STEP_SUMMARY
+
+                if [ "$SURVIVED" -gt 0 ]; then
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Surviving Mutants" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  jq -r '.outcomes[] | select(.outcome == "Survived") | "\(.scenario.function) in \(.scenario.file)"' mutants.out/outcomes.json >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                fi
+
+                if [ "$SCORE" -lt 60 ]; then
+                  echo "::warning::Mutation kill rate is below 60% - consider adding tests"
+                fi
+              fi
+            fi
+          else
+            echo "No mutants found in changed code" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =============================================================================
+  # Results
+  # =============================================================================
+  results:
+    name: PR Check Results
+    runs-on: ubuntu-latest
+    needs: [format, lint, test, mutation]
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## PR Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Format | ${{ needs.format.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mutation Tests | ${{ needs.mutation.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check results
+        run: |
+          if [ "${{ needs.format.result }}" == "failure" ]; then
+            echo "::error::Formatting check failed"
+            exit 1
+          fi
+          if [ "${{ needs.lint.result }}" == "failure" ]; then
+            echo "::error::Linting check failed"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" == "failure" ]; then
+            echo "::error::Unit tests failed"
+            exit 1
+          fi
+          # Mutation tests are informational, don't fail the PR
+          if [ "${{ needs.mutation.result }}" == "failure" ]; then
+            echo "::warning::Mutation tests failed (non-blocking)"
+          fi
+          echo "All required checks passed"

@@ -26,13 +26,15 @@
 mod bus;
 mod config;
 mod consumer;
+#[cfg(feature = "otel")]
+mod otel;
 
 use std::sync::Arc;
 
 use tracing::info;
 
-use super::config::{EventBusMode, MessagingConfig};
-use super::error::{BusError, Result};
+use super::config::EventBusMode;
+use super::error::BusError;
 use super::factory::BusBackend;
 use super::traits::EventBus;
 
@@ -45,55 +47,57 @@ pub use config::NatsBusConfig;
 
 inventory::submit! {
     BusBackend {
-        try_create: |config, mode| Box::pin(try_create(config, mode)),
-    }
-}
+        try_create: |config, mode| {
+            // Clone what we need before creating the 'static future
+            let messaging_type = config.messaging_type.clone();
+            let nats_url = config.nats.url.clone();
+            let stream_prefix = config.nats.stream_prefix.clone();
 
-async fn try_create(
-    config: &MessagingConfig,
-    mode: EventBusMode,
-) -> Option<Result<Arc<dyn EventBus>>> {
-    if config.messaging_type != "nats" {
-        return None;
-    }
+            Box::pin(async move {
+                if messaging_type != "nats" {
+                    return None;
+                }
 
-    // Connect to NATS
-    let client = match async_nats::connect(&config.nats.url).await {
-        Ok(c) => c,
-        Err(e) => {
-            return Some(Err(BusError::Connection(format!(
-                "NATS connect failed: {}",
-                e
-            ))))
-        }
-    };
+                // Connect to NATS
+                let client = match async_nats::connect(&nats_url).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        return Some(Err(BusError::Connection(format!(
+                            "NATS connect failed: {}",
+                            e
+                        ))))
+                    }
+                };
 
-    let bus_config = match mode {
-        EventBusMode::Publisher => NatsBusConfig {
-            prefix: config.nats.stream_prefix.clone(),
-            consumer_name: None,
-            domain_filter: None,
+                let bus_config = match mode {
+                    EventBusMode::Publisher => NatsBusConfig {
+                        prefix: stream_prefix,
+                        consumer_name: None,
+                        domain_filter: None,
+                    },
+                    EventBusMode::Subscriber { queue, domain } => NatsBusConfig {
+                        prefix: stream_prefix,
+                        consumer_name: Some(queue),
+                        domain_filter: Some(domain),
+                    },
+                    EventBusMode::SubscriberAll { queue } => NatsBusConfig {
+                        prefix: stream_prefix,
+                        consumer_name: Some(queue),
+                        domain_filter: None,
+                    },
+                };
+
+                match NatsEventBus::with_config(client, bus_config).await {
+                    Ok(bus) => {
+                        info!(messaging_type = "nats", "Event bus initialized");
+                        Some(Ok(Arc::new(bus) as Arc<dyn EventBus>))
+                    }
+                    Err(e) => Some(Err(BusError::Connection(format!(
+                        "NATS setup failed: {}",
+                        e
+                    )))),
+                }
+            })
         },
-        EventBusMode::Subscriber { queue, domain } => NatsBusConfig {
-            prefix: config.nats.stream_prefix.clone(),
-            consumer_name: Some(queue),
-            domain_filter: Some(domain),
-        },
-        EventBusMode::SubscriberAll { queue } => NatsBusConfig {
-            prefix: config.nats.stream_prefix.clone(),
-            consumer_name: Some(queue),
-            domain_filter: None,
-        },
-    };
-
-    match NatsEventBus::with_config(client, bus_config).await {
-        Ok(bus) => {
-            info!(messaging_type = "nats", "Event bus initialized");
-            Some(Ok(Arc::new(bus)))
-        }
-        Err(e) => Some(Err(BusError::Connection(format!(
-            "NATS setup failed: {}",
-            e
-        )))),
     }
 }

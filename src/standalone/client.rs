@@ -19,6 +19,7 @@ use crate::proto::{
     SpeculateSagaRequest, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
+use crate::trivial_delegation;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 
@@ -60,6 +61,7 @@ impl CommandClient {
     }
 
     /// Execute a pre-built command book.
+    #[trivial_delegation]
     pub async fn execute(
         &self,
         command: CommandBook,
@@ -74,6 +76,7 @@ impl CommandClient {
     /// persisted to the store, no events are published to the bus, and no sagas
     /// or projectors are triggered. Use this to validate business rules or
     /// explore "what-if" scenarios without side effects.
+    #[trivial_delegation]
     pub async fn speculative(
         &self,
         command: CommandBook,
@@ -87,11 +90,13 @@ impl CommandClient {
     }
 
     /// Check if a domain has a registered handler.
+    #[trivial_delegation]
     pub fn has_domain(&self, domain: &str) -> bool {
         self.router.has_handler(domain)
     }
 
     /// Get list of registered domains.
+    #[trivial_delegation]
     pub fn domains(&self) -> Vec<&str> {
         self.router.domains()
     }
@@ -99,6 +104,7 @@ impl CommandClient {
 
 #[async_trait]
 impl client_traits::GatewayClient for CommandClient {
+    #[trivial_delegation]
     async fn execute(&self, command: CommandBook) -> client_traits::Result<CommandResponse> {
         self.router
             .execute(command)
