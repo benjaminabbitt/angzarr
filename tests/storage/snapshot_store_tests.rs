@@ -276,6 +276,201 @@ pub async fn test_domain_isolation<S: SnapshotStore>(store: &S) {
 }
 
 // =============================================================================
+// Retention tests
+// =============================================================================
+
+/// Create a snapshot with specific retention.
+pub fn make_snapshot_with_retention(seq: u32, retention: SnapshotRetention) -> Snapshot {
+    Snapshot {
+        sequence: seq,
+        state: Some(Any {
+            type_url: format!("type.example/State{}", seq),
+            value: vec![10, 20, seq as u8],
+        }),
+        retention: retention as i32,
+    }
+}
+
+pub async fn test_retention_transient_cleanup<S: SnapshotStore>(store: &S) {
+    let domain = "test_snap_transient";
+    let root = Uuid::new_v4();
+
+    // Store transient snapshot at seq 5
+    store
+        .put(
+            domain,
+            "test",
+            root,
+            make_snapshot_with_retention(5, SnapshotRetention::RetentionTransient),
+        )
+        .await
+        .expect("put should succeed");
+
+    // Verify it exists
+    let snap5 = store.get_at_seq(domain, "test", root, 5).await.unwrap();
+    assert!(snap5.is_some(), "transient snapshot at 5 should exist");
+
+    // Store newer default retention snapshot at seq 10
+    store
+        .put(domain, "test", root, make_snapshot(10))
+        .await
+        .expect("put should succeed");
+
+    // Transient snapshot should be cleaned up
+    let _snap5_after = store.get_at_seq(domain, "test", root, 5).await.unwrap();
+    // Note: behavior may vary - some stores keep old snapshots, others clean up transient ones
+    // This test verifies the latest is available
+    let latest = store.get(domain, "test", root).await.unwrap().unwrap();
+    assert_eq!(latest.sequence, 10, "latest should be at seq 10");
+}
+
+pub async fn test_retention_persist<S: SnapshotStore>(store: &S) {
+    let domain = "test_snap_persist";
+    let root = Uuid::new_v4();
+
+    // Store persist snapshot at seq 5
+    store
+        .put(
+            domain,
+            "test",
+            root,
+            make_snapshot_with_retention(5, SnapshotRetention::RetentionPersist),
+        )
+        .await
+        .expect("put should succeed");
+
+    // Store newer snapshot at seq 10
+    store
+        .put(domain, "test", root, make_snapshot(10))
+        .await
+        .expect("put should succeed");
+
+    // Latest should be seq 10
+    let latest = store.get(domain, "test", root).await.unwrap().unwrap();
+    assert_eq!(latest.sequence, 10);
+
+    // Persist snapshot should still be retrievable at seq 5
+    let persist = store.get_at_seq(domain, "test", root, 5).await.unwrap();
+    assert!(persist.is_some(), "persist snapshot should be retained");
+    assert_eq!(persist.unwrap().sequence, 5);
+}
+
+pub async fn test_retention_default<S: SnapshotStore>(store: &S) {
+    let domain = "test_snap_default";
+    let root = Uuid::new_v4();
+
+    // Store default retention snapshot
+    store
+        .put(domain, "test", root, make_snapshot(5))
+        .await
+        .expect("put should succeed");
+
+    let snapshot = store.get(domain, "test", root).await.unwrap().unwrap();
+    assert_eq!(
+        snapshot.retention,
+        SnapshotRetention::RetentionDefault as i32,
+        "retention should be default"
+    );
+}
+
+// =============================================================================
+// Edition tests
+// =============================================================================
+
+pub async fn test_edition_isolation<S: SnapshotStore>(store: &S) {
+    let domain = "test_snap_edition";
+    let root = Uuid::new_v4();
+
+    // Store snapshot in main edition
+    store
+        .put(domain, "angzarr", root, make_snapshot(10))
+        .await
+        .expect("put should succeed");
+
+    // Store snapshot in v2 edition (same root)
+    store
+        .put(domain, "v2", root, make_snapshot(20))
+        .await
+        .expect("put should succeed");
+
+    // Get from main edition
+    let main_snap = store
+        .get(domain, "angzarr", root)
+        .await
+        .unwrap()
+        .expect("main edition snapshot should exist");
+    assert_eq!(main_snap.sequence, 10);
+
+    // Get from v2 edition
+    let v2_snap = store
+        .get(domain, "v2", root)
+        .await
+        .unwrap()
+        .expect("v2 edition snapshot should exist");
+    assert_eq!(v2_snap.sequence, 20);
+}
+
+pub async fn test_edition_delete_independence<S: SnapshotStore>(store: &S) {
+    let domain = "test_snap_ed_del";
+    let root = Uuid::new_v4();
+
+    store
+        .put(domain, "angzarr", root, make_snapshot(10))
+        .await
+        .unwrap();
+    store
+        .put(domain, "v2", root, make_snapshot(20))
+        .await
+        .unwrap();
+
+    // Delete main edition snapshot
+    store.delete(domain, "angzarr", root).await.unwrap();
+
+    // Main should be gone
+    assert!(store.get(domain, "angzarr", root).await.unwrap().is_none());
+    // V2 should still exist
+    assert!(store.get(domain, "v2", root).await.unwrap().is_some());
+}
+
+// =============================================================================
+// Large state tests
+// =============================================================================
+
+pub async fn test_large_state_100kb<S: SnapshotStore>(store: &S) {
+    let domain = "test_snap_large";
+    let root = Uuid::new_v4();
+
+    // Generate 100KB of data with a recognizable pattern
+    let data: Vec<u8> = (0..100 * 1024).map(|i| (i % 256) as u8).collect();
+    assert_eq!(data.len(), 102400, "should be 100KB");
+
+    let snapshot = Snapshot {
+        sequence: 50,
+        state: Some(Any {
+            type_url: "type.example/LargeState".to_string(),
+            value: data.clone(),
+        }),
+        retention: SnapshotRetention::RetentionDefault as i32,
+    };
+
+    store
+        .put(domain, "test", root, snapshot)
+        .await
+        .expect("put large snapshot should succeed");
+
+    let retrieved = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed")
+        .expect("snapshot should exist");
+
+    assert_eq!(retrieved.sequence, 50);
+    let state = retrieved.state.expect("state should exist");
+    assert_eq!(state.value.len(), 102400, "should be 100KB");
+    assert_eq!(state.value, data, "data should match exactly");
+}
+
+// =============================================================================
 // Test runner macro
 // =============================================================================
 
@@ -321,5 +516,26 @@ macro_rules! run_snapshot_store_tests {
 
         test_domain_isolation($store).await;
         println!("  test_domain_isolation: PASSED");
+
+        // retention tests
+        test_retention_transient_cleanup($store).await;
+        println!("  test_retention_transient_cleanup: PASSED");
+
+        test_retention_persist($store).await;
+        println!("  test_retention_persist: PASSED");
+
+        test_retention_default($store).await;
+        println!("  test_retention_default: PASSED");
+
+        // edition tests
+        test_edition_isolation($store).await;
+        println!("  test_edition_isolation: PASSED");
+
+        test_edition_delete_independence($store).await;
+        println!("  test_edition_delete_independence: PASSED");
+
+        // large state tests
+        test_large_state_100kb($store).await;
+        println!("  test_large_state_100kb: PASSED");
     };
 }

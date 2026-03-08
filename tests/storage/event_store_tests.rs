@@ -6,7 +6,7 @@
 use prost_types::Any;
 use uuid::Uuid;
 
-use angzarr::proto::{event_page, EventPage};
+use angzarr::proto::{event_page, page_header::SequenceType, EventPage, PageHeader};
 use angzarr::proto_ext::EventPageExt;
 use angzarr::storage::EventStore;
 
@@ -14,7 +14,7 @@ use angzarr::storage::EventStore;
 pub fn make_event(seq: u32, event_type: &str) -> EventPage {
     EventPage {
         header: Some(PageHeader {
-            sequence_type: Some(event_page::SequenceType::Sequence(seq)),
+            sequence_type: Some(SequenceType::Sequence(seq)),
         }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
@@ -47,6 +47,7 @@ pub async fn test_add_single_event<S: EventStore>(store: &S) {
             vec![make_event(0, "Created")],
             "",
             None,
+            None,
         )
         .await
         .expect("add should succeed");
@@ -63,7 +64,7 @@ pub async fn test_add_multiple_events<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -79,7 +80,7 @@ pub async fn test_add_empty_events<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, vec![], "", None)
+        .add(domain, "test", root, vec![], "", None, None)
         .await
         .expect("empty add should succeed");
 
@@ -96,13 +97,13 @@ pub async fn test_add_sequential_batches<S: EventStore>(store: &S) {
 
     // First batch: events 0, 1
     store
-        .add(domain, "test", root, make_events(0, 2), "", None)
+        .add(domain, "test", root, make_events(0, 2), "", None, None)
         .await
         .expect("first batch should succeed");
 
     // Second batch: events 2, 3, 4
     store
-        .add(domain, "test", root, make_events(2, 3), "", None)
+        .add(domain, "test", root, make_events(2, 3), "", None, None)
         .await
         .expect("second batch should succeed");
 
@@ -129,7 +130,7 @@ pub async fn test_add_sequence_conflict<S: EventStore>(store: &S) {
 
     // Add events 0, 1, 2
     store
-        .add(domain, "test", root, make_events(0, 3), "", None)
+        .add(domain, "test", root, make_events(0, 3), "", None, None)
         .await
         .expect("first add should succeed");
 
@@ -143,6 +144,7 @@ pub async fn test_add_sequence_conflict<S: EventStore>(store: &S) {
             vec![make_event(1, "Rewind")],
             "",
             None,
+            None,
         )
         .await;
     assert!(result.is_err(), "sequence lower than current should fail");
@@ -153,13 +155,21 @@ pub async fn test_add_duplicate_sequence<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 3), "", None)
+        .add(domain, "test", root, make_events(0, 3), "", None, None)
         .await
         .expect("first add should succeed");
 
     // Try to add at sequence 0 again
     let result = store
-        .add(domain, "test", root, vec![make_event(0, "Dup")], "", None)
+        .add(
+            domain,
+            "test",
+            root,
+            vec![make_event(0, "Dup")],
+            "",
+            None,
+            None,
+        )
         .await;
     assert!(result.is_err(), "duplicate sequence should fail");
 }
@@ -173,7 +183,7 @@ pub async fn test_get_all_events<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 10), "", None)
+        .add(domain, "test", root, make_events(0, 10), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -206,7 +216,7 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
 
     let original = EventPage {
         header: Some(PageHeader {
-            sequence_type: Some(event_page::SequenceType::Sequence(0)),
+            sequence_type: Some(SequenceType::Sequence(0)),
         }),
         created_at: None,
         payload: Some(event_page::Payload::Event(Any {
@@ -216,7 +226,7 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
     };
 
     store
-        .add(domain, "test", root, vec![original], "", None)
+        .add(domain, "test", root, vec![original], "", None, None)
         .await
         .expect("add should succeed");
 
@@ -244,7 +254,7 @@ pub async fn test_get_from_zero<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -260,7 +270,7 @@ pub async fn test_get_from_middle<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 10), "", None)
+        .add(domain, "test", root, make_events(0, 10), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -281,7 +291,7 @@ pub async fn test_get_from_end<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -297,7 +307,7 @@ pub async fn test_get_from_last<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -317,7 +327,7 @@ pub async fn test_get_from_to_full_range<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -333,7 +343,7 @@ pub async fn test_get_from_to_partial<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 10), "", None)
+        .add(domain, "test", root, make_events(0, 10), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -352,7 +362,7 @@ pub async fn test_get_from_to_single<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -369,7 +379,7 @@ pub async fn test_get_from_to_empty<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 5), "", None)
+        .add(domain, "test", root, make_events(0, 5), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -389,7 +399,15 @@ pub async fn test_list_roots_single<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, vec![make_event(0, "E")], "", None)
+        .add(
+            domain,
+            "test",
+            root,
+            vec![make_event(0, "E")],
+            "",
+            None,
+            None,
+        )
         .await
         .expect("add should succeed");
 
@@ -408,15 +426,39 @@ pub async fn test_list_roots_multiple<S: EventStore>(store: &S) {
     let root3 = Uuid::new_v4();
 
     store
-        .add(domain, "test", root1, vec![make_event(0, "E1")], "", None)
+        .add(
+            domain,
+            "test",
+            root1,
+            vec![make_event(0, "E1")],
+            "",
+            None,
+            None,
+        )
         .await
         .unwrap();
     store
-        .add(domain, "test", root2, vec![make_event(0, "E2")], "", None)
+        .add(
+            domain,
+            "test",
+            root2,
+            vec![make_event(0, "E2")],
+            "",
+            None,
+            None,
+        )
         .await
         .unwrap();
     store
-        .add(domain, "test", root3, vec![make_event(0, "E3")], "", None)
+        .add(
+            domain,
+            "test",
+            root3,
+            vec![make_event(0, "E3")],
+            "",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -445,11 +487,27 @@ pub async fn test_list_roots_domain_isolation<S: EventStore>(store: &S) {
     let root2 = Uuid::new_v4();
 
     store
-        .add(domain1, "test", root1, vec![make_event(0, "E1")], "", None)
+        .add(
+            domain1,
+            "test",
+            root1,
+            vec![make_event(0, "E1")],
+            "",
+            None,
+            None,
+        )
         .await
         .unwrap();
     store
-        .add(domain2, "test", root2, vec![make_event(0, "E2")], "", None)
+        .add(
+            domain2,
+            "test",
+            root2,
+            vec![make_event(0, "E2")],
+            "",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -473,7 +531,15 @@ pub async fn test_list_domains_contains<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(&domain, "test", root, vec![make_event(0, "E")], "", None)
+        .add(
+            &domain,
+            "test",
+            root,
+            vec![make_event(0, "E")],
+            "",
+            None,
+            None,
+        )
         .await
         .expect("add should succeed");
 
@@ -491,7 +557,15 @@ pub async fn test_list_domains_multiple<S: EventStore>(store: &S) {
 
     for domain in &domains_to_add {
         store
-            .add(domain, "test", Uuid::new_v4(), vec![make_event(0, "E")], "")
+            .add(
+                domain,
+                "test",
+                Uuid::new_v4(),
+                vec![make_event(0, "E")],
+                "",
+                None,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -522,7 +596,7 @@ pub async fn test_get_next_sequence_after_events<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 7), "", None)
+        .add(domain, "test", root, make_events(0, 7), "", None, None)
         .await
         .expect("add should succeed");
 
@@ -543,7 +617,15 @@ pub async fn test_get_next_sequence_increments<S: EventStore>(store: &S) {
     );
 
     store
-        .add(domain, "test", root, vec![make_event(0, "E0")], "", None)
+        .add(
+            domain,
+            "test",
+            root,
+            vec![make_event(0, "E0")],
+            "",
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -552,7 +634,7 @@ pub async fn test_get_next_sequence_increments<S: EventStore>(store: &S) {
     );
 
     store
-        .add(domain, "test", root, make_events(1, 3), "", None)
+        .add(domain, "test", root, make_events(1, 3), "", None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -571,11 +653,11 @@ pub async fn test_aggregate_isolation<S: EventStore>(store: &S) {
     let root2 = Uuid::new_v4();
 
     store
-        .add(domain, "test", root1, make_events(0, 3), "", None)
+        .add(domain, "test", root1, make_events(0, 3), "", None, None)
         .await
         .unwrap();
     store
-        .add(domain, "test", root2, make_events(0, 5), "", None)
+        .add(domain, "test", root2, make_events(0, 5), "", None, None)
         .await
         .unwrap();
 
@@ -606,7 +688,7 @@ pub async fn test_large_batch<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .add(domain, "test", root, make_events(0, 100), "", None)
+        .add(domain, "test", root, make_events(0, 100), "", None, None)
         .await
         .expect("large batch should succeed");
 
@@ -619,6 +701,342 @@ pub async fn test_large_batch<S: EventStore>(store: &S) {
     for (i, event) in events.iter().enumerate() {
         assert_eq!(event.sequence_num(), i as u32);
     }
+}
+
+// =============================================================================
+// Correlation ID tests
+// =============================================================================
+
+pub async fn test_correlation_id_query<S: EventStore>(store: &S) {
+    let domain1 = "test_corr_d1";
+    let domain2 = "test_corr_d2";
+    let root1 = Uuid::new_v4();
+    let root2 = Uuid::new_v4();
+    let correlation_id = format!("corr-{}", Uuid::new_v4());
+
+    // Add events with same correlation_id across different domains
+    store
+        .add(
+            domain1,
+            "test",
+            root1,
+            vec![make_event(0, "E1")],
+            &correlation_id,
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    store
+        .add(
+            domain2,
+            "test",
+            root2,
+            vec![make_event(0, "E2")],
+            &correlation_id,
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    // Query by correlation_id should return both
+    let books = store
+        .get_by_correlation(&correlation_id)
+        .await
+        .expect("get_by_correlation should succeed");
+
+    assert_eq!(books.len(), 2, "should find events in both domains");
+
+    // Verify domains are correct
+    let domains: Vec<_> = books
+        .iter()
+        .filter_map(|b| b.cover.as_ref().map(|c| c.domain.as_str()))
+        .collect();
+    assert!(domains.contains(&domain1));
+    assert!(domains.contains(&domain2));
+}
+
+pub async fn test_correlation_id_empty_query<S: EventStore>(store: &S) {
+    // Query with unknown correlation_id should return empty
+    let books = store
+        .get_by_correlation("nonexistent-correlation-id-xyz")
+        .await
+        .expect("get_by_correlation should succeed");
+
+    assert!(books.is_empty(), "unknown correlation should return empty");
+}
+
+pub async fn test_correlation_id_preserved<S: EventStore>(store: &S) {
+    let domain = "test_corr_preserved";
+    let root = Uuid::new_v4();
+    let correlation_id = format!("preserved-{}", Uuid::new_v4());
+
+    store
+        .add(
+            domain,
+            "test",
+            root,
+            vec![make_event(0, "E")],
+            &correlation_id,
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    let books = store
+        .get_by_correlation(&correlation_id)
+        .await
+        .expect("get_by_correlation should succeed");
+
+    assert_eq!(books.len(), 1);
+    let book = &books[0];
+    assert_eq!(
+        book.cover.as_ref().unwrap().correlation_id,
+        correlation_id,
+        "correlation_id should be preserved"
+    );
+}
+
+// =============================================================================
+// Edition isolation tests
+// =============================================================================
+
+pub async fn test_edition_isolation<S: EventStore>(store: &S) {
+    let domain = "test_edition_iso";
+    let root = Uuid::new_v4();
+
+    // Add events to main edition
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(0, "Main")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add to main should succeed");
+
+    // Add events to a named edition
+    store
+        .add(
+            domain,
+            "v2",
+            root,
+            vec![make_event(0, "V2")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add to v2 should succeed");
+
+    // Get from main edition
+    let main_events = store
+        .get(domain, "angzarr", root)
+        .await
+        .expect("get should succeed");
+    assert_eq!(main_events.len(), 1, "main edition should have 1 event");
+
+    // Get from v2 edition
+    let v2_events = store
+        .get(domain, "v2", root)
+        .await
+        .expect("get should succeed");
+    assert_eq!(v2_events.len(), 1, "v2 edition should have 1 event");
+
+    // Events should be different
+    if let (
+        Some(event_page::Payload::Event(main_payload)),
+        Some(event_page::Payload::Event(v2_payload)),
+    ) = (&main_events[0].payload, &v2_events[0].payload)
+    {
+        assert_ne!(
+            main_payload.type_url, v2_payload.type_url,
+            "editions should have different events"
+        );
+    }
+}
+
+pub async fn test_edition_sequences_independent<S: EventStore>(store: &S) {
+    let domain = "test_edition_seq";
+    let root = Uuid::new_v4();
+
+    // Add 3 events to main edition
+    store
+        .add(domain, "angzarr", root, make_events(0, 3), "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Add 5 events to v2 edition (sequence starts at 0)
+    store
+        .add(domain, "v2", root, make_events(0, 5), "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Check sequences are independent
+    let main_next = store
+        .get_next_sequence(domain, "angzarr", root)
+        .await
+        .expect("get_next_sequence should succeed");
+    assert_eq!(main_next, 3, "main edition should have next seq 3");
+
+    let v2_next = store
+        .get_next_sequence(domain, "v2", root)
+        .await
+        .expect("get_next_sequence should succeed");
+    assert_eq!(v2_next, 5, "v2 edition should have next seq 5");
+}
+
+pub async fn test_edition_filtered_roots<S: EventStore>(store: &S) {
+    let domain = "test_edition_roots";
+    let root_main = Uuid::new_v4();
+    let root_v2 = Uuid::new_v4();
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root_main,
+            vec![make_event(0, "Main")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    store
+        .add(
+            domain,
+            "v2",
+            root_v2,
+            vec![make_event(0, "V2")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let main_roots = store
+        .list_roots(domain, "angzarr")
+        .await
+        .expect("list_roots should succeed");
+    let v2_roots = store
+        .list_roots(domain, "v2")
+        .await
+        .expect("list_roots should succeed");
+
+    assert!(main_roots.contains(&root_main));
+    assert!(!main_roots.contains(&root_v2));
+    assert!(v2_roots.contains(&root_v2));
+    assert!(!v2_roots.contains(&root_main));
+}
+
+// =============================================================================
+// Timestamp tests
+// =============================================================================
+
+pub async fn test_timestamp_preservation<S: EventStore>(store: &S) {
+    use prost_types::Timestamp;
+
+    let domain = "test_timestamp";
+    let root = Uuid::new_v4();
+
+    let timestamp = Timestamp {
+        seconds: 1704067200, // 2024-01-01 00:00:00 UTC
+        nanos: 123456789,
+    };
+
+    let event = EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(0)),
+        }),
+        created_at: Some(timestamp.clone()),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "type.example/TimestampTest".to_string(),
+            value: vec![1, 2, 3],
+        })),
+    };
+
+    store
+        .add(domain, "test", root, vec![event], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
+    assert_eq!(events.len(), 1);
+
+    let retrieved = &events[0];
+    assert!(
+        retrieved.created_at.is_some(),
+        "timestamp should be preserved"
+    );
+    let retrieved_ts = retrieved.created_at.as_ref().unwrap();
+    assert_eq!(
+        retrieved_ts.seconds, timestamp.seconds,
+        "seconds should match"
+    );
+    assert_eq!(retrieved_ts.nanos, timestamp.nanos, "nanos should match");
+}
+
+// =============================================================================
+// Large scale tests
+// =============================================================================
+
+pub async fn test_large_aggregate_10k<S: EventStore>(store: &S) {
+    let domain = "test_large_10k";
+    let root = Uuid::new_v4();
+
+    // Add 10,000 events in batches of 1000
+    for batch in 0..10 {
+        let start = batch * 1000;
+        store
+            .add(
+                domain,
+                "test",
+                root,
+                make_events(start, 1000),
+                "",
+                None,
+                None,
+            )
+            .await
+            .expect("batch add should succeed");
+    }
+
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
+    assert_eq!(events.len(), 10000, "should have 10,000 events");
+
+    // Verify sequence continuity
+    for (i, event) in events.iter().enumerate() {
+        assert_eq!(
+            event.sequence_num(),
+            i as u32,
+            "sequence {} should match",
+            i
+        );
+    }
+
+    // Verify partial range retrieval works
+    let partial = store
+        .get_from_to(domain, "test", root, 5000, 5010)
+        .await
+        .expect("get_from_to should succeed");
+    assert_eq!(partial.len(), 10, "partial range should return 10 events");
+    assert_eq!(partial[0].sequence_num(), 5000);
+    assert_eq!(partial[9].sequence_num(), 5009);
 }
 
 // =============================================================================
@@ -722,5 +1140,33 @@ macro_rules! run_event_store_tests {
 
         test_large_batch($store).await;
         println!("  test_large_batch: PASSED");
+
+        // correlation_id tests
+        test_correlation_id_query($store).await;
+        println!("  test_correlation_id_query: PASSED");
+
+        test_correlation_id_empty_query($store).await;
+        println!("  test_correlation_id_empty_query: PASSED");
+
+        test_correlation_id_preserved($store).await;
+        println!("  test_correlation_id_preserved: PASSED");
+
+        // edition tests
+        test_edition_isolation($store).await;
+        println!("  test_edition_isolation: PASSED");
+
+        test_edition_sequences_independent($store).await;
+        println!("  test_edition_sequences_independent: PASSED");
+
+        test_edition_filtered_roots($store).await;
+        println!("  test_edition_filtered_roots: PASSED");
+
+        // timestamp tests
+        test_timestamp_preservation($store).await;
+        println!("  test_timestamp_preservation: PASSED");
+
+        // large scale tests
+        test_large_aggregate_10k($store).await;
+        println!("  test_large_aggregate_10k: PASSED");
     };
 }
