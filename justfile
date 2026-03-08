@@ -36,6 +36,10 @@ mod tofu "deploy/tofu/justfile"
 _build-images:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Skip when already in a devcontainer - no image building needed
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        exit 0
+    fi
     cd "{{TOP}}/build/images"
     skaffold build --file-output=build.json
     echo "Built images:"
