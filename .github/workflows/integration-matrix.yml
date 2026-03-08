@@ -81,6 +81,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -113,6 +116,9 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_mutation_tests == 'true')
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
