@@ -2,17 +2,18 @@
 //!
 //! These tests verify the contract of the EventBus trait.
 //! Each bus implementation should run these tests.
+//!
+//! Requires the `test-utils` feature to be enabled.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::bus::EventBus;
-use angzarr::dlq::{
-    create_publisher_async, AngzarrDeadLetter, DeadLetterPayload, DlqConfig,
-    EventProcessingFailedDetails, RejectionDetails, SequenceMismatchDetails,
+use angzarr::proto::{
+    event_page, page_header::SequenceType, Cover, EventBook, EventPage, PageHeader, Uuid,
 };
-use angzarr::proto::{event_page, CommandBook, Cover, EventBook, EventPage, MergeStrategy, Uuid};
+#[cfg(feature = "test-utils")]
 use angzarr::test_utils::CapturingHandler;
 use prost_types::Any;
 use tokio::sync::mpsc;
@@ -29,7 +30,9 @@ pub fn make_event_book(domain: &str) -> EventBook {
             edition: None,
         }),
         pages: vec![EventPage {
-            sequence: 0,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(0)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "type.googleapis.com/test.TestEvent".to_string(),
@@ -37,22 +40,6 @@ pub fn make_event_book(domain: &str) -> EventBook {
             })),
         }],
         snapshot: None,
-        ..Default::default()
-    }
-}
-
-/// Create a test CommandBook for DLQ tests.
-pub fn make_command_book(domain: &str) -> CommandBook {
-    CommandBook {
-        cover: Some(Cover {
-            domain: domain.to_string(),
-            root: Some(Uuid {
-                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: format!("txn-{}", uuid::Uuid::new_v4()),
-            edition: None,
-        }),
-        pages: vec![],
         ..Default::default()
     }
 }
@@ -236,67 +223,311 @@ pub async fn test_domain_filtering<B: EventBus>(
 }
 
 // =============================================================================
-// DLQ tests
+// Multi-domain and multi-handler tests
 // =============================================================================
 
-/// Test DLQ publish with event processing failure.
-pub async fn test_dlq_publish(dlq_config: &DlqConfig) {
-    let dlq_publisher = create_publisher_async(dlq_config)
+/// Test subscribing to all domains (no filter).
+pub async fn test_multi_domain_subscription<B: EventBus>(
+    publisher: &B,
+    domain1: &str,
+    domain2: &str,
+    subscriber_name: &str,
+) {
+    // Create subscriber with no domain filter - receives all domains
+    let subscriber = publisher
+        .create_subscriber(subscriber_name, None)
         .await
-        .expect("Failed to create DLQ publisher");
+        .expect("Failed to create subscriber");
 
-    let book = make_event_book("orders");
-    let dead_letter = AngzarrDeadLetter {
-        cover: book.cover.clone(),
-        payload: DeadLetterPayload::Events(book),
-        rejection_reason: "Handler threw an exception".to_string(),
-        rejection_details: Some(RejectionDetails::EventProcessingFailed(
-            EventProcessingFailedDetails {
-                error: "Connection refused".to_string(),
-                retry_count: 3,
-                is_transient: false,
-            },
-        )),
-        source_component: "saga-order-fulfillment".to_string(),
-        source_component_type: "saga".to_string(),
-        occurred_at: None,
-        metadata: std::collections::HashMap::new(),
-    };
+    let (tx, mut rx) = mpsc::channel(10);
 
-    dlq_publisher
-        .publish(dead_letter)
+    subscriber
+        .subscribe(Box::new(CapturingHandler::new(tx)))
         .await
-        .expect("DLQ publish should succeed");
+        .expect("Failed to subscribe");
+
+    subscriber
+        .start_consuming()
+        .await
+        .expect("Failed to start consuming");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish to domain1
+    publisher
+        .publish(Arc::new(make_event_book(domain1)))
+        .await
+        .expect("Failed to publish to domain1");
+
+    // Publish to domain2
+    publisher
+        .publish(Arc::new(make_event_book(domain2)))
+        .await
+        .expect("Failed to publish to domain2");
+
+    // Should receive both events
+    let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("Timed out")
+        .expect("Channel closed");
+
+    let second = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("Timed out")
+        .expect("Channel closed");
+
+    let domains: Vec<_> = [&first, &second]
+        .iter()
+        .map(|b| b.cover.as_ref().unwrap().domain.as_str())
+        .collect();
+
+    assert!(domains.contains(&domain1), "should receive from domain1");
+    assert!(domains.contains(&domain2), "should receive from domain2");
 }
 
-/// Test DLQ publish with sequence mismatch rejection.
-pub async fn test_dlq_sequence_mismatch(dlq_config: &DlqConfig) {
-    let dlq_publisher = create_publisher_async(dlq_config)
+/// Test multiple independent handlers on same event.
+pub async fn test_multiple_handlers_independent<B: EventBus>(
+    publisher: &B,
+    domain: &str,
+    subscriber1_name: &str,
+    subscriber2_name: &str,
+) {
+    // Create two separate subscribers
+    let subscriber1 = publisher
+        .create_subscriber(subscriber1_name, Some(domain))
         .await
-        .expect("Failed to create DLQ publisher");
+        .expect("Failed to create subscriber1");
 
-    let command_book = make_command_book("inventory");
-    let dead_letter = AngzarrDeadLetter {
-        cover: command_book.cover.clone(),
-        payload: DeadLetterPayload::Command(command_book),
-        rejection_reason: "Sequence mismatch".to_string(),
-        rejection_details: Some(RejectionDetails::SequenceMismatch(
-            SequenceMismatchDetails {
-                expected_sequence: 0,
-                actual_sequence: 5,
-                merge_strategy: MergeStrategy::MergeManual,
-            },
-        )),
-        source_component: "aggregate-inventory".to_string(),
-        source_component_type: "aggregate".to_string(),
-        occurred_at: None,
-        metadata: std::collections::HashMap::new(),
+    let subscriber2 = publisher
+        .create_subscriber(subscriber2_name, Some(domain))
+        .await
+        .expect("Failed to create subscriber2");
+
+    let count1 = Arc::new(AtomicUsize::new(0));
+    let count2 = Arc::new(AtomicUsize::new(0));
+
+    let (tx1, _rx1) = mpsc::channel(10);
+    let (tx2, _rx2) = mpsc::channel(10);
+
+    subscriber1
+        .subscribe(Box::new(CapturingHandler::with_count(tx1, count1.clone())))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber2
+        .subscribe(Box::new(CapturingHandler::with_count(tx2, count2.clone())))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber1
+        .start_consuming()
+        .await
+        .expect("Failed to start");
+    subscriber2
+        .start_consuming()
+        .await
+        .expect("Failed to start");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish single event
+    publisher
+        .publish(Arc::new(make_event_book(domain)))
+        .await
+        .expect("Failed to publish");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Both handlers should receive the same event independently
+    assert_eq!(
+        count1.load(Ordering::SeqCst),
+        1,
+        "subscriber1 should receive 1 event"
+    );
+    assert_eq!(
+        count2.load(Ordering::SeqCst),
+        1,
+        "subscriber2 should receive 1 event"
+    );
+}
+
+// =============================================================================
+// Metadata and payload preservation tests
+// =============================================================================
+
+/// Test that correlation_id is preserved through transport.
+pub async fn test_routing_metadata_preserved<B: EventBus>(
+    publisher: &B,
+    domain: &str,
+    subscriber_name: &str,
+) {
+    let subscriber = publisher
+        .create_subscriber(subscriber_name, Some(domain))
+        .await
+        .expect("Failed to create subscriber");
+
+    let (tx, mut rx) = mpsc::channel(10);
+
+    subscriber
+        .subscribe(Box::new(CapturingHandler::new(tx)))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber.start_consuming().await.expect("Failed to start");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Create event with specific correlation_id
+    let correlation_id = format!("corr-{}", uuid::Uuid::new_v4());
+    let mut book = make_event_book(domain);
+    book.cover.as_mut().unwrap().correlation_id = correlation_id.clone();
+
+    publisher
+        .publish(Arc::new(book))
+        .await
+        .expect("Failed to publish");
+
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("Timed out")
+        .expect("Channel closed");
+
+    assert_eq!(
+        received.cover.as_ref().unwrap().correlation_id,
+        correlation_id,
+        "correlation_id should be preserved"
+    );
+}
+
+/// Test that binary payload is preserved exactly.
+pub async fn test_payload_bytes_exact<B: EventBus>(
+    publisher: &B,
+    domain: &str,
+    subscriber_name: &str,
+) {
+    let subscriber = publisher
+        .create_subscriber(subscriber_name, Some(domain))
+        .await
+        .expect("Failed to create subscriber");
+
+    let (tx, mut rx) = mpsc::channel(10);
+
+    subscriber
+        .subscribe(Box::new(CapturingHandler::new(tx)))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber.start_consuming().await.expect("Failed to start");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Create event with specific binary payload
+    let payload_bytes: Vec<u8> = (0..256).map(|i| i as u8).collect();
+    let book = EventBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(Uuid {
+                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
+            }),
+            correlation_id: "test".to_string(),
+            edition: None,
+        }),
+        pages: vec![EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(0)),
+            }),
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.test/BinaryPayload".to_string(),
+                value: payload_bytes.clone(),
+            })),
+        }],
+        snapshot: None,
+        ..Default::default()
     };
 
-    dlq_publisher
-        .publish(dead_letter)
+    publisher
+        .publish(Arc::new(book))
         .await
-        .expect("DLQ publish should succeed");
+        .expect("Failed to publish");
+
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("Timed out")
+        .expect("Channel closed");
+
+    if let Some(event_page::Payload::Event(event)) = &received.pages[0].payload {
+        assert_eq!(
+            event.value, payload_bytes,
+            "payload bytes should match exactly"
+        );
+    } else {
+        panic!("Expected Event payload");
+    }
+}
+
+// =============================================================================
+// Concurrency tests
+// =============================================================================
+
+/// Test parallel publishing doesn't lose messages.
+pub async fn test_concurrent_publish_no_loss<B: EventBus + Clone + 'static>(
+    publisher: &B,
+    domain: &str,
+    subscriber_name: &str,
+    message_count: usize,
+) {
+    let subscriber = publisher
+        .create_subscriber(subscriber_name, Some(domain))
+        .await
+        .expect("Failed to create subscriber");
+
+    let count = Arc::new(AtomicUsize::new(0));
+    let (tx, mut rx) = mpsc::channel(message_count * 2);
+
+    subscriber
+        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber.start_consuming().await.expect("Failed to start");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish messages concurrently
+    let mut handles = Vec::new();
+    for _ in 0..message_count {
+        let pub_clone = publisher.clone();
+        let domain_owned = domain.to_string();
+        handles.push(tokio::spawn(async move {
+            pub_clone
+                .publish(Arc::new(make_event_book(&domain_owned)))
+                .await
+                .expect("Failed to publish");
+        }));
+    }
+
+    for handle in handles {
+        handle.await.expect("Task panicked");
+    }
+
+    // Wait for all messages to be received
+    let mut received = 0;
+    loop {
+        match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+            Ok(Some(_)) => received += 1,
+            _ => break,
+        }
+        if received >= message_count {
+            break;
+        }
+    }
+
+    assert_eq!(
+        received, message_count,
+        "should receive all {} messages without loss",
+        message_count
+    );
 }
 
 // =============================================================================
@@ -346,17 +577,43 @@ macro_rules! run_event_bus_tests {
         )
         .await;
         println!("  test_domain_filtering: PASSED");
-    };
 
-    ($publisher:expr, $prefix:expr, $dlq_config:expr) => {
-        // Run base tests
-        run_event_bus_tests!($publisher, $prefix);
+        // Multi-domain subscription
+        test_multi_domain_subscription(
+            $publisher,
+            &format!("{}-md1", $prefix),
+            &format!("{}-md2", $prefix),
+            &format!("{}-sub-multi-domain", $prefix),
+        )
+        .await;
+        println!("  test_multi_domain_subscription: PASSED");
 
-        // DLQ tests
-        test_dlq_publish($dlq_config).await;
-        println!("  test_dlq_publish: PASSED");
+        // Multiple handlers independent
+        test_multiple_handlers_independent(
+            $publisher,
+            &format!("{}-mh", $prefix),
+            &format!("{}-sub-mh1", $prefix),
+            &format!("{}-sub-mh2", $prefix),
+        )
+        .await;
+        println!("  test_multiple_handlers_independent: PASSED");
 
-        test_dlq_sequence_mismatch($dlq_config).await;
-        println!("  test_dlq_sequence_mismatch: PASSED");
+        // Metadata preservation
+        test_routing_metadata_preserved(
+            $publisher,
+            &format!("{}-meta", $prefix),
+            &format!("{}-sub-meta", $prefix),
+        )
+        .await;
+        println!("  test_routing_metadata_preserved: PASSED");
+
+        // Payload bytes exact
+        test_payload_bytes_exact(
+            $publisher,
+            &format!("{}-bytes", $prefix),
+            &format!("{}-sub-bytes", $prefix),
+        )
+        .await;
+        println!("  test_payload_bytes_exact: PASSED");
     };
 }

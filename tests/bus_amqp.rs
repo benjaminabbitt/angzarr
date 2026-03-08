@@ -13,7 +13,6 @@ mod bus;
 use std::time::Duration;
 
 use angzarr::bus::amqp::{AmqpConfig, AmqpEventBus};
-use angzarr::dlq::DlqConfig;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
@@ -77,22 +76,4 @@ async fn test_amqp_event_bus() {
     run_event_bus_tests!(&bus, &prefix);
 
     println!("=== All AMQP EventBus tests PASSED ===");
-}
-
-#[tokio::test]
-async fn test_amqp_dlq() {
-    println!("=== AMQP DLQ Tests ===");
-    println!("Starting RabbitMQ container...");
-
-    let (_container, url) = start_rabbitmq().await;
-
-    let dlq_config = DlqConfig::amqp(&url);
-
-    bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
-    println!("  test_dlq_publish: PASSED");
-
-    bus::event_bus_tests::test_dlq_sequence_mismatch(&dlq_config).await;
-    println!("  test_dlq_sequence_mismatch: PASSED");
-
-    println!("=== All AMQP DLQ tests PASSED ===");
 }

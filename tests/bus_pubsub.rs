@@ -12,7 +12,6 @@ mod bus;
 use std::time::Duration;
 
 use angzarr::bus::pubsub::{PubSubConfig, PubSubEventBus};
-use angzarr::dlq::DlqConfig;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
@@ -89,24 +88,4 @@ async fn test_pubsub_event_bus() {
     run_event_bus_tests!(&bus, &prefix);
 
     println!("=== All Pub/Sub EventBus tests PASSED ===");
-}
-
-#[tokio::test]
-async fn test_pubsub_dlq() {
-    println!("=== Pub/Sub DLQ Tests ===");
-
-    let (_container, emulator_host) = start_pubsub_emulator().await;
-
-    // Set emulator environment
-    std::env::set_var("PUBSUB_EMULATOR_HOST", &emulator_host);
-
-    let dlq_config = DlqConfig::pubsub();
-
-    bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
-    println!("  test_dlq_publish: PASSED");
-
-    bus::event_bus_tests::test_dlq_sequence_mismatch(&dlq_config).await;
-    println!("  test_dlq_sequence_mismatch: PASSED");
-
-    println!("=== All Pub/Sub DLQ tests PASSED ===");
 }

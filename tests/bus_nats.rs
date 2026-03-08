@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use angzarr::bus::nats::NatsEventBus;
 use angzarr::bus::EventBus;
-use angzarr::proto::{event_page, Cover, Edition, EventBook, EventPage};
+use angzarr::proto::{
+    event_page, page_header::SequenceType, Cover, Edition, EventBook, EventPage, PageHeader,
+};
 use angzarr::storage::nats::NatsEventStore;
 use angzarr::storage::EventStore;
 use angzarr::test_utils::CapturingHandler;
@@ -94,7 +96,9 @@ async fn test_nats_event_bus() {
 fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32) -> EventBook {
     let pages: Vec<EventPage> = (0..count)
         .map(|i| EventPage {
-            sequence: first_seq + i,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(first_seq + i)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("type.example/{}Event", domain),
@@ -127,7 +131,9 @@ fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32
 fn make_event_pages(first_seq: u32, count: u32) -> Vec<EventPage> {
     (0..count)
         .map(|i| EventPage {
-            sequence: first_seq + i,
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(first_seq + i)),
+            }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
                 type_url: "type.example/TestEvent".to_string(),
@@ -257,7 +263,7 @@ async fn test_eventstore_eventbus_interoperability() {
 
     let events = make_event_pages(0, 2);
     event_store
-        .add(domain, edition, root, events, "interop-test", None)
+        .add(domain, edition, root, events, "interop-test", None, None)
         .await
         .expect("Failed to add events via EventStore");
 
@@ -318,10 +324,11 @@ async fn test_eventstore_eventbus_interoperability() {
 
     // Verify sequence ordering
     for (i, event) in all_events.iter().enumerate() {
-        assert_eq!(
-            event.sequence, i as u32,
-            "Events should be in sequence order"
-        );
+        let seq = match event.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+            Some(SequenceType::Sequence(n)) => *n,
+            _ => panic!("Expected sequence in event header"),
+        };
+        assert_eq!(seq, i as u32, "Events should be in sequence order");
     }
     println!("    Events are in correct sequence order (0, 1, 2, 3)");
 

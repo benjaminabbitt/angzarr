@@ -263,22 +263,10 @@ rand = "0.9"
 # Bus tests verify: EventBus trait (publish, subscribe, ack/nack, DLQ)
 # =============================================================================
 
-# --- Interface Tests (Gherkin/Cucumber) ---
-
-[[test]]
-name = "interfaces"
-# Gherkin/Cucumber BDD specifications that verify storage and bus implementations
-# fulfill their contracts. Human-readable scenarios define expected behavior;
-# step definitions wire scenarios to actual implementations. The canonical source
-# of truth for "correct behavior" - if interfaces pass, the contract is satisfied.
-# Supports multiple backends via STORAGE_BACKEND and BUS_BACKEND env vars.
-path = "tests/interfaces/main.rs"
-harness = false
-required-features = ["test-utils"]
-
-# --- Storage Contract Tests (Direct/Macro-based) ---
-# For backends with partial storage support or specialized testing needs.
-# Full-support backends (SQLite, PostgreSQL) prefer Gherkin interface tests.
+# --- Storage Contract Tests (Macro-based) ---
+# All storage backends use macro-based tests for consistency and reduced overhead.
+# Tests are organized by trait (EventStore, SnapshotStore, PositionStore) with
+# reusable test suites in tests/storage/*.rs.
 
 [[test]]
 name = "storage_redis"
@@ -297,6 +285,18 @@ name = "storage_nats"
 # NATS JetStream provides distributed event storage with replay. Testing ensures
 # events, snapshots, and positions persist correctly in the JetStream KV store.
 required-features = ["nats"]
+
+[[test]]
+name = "storage_sqlite"
+# SQLite provides embedded storage for standalone mode. Testing ensures all three
+# stores (Event, Snapshot, Position) work correctly with in-memory SQLite.
+required-features = ["sqlite"]
+
+[[test]]
+name = "storage_postgres"
+# PostgreSQL provides production-grade storage. Testing ensures all three stores
+# work correctly with full SQL support including historical snapshot queries.
+required-features = ["postgres"]
 
 # --- Bus Contract Tests ---
 

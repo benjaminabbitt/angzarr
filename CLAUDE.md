@@ -358,16 +358,19 @@ These functions are tested implicitly via integration tests that exercise the fu
 
 Verify that storage and bus implementations correctly fulfill their trait contracts. Uses **testcontainers** to provision real databases/message brokers in Docker containers.
 
-**Full-support backends** (SQLite, PostgreSQL) use Gherkin interface tests:
-- Location: `tests/interfaces/` — human-readable BDD-style specifications
-- Run with: `just test-interfaces` (SQLite, fast) or `just test-interfaces-postgres` (containers)
+**All backends use macro-based tests** with shared test suites:
+- Storage tests: `tests/storage_*.rs` (sqlite, postgres, redis, immudb, nats)
+- Bus tests: `tests/bus_*.rs` (nats, amqp, kafka, pubsub, sns_sqs)
+- Shared test suites: `tests/storage/*_tests.rs` and `tests/bus/*_tests.rs` define reusable test functions and macros
 
-**Partial-support backends** use direct macro tests:
-- Storage: `tests/storage_redis.rs` (SnapshotStore only), `tests/storage_immudb.rs` (EventStore only), `tests/storage_nats.rs` (EventStore only)
-- Bus: `tests/bus_nats.rs`, `tests/bus_amqp.rs`, `tests/bus_kafka.rs`, etc.
-- Shared test suites: `tests/storage/*_tests.rs` define reusable test macros
+**Running tests:**
+- SQLite (fast, in-memory): `cargo test --test storage_sqlite --features "sqlite test-utils"`
+- PostgreSQL (testcontainers): `cargo test --test storage_postgres --features "postgres test-utils"`
+- Bus tests require testcontainers: `cargo test --test bus_nats --features "nats test-utils"`
 
-- **Execution**: CI/CD only (containers are slow), but runnable locally via just targets
+**Why macro-based (not Gherkin)?** Framework contract tests are Rust-internal. Gherkin's overhead (step definitions, feature files, harness) doesn't add value when the "business domain" is the framework itself. Macros provide ~90% less code with the same coverage. Gherkin remains valuable for examples/ and client/ where polyglot developer education justifies the overhead.
+
+- **Execution**: CI/CD only (containers are slow), but runnable locally
 
 ### Integration Tests
 
