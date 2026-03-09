@@ -143,7 +143,7 @@ func (c *AggregateContext) anAggregateWithExistingEvents() error {
 	for i := 0; i < 3; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		c.eventBook.Pages = append(c.eventBook.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
 			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
@@ -165,7 +165,7 @@ func (c *AggregateContext) anAggregateAtSequence(seq int) error {
 	for i := 0; i < seq; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		c.eventBook.Pages = append(c.eventBook.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
 			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
@@ -458,8 +458,8 @@ func (c *AggregateContext) theEventsShouldHaveCorrectSequences() error {
 		return nil
 	}
 	for i, page := range c.eventBook.Pages {
-		if page.GetSequence() != uint32(i) {
-			return fmt.Errorf("expected sequence %d, got %d", i, page.GetSequence())
+		if page.GetHeader().GetSequence() != uint32(i) {
+			return fmt.Errorf("expected sequence %d, got %d", i, page.GetHeader().GetSequence())
 		}
 	}
 	return nil
@@ -569,7 +569,7 @@ func (c *AggregateContext) computeShouldProduceEvents() error {
 	if len(c.producedEvents) == 0 {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		c.producedEvents = []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}, Payload: &pb.EventPage_Event{Event: evt}},
 		}
 	}
 	if len(c.producedEvents) == 0 {
@@ -587,7 +587,7 @@ func makeTestEventBook(seq int) *pb.EventBook {
 	evt, _ := anypb.New(&emptypb.Empty{})
 	return &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: uint32(seq)}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(seq)}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 }
@@ -639,7 +639,7 @@ func (c *AggregateClientContext) iExecuteACommandWithData(cmdType, data string) 
 			CorrelationId: c.correlationID,
 		},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: c.currentSequence}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: c.currentSequence}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 	c.lastResponse = &pb.BusinessResponse{
@@ -659,7 +659,7 @@ func (c *AggregateClientContext) anAggregateWithRootAtSequence(domain, root stri
 	for i := 0; i < seq; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
 			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
@@ -676,7 +676,7 @@ func (c *AggregateClientContext) iExecuteACommandAtSequence(seq int) error {
 	c.lastResult = &pb.EventBook{
 		Cover: &pb.Cover{Domain: c.currentDomain},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: uint32(seq)}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(seq)}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 	c.lastResponse = &pb.BusinessResponse{
@@ -694,7 +694,7 @@ func (c *AggregateClientContext) iExecuteACommandWithCorrelationID(correlationID
 			CorrelationId: correlationID,
 		},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: c.currentSequence}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: c.currentSequence}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 	c.lastResponse = &pb.BusinessResponse{
@@ -785,7 +785,7 @@ func (c *AggregateClientContext) iRetryTheCommandAtTheCorrectSequence() error {
 	c.lastResult = &pb.EventBook{
 		Cover: &pb.Cover{Domain: c.currentDomain},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: c.currentSequence}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: c.currentSequence}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 	return nil
@@ -883,8 +883,8 @@ func (c *AggregateClientContext) iExecuteACommandThatProducesEvents(count int) e
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		pages[i] = &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: c.currentSequence + uint32(i)},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: c.currentSequence + uint32(i)}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		}
 	}
 	c.lastResult = &pb.EventBook{
@@ -977,7 +977,7 @@ func (c *AggregateClientContext) iExecuteACommandForRootAtSequence(cmdType, root
 	c.lastResult = &pb.EventBook{
 		Cover: &pb.Cover{Domain: c.currentDomain, Root: &pb.UUID{Value: []byte(root)}},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: uint32(seq)}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(seq)}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 	c.eventBooks[c.key(c.currentDomain, root)] = c.lastResult
@@ -1010,7 +1010,7 @@ func (c *AggregateClientContext) aHandlerEmitsEvents(count int) error {
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		pages[i] = &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
 			Payload:      &pb.EventPage_Event{Event: evt},
 		}
 	}
@@ -1027,7 +1027,7 @@ func (c *AggregateClientContext) guardAndValidatePass() error {
 	evt, _ := anypb.New(&emptypb.Empty{})
 	c.lastResult = &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: evt}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}, Payload: &pb.EventPage_Event{Event: evt}},
 		},
 	}
 	return nil
@@ -1098,7 +1098,7 @@ func (c *AggregateClientContext) anAggregateWithRootHasASnapshotAtSequenceAndEve
 	for i := snapSeq; i < snapSeq+eventCount; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
 			Payload:      &pb.EventPage_Event{Event: evt},
 		})
 	}
@@ -1115,8 +1115,8 @@ func (c *AggregateClientContext) events(seq1, seq2, seq3 int) error {
 	for _, seq := range []int{seq1, seq2, seq3} {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		pages = append(pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(seq)},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(seq)}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.lastResult = &pb.EventBook{Pages: pages}
@@ -1134,7 +1134,7 @@ func (c *AggregateClientContext) eventsWithType_urls(table *godog.Table) error {
 			typeURL = row.Cells[0].Value
 		}
 		pages = append(pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i - 1)},
+			Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i - 1)}},
 			Payload: &pb.EventPage_Event{
 				Event: &anypb.Any{TypeUrl: typeURL, Value: []byte{}},
 			},

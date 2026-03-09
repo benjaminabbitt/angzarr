@@ -95,7 +95,9 @@ class UpcasterRouter {
                     auto new_event = handler(event);
                     EventPage new_page;
                     new_page.mutable_event()->CopyFrom(new_event);
-                    new_page.set_sequence(page.sequence());
+                    if (page.has_header()) {
+                        new_page.mutable_header()->set_sequence(page.header().sequence());
+                    }
                     if (page.has_created_at()) {
                         new_page.mutable_created_at()->CopyFrom(page.created_at());
                     }
