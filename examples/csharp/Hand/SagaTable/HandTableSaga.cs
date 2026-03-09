@@ -10,6 +10,7 @@ namespace Hand.SagaTable;
 /// Saga: Hand -> Table
 /// Reacts to HandComplete events from Hand domain.
 /// Sends EndHand commands to Table domain.
+/// Sagas are stateless translators - framework handles sequence stamping.
 /// </summary>
 public static class HandTableSaga
 {
@@ -17,26 +18,12 @@ public static class HandTableSaga
     {
         return new EventRouter("saga-hand-table")
             .Domain("hand")
-            .Prepare<HandComplete>(PrepareHandComplete)
             .On<HandComplete>(HandleHandComplete);
-    }
-
-    private static List<Cover> PrepareHandComplete(HandComplete evt)
-    {
-        return new List<Cover>
-        {
-            new Cover
-            {
-                Domain = "table",
-                Root = new UUID { Value = evt.TableRoot },
-            },
-        };
     }
 
     private static object HandleHandComplete(HandComplete evt, List<EventBook> destinations)
     {
-        var destSeq = EventRouter.NextSequence(destinations.FirstOrDefault());
-
+        // Sagas are stateless - destinations not used, framework stamps sequences
         var results = evt
             .Winners.Select(winner => new PotResult
             {
@@ -63,7 +50,7 @@ public static class HandTableSaga
             {
                 new CommandPage
                 {
-                    Header = new PageHeader { Sequence = destSeq },
+                    Header = new PageHeader { AngzarrDeferred = new AngzarrDeferredSequence() },
                     Command = cmdAny,
                 },
             },

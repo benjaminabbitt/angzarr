@@ -10,46 +10,22 @@ namespace Hand.SagaPlayer;
 /// Saga: Hand -> Player
 /// Reacts to PotAwarded events from Hand domain.
 /// Sends DepositFunds commands to Player domain.
+/// Sagas are stateless translators - framework handles sequence stamping.
 /// </summary>
 public static class HandPlayerSaga
 {
     public static EventRouter Create()
     {
-        return new EventRouter("saga-hand-player")
-            .Domain("hand")
-            .Prepare<PotAwarded>(PreparePotAwarded)
-            .On<PotAwarded>(HandlePotAwarded);
-    }
-
-    private static List<Cover> PreparePotAwarded(PotAwarded evt)
-    {
-        return evt
-            .Winners.Select(winner => new Cover
-            {
-                Domain = "player",
-                Root = new UUID { Value = winner.PlayerRoot },
-            })
-            .ToList();
+        return new EventRouter("saga-hand-player").Domain("hand").On<PotAwarded>(HandlePotAwarded);
     }
 
     private static object HandlePotAwarded(PotAwarded evt, List<EventBook> destinations)
     {
-        var destMap = destinations
-            .Where(d => d.Cover?.Root != null)
-            .ToDictionary(
-                d => Convert.ToHexString(d.Cover.Root.Value.ToByteArray()).ToLowerInvariant(),
-                d => d
-            );
-
+        // Sagas are stateless - destinations not used, framework stamps sequences
         var commands = new List<CommandBook>();
 
         foreach (var winner in evt.Winners)
         {
-            var playerKey = Convert.ToHexString(winner.PlayerRoot.ToByteArray()).ToLowerInvariant();
-            var destSeq = destMap.TryGetValue(playerKey, out var dest)
-                ? EventRouter.NextSequence(dest)
-                : 0;
-
             var depositFunds = new DepositFunds
             {
                 Amount = new Currency { Amount = winner.Amount, CurrencyCode = "CHIPS" },
@@ -69,7 +45,10 @@ public static class HandPlayerSaga
                     {
                         new CommandPage
                         {
-                            Header = new PageHeader { Sequence = destSeq },
+                            Header = new PageHeader
+                            {
+                                AngzarrDeferred = new AngzarrDeferredSequence(),
+                            },
                             Command = cmdAny,
                         },
                     },

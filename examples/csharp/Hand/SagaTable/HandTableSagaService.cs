@@ -9,6 +9,7 @@ namespace Hand.SagaTable;
 
 /// <summary>
 /// gRPC service for Hand->Table saga.
+/// Sagas are stateless translators - framework handles sequence stamping.
 /// </summary>
 public class HandTableSagaService : SagaService.SagaServiceBase
 {
@@ -19,30 +20,7 @@ public class HandTableSagaService : SagaService.SagaServiceBase
         _router = router;
     }
 
-    public override Task<SagaPrepareResponse> Prepare(
-        SagaPrepareRequest request,
-        ServerCallContext context
-    )
-    {
-        var response = new SagaPrepareResponse();
-
-        foreach (var page in request.Source.Pages)
-        {
-            var eventMessage = UnpackEvent(page.Event);
-            if (eventMessage != null)
-            {
-                var covers = _router.DoPrepare(eventMessage);
-                response.Destinations.AddRange(covers);
-            }
-        }
-
-        return Task.FromResult(response);
-    }
-
-    public override Task<SagaResponse> Execute(
-        SagaExecuteRequest request,
-        ServerCallContext context
-    )
+    public override Task<SagaResponse> Handle(SagaHandleRequest request, ServerCallContext context)
     {
         var response = new SagaResponse();
 
@@ -52,7 +30,8 @@ public class HandTableSagaService : SagaService.SagaServiceBase
             if (eventMessage == null)
                 continue;
 
-            var result = _router.DoHandle(eventMessage, request.Destinations.ToList());
+            // Sagas receive source events only - framework handles destinations
+            var result = _router.DoHandle(eventMessage, new List<EventBook>());
 
             if (result is CommandBook commandBook)
             {

@@ -13,6 +13,7 @@ namespace Table.SagaHand;
 /// Saga: Table -> Hand
 /// Reacts to HandStarted events from Table domain.
 /// Sends DealCards commands to Hand domain.
+/// Sagas are stateless translators - framework handles sequence stamping.
 /// </summary>
 public static class TableHandSaga
 {
@@ -21,29 +22,15 @@ public static class TableHandSaga
     {
         return new EventRouter("saga-table-hand")
             .Domain("table")
-            .Prepare<HandStarted>(PrepareHandStarted)
             .On<HandStarted>(HandleHandStarted);
     }
 
     // docs:end:event_router
 
-    private static List<Cover> PrepareHandStarted(HandStarted evt)
-    {
-        return new List<Cover>
-        {
-            new Cover
-            {
-                Domain = "hand",
-                Root = new UUID { Value = evt.HandRoot },
-            },
-        };
-    }
-
     // docs:start:saga_handler
     private static object HandleHandStarted(HandStarted evt, List<EventBook> destinations)
     {
-        var destSeq = EventRouter.NextSequence(destinations.FirstOrDefault());
-
+        // Sagas are stateless - destinations not used, framework stamps sequences
         var players = evt
             .ActivePlayers.Select(seat => new PlayerInHand
             {
@@ -77,7 +64,7 @@ public static class TableHandSaga
             {
                 new CommandPage
                 {
-                    Header = new PageHeader { Sequence = destSeq },
+                    Header = new PageHeader { AngzarrDeferred = new AngzarrDeferredSequence() },
                     Command = cmdAny,
                 },
             },

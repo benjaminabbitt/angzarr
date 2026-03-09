@@ -10,6 +10,7 @@ namespace Player.SagaTable;
 /// Saga: Player -> Table
 ///
 /// Propagates player sit-out/sit-in intent as facts to the table domain.
+/// Sagas are stateless translators - framework handles sequence stamping.
 ///
 /// Flow:
 /// - PlayerSittingOut -> PlayerSatOut fact to table
@@ -26,8 +27,6 @@ public static class PlayerTableSaga
     {
         return new EventRouter("saga-player-table")
             .Domain("player")
-            .Prepare<PlayerSittingOut>(PrepareSittingOut)
-            .Prepare<PlayerReturningToPlay>(PrepareReturningToPlay)
             .On<PlayerSittingOut>(HandleSittingOut)
             .On<PlayerReturningToPlay>(HandleReturningToPlay);
     }
@@ -48,26 +47,11 @@ public static class PlayerTableSaga
     }
 
     /// <summary>
-    /// Prepare phase: no destinations needed (emits facts, not commands).
-    /// </summary>
-    private static List<Cover> PrepareSittingOut(PlayerSittingOut evt)
-    {
-        return new List<Cover>();
-    }
-
-    /// <summary>
-    /// Prepare phase: no destinations needed (emits facts, not commands).
-    /// </summary>
-    private static List<Cover> PrepareReturningToPlay(PlayerReturningToPlay evt)
-    {
-        return new List<Cover>();
-    }
-
-    /// <summary>
-    /// Execute phase: translate PlayerSittingOut -> PlayerSatOut fact for table.
+    /// Handle phase: translate PlayerSittingOut -> PlayerSatOut fact for table.
     /// </summary>
     private static object HandleSittingOut(PlayerSittingOut evt, List<EventBook> destinations)
     {
+        // Sagas are stateless - destinations not used, framework stamps sequences
         var satOut = new PlayerSatOut { PlayerRoot = _currentSourceRoot, SatOutAt = evt.SatOutAt };
 
         var factAny = Any.Pack(satOut, "type.googleapis.com/");
@@ -79,18 +63,26 @@ public static class PlayerTableSaga
                 Domain = "table",
                 Root = new UUID { Value = evt.TableRoot },
             },
-            Pages = { new EventPage { Event = factAny } },
+            Pages =
+            {
+                new EventPage
+                {
+                    Header = new PageHeader { AngzarrDeferred = new AngzarrDeferredSequence() },
+                    Event = factAny,
+                },
+            },
         };
     }
 
     /// <summary>
-    /// Execute phase: translate PlayerReturningToPlay -> PlayerSatIn fact for table.
+    /// Handle phase: translate PlayerReturningToPlay -> PlayerSatIn fact for table.
     /// </summary>
     private static object HandleReturningToPlay(
         PlayerReturningToPlay evt,
         List<EventBook> destinations
     )
     {
+        // Sagas are stateless - destinations not used, framework stamps sequences
         var satIn = new PlayerSatIn { PlayerRoot = _currentSourceRoot, SatInAt = evt.SatInAt };
 
         var factAny = Any.Pack(satIn, "type.googleapis.com/");
@@ -102,7 +94,14 @@ public static class PlayerTableSaga
                 Domain = "table",
                 Root = new UUID { Value = evt.TableRoot },
             },
-            Pages = { new EventPage { Event = factAny } },
+            Pages =
+            {
+                new EventPage
+                {
+                    Header = new PageHeader { AngzarrDeferred = new AngzarrDeferredSequence() },
+                    Event = factAny,
+                },
+            },
         };
     }
 }

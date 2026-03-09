@@ -10,49 +10,23 @@ namespace Table.SagaPlayer;
 /// Saga: Table -> Player
 /// Reacts to HandEnded events from Table domain.
 /// Sends ReleaseFunds commands to Player domain.
+/// Sagas are stateless translators - framework handles sequence stamping.
 /// </summary>
 public static class TablePlayerSaga
 {
     public static EventRouter Create()
     {
-        return new EventRouter("saga-table-player")
-            .Domain("table")
-            .Prepare<HandEnded>(PrepareHandEnded)
-            .On<HandEnded>(HandleHandEnded);
-    }
-
-    private static List<Cover> PrepareHandEnded(HandEnded evt)
-    {
-        return evt
-            .StackChanges.Keys.Select(playerHex =>
-            {
-                var playerRoot = ByteString.CopyFrom(Convert.FromHexString(playerHex));
-                return new Cover
-                {
-                    Domain = "player",
-                    Root = new UUID { Value = playerRoot },
-                };
-            })
-            .ToList();
+        return new EventRouter("saga-table-player").Domain("table").On<HandEnded>(HandleHandEnded);
     }
 
     private static object HandleHandEnded(HandEnded evt, List<EventBook> destinations)
     {
-        var destMap = destinations
-            .Where(d => d.Cover?.Root != null)
-            .ToDictionary(
-                d => Convert.ToHexString(d.Cover.Root.Value.ToByteArray()).ToLowerInvariant(),
-                d => d
-            );
-
+        // Sagas are stateless - destinations not used, framework stamps sequences
         var commands = new List<CommandBook>();
 
         foreach (var playerHex in evt.StackChanges.Keys)
         {
             var playerRoot = ByteString.CopyFrom(Convert.FromHexString(playerHex));
-            var destSeq = destMap.TryGetValue(playerHex.ToLowerInvariant(), out var dest)
-                ? EventRouter.NextSequence(dest)
-                : 0;
 
             var releaseFunds = new ReleaseFunds { TableRoot = evt.HandRoot };
 
@@ -70,7 +44,10 @@ public static class TablePlayerSaga
                     {
                         new CommandPage
                         {
-                            Header = new PageHeader { Sequence = destSeq },
+                            Header = new PageHeader
+                            {
+                                AngzarrDeferred = new AngzarrDeferredSequence(),
+                            },
                             Command = cmdAny,
                         },
                     },

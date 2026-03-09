@@ -14,10 +14,10 @@ namespace Table.SagaHandOO;
 ///
 /// Reacts to HandStarted events from Table domain.
 /// Sends DealCards commands to Hand domain.
+/// Sagas are stateless translators - framework handles sequence stamping.
 ///
 /// Uses annotation-based handler registration with:
-/// - [Prepares(typeof(EventType))] for prepare phase handlers
-/// - [Handles(typeof(EventType))] for execute phase handlers
+/// - [Handles(typeof(EventType))] for handle phase handlers
 /// </summary>
 public class TableHandSaga : Saga
 {
@@ -26,35 +26,14 @@ public class TableHandSaga : Saga
     public override string OutputDomain => "hand";
 
     /// <summary>
-    /// Prepare phase: declare which destination aggregates we need to read.
+    /// Handle phase: translate Table.HandStarted -> Hand.DealCards.
     ///
-    /// Called during the prepare phase of the two-phase saga protocol.
-    /// Returns a list of Cover objects identifying the destination aggregates
-    /// needed for the execute phase.
-    /// </summary>
-    [Prepares(typeof(HandStarted))]
-    public List<Cover> PrepareHandStarted(HandStarted evt)
-    {
-        return new List<Cover>
-        {
-            new Cover
-            {
-                Domain = "hand",
-                Root = new UUID { Value = evt.HandRoot },
-            },
-        };
-    }
-
-    /// <summary>
-    /// Execute phase: translate Table.HandStarted -> Hand.DealCards.
-    ///
-    /// Called during the execute phase with the source event and
-    /// fetched destination EventBooks. Returns the command to send.
+    /// Called with the source event. Framework handles sequence stamping.
     /// </summary>
     [Handles(typeof(HandStarted))]
     public CommandBook HandleHandStarted(HandStarted evt, List<EventBook> destinations)
     {
-        var destSeq = NextSequence(destinations.Count > 0 ? destinations[0] : null);
+        // Sagas are stateless - destinations not used, framework stamps sequences
 
         // Convert SeatSnapshot to PlayerInHand
         var players = evt
@@ -89,7 +68,7 @@ public class TableHandSaga : Saga
             {
                 new CommandPage
                 {
-                    Header = new PageHeader { Sequence = destSeq },
+                    Header = new PageHeader { AngzarrDeferred = new AngzarrDeferredSequence() },
                     Command = PackCommand(dealCards),
                 },
             },
