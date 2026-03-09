@@ -53,11 +53,8 @@ COPY examples/rust/table/saga-player/Cargo.toml ./examples/rust/table/saga-playe
 COPY examples/rust/hand/saga-table/Cargo.toml ./examples/rust/hand/saga-table/Cargo.toml
 COPY examples/rust/hand/saga-player/Cargo.toml ./examples/rust/hand/saga-player/Cargo.toml
 
-# Process Manager (excluded: proto mismatches)
-# COPY examples/rust/hand-flow/Cargo.toml ./examples/rust/hand-flow/Cargo.toml
-# COPY examples/rust/hand-flow-oo/Cargo.toml ./examples/rust/hand-flow-oo/Cargo.toml
-# COPY examples/rust/pmg-hand-flow/Cargo.toml ./examples/rust/pmg-hand-flow/Cargo.toml
-# COPY examples/rust/pmg-hand-flow-oo/Cargo.toml ./examples/rust/pmg-hand-flow-oo/Cargo.toml
+# Process Manager
+COPY examples/rust/pmg-hand-flow/Cargo.toml ./examples/rust/pmg-hand-flow/Cargo.toml
 
 # Projector
 COPY examples/rust/prj-output/Cargo.toml ./examples/rust/prj-output/Cargo.toml
@@ -79,6 +76,7 @@ RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     examples/rust/table/saga-player/src \
     examples/rust/hand/saga-table/src \
     examples/rust/hand/saga-player/src \
+    examples/rust/pmg-hand-flow/src \
     examples/rust/prj-output/src \
     examples/rust/prj-output-oo/src \
     examples/rust/tests/tests && \
@@ -96,6 +94,7 @@ RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     echo "fn main() {}" > examples/rust/table/saga-player/src/main.rs && \
     echo "fn main() {}" > examples/rust/hand/saga-table/src/main.rs && \
     echo "fn main() {}" > examples/rust/hand/saga-player/src/main.rs && \
+    echo "fn main() {}" > examples/rust/pmg-hand-flow/src/main.rs && \
     echo "fn main() {}" > examples/rust/prj-output/src/main.rs && \
     echo "fn main() {}" > examples/rust/prj-output-oo/src/main.rs && \
     echo "fn main() {}" > examples/rust/tests/tests/player.rs && \
@@ -134,11 +133,8 @@ COPY examples/rust/table/saga-player/src ./examples/rust/table/saga-player/src
 COPY examples/rust/hand/saga-table/src ./examples/rust/hand/saga-table/src
 COPY examples/rust/hand/saga-player/src ./examples/rust/hand/saga-player/src
 
-# Process Manager (excluded: proto mismatches)
-# COPY examples/rust/hand-flow/src ./examples/rust/hand-flow/src
-# COPY examples/rust/hand-flow-oo/src ./examples/rust/hand-flow-oo/src
-# COPY examples/rust/pmg-hand-flow/src ./examples/rust/pmg-hand-flow/src
-# COPY examples/rust/pmg-hand-flow-oo/src ./examples/rust/pmg-hand-flow-oo/src
+# Process Manager
+COPY examples/rust/pmg-hand-flow/src ./examples/rust/pmg-hand-flow/src
 
 # Projector
 COPY examples/rust/prj-output/src ./examples/rust/prj-output/src
@@ -162,6 +158,7 @@ RUN --mount=type=cache,id=rust-cargo-registry,target=/usr/local/cargo/registry,s
     cp target/container-dev/saga-table-player /tmp/ && \
     cp target/container-dev/saga-hand-table /tmp/ && \
     cp target/container-dev/saga-hand-player /tmp/ && \
+    cp target/container-dev/pmg-hand-flow /tmp/ && \
     cp target/container-dev/prj-output /tmp/ && \
     cp target/container-dev/prj-output-oo /tmp/
 
@@ -214,11 +211,8 @@ COPY examples/rust/table/saga-player/Cargo.toml ./examples/rust/table/saga-playe
 COPY examples/rust/hand/saga-table/Cargo.toml ./examples/rust/hand/saga-table/Cargo.toml
 COPY examples/rust/hand/saga-player/Cargo.toml ./examples/rust/hand/saga-player/Cargo.toml
 
-# Process Manager (excluded: proto mismatches)
-# COPY examples/rust/hand-flow/Cargo.toml ./examples/rust/hand-flow/Cargo.toml
-# COPY examples/rust/hand-flow-oo/Cargo.toml ./examples/rust/hand-flow-oo/Cargo.toml
-# COPY examples/rust/pmg-hand-flow/Cargo.toml ./examples/rust/pmg-hand-flow/Cargo.toml
-# COPY examples/rust/pmg-hand-flow-oo/Cargo.toml ./examples/rust/pmg-hand-flow-oo/Cargo.toml
+# Process Manager
+COPY examples/rust/pmg-hand-flow/Cargo.toml ./examples/rust/pmg-hand-flow/Cargo.toml
 
 # Projector
 COPY examples/rust/prj-output/Cargo.toml ./examples/rust/prj-output/Cargo.toml
@@ -240,6 +234,7 @@ RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     examples/rust/table/saga-player/src \
     examples/rust/hand/saga-table/src \
     examples/rust/hand/saga-player/src \
+    examples/rust/pmg-hand-flow/src \
     examples/rust/prj-output/src \
     examples/rust/prj-output-oo/src \
     examples/rust/tests/tests && \
@@ -257,6 +252,7 @@ RUN mkdir -p client/rust/src client/rust/angzarr-macros/src client/rust/tests \
     echo "fn main() {}" > examples/rust/table/saga-player/src/main.rs && \
     echo "fn main() {}" > examples/rust/hand/saga-table/src/main.rs && \
     echo "fn main() {}" > examples/rust/hand/saga-player/src/main.rs && \
+    echo "fn main() {}" > examples/rust/pmg-hand-flow/src/main.rs && \
     echo "fn main() {}" > examples/rust/prj-output/src/main.rs && \
     echo "fn main() {}" > examples/rust/prj-output-oo/src/main.rs && \
     echo "fn main() {}" > examples/rust/tests/tests/player.rs && \
@@ -302,11 +298,8 @@ COPY examples/rust/table/saga-player/src ./examples/rust/table/saga-player/src
 COPY examples/rust/hand/saga-table/src ./examples/rust/hand/saga-table/src
 COPY examples/rust/hand/saga-player/src ./examples/rust/hand/saga-player/src
 
-# Process Manager (excluded: proto mismatches)
-# COPY examples/rust/hand-flow/src ./examples/rust/hand-flow/src
-# COPY examples/rust/hand-flow-oo/src ./examples/rust/hand-flow-oo/src
-# COPY examples/rust/pmg-hand-flow/src ./examples/rust/pmg-hand-flow/src
-# COPY examples/rust/pmg-hand-flow-oo/src ./examples/rust/pmg-hand-flow-oo/src
+# Process Manager
+COPY examples/rust/pmg-hand-flow/src ./examples/rust/pmg-hand-flow/src
 
 # Projector
 COPY examples/rust/prj-output/src ./examples/rust/prj-output/src
@@ -334,6 +327,7 @@ RUN --mount=type=cache,id=rust-musl-cargo-registry,target=/usr/local/cargo/regis
     cp target/$TARGET/production/saga-table-player /tmp/ && \
     cp target/$TARGET/production/saga-hand-table /tmp/ && \
     cp target/$TARGET/production/saga-hand-player /tmp/ && \
+    cp target/$TARGET/production/pmg-hand-flow /tmp/ && \
     cp target/$TARGET/production/prj-output /tmp/ && \
     cp target/$TARGET/production/prj-output-oo /tmp/
 
@@ -448,22 +442,22 @@ EXPOSE 50014
 ENTRYPOINT ["./server"]
 
 # ============================================================================
-# Dev Process Manager (excluded: proto mismatches)
+# Dev Process Manager
 # ============================================================================
-# FROM runtime-dev-base AS pmg-hand-flow-dev
-# COPY --from=builder-dev /tmp/hand-flow ./server
-# ENV PORT=50091
-# EXPOSE 50091
-# ENTRYPOINT ["./server"]
+FROM runtime-dev-base AS pmg-hand-flow-dev
+COPY --from=builder-dev /tmp/pmg-hand-flow ./server
+ENV PORT=50391
+EXPOSE 50391
+ENTRYPOINT ["./server"]
 
 # ============================================================================
-# Release Process Manager (excluded: proto mismatches)
+# Release Process Manager
 # ============================================================================
-# FROM runtime-release-base AS pmg-hand-flow
-# COPY --from=builder-release --chown=nonroot:nonroot /tmp/hand-flow ./server
-# ENV PORT=50091
-# EXPOSE 50091
-# ENTRYPOINT ["./server"]
+FROM runtime-release-base AS pmg-hand-flow
+COPY --from=builder-release --chown=nonroot:nonroot /tmp/pmg-hand-flow ./server
+ENV PORT=50391
+EXPOSE 50391
+ENTRYPOINT ["./server"]
 
 # ============================================================================
 # Dev Projector

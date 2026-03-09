@@ -44,7 +44,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl --retry 3 --retry-delay 5 -fLo /usr/local/bin/buf \
         "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-${BUF_ARCH}" && \
     chmod +x /usr/local/bin/buf && \
-    file /usr/local/bin/buf | grep -q "ELF" || (echo "buf download failed - not an ELF binary" && exit 1)
+    buf --version || (echo "buf download failed - binary not executable" && exit 1)
 
 WORKDIR /workspace
 
