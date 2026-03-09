@@ -51,6 +51,11 @@ COPY examples/csharp/HandFlow/HandFlow.csproj ./examples/csharp/HandFlow/
 COPY examples/csharp/PrjOutput/PrjOutput.csproj ./examples/csharp/PrjOutput/
 COPY examples/csharp/Tests/Tests.csproj ./examples/csharp/Tests/
 COPY examples/csharp/HandFlowOO/HandFlowOO.csproj ./examples/csharp/HandFlowOO/
+COPY examples/csharp/Player/Upc/Player.Upc.csproj ./examples/csharp/Player/Upc/
+COPY examples/csharp/PrjCloudEvents/PrjCloudEvents.csproj ./examples/csharp/PrjCloudEvents/
+COPY examples/csharp/Table/SagaHandOO/Table.SagaHandOO.csproj ./examples/csharp/Table/SagaHandOO/
+COPY examples/csharp/PrjOutputOO/PrjOutputOO.csproj ./examples/csharp/PrjOutputOO/
+COPY examples/csharp/Player/SagaTable/Player.SagaTable.csproj ./examples/csharp/Player/SagaTable/
 
 WORKDIR /app/examples/csharp
 
