@@ -8,8 +8,6 @@
 package main
 
 import (
-	"encoding/hex"
-
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
@@ -26,53 +24,21 @@ func NewHandPlayerSaga() *HandPlayerSaga {
 	s := &HandPlayerSaga{}
 	s.Init("saga-hand-player", "hand", "player")
 
-	// Register prepare handler
-	s.Prepares(s.preparePotAwarded)
-
 	// Register event handler (multi-command)
 	s.HandlesMulti(s.handlePotAwarded)
 
 	return s
 }
 
-// preparePotAwarded declares all winners as destinations.
-func (s *HandPlayerSaga) preparePotAwarded(event *examples.PotAwarded) []*pb.Cover {
-	var covers []*pb.Cover
-	for _, winner := range event.Winners {
-		covers = append(covers, &pb.Cover{
-			Domain: "player",
-			Root:   &pb.UUID{Value: winner.PlayerRoot},
-		})
-	}
-	return covers
-}
-
 // handlePotAwarded translates PotAwarded → DepositFunds for each winner.
+// Sagas are stateless translators - framework handles sequence stamping.
 func (s *HandPlayerSaga) handlePotAwarded(
 	event *examples.PotAwarded,
-	destinations []*pb.EventBook,
 ) ([]*pb.CommandBook, error) {
-	// Build a map from player root to destination for sequence lookup
-	destMap := make(map[string]*pb.EventBook)
-	for _, dest := range destinations {
-		if dest.Cover != nil && dest.Cover.Root != nil {
-			key := hex.EncodeToString(dest.Cover.Root.Value)
-			destMap[key] = dest
-		}
-	}
-
 	var commands []*pb.CommandBook
 
 	// Create DepositFunds commands for each winner
 	for _, winner := range event.Winners {
-		playerKey := hex.EncodeToString(winner.PlayerRoot)
-
-		// Get sequence from destination state
-		var destSeq uint32
-		if dest, ok := destMap[playerKey]; ok {
-			destSeq = angzarr.NextSequence(dest)
-		}
-
 		depositFunds := &examples.DepositFunds{
 			Amount: &examples.Currency{
 				Amount: winner.Amount,
@@ -84,6 +50,7 @@ func (s *HandPlayerSaga) handlePotAwarded(
 			return nil, err
 		}
 
+		// Use angzarr_deferred - framework stamps sequence on delivery
 		commands = append(commands, &pb.CommandBook{
 			Cover: &pb.Cover{
 				Domain: "player",
@@ -91,8 +58,8 @@ func (s *HandPlayerSaga) handlePotAwarded(
 			},
 			Pages: []*pb.CommandPage{
 				{
-					Sequence: destSeq,
-					Payload:  &pb.CommandPage_Command{Command: cmdAny},
+					Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_AngzarrDeferred{AngzarrDeferred: &pb.AngzarrDeferredSequence{}}},
+					Payload: &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		})

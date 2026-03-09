@@ -1,11 +1,8 @@
 // Package angzarr provides OO-style saga base for event-driven command production.
 //
 // Sagas translate events from one domain into commands for another domain.
-// They are stateless - each event is processed independently.
-//
-// Two-phase protocol support:
-//   - Prepare: Declare destination aggregates needed (via Prepares)
-//   - Execute: Produce commands given source + destination state (via Handles)
+// They are stateless translators - each event is processed independently.
+// The framework handles destination state fetching and sequence stamping.
 //
 // Example usage:
 //
@@ -16,23 +13,13 @@
 //	func NewTableHandSaga() *TableHandSaga {
 //	    s := &TableHandSaga{}
 //	    s.Init("saga-table-hand", "table", "hand")
-//	    s.Prepares(s.prepareHandStarted)
 //	    s.Handles(s.handleHandStarted)
 //	    return s
 //	}
 //
-//	func (s *TableHandSaga) prepareHandStarted(event *table.HandStarted) []*pb.Cover {
-//	    return []*pb.Cover{{
-//	        Domain: "hand",
-//	        Root:   &pb.UUID{Value: event.HandRoot},
-//	    }}
-//	}
-//
 //	func (s *TableHandSaga) handleHandStarted(
 //	    event *table.HandStarted,
-//	    dests []*pb.EventBook,
 //	) (*pb.CommandBook, error) {
-//	    destSeq := NextSequence(dests[0])
 //	    // ... build DealCards command
 //	    return &pb.CommandBook{...}, nil
 //	}
@@ -47,21 +34,17 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// prepareOOFunc is an internal type for prepare handlers.
-type prepareOOFunc func(eventAny *anypb.Any) []*pb.Cover
-
 // handlerOOFunc is an internal type for event handlers.
 type handlerOOFunc func(eventAny *anypb.Any, dests []*pb.EventBook) ([]*pb.CommandBook, error)
 
 // SagaBase provides OO-style saga infrastructure.
 //
 // Embed this in your saga struct and call Init() to set up the base.
-// Then register handlers with Prepares() and Handles().
+// Then register handlers with Handles().
 type SagaBase struct {
 	name         string
 	inputDomain  string
 	outputDomain string
-	prepares     map[string]prepareOOFunc
 	handlers     map[string]handlerOOFunc
 	events       []*pb.EventBook // Accumulated events for EmitFact
 }
@@ -80,7 +63,6 @@ func (s *SagaBase) Init(name, inputDomain, outputDomain string) {
 	s.name = name
 	s.inputDomain = inputDomain
 	s.outputDomain = outputDomain
-	s.prepares = make(map[string]prepareOOFunc)
 	s.handlers = make(map[string]handlerOOFunc)
 }
 
@@ -105,69 +87,9 @@ func (s *SagaBase) OutputDomain() string {
 // where EventType is a protobuf message type. The event type is automatically
 // extracted via proto reflection - no type name string needed.
 //
-// Example:
-//
-//	s.Prepares(s.prepareHandStarted)
-//
-//	func (s *TableHandSaga) prepareHandStarted(event *table.HandStarted) []*pb.Cover {
-//	    return []*pb.Cover{{Domain: "hand", Root: &pb.UUID{Value: event.HandRoot}}}
-//	}
-func (s *SagaBase) Prepares(handler any) {
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-
-	if handlerType.Kind() != reflect.Func {
-		panic("handler must be a function")
-	}
-	if handlerType.NumIn() != 1 {
-		panic("handler must have exactly 1 parameter (event *EventType)")
-	}
-	if handlerType.NumOut() != 1 {
-		panic("handler must return []*pb.Cover")
-	}
-
-	// Get the event type (first parameter)
-	eventPtrType := handlerType.In(0)
-	if eventPtrType.Kind() != reflect.Ptr {
-		panic("event parameter must be a pointer")
-	}
-	eventType := eventPtrType.Elem()
-
-	// Extract fully-qualified type name via proto reflection
-	eventPtr := reflect.New(eventType)
-	protoMsg := eventPtr.Interface().(proto.Message)
-	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
-
-	// Create the wrapper function
-	wrapper := func(eventAny *anypb.Any) []*pb.Cover {
-		// Create a new instance of the event type
-		eventPtr := reflect.New(eventType)
-		event := eventPtr.Interface().(proto.Message)
-
-		// Unmarshal the event
-		if err := eventAny.UnmarshalTo(event); err != nil {
-			return nil
-		}
-
-		// Call the handler
-		results := handlerValue.Call([]reflect.Value{eventPtr})
-
-		// Extract result
-		if results[0].IsNil() {
-			return nil
-		}
-		return results[0].Interface().([]*pb.Cover)
-	}
-
-	s.prepares[fullName] = wrapper
-}
-
 // Handles registers an event handler.
 //
-// The handler function can have two signatures:
-//
-//  1. Without destinations: func(*EventType) (*pb.CommandBook, error)
-//  2. With destinations: func(*EventType, []*pb.EventBook) (*pb.CommandBook, error)
+// The handler function signature: func(*EventType) (*pb.CommandBook, error)
 //
 // The event type is automatically extracted via proto reflection.
 //
@@ -177,9 +99,7 @@ func (s *SagaBase) Prepares(handler any) {
 //
 //	func (s *TableHandSaga) handleHandStarted(
 //	    event *table.HandStarted,
-//	    dests []*pb.EventBook,
 //	) (*pb.CommandBook, error) {
-//	    destSeq := NextSequence(dests[0])
 //	    // ... build command
 //	    return &pb.CommandBook{...}, nil
 //	}
@@ -318,32 +238,6 @@ func (s *SagaBase) HandlesMulti(handler any) {
 	s.handlers[fullName] = wrapper
 }
 
-// PrepareDestinations returns the destination covers needed for the given source.
-// Called during the Prepare phase of the two-phase saga protocol.
-func (s *SagaBase) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
-	if source == nil || len(source.Pages) == 0 {
-		return nil
-	}
-
-	var covers []*pb.Cover
-	for _, page := range source.Pages {
-		event := page.GetEvent()
-		if event == nil {
-			continue
-		}
-
-		typeURL := event.TypeUrl
-		for fullName, handler := range s.prepares {
-			if typeURL == TypeURLPrefix+fullName {
-				result := handler(event)
-				covers = append(covers, result...)
-				break
-			}
-		}
-	}
-	return covers
-}
-
 // EmitFact queues an EventBook to be emitted as a fact.
 //
 // Facts are events injected directly into target aggregates, bypassing
@@ -356,14 +250,14 @@ func (s *SagaBase) EmitFact(event *pb.EventBook) {
 	s.events = append(s.events, event)
 }
 
-// ClearEvents resets the accumulated events. Called before each Execute.
+// ClearEvents resets the accumulated events. Called before each Handle.
 func (s *SagaBase) ClearEvents() {
 	s.events = nil
 }
 
-// Execute processes events and returns commands and facts for other aggregates.
-// Called during the Execute phase of the two-phase saga protocol.
-func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (*SagaHandlerResponse, error) {
+// Handle processes source events and returns commands and facts for other aggregates.
+// Sagas are stateless translators - they receive source events only.
+func (s *SagaBase) Handle(source *pb.EventBook) (*SagaHandlerResponse, error) {
 	if source == nil || len(source.Pages) == 0 {
 		return &SagaHandlerResponse{}, nil
 	}
@@ -381,7 +275,7 @@ func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (
 		typeURL := event.TypeUrl
 		for fullName, handler := range s.handlers {
 			if typeURL == TypeURLPrefix+fullName {
-				cmds, err := handler(event, destinations)
+				cmds, err := handler(event, nil)
 				if err != nil {
 					return nil, err
 				}

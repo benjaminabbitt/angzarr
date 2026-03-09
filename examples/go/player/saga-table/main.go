@@ -28,10 +28,6 @@ func NewPlayerTableSaga() *PlayerTableSaga {
 	s := &PlayerTableSaga{}
 	s.Init("saga-player-table", "player", "table")
 
-	// Register prepare handlers (no destinations needed for facts)
-	s.Prepares(s.prepareSittingOut)
-	s.Prepares(s.prepareReturningToPlay)
-
 	// Register event handlers
 	s.Handles(s.handleSittingOut)
 	s.Handles(s.handleReturningToPlay)
@@ -39,24 +35,14 @@ func NewPlayerTableSaga() *PlayerTableSaga {
 	return s
 }
 
-// prepareSittingOut - no destinations needed (emits facts, not commands).
-func (s *PlayerTableSaga) prepareSittingOut(event *examples.PlayerSittingOut) []*pb.Cover {
-	return nil
-}
-
-// prepareReturningToPlay - no destinations needed (emits facts, not commands).
-func (s *PlayerTableSaga) prepareReturningToPlay(event *examples.PlayerReturningToPlay) []*pb.Cover {
-	return nil
-}
-
 // handleSittingOut translates PlayerSittingOut -> PlayerSatOut fact for table.
+// Sagas are stateless translators - framework handles sequence stamping.
 func (s *PlayerTableSaga) handleSittingOut(
 	event *examples.PlayerSittingOut,
-	destinations []*pb.EventBook,
 ) (*pb.CommandBook, error) {
 	// Create PlayerSatOut fact for the table
 	satOut := &examples.PlayerSatOut{
-		PlayerRoot: nil, // Will get player root from context in execute
+		PlayerRoot: nil, // Will get player root from context
 		SatOutAt:   event.SatOutAt,
 	}
 
@@ -82,13 +68,13 @@ func (s *PlayerTableSaga) handleSittingOut(
 }
 
 // handleReturningToPlay translates PlayerReturningToPlay -> PlayerSatIn fact for table.
+// Sagas are stateless translators - framework handles sequence stamping.
 func (s *PlayerTableSaga) handleReturningToPlay(
 	event *examples.PlayerReturningToPlay,
-	destinations []*pb.EventBook,
 ) (*pb.CommandBook, error) {
 	// Create PlayerSatIn fact for the table
 	satIn := &examples.PlayerSatIn{
-		PlayerRoot: nil, // Will get player root from context in execute
+		PlayerRoot: nil, // Will get player root from context
 		SatInAt:    event.SatInAt,
 	}
 

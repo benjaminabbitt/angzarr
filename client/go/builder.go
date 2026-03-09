@@ -90,8 +90,8 @@ func (b *CommandBuilder) Build() (*pb.CommandBook, error) {
 	return &pb.CommandBook{
 		Cover: cover,
 		Pages: []*pb.CommandPage{{
-			Sequence: b.sequence,
-			Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: b.typeURL, Value: b.payload}},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: b.sequence}},
+			Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: b.typeURL, Value: b.payload}},
 		}},
 	}, nil
 }

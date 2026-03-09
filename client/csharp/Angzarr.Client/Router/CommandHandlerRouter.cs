@@ -114,7 +114,7 @@ public class CommandHandlerRouter<TState, THandler>
         }
 
         // Execute handler
-        var resultBook = _handler.Handle(commandBook, commandAny, state, seq);
+        var resultBook = _handler.Handle(commandBook, commandAny, state, (int)seq);
 
         return new Angzarr.BusinessResponse { Events = resultBook };
     }

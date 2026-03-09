@@ -159,17 +159,10 @@ func NewSagaHandler(router *EventRouter) *SagaHandler {
 	return &SagaHandler{router: router}
 }
 
-// Prepare declares which destination aggregates the saga needs to read.
-// This is phase 1 of the two-phase saga protocol.
-func (h *SagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest) (*pb.SagaPrepareResponse, error) {
-	destinations := h.router.PrepareDestinations(req.Source)
-	return &pb.SagaPrepareResponse{Destinations: destinations}, nil
-}
-
-// Execute processes events and returns commands for other aggregates.
-// This is phase 2 of the two-phase saga protocol.
-func (h *SagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
-	commands, err := h.router.Dispatch(req.Source, req.Destinations)
+// Handle processes source events and returns commands for other aggregates.
+// Sagas are stateless translators - they receive source events only.
+func (h *SagaHandler) Handle(ctx context.Context, req *pb.SagaHandleRequest) (*pb.SagaResponse, error) {
+	commands, err := h.router.Dispatch(req.Source, nil)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {
@@ -302,15 +295,10 @@ func NewTraitSagaHandler(router *SagaRouter) *TraitSagaHandler {
 	return &TraitSagaHandler{router: router}
 }
 
-// Prepare declares which destination aggregates the saga needs to read.
-func (h *TraitSagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest) (*pb.SagaPrepareResponse, error) {
-	destinations := h.router.PrepareDestinations(req.Source)
-	return &pb.SagaPrepareResponse{Destinations: destinations}, nil
-}
-
-// Execute processes events and returns commands for other aggregates.
-func (h *TraitSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
-	resp, err := h.router.Dispatch(req.Source, req.Destinations)
+// Handle processes source events and returns commands for other aggregates.
+// Sagas are stateless translators - they receive source events only.
+func (h *TraitSagaHandler) Handle(ctx context.Context, req *pb.SagaHandleRequest) (*pb.SagaResponse, error) {
+	resp, err := h.router.Dispatch(req.Source, nil)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {
@@ -685,12 +673,12 @@ func RunOOCommandHandlerServer[S any, A OOCommandHandler[S]](domain, defaultPort
 
 // OOSaga interface for OO-style sagas.
 // Implemented by types that embed SagaBase.
+// Sagas are stateless translators - they receive source events only.
 type OOSaga interface {
 	Name() string
 	InputDomain() string
 	OutputDomain() string
-	PrepareDestinations(source *pb.EventBook) []*pb.Cover
-	Execute(source *pb.EventBook, destinations []*pb.EventBook) (*SagaHandlerResponse, error)
+	Handle(source *pb.EventBook) (*SagaHandlerResponse, error)
 }
 
 // OOSagaHandler wraps an OO-style saga for the gRPC Saga service.
@@ -704,15 +692,10 @@ func NewOOSagaHandler(saga OOSaga) *OOSagaHandler {
 	return &OOSagaHandler{saga: saga}
 }
 
-// Prepare declares which destination aggregates the saga needs to read.
-func (h *OOSagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest) (*pb.SagaPrepareResponse, error) {
-	destinations := h.saga.PrepareDestinations(req.Source)
-	return &pb.SagaPrepareResponse{Destinations: destinations}, nil
-}
-
-// Execute processes events and returns commands for other aggregates.
-func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
-	response, err := h.saga.Execute(req.Source, req.Destinations)
+// Handle processes source events and returns commands for other aggregates.
+// Sagas are stateless translators - they receive source events only.
+func (h *OOSagaHandler) Handle(ctx context.Context, req *pb.SagaHandleRequest) (*pb.SagaResponse, error) {
+	response, err := h.saga.Handle(req.Source)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {

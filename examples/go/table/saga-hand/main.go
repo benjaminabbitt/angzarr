@@ -30,39 +30,17 @@ func NewTableHandSaga() *TableHandSaga {
 	s := &TableHandSaga{}
 	s.Init("saga-table-hand", "table", "hand")
 
-	// Register prepare handler
-	s.Prepares(s.prepareHandStarted)
-
 	// Register event handler
 	s.Handles(s.handleHandStarted)
 
 	return s
 }
 
-// prepareHandStarted declares the hand aggregate as destination.
-func (s *TableHandSaga) prepareHandStarted(event *examples.HandStarted) []*pb.Cover {
-	return []*pb.Cover{
-		{
-			Domain: "hand",
-			Root:   &pb.UUID{Value: event.HandRoot},
-		},
-	}
-}
-
 // handleHandStarted translates HandStarted → DealCards.
+// Sagas are stateless translators - framework handles sequence stamping.
 func (s *TableHandSaga) handleHandStarted(
 	event *examples.HandStarted,
-	destinations []*pb.EventBook,
 ) (*pb.CommandBook, error) {
-	// Get next sequence from destination state
-	var destSeq uint32
-	if len(destinations) > 0 {
-		destSeq = angzarr.NextSequence(destinations[0])
-	}
-
-	// Get correlation ID from source (will be set by framework during dispatch)
-	correlationID := ""
-
 	// Convert SeatSnapshot to PlayerInHand
 	players := make([]*examples.PlayerInHand, len(event.ActivePlayers))
 	for i, seat := range event.ActivePlayers {
@@ -89,16 +67,16 @@ func (s *TableHandSaga) handleHandStarted(
 		return nil, err
 	}
 
+	// Use angzarr_deferred - framework stamps sequence on delivery
 	return &pb.CommandBook{
 		Cover: &pb.Cover{
-			Domain:        "hand",
-			Root:          &pb.UUID{Value: event.HandRoot},
-			CorrelationId: correlationID,
+			Domain: "hand",
+			Root:   &pb.UUID{Value: event.HandRoot},
 		},
 		Pages: []*pb.CommandPage{
 			{
-				Sequence: destSeq,
-				Payload:  &pb.CommandPage_Command{Command: cmdAny},
+				Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_AngzarrDeferred{AngzarrDeferred: &pb.AngzarrDeferredSequence{}}},
+				Payload: &pb.CommandPage_Command{Command: cmdAny},
 			},
 		},
 	}, nil
