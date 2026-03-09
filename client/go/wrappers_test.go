@@ -212,7 +212,10 @@ func TestCommandBookW_Constructor(t *testing.T) {
 
 func TestCommandBookW_Pages(t *testing.T) {
 	t.Run("returns wrapped pages", func(t *testing.T) {
-		proto := &pb.CommandBook{Pages: []*pb.CommandPage{{Sequence: 1}, {Sequence: 2}}}
+		proto := &pb.CommandBook{Pages: []*pb.CommandPage{
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 1}}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 2}}},
+		}}
 		wrapper := NewCommandBookW(proto)
 		pages := wrapper.Pages()
 		if len(pages) != 2 {
@@ -481,7 +484,7 @@ func TestEventPageW_DecodeEvent(t *testing.T) {
 }
 
 func TestCommandPageW_Constructor(t *testing.T) {
-	proto := &pb.CommandPage{Sequence: 10}
+	proto := &pb.CommandPage{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 10}}}
 	wrapper := NewCommandPageW(proto)
 	if wrapper.CommandPage != proto {
 		t.Error("expected embedded proto to match")
@@ -489,7 +492,7 @@ func TestCommandPageW_Constructor(t *testing.T) {
 }
 
 func TestCommandPageW_Sequence(t *testing.T) {
-	wrapper := NewCommandPageW(&pb.CommandPage{Sequence: 42})
+	wrapper := NewCommandPageW(&pb.CommandPage{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 42}}})
 	if got := wrapper.Sequence(); got != 42 {
 		t.Errorf("got %d, want %d", got, 42)
 	}

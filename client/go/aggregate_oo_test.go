@@ -85,8 +85,6 @@ func TestCommandHandlerBase_DispatchRejection(t *testing.T) {
 
 		// Create a rejection notification
 		rejection := &pb.RejectionNotification{
-			IssuerName:      "saga-order-payment",
-			IssuerType:      "saga",
 			RejectionReason: "insufficient_funds",
 			RejectedCommand: &pb.CommandBook{
 				Cover: &pb.Cover{Domain: "payment"},
@@ -143,8 +141,6 @@ func TestCommandHandlerBase_DispatchRejection(t *testing.T) {
 
 		// Create a rejection notification for unknown domain/command
 		rejection := &pb.RejectionNotification{
-			IssuerName:      "saga-unknown",
-			IssuerType:      "saga",
 			RejectionReason: "failed",
 			RejectedCommand: &pb.CommandBook{
 				Cover: &pb.Cover{Domain: "unknown"},
@@ -198,8 +194,6 @@ func TestCommandHandlerBase_DispatchRejection(t *testing.T) {
 
 		// Create a rejection notification
 		rejection := &pb.RejectionNotification{
-			IssuerName:      "saga-order-inventory",
-			IssuerType:      "saga",
 			RejectionReason: "out_of_stock",
 			RejectedCommand: &pb.CommandBook{
 				Cover: &pb.Cover{Domain: "inventory"},
@@ -306,7 +300,6 @@ func TestCommandHandlerBase_DispatchRejection_EdgeCases(t *testing.T) {
 
 		// Create notification with no rejected_command
 		rejection := &pb.RejectionNotification{
-			IssuerName:      "saga-test",
 			RejectionReason: "failed",
 			RejectedCommand: nil, // No rejected command
 		}

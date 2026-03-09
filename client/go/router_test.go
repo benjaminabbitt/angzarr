@@ -248,8 +248,8 @@ func (h *MockCHHandler) Handle(
 		Cover: cmd.Cover,
 		Pages: []*pb.EventPage{
 			{
-				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
-				Payload:      &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.TestEvent"}},
+				Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
+				Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.TestEvent"}},
 			},
 		},
 	}, nil
@@ -298,8 +298,8 @@ func (h *MockSagaHandler) Execute(
 				Cover: &pb.Cover{Domain: "destination"},
 				Pages: []*pb.CommandPage{
 					{
-						Sequence: 0,
-						Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.TestCommand"}},
+						Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+						Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.TestCommand"}},
 					},
 				},
 			},
@@ -348,8 +348,8 @@ func (h *MockPMHandler) Handle(
 				Cover: &pb.Cover{Domain: "target"},
 				Pages: []*pb.CommandPage{
 					{
-						Sequence: 0,
-						Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.PMCommand"}},
+						Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+						Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "test.PMCommand"}},
 					},
 				},
 			},
@@ -456,7 +456,7 @@ func TestCommandHandlerRouterDispatch(t *testing.T) {
 			Cover: &pb.Cover{Domain: "things"},
 			Pages: []*pb.CommandPage{
 				{
-					Sequence: 0,
+					Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 					Payload: &pb.CommandPage_Command{
 						Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.CreateThing"},
 					},
@@ -866,8 +866,8 @@ func TestCommandHandlerRouterDispatchNotification(t *testing.T) {
 			Cover: &pb.Cover{Domain: "things"},
 			Pages: []*pb.CommandPage{
 				{
-					Sequence: 0,
-					Payload:  &pb.CommandPage_Command{Command: notificationAny},
+					Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+					Payload: &pb.CommandPage_Command{Command: notificationAny},
 				},
 			},
 		},
@@ -912,8 +912,8 @@ func TestCommandHandlerRouterDispatchNotificationReturnsRevocation(t *testing.T)
 			Cover: &pb.Cover{Domain: "things"},
 			Pages: []*pb.CommandPage{
 				{
-					Sequence: 0,
-					Payload:  &pb.CommandPage_Command{Command: notificationAny},
+					Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+					Payload: &pb.CommandPage_Command{Command: notificationAny},
 				},
 			},
 		},
@@ -994,8 +994,8 @@ func TestProcessManagerRouterDispatchNotification(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
-				Payload:      &pb.EventPage_Event{Event: notificationAny},
+				Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+				Payload: &pb.EventPage_Event{Event: notificationAny},
 			},
 		},
 	}
@@ -1171,7 +1171,7 @@ func TestCommandHandlerRouterDispatchNilEvents(t *testing.T) {
 			Cover: &pb.Cover{Domain: "things"},
 			Pages: []*pb.CommandPage{
 				{
-					Sequence: 0,
+					Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 					Payload: &pb.CommandPage_Command{
 						Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.CreateThing"},
 					},

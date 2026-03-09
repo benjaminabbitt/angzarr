@@ -105,8 +105,6 @@ func TestRejectionHandlerResponse_MultipleEvents(t *testing.T) {
 
 func TestRejectionHandlerResponse_NotificationPayloadAccessible(t *testing.T) {
 	rejection := &pb.RejectionNotification{
-		IssuerName:      "test-saga",
-		IssuerType:      "saga",
 		RejectionReason: "test reason",
 	}
 	rejectionBytes, _ := proto.Marshal(rejection)
@@ -162,13 +160,18 @@ func TestCompensationContext(t *testing.T) {
 			{Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.ReserveStock"}}},
 		},
 	}
+	// Build a rejected command with angzarr_deferred to provide source info
+	rejectedCmd.Pages[0].Header = &pb.PageHeader{
+		SequenceType: &pb.PageHeader_AngzarrDeferred{
+			AngzarrDeferred: &pb.AngzarrDeferredSequence{
+				Source:    &pb.Cover{Domain: "order"},
+				SourceSeq: 5,
+			},
+		},
+	}
 	rejection := &pb.RejectionNotification{
-		IssuerName:          "saga-order-inventory",
-		IssuerType:          "saga",
-		SourceEventSequence: 5,
-		RejectionReason:     "insufficient stock",
-		RejectedCommand:     rejectedCmd,
-		SourceAggregate:     &pb.Cover{Domain: "order"},
+		RejectionReason: "insufficient stock",
+		RejectedCommand: rejectedCmd,
 	}
 	rejectionBytes, _ := proto.Marshal(rejection)
 
@@ -181,14 +184,12 @@ func TestCompensationContext(t *testing.T) {
 
 	ctx := NewCompensationContext(notification)
 
-	if ctx.IssuerName != "saga-order-inventory" {
-		t.Errorf("expected issuer name 'saga-order-inventory', got %q", ctx.IssuerName)
-	}
-	if ctx.IssuerType != "saga" {
-		t.Errorf("expected issuer type 'saga', got %q", ctx.IssuerType)
-	}
+	// Source info is now extracted from header.angzarr_deferred
 	if ctx.SourceEventSequence != 5 {
 		t.Errorf("expected source event sequence 5, got %d", ctx.SourceEventSequence)
+	}
+	if ctx.SourceAggregate == nil || ctx.SourceAggregate.Domain != "order" {
+		t.Errorf("expected source aggregate domain 'order', got %v", ctx.SourceAggregate)
 	}
 	if ctx.RejectionReason != "insufficient stock" {
 		t.Errorf("expected rejection reason 'insufficient stock', got %q", ctx.RejectionReason)

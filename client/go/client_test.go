@@ -80,7 +80,7 @@ type mockSagaCoordinatorServiceClient struct {
 	executeSpeculativeFn func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error)
 }
 
-func (m *mockSagaCoordinatorServiceClient) Execute(ctx context.Context, in *pb.SagaExecuteRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
+func (m *mockSagaCoordinatorServiceClient) Execute(ctx context.Context, in *pb.SagaHandleRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
 	return &pb.SagaResponse{}, nil
 }
 

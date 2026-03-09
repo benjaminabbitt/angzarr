@@ -137,8 +137,8 @@ func TestCommandBuilder_Build(t *testing.T) {
 		if len(cmd.Pages) != 1 {
 			t.Fatalf("expected 1 page, got %d", len(cmd.Pages))
 		}
-		if cmd.Pages[0].Sequence != 5 {
-			t.Errorf("got sequence %d, want %d", cmd.Pages[0].Sequence, 5)
+		if cmd.Pages[0].GetHeader().GetSequence() != 5 {
+			t.Errorf("got sequence %d, want %d", cmd.Pages[0].GetHeader().GetSequence(), 5)
 		}
 	})
 

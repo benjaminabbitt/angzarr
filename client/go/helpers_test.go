@@ -709,14 +709,17 @@ func TestNewCoverWithEdition(t *testing.T) {
 
 func TestNewCommandPage(t *testing.T) {
 	page := NewCommandPage(5, nil)
-	if page.Sequence != 5 {
-		t.Errorf("got sequence %d, want %d", page.Sequence, 5)
+	if page.GetHeader().GetSequence() != 5 {
+		t.Errorf("got sequence %d, want %d", page.GetHeader().GetSequence(), 5)
 	}
 }
 
 func TestNewCommandBook(t *testing.T) {
 	cover := &pb.Cover{Domain: "test"}
-	pages := []*pb.CommandPage{{Sequence: 1}, {Sequence: 2}}
+	pages := []*pb.CommandPage{
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 1}}},
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 2}}},
+	}
 	book := NewCommandBook(cover, pages...)
 
 	if book.Cover != cover {
