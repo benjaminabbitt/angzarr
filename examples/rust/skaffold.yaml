@@ -14,7 +14,7 @@ build:
       variant: AbbrevCommitSha
   local:
     push: true
-    useBuildkit: false
+    useBuildkit: true
     concurrency: 1
   artifacts:
     # Dev targets (fast builds)

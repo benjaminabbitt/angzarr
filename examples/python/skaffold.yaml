@@ -14,7 +14,7 @@ build:
       variant: AbbrevCommitSha
   local:
     push: false
-    useBuildkit: false
+    useBuildkit: true
     concurrency: 1
   artifacts:
     - image: ghcr.io/angzarr-io/poker-python-player
