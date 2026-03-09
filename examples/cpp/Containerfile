@@ -40,6 +40,9 @@ COPY proto ./proto
 COPY examples/cpp/CMakeLists.txt ./examples/cpp/
 COPY examples/cpp/client ./examples/cpp/client
 
+# Copy C++ client library (required for angzarr/router.hpp etc.)
+COPY client/cpp ./client/cpp
+
 # Create stub CMakeLists for subdirectories
 RUN mkdir -p examples/cpp/player/agg examples/cpp/player/upc examples/cpp/player/saga-table \
     examples/cpp/table/agg examples/cpp/hand/agg \
