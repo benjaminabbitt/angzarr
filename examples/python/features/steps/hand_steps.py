@@ -727,7 +727,7 @@ def step_then_error_contains(context, text):
     )
 
 
-@then(r"the player event has blind_type \"(?P<blind_type>[^\"]+)\"")
+@then(r"the (?:player|blind) event has blind_type \"(?P<blind_type>[^\"]+)\"")
 def step_then_event_has_blind_type(context, blind_type):
     """Verify blind type in event."""
     assert context.result_event_any is not None, "No result event"
@@ -738,7 +738,7 @@ def step_then_event_has_blind_type(context, blind_type):
     )
 
 
-@then(r"the player event has amount (?P<amount>\d+)")
+@then(r"the (?:player|blind) event has amount (?P<amount>\d+)")
 def step_then_event_has_amount(context, amount):
     """Verify amount in event."""
     assert context.result_event_any is not None, "No result event"
@@ -754,7 +754,7 @@ def step_then_event_has_amount(context, amount):
         assert event.amount == int(amount), f"Expected {amount}, got {event.amount}"
 
 
-@then(r"the player event has player_stack (?P<stack>\d+)")
+@then(r"the (?:player|blind) event has player_stack (?P<stack>\d+)")
 def step_then_event_has_stack(context, stack):
     """Verify player_stack in event."""
     assert context.result_event_any is not None, "No result event"
@@ -773,7 +773,7 @@ def step_then_event_has_stack(context, stack):
         )
 
 
-@then(r"the player event has pot_total (?P<pot>\d+)")
+@then(r"the (?:player|blind) event has pot_total (?P<pot>\d+)")
 def step_then_event_has_pot(context, pot):
     """Verify pot_total in event."""
     assert context.result_event_any is not None, "No result event"

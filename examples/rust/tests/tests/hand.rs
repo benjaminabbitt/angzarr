@@ -1065,15 +1065,17 @@ fn then_player_specific_cards(world: &mut HandWorld, _player_id: String, _seed: 
     assert!(!cards_dealt.player_cards.is_empty());
 }
 
-#[then(expr = "the player event has blind_type {string}")]
+#[then(regex = r"^the (?:player|blind) event has blind_type (.+)$")]
 fn then_blind_type(world: &mut HandWorld, expected: String) {
+    let expected = expected.trim_matches('"');
     let event = world.result_event().expect("No event");
     let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
     assert_eq!(blind_posted.blind_type, expected);
 }
 
-#[then(expr = "the player event has amount {int}")]
-fn then_player_amount(world: &mut HandWorld, expected: i64) {
+#[then(regex = r"^the (?:player|blind) event has amount (\d+)$")]
+fn then_player_amount(world: &mut HandWorld, expected: String) {
+    let expected: i64 = expected.parse().expect("Invalid number");
     let event = world.result_event().expect("No event");
     if event.type_url.ends_with("BlindPosted") {
         let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
@@ -1084,8 +1086,9 @@ fn then_player_amount(world: &mut HandWorld, expected: i64) {
     }
 }
 
-#[then(expr = "the player event has player_stack {int}")]
-fn then_player_stack(world: &mut HandWorld, expected: i64) {
+#[then(regex = r"^the (?:player|blind) event has player_stack (\d+)$")]
+fn then_player_stack(world: &mut HandWorld, expected: String) {
+    let expected: i64 = expected.parse().expect("Invalid number");
     let event = world.result_event().expect("No event");
     if event.type_url.ends_with("BlindPosted") {
         let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
@@ -1093,8 +1096,9 @@ fn then_player_stack(world: &mut HandWorld, expected: i64) {
     }
 }
 
-#[then(expr = "the player event has pot_total {int}")]
-fn then_pot_total(world: &mut HandWorld, expected: i64) {
+#[then(regex = r"^the (?:player|blind) event has pot_total (\d+)$")]
+fn then_pot_total(world: &mut HandWorld, expected: String) {
+    let expected: i64 = expected.parse().expect("Invalid number");
     let event = world.result_event().expect("No event");
     if event.type_url.ends_with("BlindPosted") {
         let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
