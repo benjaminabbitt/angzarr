@@ -644,6 +644,9 @@ infra-ci:
     set -euo pipefail
     echo "=== Deploying CI infrastructure ==="
     kubectl create namespace angzarr --dry-run=client -o yaml | kubectl apply -f -
+    # PostgreSQL (simple, no operator)
+    helm upgrade --install angzarr-db "{{HELM_K8S}}/postgres-simple" \
+        -n angzarr --set auth.password=angzarr --wait --timeout 2m
     # Redis (simple)
     helm upgrade --install angzarr-redis "{{HELM_K8S}}/redis" \
         -n angzarr --set auth.password=angzarr --wait --timeout 2m
