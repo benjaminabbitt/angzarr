@@ -13,9 +13,7 @@ from .projector_pb2 import SpeculateProjectorRequest
 from .projector_pb2_grpc import ProjectorCoordinatorServiceStub
 from .query_pb2_grpc import EventQueryServiceStub
 from .saga_pb2 import (
-    SagaExecuteRequest,
-    SagaPrepareRequest,
-    SagaPrepareResponse,
+    SagaHandleRequest,
     SagaResponse,
     SpeculateSagaRequest,
 )

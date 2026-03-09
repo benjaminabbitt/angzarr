@@ -794,9 +794,9 @@ class _FluentRouterBase:
         return result if result is not None else []
 
     def dispatch(
-        self, source: types.EventBook, destinations: list[types.EventBook]
+        self, source: types.EventBook, destinations: list[types.EventBook] | None = None
     ) -> saga_pb2.SagaResponse:
-        """Execute handle phase for source events.
+        """Handle source events and produce commands.
 
         Returns:
             SagaResponse containing commands and events.
@@ -805,14 +805,13 @@ class _FluentRouterBase:
             return saga_pb2.SagaResponse()
 
         event_page = source.pages[-1]
-        if not event_page.HasField("event"):
+        event_any = self._get_event_from_page(event_page)
+        if event_any is None:
             return saga_pb2.SagaResponse()
-
-        event_any = event_page.event
 
         # Check if this is a Notification (rejection)
         if event_any.type_url.endswith("Notification"):
-            commands = self.dispatch_rejection(source, destinations)
+            commands = self.dispatch_rejection(source, destinations or [])
             return saga_pb2.SagaResponse(commands=commands)
 
         root = source.cover.root if source.HasField("cover") else None
@@ -820,10 +819,25 @@ class _FluentRouterBase:
         domain = self._get_dispatch_domain(source)
 
         result = self._router.dispatch(
-            domain, event_any, root, correlation_id, destinations
+            domain, event_any, root, correlation_id, destinations or []
         )
         commands = result if result is not None else []
         return saga_pb2.SagaResponse(commands=commands)
+
+    def _get_event_from_page(self, page: types.EventPage) -> any_pb2.Any | None:
+        """Extract event from EventPage, handling both old and new proto formats."""
+        # Try old format: direct event field
+        if page.HasField("event"):
+            return page.event
+        # Try new format: event in payload oneof
+        if hasattr(page, "payload") and page.WhichOneof("payload") == "event":
+            return page.event
+        # Try getter method
+        if hasattr(page, "GetEvent"):
+            evt = page.GetEvent()
+            if evt and evt.type_url:
+                return evt
+        return None
 
     def dispatch_rejection(
         self, source: types.EventBook, destinations: list[types.EventBook]
@@ -1278,9 +1292,9 @@ class OORouter:
     def dispatch(
         self,
         source: types.EventBook,
-        destinations: list[types.EventBook],
+        destinations: list[types.EventBook] | None = None,
     ) -> saga_pb2.SagaResponse:
-        """Execute handle phase.
+        """Handle source events and produce commands.
 
         Returns:
             SagaResponse containing commands and events.
@@ -1290,24 +1304,38 @@ class OORouter:
 
         domain = source.cover.domain if source.HasField("cover") else ""
         event_page = source.pages[-1]
-        if not event_page.HasField("event"):
+        event_any = self._get_event_from_page(event_page)
+        if event_any is None:
             return saga_pb2.SagaResponse()
-
-        event_any = event_page.event
 
         # Check if this is a Notification (rejection)
         if event_any.type_url.endswith("Notification"):
-            commands = self.dispatch_rejection(source, destinations)
+            commands = self.dispatch_rejection(source, destinations or [])
             return saga_pb2.SagaResponse(commands=commands)
 
         root = source.cover.root if source.HasField("cover") else None
         correlation_id = source.cover.correlation_id if source.HasField("cover") else ""
 
         result = self._router.dispatch(
-            domain, event_any, root, correlation_id, destinations
+            domain, event_any, root, correlation_id, destinations or []
         )
         commands = result if result is not None else []
         return saga_pb2.SagaResponse(commands=commands)
+
+    def _get_event_from_page(self, page: types.EventPage) -> any_pb2.Any | None:
+        """Extract event from EventPage, handling both old and new proto formats."""
+        # Try old format: direct event field
+        if page.HasField("event"):
+            return page.event
+        # Try new format: event in payload oneof
+        if hasattr(page, "payload") and page.WhichOneof("payload") == "event":
+            return page.event
+        # Try getter method
+        if hasattr(page, "GetEvent"):
+            evt = page.GetEvent()
+            if evt and evt.type_url:
+                return evt
+        return None
 
     def dispatch_rejection(
         self, source: types.EventBook, destinations: list[types.EventBook]

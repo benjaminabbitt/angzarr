@@ -241,7 +241,6 @@ class Saga(ABC):
         event_any: Any,
         root: bytes = None,
         correlation_id: str = "",
-        destinations: list[types.EventBook] = None,
     ) -> list[types.CommandBook]:
         """Dispatch event to matching @handles method.
 
@@ -249,7 +248,6 @@ class Saga(ABC):
             event_any: Packed event as google.protobuf.Any
             root: Source aggregate root (passed to command cover)
             correlation_id: Correlation ID for the workflow
-            destinations: Optional list of destination EventBooks
 
         Returns:
             List of CommandBooks to send.
@@ -262,19 +260,11 @@ class Saga(ABC):
                 event = event_type()
                 event_any.Unpack(event)
 
-                # Check if handler accepts destinations parameter
-                method = getattr(self, method_name)
-                sig = inspect.signature(method)
-                params = list(sig.parameters.keys())
-
-                # Call handler with or without destinations
-                if "destinations" in params:
-                    result = method(event, destinations=destinations or [])
-                else:
-                    result = method(event)
+                # Call handler
+                result = getattr(self, method_name)(event)
 
                 # Pack result into CommandBooks
-                return self._pack_commands(result, root, correlation_id, destinations)
+                return self._pack_commands(result, root, correlation_id)
 
         # No handler found - return empty (saga may not care about all events)
         return []
@@ -284,7 +274,6 @@ class Saga(ABC):
         result,
         root: bytes = None,
         correlation_id: str = "",
-        destinations: list[types.EventBook] = None,
     ) -> list[types.CommandBook]:
         """Pack command(s) into CommandBooks."""
         if result is None:
@@ -341,19 +330,17 @@ class Saga(ABC):
         return destinations
 
     @classmethod
-    def execute(
+    def handle(
         cls,
         source: types.EventBook,
-        destinations: list[types.EventBook] = None,
     ) -> saga_pb2.SagaResponse:
-        """Phase 2: Process EventBook and return commands and events.
+        """Handle source events and produce commands.
 
         Creates a saga instance and dispatches each event.
         This is the entry point for gRPC integration.
 
         Args:
             source: EventBook containing events to process.
-            destinations: Optional list of destination EventBooks from prepare phase.
 
         Returns:
             SagaResponse containing commands and events.
@@ -365,9 +352,30 @@ class Saga(ABC):
 
         commands = []
         for page in source.pages:
-            if page.HasField("event"):
-                commands.extend(
-                    saga.dispatch(page.event, root, correlation_id, destinations)
-                )
+            event_any = page.event if page.HasField("event") else None
+            if (
+                event_any is None
+                and hasattr(page, "payload")
+                and page.HasField("payload")
+            ):
+                # New proto: event is in payload oneof
+                if hasattr(page.payload, "event"):
+                    event_any = page.payload.event
+                elif hasattr(page, "GetEvent"):
+                    event_any = page.GetEvent()
+            if event_any:
+                commands.extend(saga.dispatch(event_any, root, correlation_id))
 
         return saga_pb2.SagaResponse(commands=commands, events=saga._events)
+
+    @classmethod
+    def execute(
+        cls,
+        source: types.EventBook,
+        destinations: list[types.EventBook] = None,
+    ) -> saga_pb2.SagaResponse:
+        """Deprecated: Use handle() instead.
+
+        Kept for backwards compatibility.
+        """
+        return cls.handle(source)

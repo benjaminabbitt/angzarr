@@ -1,15 +1,11 @@
 """SagaHandler: gRPC Saga servicer backed by SingleFluentRouter or Saga class.
 
-Two-phase protocol matching the Saga proto service:
-  Prepare  → declare destination aggregates
-  Execute  → produce commands given source + destination state
+Sagas are stateless translators: source events → commands for target domains.
+Framework handles sequence stamping and delivery.
 
 Supports two patterns:
-1. SingleFluentRouter (fluent builder): SagaHandler(router)  # .domain().prepare().on()
+1. SingleFluentRouter (fluent builder): SagaHandler(router)  # .domain().on()
 2. Saga class (OO approach): SagaHandler(TableHandSaga)
-
-Simple sagas that only need router dispatch can omit WithPrepare/WithExecute.
-Complex sagas override with custom callbacks.
 """
 
 from __future__ import annotations
@@ -29,9 +25,8 @@ from .server import run_server
 if TYPE_CHECKING:
     import structlog
 
-PrepareFunc = Callable[[types.EventBook], list[types.Cover]]
-# ExecuteFunc returns SagaResponse (proto-generated type)
-ExecuteFunc = Callable[[types.EventBook, list[types.EventBook]], saga.SagaResponse]
+# HandleFunc returns SagaResponse (proto-generated type)
+HandleFunc = Callable[[types.EventBook], saga.SagaResponse]
 
 
 class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
@@ -40,14 +35,10 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
     Two patterns:
         SagaHandler(event_router) - fluent builder with SingleFluentRouter
         SagaHandler(MySaga) - OO approach with Saga class
-
-    Simple mode (default): Prepare returns empty, Execute dispatches through router/class.
-    Custom mode: Override with with_prepare/with_execute for destination-aware sagas.
     """
 
     def __init__(self, handler: SingleFluentRouter | type[Saga]) -> None:
-        self._prepare: PrepareFunc | None = None
-        self._execute: ExecuteFunc | None = None
+        self._handle: HandleFunc | None = None
         self._saga_class: type[Saga] | None = None
         self._event_router: SingleFluentRouter | None = None
 
@@ -59,70 +50,38 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
             self._event_router = handler
         else:
             # Assume it's a router-like object (duck typing for backwards compat)
-            # Check for SingleFluentRouter-style dispatch (returns list[CommandBook])
-            if hasattr(handler, "dispatch") and hasattr(
-                handler, "prepare_destinations"
-            ):
+            if hasattr(handler, "dispatch"):
                 self._event_router = handler
 
-    def with_prepare(self, fn: PrepareFunc) -> SagaHandler:
-        """Set custom prepare callback for destination declaration."""
-        self._prepare = fn
+    def with_handle(self, fn: HandleFunc) -> SagaHandler:
+        """Set custom handle callback for saga execution."""
+        self._handle = fn
         return self
 
-    def with_execute(self, fn: ExecuteFunc) -> SagaHandler:
-        """Set custom execute callback for destination-aware command production."""
-        self._execute = fn
-        return self
-
-    def Prepare(
+    def Handle(
         self,
-        request: saga.SagaPrepareRequest,
-        context: grpc.ServicerContext,
-    ) -> saga.SagaPrepareResponse:
-        """Phase 1: Declare which destination aggregates are needed."""
-        # Custom prepare takes precedence
-        if self._prepare is not None:
-            destinations = self._prepare(request.source)
-            return saga.SagaPrepareResponse(destinations=destinations)
-
-        # OO pattern: use Saga class's prepare_destinations
-        if self._saga_class is not None:
-            destinations = self._saga_class.prepare_destinations(request.source)
-            return saga.SagaPrepareResponse(destinations=destinations)
-
-        # Fluent pattern: use SingleFluentRouter's prepare_destinations
-        if self._event_router is not None:
-            destinations = self._event_router.prepare_destinations(request.source)
-            return saga.SagaPrepareResponse(destinations=destinations)
-
-        return saga.SagaPrepareResponse()
-
-    def Execute(
-        self,
-        request: saga.SagaExecuteRequest,
+        request: saga.SagaHandleRequest,
         context: grpc.ServicerContext,
     ) -> saga.SagaResponse:
-        """Phase 2: Produce commands and events given source + destination state."""
-        return self._execute_saga(request.source, list(request.destinations))
+        """Handle source events and produce commands for target domains."""
+        return self._handle_saga(request.source)
 
-    def _execute_saga(
+    def _handle_saga(
         self,
         source: types.EventBook,
-        destinations: list[types.EventBook],
     ) -> saga.SagaResponse:
-        """Dispatch through custom execute, Saga class, or SingleFluentRouter."""
-        # Custom execute takes precedence
-        if self._execute is not None:
-            return self._execute(source, destinations)
+        """Dispatch through custom handle, Saga class, or SingleFluentRouter."""
+        # Custom handle takes precedence
+        if self._handle is not None:
+            return self._handle(source)
 
-        # OO pattern: use Saga class's execute (returns SagaResponse)
+        # OO pattern: use Saga class's handle (returns SagaResponse)
         if self._saga_class is not None:
-            return self._saga_class.execute(source, destinations)
+            return self._saga_class.handle(source)
 
         # Fluent pattern: use SingleFluentRouter's dispatch (returns SagaResponse)
         if self._event_router is not None:
-            return self._event_router.dispatch(source, destinations)
+            return self._event_router.dispatch(source)
 
         return saga.SagaResponse()
 
