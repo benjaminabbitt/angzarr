@@ -26,8 +26,6 @@ class RejectionHandlerResponseTest : public ::testing::Test {
     Notification makeNotification(const std::string& domain, const std::string& commandType,
                                   const std::string& reason) {
         RejectionNotification rejection;
-        rejection.set_issuer_name("test-saga");
-        rejection.set_issuer_type("saga");
         rejection.set_rejection_reason(reason);
 
         auto* rejected_cmd = rejection.mutable_rejected_command();
@@ -115,8 +113,6 @@ class CommandRouterRejectionTest : public ::testing::Test {
     Notification makeNotification(const std::string& domain, const std::string& commandType,
                                   const std::string& reason) {
         RejectionNotification rejection;
-        rejection.set_issuer_name("test-saga");
-        rejection.set_issuer_type("saga");
         rejection.set_rejection_reason(reason);
 
         auto* rejected_cmd = rejection.mutable_rejected_command();
@@ -223,8 +219,6 @@ class ProcessManagerRejectionTest : public ::testing::Test {
     Notification makeNotification(const std::string& domain, const std::string& commandType,
                                   const std::string& reason) {
         RejectionNotification rejection;
-        rejection.set_issuer_name("test-saga");
-        rejection.set_issuer_type("saga");
         rejection.set_rejection_reason(reason);
 
         auto* rejected_cmd = rejection.mutable_rejected_command();

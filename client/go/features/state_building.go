@@ -142,7 +142,7 @@ func (s *StateContext) makeEventBook(domain string, events []*pb.EventPage, snap
 	}
 	// NextSequence is the sequence after the last event, or after snapshot if no events
 	if len(events) > 0 {
-		book.NextSequence = events[len(events)-1].GetSequence() + 1
+		book.NextSequence = events[len(events)-1].GetHeader().GetSequence() + 1
 	} else if snapshot != nil {
 		book.NextSequence = snapshot.Sequence + 1
 	} else {
@@ -153,8 +153,8 @@ func (s *StateContext) makeEventBook(domain string, events []*pb.EventPage, snap
 
 func (s *StateContext) makeEventPage(seq uint32, typeURL string) *pb.EventPage {
 	return &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: seq},
-		CreatedAt:    timestamppb.Now(),
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
+		CreatedAt: timestamppb.Now(),
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: typeURL,
@@ -263,8 +263,8 @@ func (s *StateContext) givenEventTypeURL(typeURL string) error {
 func (s *StateContext) givenCorruptedPayload() error {
 	events := []*pb.EventPage{
 		{
-			SequenceType: &pb.EventPage_Sequence{Sequence: 0},
-			CreatedAt:    timestamppb.Now(),
+			Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+			CreatedAt: timestamppb.Now(),
 			Payload: &pb.EventPage_Event{
 				Event: &anypb.Any{
 					TypeUrl: "type.googleapis.com/test.OrderCreated",
@@ -347,7 +347,7 @@ func (s *StateContext) whenBuildState() error {
 
 	if s.EventBook != nil {
 		for _, page := range s.EventBook.Pages {
-			if int32(page.GetSequence()) <= startSeq {
+			if int32(page.GetHeader().GetSequence()) <= startSeq {
 				continue
 			}
 			s.EventsApplied = append(s.EventsApplied, page)
@@ -691,8 +691,8 @@ func splitString(s, sep string) []string {
 func (s *StateContext) thenOnlyEventsApplied(e1, e2, e3, e4 int) error {
 	expectedSeqs := map[int]bool{e1: true, e2: true, e3: true, e4: true}
 	for _, page := range s.EventsApplied {
-		if !expectedSeqs[int(page.GetSequence())] {
-			return fmt.Errorf("unexpected event sequence %d was applied", page.GetSequence())
+		if !expectedSeqs[int(page.GetHeader().GetSequence())] {
+			return fmt.Errorf("unexpected event sequence %d was applied", page.GetHeader().GetSequence())
 		}
 	}
 	return nil
@@ -707,8 +707,8 @@ func (s *StateContext) thenOnlyEventsAtSeqApplied(seq1, seq2 int) error {
 
 func (s *StateContext) thenEventsAtSeqNotApplied(seq1, seq2 int) error {
 	for _, page := range s.EventsApplied {
-		if int(page.GetSequence()) == seq1 || int(page.GetSequence()) == seq2 {
-			return fmt.Errorf("event at sequence %d should not have been applied", page.GetSequence())
+		if int(page.GetHeader().GetSequence()) == seq1 || int(page.GetHeader().GetSequence()) == seq2 {
+			return fmt.Errorf("event at sequence %d should not have been applied", page.GetHeader().GetSequence())
 		}
 	}
 	return nil
@@ -774,8 +774,8 @@ func (s *StateContext) noStateShouldCarryOverBetweenEvents() error {
 func (s *StateContext) onlyApplyEvents(e1, e2, e3 int) error {
 	expectedSeqs := map[int]bool{e1: true, e2: true, e3: true}
 	for _, page := range s.EventsApplied {
-		if !expectedSeqs[int(page.GetSequence())] {
-			return fmt.Errorf("unexpected event sequence %d was applied", page.GetSequence())
+		if !expectedSeqs[int(page.GetHeader().GetSequence())] {
+			return fmt.Errorf("unexpected event sequence %d was applied", page.GetHeader().GetSequence())
 		}
 	}
 	return nil

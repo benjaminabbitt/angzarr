@@ -726,8 +726,8 @@ func (c *AggregateClientContext) theResponseShouldContainEventsStartingAtSequenc
 	if c.lastResult == nil || len(c.lastResult.Pages) == 0 {
 		return fmt.Errorf("no events in response")
 	}
-	if c.lastResult.Pages[0].GetSequence() != uint32(seq) {
-		return fmt.Errorf("expected events starting at sequence %d, got %d", seq, c.lastResult.Pages[0].GetSequence())
+	if c.lastResult.Pages[0].GetHeader().GetSequence() != uint32(seq) {
+		return fmt.Errorf("expected events starting at sequence %d, got %d", seq, c.lastResult.Pages[0].GetHeader().GetSequence())
 	}
 	return nil
 }
@@ -901,9 +901,9 @@ func (c *AggregateClientContext) eventsShouldHaveSequences(s1, s2, s3 int) error
 	if c.lastResult == nil || len(c.lastResult.Pages) < 3 {
 		return fmt.Errorf("not enough events")
 	}
-	if c.lastResult.Pages[0].GetSequence() != uint32(s1) ||
-		c.lastResult.Pages[1].GetSequence() != uint32(s2) ||
-		c.lastResult.Pages[2].GetSequence() != uint32(s3) {
+	if c.lastResult.Pages[0].GetHeader().GetSequence() != uint32(s1) ||
+		c.lastResult.Pages[1].GetHeader().GetSequence() != uint32(s2) ||
+		c.lastResult.Pages[2].GetHeader().GetSequence() != uint32(s3) {
 		return fmt.Errorf("sequence mismatch")
 	}
 	return nil

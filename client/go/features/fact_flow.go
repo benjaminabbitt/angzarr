@@ -335,8 +335,8 @@ func (f *FactFlowContext) thenFactPersistedWithSequence(expected int) error {
 	if f.fact == nil {
 		return fmt.Errorf("no fact to check")
 	}
-	if int(f.fact.GetSequence()) != expected {
-		return fmt.Errorf("expected sequence %d, got %d", expected, f.fact.GetSequence())
+	if int(f.fact.GetHeader().GetSequence()) != expected {
+		return fmt.Errorf("expected sequence %d, got %d", expected, f.fact.GetHeader().GetSequence())
 	}
 	return nil
 }
@@ -376,7 +376,7 @@ func (f *FactFlowContext) thenTableRecordsSittingOut(playerName string) error {
 }
 
 func (f *FactFlowContext) thenFactHasTableSequence() error {
-	if f.fact == nil || f.fact.GetSequence() == 0 {
+	if f.fact == nil || f.fact.GetHeader().GetSequence() == 0 {
 		return fmt.Errorf("fact has no sequence number")
 	}
 	return nil

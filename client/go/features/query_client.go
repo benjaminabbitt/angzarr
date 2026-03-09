@@ -141,8 +141,8 @@ func (c *QueryClientContext) eventsShouldBeInSequenceOrderTo(from, to int) error
 	}
 	for i, page := range c.lastResult.Pages {
 		expected := uint32(from + i)
-		if page.GetSequence() != expected {
-			return fmt.Errorf("expected sequence %d at index %d, got %d", expected, i, page.GetSequence())
+		if page.GetHeader().GetSequence() != expected {
+			return fmt.Errorf("expected sequence %d at index %d, got %d", expected, i, page.GetHeader().GetSequence())
 		}
 	}
 	return nil
@@ -184,7 +184,7 @@ func (c *QueryClientContext) iQueryEventsForRootFromSequence(domain, root string
 			NextSequence: book.NextSequence,
 		}
 		for _, page := range book.Pages {
-			if page.GetSequence() >= uint32(from) {
+			if page.GetHeader().GetSequence() >= uint32(from) {
 				result.Pages = append(result.Pages, page)
 			}
 		}
@@ -203,7 +203,7 @@ func (c *QueryClientContext) iQueryEventsForRootFromSequenceTo(domain, root stri
 			NextSequence: book.NextSequence,
 		}
 		for _, page := range book.Pages {
-			if page.GetSequence() >= uint32(from) && page.GetSequence() < uint32(to) {
+			if page.GetHeader().GetSequence() >= uint32(from) && page.GetHeader().GetSequence() < uint32(to) {
 				result.Pages = append(result.Pages, page)
 			}
 		}
@@ -218,8 +218,8 @@ func (c *QueryClientContext) theFirstEventShouldHaveSequence(seq int) error {
 	if c.lastResult == nil || len(c.lastResult.Pages) == 0 {
 		return fmt.Errorf("no events received")
 	}
-	if c.lastResult.Pages[0].GetSequence() != uint32(seq) {
-		return fmt.Errorf("expected first sequence %d, got %d", seq, c.lastResult.Pages[0].GetSequence())
+	if c.lastResult.Pages[0].GetHeader().GetSequence() != uint32(seq) {
+		return fmt.Errorf("expected first sequence %d, got %d", seq, c.lastResult.Pages[0].GetHeader().GetSequence())
 	}
 	return nil
 }
@@ -229,8 +229,8 @@ func (c *QueryClientContext) theLastEventShouldHaveSequence(seq int) error {
 		return fmt.Errorf("no events received")
 	}
 	last := c.lastResult.Pages[len(c.lastResult.Pages)-1]
-	if last.GetSequence() != uint32(seq) {
-		return fmt.Errorf("expected last sequence %d, got %d", seq, last.GetSequence())
+	if last.GetHeader().GetSequence() != uint32(seq) {
+		return fmt.Errorf("expected last sequence %d, got %d", seq, last.GetHeader().GetSequence())
 	}
 	return nil
 }
@@ -245,7 +245,7 @@ func (c *QueryClientContext) iQueryEventsForRootAsOfSequence(domain, root string
 			NextSequence: book.NextSequence,
 		}
 		for _, page := range book.Pages {
-			if page.GetSequence() <= uint32(asOf) {
+			if page.GetHeader().GetSequence() <= uint32(asOf) {
 				result.Pages = append(result.Pages, page)
 			}
 		}

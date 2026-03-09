@@ -272,7 +272,7 @@ func (c *CommandContext) tryBuild() {
 	}
 
 	page := &pb.CommandPage{
-		Sequence:      c.Sequence,
+		Header:        &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: c.Sequence}},
 		MergeStrategy: pb.MergeStrategy_MERGE_COMMUTATIVE,
 	}
 	page.Payload = &pb.CommandPage_Command{
@@ -358,8 +358,8 @@ func (c *CommandContext) thenCommandHasSequence(expected int) error {
 	if c.BuiltCommand == nil {
 		return fmt.Errorf("built command is nil")
 	}
-	if c.BuiltCommand.Pages[0].Sequence != uint32(expected) {
-		return fmt.Errorf("expected sequence %d, got %d", expected, c.BuiltCommand.Pages[0].Sequence)
+	if c.BuiltCommand.Pages[0].GetHeader().GetSequence() != uint32(expected) {
+		return fmt.Errorf("expected sequence %d, got %d", expected, c.BuiltCommand.Pages[0].GetHeader().GetSequence())
 	}
 	return nil
 }
@@ -395,8 +395,8 @@ func (c *CommandContext) thenChainedValuesPreserved() error {
 	if c.BuiltCommand.Cover.CorrelationId != "trace-456" {
 		return fmt.Errorf("expected correlation ID 'trace-456', got %q", c.BuiltCommand.Cover.CorrelationId)
 	}
-	if c.BuiltCommand.Pages[0].Sequence != 3 {
-		return fmt.Errorf("expected sequence 3, got %d", c.BuiltCommand.Pages[0].Sequence)
+	if c.BuiltCommand.Pages[0].GetHeader().GetSequence() != 3 {
+		return fmt.Errorf("expected sequence 3, got %d", c.BuiltCommand.Pages[0].GetHeader().GetSequence())
 	}
 	return nil
 }

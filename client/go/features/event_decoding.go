@@ -386,8 +386,8 @@ func (d *DecodeContext) thenSequenceIs(expected int) error {
 	if d.Event == nil {
 		return fmt.Errorf("event is nil")
 	}
-	if d.Event.GetSequence() != uint32(expected) {
-		return fmt.Errorf("expected sequence %d, got %d", expected, d.Event.GetSequence())
+	if d.Event.GetHeader().GetSequence() != uint32(expected) {
+		return fmt.Errorf("expected sequence %d, got %d", expected, d.Event.GetHeader().GetSequence())
 	}
 	return nil
 }
