@@ -25,8 +25,24 @@ mod cpp "cpp/justfile"
 default:
     @just --list
 
+# Regenerate proto for all client libraries
+proto-all:
+    @echo "=== Generating Python proto ==="
+    just python proto
+    @echo ""
+    @echo "=== Generating Go proto ==="
+    just go proto
+    @echo ""
+    @echo "=== Generating Java proto ==="
+    just java proto
+    @echo ""
+    @echo "=== Generating C++ proto ==="
+    just cpp proto
+    @echo ""
+    @echo "All client protos generated successfully"
+
 # Verify all clients build
-build-all:
+build-all: proto-all
     just rust build
     just python build
     just go build

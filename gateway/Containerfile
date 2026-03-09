@@ -16,11 +16,13 @@ COPY gateway/ ./gateway/
 
 WORKDIR /workspace/gateway
 
-# Download dependencies and generate go.sum
-RUN go mod tidy
-
 # Generate protobuf code (buf.gen.yaml inputs: ../proto)
+# Must happen before go mod tidy so generated imports are included
 RUN buf generate
+
+# Download dependencies and generate go.sum
+# After buf generate so generated file imports are included
+RUN go mod tidy
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /grpc-gateway .

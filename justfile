@@ -161,6 +161,14 @@ fmt-cpp:
             find examples/cpp client/cpp \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' \) -exec clang-format -i {} +
     fi
 
+# === Proto Generation ===
+
+# Generate all proto code (gateway + all clients)
+proto: gateway-gen
+    just client proto-all
+    @echo ""
+    @echo "All protos generated successfully"
+
 # === Buf Schema Registry ===
 
 # Run buf command in container (buf is installed in base image)
