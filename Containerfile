@@ -42,7 +42,7 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     echo "fn main() {}" > client/rust/tests/features.rs && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
-             storage_mongodb storage_redis \
+             storage_mongodb storage_redis storage_postgres \
              storage_immudb storage_nats \
              bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
              standalone_integration; do \
@@ -123,7 +123,7 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     echo "fn main() {}" > client/rust/tests/features.rs && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
-             storage_mongodb storage_redis \
+             storage_mongodb storage_redis storage_postgres \
              storage_immudb storage_nats \
              bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
              standalone_integration; do \
