@@ -61,7 +61,11 @@ public class HandAggregateService : CommandHandlerService.CommandHandlerServiceB
             var eventBook = new EventBook();
             var eventAny = Any.Pack(eventMessage, "type.googleapis.com/");
             eventBook.Pages.Add(
-                new EventPage { Sequence = request.Events.NextSequence, Event = eventAny }
+                new EventPage
+                {
+                    Header = new PageHeader { Sequence = request.Events.NextSequence },
+                    Event = eventAny,
+                }
             );
 
             return Task.FromResult(new BusinessResponse { Events = eventBook });

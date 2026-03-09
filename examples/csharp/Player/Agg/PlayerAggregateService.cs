@@ -74,7 +74,11 @@ public class PlayerAggregateService : CommandHandlerService.CommandHandlerServic
             var eventBook = new EventBook();
             var eventAny = Any.Pack(eventMessage, "type.googleapis.com/");
             eventBook.Pages.Add(
-                new EventPage { Sequence = request.Events.NextSequence, Event = eventAny }
+                new EventPage
+                {
+                    Header = new PageHeader { Sequence = request.Events.NextSequence },
+                    Event = eventAny,
+                }
             );
 
             return Task.FromResult(new BusinessResponse { Events = eventBook });
@@ -139,7 +143,11 @@ public class PlayerAggregateService : CommandHandlerService.CommandHandlerServic
 
                 var eventBook = new EventBook();
                 eventBook.Pages.Add(
-                    new EventPage { Sequence = seq, Event = Any.Pack(evt, "type.googleapis.com/") }
+                    new EventPage
+                    {
+                        Header = new PageHeader { Sequence = seq },
+                        Event = Any.Pack(evt, "type.googleapis.com/"),
+                    }
                 );
                 return new BusinessResponse { Events = eventBook };
             }

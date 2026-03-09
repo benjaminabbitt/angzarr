@@ -28,7 +28,7 @@ func handlePlayerEvents(events *pb.EventBook) (*pb.Projection, error) {
 		if event == nil {
 			continue
 		}
-		lastSeq = page.GetSequence()
+		lastSeq = page.GetHeader().GetSequence()
 
 		typeURL := event.TypeUrl
 		typeName := typeURL[strings.LastIndex(typeURL, ".")+1:]

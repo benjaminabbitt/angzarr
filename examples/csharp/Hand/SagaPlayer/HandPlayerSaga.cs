@@ -67,7 +67,11 @@ public static class HandPlayerSaga
                     },
                     Pages =
                     {
-                        new CommandPage { Sequence = destSeq, Command = cmdAny },
+                        new CommandPage
+                        {
+                            Header = new PageHeader { Sequence = destSeq },
+                            Command = cmdAny,
+                        },
                     },
                 }
             );

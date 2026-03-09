@@ -42,7 +42,7 @@ func writeLog(msg string) {
 }
 
 func getSequence(page *pb.EventPage) uint32 {
-	return page.GetSequence()
+	return page.GetHeader().GetSequence()
 }
 
 // docs:start:projector_functional

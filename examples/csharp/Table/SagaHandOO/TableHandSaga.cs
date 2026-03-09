@@ -87,7 +87,11 @@ public class TableHandSaga : Saga
             },
             Pages =
             {
-                new CommandPage { Sequence = destSeq, Command = PackCommand(dealCards) },
+                new CommandPage
+                {
+                    Header = new PageHeader { Sequence = destSeq },
+                    Command = PackCommand(dealCards),
+                },
             },
         };
     }

@@ -19,7 +19,11 @@ public class TestContext
     {
         var any = Any.Pack(evt, "type.googleapis.com/");
         HandEventBook.Pages.Add(
-            new EventPage { Sequence = (uint)HandEventBook.Pages.Count, Event = any }
+            new EventPage
+            {
+                Header = new PageHeader { Sequence = (uint)HandEventBook.Pages.Count },
+                Event = any,
+            }
         );
     }
 }

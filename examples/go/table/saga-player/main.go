@@ -89,8 +89,8 @@ func handleHandEnded(source *pb.EventBook, event *anypb.Any, destinations []*pb.
 			},
 			Pages: []*pb.CommandPage{
 				{
-					Sequence: destSeq,
-					Payload:  &pb.CommandPage_Command{Command: cmdAny},
+					Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: destSeq}},
+					Payload: &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		})

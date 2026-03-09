@@ -25,7 +25,7 @@ public class OutputProjectorService : ProjectorService.ProjectorServiceBase
                 {
                     lastProjection = result;
                     lastProjection.Cover = request.Cover;
-                    lastProjection.Sequence = page.Sequence;
+                    lastProjection.Sequence = page.Header?.Sequence ?? 0;
                 }
             }
         }

@@ -139,9 +139,9 @@ func InitHandSteps(ctx *godog.ScenarioContext) {
 
 func (hc *HandContext) makeEventPage(event *anypb.Any) *pb.EventPage {
 	return &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: uint32(len(hc.eventPages))},
-		CreatedAt:    timestamppb.Now(),
-		Payload:      &pb.EventPage_Event{Event: event},
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(len(hc.eventPages))}},
+		CreatedAt: timestamppb.Now(),
+		Payload:   &pb.EventPage_Event{Event: event},
 	}
 }
 

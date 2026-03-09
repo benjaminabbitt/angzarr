@@ -60,7 +60,11 @@ public class PlayerSteps
     private EventPage MakeEventPage(IMessage evt, int seq)
     {
         var any = Any.Pack(evt, "type.googleapis.com/");
-        return new EventPage { Sequence = (uint)seq, Event = any };
+        return new EventPage
+        {
+            Header = new PageHeader { Sequence = (uint)seq },
+            Event = any,
+        };
     }
 
     private EventBook MakeEventBook()

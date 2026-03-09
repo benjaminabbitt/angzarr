@@ -45,7 +45,7 @@ public class CloudEventsProjectorService : ProjectorService.ProjectorServiceBase
             if (eventAny == null)
                 continue;
 
-            lastSeq = page.Sequence;
+            lastSeq = page.Header?.Sequence ?? 0;
 
             var typeUrl = eventAny.TypeUrl;
             var typeName = typeUrl[(typeUrl.LastIndexOf('.') + 1)..];
