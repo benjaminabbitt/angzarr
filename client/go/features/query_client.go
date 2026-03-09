@@ -67,9 +67,9 @@ func (c *QueryClientContext) anAggregateWithRootHasEvents(domain, root string, c
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
-			CreatedAt:    timestamppb.Now(),
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
+			CreatedAt: timestamppb.Now(),
+			Payload:   &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book
@@ -91,9 +91,9 @@ func (c *QueryClientContext) anAggregateWithRootHasEventWithData(domain, root, e
 		Value:   []byte(data),
 	}
 	book.Pages = append(book.Pages, &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: 0},
-		CreatedAt:    timestamppb.Now(),
-		Payload:      &pb.EventPage_Event{Event: evt},
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+		CreatedAt: timestamppb.Now(),
+		Payload:   &pb.EventPage_Event{Event: evt},
 	})
 	c.eventBooks[c.key(domain, root)] = book
 	return nil
@@ -288,8 +288,8 @@ func (c *QueryClientContext) anAggregateWithRootInEdition(domain, root, edition 
 	}
 	evt, _ := anypb.New(&emptypb.Empty{})
 	c.eventBooks[key].Pages = append(c.eventBooks[key].Pages, &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: 0},
-		Payload:      &pb.EventPage_Event{Event: evt},
+		Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+		Payload: &pb.EventPage_Event{Event: evt},
 	})
 	return nil
 }
@@ -326,8 +326,8 @@ func (c *QueryClientContext) anAggregateWithRootHasEventsInEdition(domain, root 
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[key] = book
@@ -351,8 +351,8 @@ func (c *QueryClientContext) eventsWithCorrelationIDExistInMultipleAggregates(co
 		}
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: 0},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 		c.eventBooks[c.key(domain, root)] = book
 		c.correlatedEvents[correlationID] = append(c.correlatedEvents[correlationID], book)
@@ -431,9 +431,9 @@ func (c *QueryClientContext) anAggregateWithRootHasASnapshotAtSequenceAndEvents(
 	for i := 0; i < eventCount; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
-			CreatedAt:    timestamppb.Now(),
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
+			CreatedAt: timestamppb.Now(),
+			Payload:   &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book

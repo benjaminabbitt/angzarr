@@ -134,7 +134,7 @@ func (c *CompensationContext) makeCommandBook(domain string, correlationID strin
 		},
 		Pages: []*pb.CommandPage{
 			{
-				Sequence:      0,
+				Header:        &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				MergeStrategy: pb.MergeStrategy_MERGE_COMMUTATIVE,
 				Payload: &pb.CommandPage_Command{
 					Command: &anypb.Any{

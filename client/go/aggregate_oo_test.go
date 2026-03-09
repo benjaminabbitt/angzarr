@@ -36,7 +36,7 @@ func (a *TestOOAggregate) handlePaymentRejected(notification *pb.Notification) *
 		Cover: &pb.Cover{Domain: "test"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.FundsReleased"},
 				},
@@ -251,8 +251,8 @@ func TestCommandHandlerBase_DispatchRejection(t *testing.T) {
 		priorEvents := &pb.EventBook{
 			Cover: &pb.Cover{Domain: "test"},
 			Pages: []*pb.EventPage{
-				{SequenceType: &pb.EventPage_Sequence{Sequence: 0}},
-				{SequenceType: &pb.EventPage_Sequence{Sequence: 1}},
+				{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}},
+				{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 1}}},
 			},
 		}
 		agg := NewTestOOAggregate(priorEvents)

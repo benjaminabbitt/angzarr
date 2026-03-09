@@ -124,7 +124,7 @@ func (f *FactFlowContext) givenPlayerWithEvents(eventCount int) error {
 		sequence: uint32(eventCount + 1),
 	}
 	for i := 0; i < eventCount; i++ {
-		player.events[i] = &pb.EventPage{SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i + 1)}}
+		player.events[i] = &pb.EventPage{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i + 1)}}}
 	}
 	f.players["TestPlayer"] = player
 	return nil
@@ -191,7 +191,7 @@ func (f *FactFlowContext) whenSagaProcessesTurnChange() error {
 
 	// Inject ActionRequested fact
 	f.fact = &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: player.sequence},
+		Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: player.sequence}},
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: "type.googleapis.com/examples.ActionRequested",
@@ -210,7 +210,7 @@ func (f *FactFlowContext) whenActionRequestedFactInjected() error {
 		return fmt.Errorf("test player not found")
 	}
 	f.fact = &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: player.sequence},
+		Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: player.sequence}},
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: "type.googleapis.com/examples.ActionRequested",
@@ -229,7 +229,7 @@ func (f *FactFlowContext) whenPlayerEmitsSittingOut(playerName string) error {
 		if _, ok := table.players[playerName]; ok {
 			table.players[playerName] = true // mark as sitting out
 			f.fact = &pb.EventPage{
-				SequenceType: &pb.EventPage_Sequence{Sequence: table.sequence},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: table.sequence}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{
 						TypeUrl: "type.googleapis.com/examples.PlayerSatOut",
@@ -250,7 +250,7 @@ func (f *FactFlowContext) whenPlayerEmitsReturning(playerName string) error {
 		if _, ok := table.players[playerName]; ok {
 			table.players[playerName] = false // mark as active
 			f.fact = &pb.EventPage{
-				SequenceType: &pb.EventPage_Sequence{Sequence: table.sequence},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: table.sequence}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{
 						TypeUrl: "type.googleapis.com/examples.PlayerSatIn",

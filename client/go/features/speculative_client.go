@@ -52,8 +52,8 @@ func (c *SpeculativeClientContext) anAggregateWithRootHasEvents(domain, root str
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book
@@ -65,7 +65,7 @@ func (c *SpeculativeClientContext) iSpeculativelyExecuteACommandAgainstRoot(doma
 	// Simulate speculative execution returning events
 	evt, _ := anypb.New(&emptypb.Empty{})
 	c.speculativeEvents = []*pb.EventPage{
-		{SequenceType: &pb.EventPage_Sequence{Sequence: 100}, Payload: &pb.EventPage_Event{Event: evt}},
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 100}}, Payload: &pb.EventPage_Event{Event: evt}},
 	}
 	c.lastResult = &pb.EventBook{
 		Cover: &pb.Cover{Domain: domain, Root: &pb.UUID{Value: []byte(root)}},
@@ -90,7 +90,7 @@ func (c *SpeculativeClientContext) iSpeculativelyExecuteACommandAsOfSequence(seq
 	c.editionCreated = true
 	evt, _ := anypb.New(&emptypb.Empty{})
 	c.speculativeEvents = []*pb.EventPage{
-		{SequenceType: &pb.EventPage_Sequence{Sequence: uint32(seq + 1)}, Payload: &pb.EventPage_Event{Event: evt}},
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(seq + 1)}}, Payload: &pb.EventPage_Event{Event: evt}},
 	}
 	c.lastResult = &pb.EventBook{Pages: c.speculativeEvents}
 	return nil
@@ -162,7 +162,7 @@ func (c *SpeculativeClientContext) iSpeculativelyExecuteACommand2() error {
 	c.editionCreated = true
 	evt, _ := anypb.New(&emptypb.Empty{})
 	c.speculativeEvents = []*pb.EventPage{
-		{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: evt}},
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}, Payload: &pb.EventPage_Event{Event: evt}},
 	}
 	return nil
 }
@@ -307,8 +307,8 @@ func (c *SpeculativeClientContext) aSpeculativeAggregateWithRootHasEvents(domain
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		events[i] = &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		}
 	}
 	c.eventBooks[c.key(domain, root)] = &pb.EventBook{
@@ -332,8 +332,8 @@ func (c *SpeculativeClientContext) iSpeculativelyExecuteACommandProducingEvents(
 	for i := 0; i < count; i++ {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		c.speculativeEvents = append(c.speculativeEvents, &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: uint32(i)},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	return nil

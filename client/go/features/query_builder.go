@@ -275,7 +275,7 @@ func (q *QueryContext) iBuildAndGet_eventsForDomainRoot(domain, root string) err
 			Root:   &pb.UUID{Value: r[:]},
 		},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 1}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 1}}},
 		},
 	}
 	return nil
@@ -288,8 +288,8 @@ func (q *QueryContext) iBuildAndGet_pagesForDomainRoot(domain, root string) erro
 	q.tryBuildQuery()
 	// Simulate query execution and response - just pages, no EventBook wrapper
 	q.lastPages = []*pb.EventPage{
-		{SequenceType: &pb.EventPage_Sequence{Sequence: 1}},
-		{SequenceType: &pb.EventPage_Sequence{Sequence: 2}},
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 1}}},
+		{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 2}}},
 	}
 	return nil
 }

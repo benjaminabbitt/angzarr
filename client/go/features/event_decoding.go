@@ -105,8 +105,8 @@ func InitEventDecodingSteps(ctx *godog.ScenarioContext) {
 
 func (d *DecodeContext) makeEventPage(seq uint32, typeURL string) *pb.EventPage {
 	return &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: seq},
-		CreatedAt:    timestamppb.Now(),
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
+		CreatedAt: timestamppb.Now(),
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: typeURL,
@@ -118,8 +118,8 @@ func (d *DecodeContext) makeEventPage(seq uint32, typeURL string) *pb.EventPage 
 
 func (d *DecodeContext) makeExternalPage(seq uint32, uri string) *pb.EventPage {
 	return &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: seq},
-		CreatedAt:    timestamppb.Now(),
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
+		CreatedAt: timestamppb.Now(),
 		Payload: &pb.EventPage_External{
 			External: &pb.PayloadReference{
 				StorageType:  pb.PayloadStorageType_PAYLOAD_STORAGE_TYPE_S3,
@@ -180,8 +180,8 @@ func (d *DecodeContext) givenEmptyPayload() error {
 
 func (d *DecodeContext) givenCorruptedBytes() error {
 	d.Event = &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: 0},
-		CreatedAt:    timestamppb.Now(),
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+		CreatedAt: timestamppb.Now(),
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: "type.googleapis.com/test.Event",
@@ -194,8 +194,8 @@ func (d *DecodeContext) givenCorruptedBytes() error {
 
 func (d *DecodeContext) givenNonePayload() error {
 	d.Event = &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: 0},
-		CreatedAt:    timestamppb.Now(),
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
+		CreatedAt: timestamppb.Now(),
 	}
 	return nil
 }

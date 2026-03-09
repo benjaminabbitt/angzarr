@@ -93,8 +93,8 @@ func (r *RouterContext) makeEventBook(domain string, events []*pb.EventPage) *pb
 
 func (r *RouterContext) makeEventPage(seq uint32, typeURL string) *pb.EventPage {
 	return &pb.EventPage{
-		SequenceType: &pb.EventPage_Sequence{Sequence: seq},
-		CreatedAt:    timestamppb.Now(),
+		Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
+		CreatedAt: timestamppb.Now(),
 		Payload: &pb.EventPage_Event{
 			Event: &anypb.Any{
 				TypeUrl: typeURL,
@@ -113,7 +113,7 @@ func (r *RouterContext) makeCommandBook(domain, typeURL string) *pb.CommandBook 
 		},
 		Pages: []*pb.CommandPage{
 			{
-				Sequence:      0,
+				Header:        &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				MergeStrategy: pb.MergeStrategy_MERGE_COMMUTATIVE,
 				Payload: &pb.CommandPage_Command{
 					Command: &anypb.Any{

@@ -248,7 +248,7 @@ func (h *MockCHHandler) Handle(
 		Cover: cmd.Cover,
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: seq},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
 				Payload:      &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.TestEvent"}},
 			},
 		},
@@ -433,8 +433,8 @@ func TestCommandHandlerRouterRebuildState(t *testing.T) {
 
 	events := &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}},
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 1}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 1}}},
 		},
 	}
 
@@ -526,7 +526,7 @@ func TestSagaRouterPrepareDestinations(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -552,7 +552,7 @@ func TestSagaRouterDispatch(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -637,7 +637,7 @@ func TestProcessManagerRouterDispatch(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -707,7 +707,7 @@ func TestProjectorRouterDispatch(t *testing.T) {
 		Cover: &pb.Cover{Domain: "player"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.PlayerRegistered"},
 				},
@@ -773,7 +773,7 @@ func TestProcessManagerRouterDispatchUnknownDomain(t *testing.T) {
 		Cover: &pb.Cover{Domain: "unknown"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
 				},
@@ -795,7 +795,7 @@ func TestProjectorRouterDispatchUnknownDomain(t *testing.T) {
 		Cover: &pb.Cover{Domain: "unknown"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
 				},
@@ -848,7 +848,7 @@ func TestCommandHandlerRouterDispatchNotification(t *testing.T) {
 	handler.returnEvents = &pb.EventBook{
 		Cover: &pb.Cover{Domain: "things"},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.Compensated"}}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.Compensated"}}},
 		},
 	}
 	router := NewCommandHandlerRouter[*TestState]("test-ch", "things", handler)
@@ -971,7 +971,7 @@ func TestProcessManagerRouterDispatchNotification(t *testing.T) {
 	handler.returnEvents = &pb.EventBook{
 		Cover: &pb.Cover{Domain: "order-flow"},
 		Pages: []*pb.EventPage{
-			{SequenceType: &pb.EventPage_Sequence{Sequence: 0}, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.FlowCompensated"}}},
+			{Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}}, Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "test.FlowCompensated"}}},
 		},
 	}
 
@@ -994,7 +994,7 @@ func TestProcessManagerRouterDispatchNotification(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload:      &pb.EventPage_Event{Event: notificationAny},
 			},
 		},
@@ -1038,7 +1038,7 @@ func TestProcessManagerRouterPrepareDestinations(t *testing.T) {
 		Cover: &pb.Cover{Domain: "order"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.OrderCreated"},
 				},
@@ -1090,7 +1090,7 @@ func TestProcessManagerRouterPrepareDestinationsUnknownDomain(t *testing.T) {
 		Cover: &pb.Cover{Domain: "unknown"},
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event"},
 				},
@@ -1201,7 +1201,7 @@ func TestProjectorRouterDispatchNilCover(t *testing.T) {
 		Cover: nil, // Nil cover
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: 0},
+				Header: &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: 0}},
 				Payload: &pb.EventPage_Event{
 					Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.PlayerRegistered"},
 				},
