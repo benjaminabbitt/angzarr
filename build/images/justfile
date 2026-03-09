@@ -5,8 +5,8 @@ set shell := ["bash", "-c"]
 
 REGISTRY := "ghcr.io/angzarr-io"
 TOP := `git rev-parse --show-toplevel`
-# Container runtime: prefer podman, fall back to docker
-CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null`
+# Container runtime: prefer docker (for Kind compatibility), fall back to podman
+CONTAINER_CMD := `command -v docker 2>/dev/null || command -v podman 2>/dev/null`
 
 default:
     @just --list
