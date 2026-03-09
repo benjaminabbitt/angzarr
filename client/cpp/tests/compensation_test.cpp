@@ -36,8 +36,6 @@ class CompensationContextTest : public ::testing::Test {
         RejectionNotification rejection;
         rejection.set_rejection_reason(reason);
         *rejection.mutable_rejected_command() = rejected_cmd;
-        rejection.set_issuer_name("saga-test");
-        rejection.set_issuer_type("saga");
 
         // Wrap in notification
         Notification notification;
@@ -68,18 +66,6 @@ TEST_F(CompensationContextTest, FromNotification_ShouldExtractRejectionReason) {
 
     // Then it should contain the rejection reason
     EXPECT_EQ(ctx.rejection_reason(), "out of stock");
-}
-
-TEST_F(CompensationContextTest, FromNotification_ShouldExtractIssuerInfo) {
-    // Given a rejection notification with issuer info
-    auto notification = make_rejection_notification("inventory", "ReserveStock", "out of stock");
-
-    // When I create CompensationContext
-    auto ctx = CompensationContext::from_notification(notification);
-
-    // Then it should contain issuer info
-    EXPECT_EQ(ctx.issuer_name(), "saga-test");
-    EXPECT_EQ(ctx.issuer_type(), "saga");
 }
 
 // =============================================================================

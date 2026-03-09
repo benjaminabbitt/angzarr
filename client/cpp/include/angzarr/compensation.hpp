@@ -27,11 +27,11 @@ namespace angzarr {
  *
  * Example:
  *   auto ctx = CompensationContext::from_notification(notification);
- *   if (ctx.issuer_name() == "saga-order-fulfill") {
+ *   if (ctx.rejected_command_type() == "ReserveStock") {
  *       // Emit compensation events
- *       OrderCancelled cancel;
- *       cancel.set_reason(ctx.rejection_reason());
- *       return emit_compensation_events(new_event_book(cancel));
+ *       StockReleased release;
+ *       release.set_reason(ctx.rejection_reason());
+ *       return emit_compensation_events(new_event_book(release));
  *   }
  */
 class CompensationContext {
@@ -51,37 +51,16 @@ class CompensationContext {
         if (notification.has_payload()) {
             RejectionNotification rejection;
             if (notification.payload().UnpackTo(&rejection)) {
-                ctx.issuer_name_ = rejection.issuer_name();
-                ctx.issuer_type_ = rejection.issuer_type();
-                ctx.source_event_sequence_ = rejection.source_event_sequence();
                 ctx.rejection_reason_ = rejection.rejection_reason();
 
                 if (rejection.has_rejected_command()) {
                     ctx.rejected_command_ = rejection.rejected_command();
-                }
-                if (rejection.has_source_aggregate()) {
-                    ctx.source_aggregate_ = rejection.source_aggregate();
                 }
             }
         }
 
         return ctx;
     }
-
-    /**
-     * Name of the saga/PM that issued the rejected command.
-     */
-    const std::string& issuer_name() const { return issuer_name_; }
-
-    /**
-     * Type of issuer: "saga" or "process_manager".
-     */
-    const std::string& issuer_type() const { return issuer_type_; }
-
-    /**
-     * Sequence of the event that triggered the saga/PM flow.
-     */
-    uint32_t source_event_sequence() const { return source_event_sequence_; }
 
     /**
      * Why the command was rejected.
@@ -92,11 +71,6 @@ class CompensationContext {
      * The command that was rejected (if available).
      */
     const std::optional<CommandBook>& rejected_command() const { return rejected_command_; }
-
-    /**
-     * Cover of the aggregate that triggered the flow.
-     */
-    const std::optional<Cover>& source_aggregate() const { return source_aggregate_; }
 
     /**
      * Get the type URL of the rejected command, if available.
@@ -141,12 +115,8 @@ class CompensationContext {
     }
 
    private:
-    std::string issuer_name_;
-    std::string issuer_type_;
-    uint32_t source_event_sequence_ = 0;
     std::string rejection_reason_;
     std::optional<CommandBook> rejected_command_;
-    std::optional<Cover> source_aggregate_;
 };
 
 }  // namespace angzarr
