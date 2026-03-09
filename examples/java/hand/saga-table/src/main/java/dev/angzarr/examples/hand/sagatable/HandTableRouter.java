@@ -9,7 +9,8 @@ import java.util.List;
 /**
  * Saga: Hand -> Table (Functional Pattern)
  *
- * <p>Reacts to HandComplete events from Hand domain. Sends EndHand commands to Table domain.
+ * <p>Reacts to HandComplete events from Hand domain. Sends EndHand commands to Table domain. Sagas
+ * are stateless translators - framework handles sequence stamping.
  */
 public final class HandTableRouter {
 
@@ -18,20 +19,11 @@ public final class HandTableRouter {
   public static EventRouter createRouter() {
     return new EventRouter("saga-hand-table")
         .domain("hand")
-        .prepare(HandComplete.class, HandTableRouter::prepareHandComplete)
         .on(HandComplete.class, HandTableRouter::handleHandComplete);
   }
 
-  public static List<Cover> prepareHandComplete(HandComplete event) {
-    return List.of(
-        Cover.newBuilder()
-            .setDomain("table")
-            .setRoot(UUID.newBuilder().setValue(event.getTableRoot()))
-            .build());
-  }
-
   public static CommandBook handleHandComplete(HandComplete event, List<EventBook> destinations) {
-    int destSeq = EventRouter.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
+    // Sagas are stateless - destinations not used, framework stamps sequences
 
     // Convert PotWinner to PotResult
     List<PotResult> results = new ArrayList<>();
@@ -55,7 +47,10 @@ public final class HandTableRouter {
                 .setRoot(UUID.newBuilder().setValue(event.getTableRoot())))
         .addPages(
             CommandPage.newBuilder()
-                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
+                .setHeader(
+                    PageHeader.newBuilder()
+                        .setAngzarrDeferred(AngzarrDeferredSequence.newBuilder().build())
+                        .build())
                 .setCommand(EventRouter.packCommand(endHand)))
         .build();
   }

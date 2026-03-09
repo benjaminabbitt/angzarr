@@ -3,6 +3,7 @@ package dev.angzarr.examples.table.sagaplayer;
 import dev.angzarr.*;
 import dev.angzarr.client.EventRouter;
 import io.grpc.stub.StreamObserver;
+import java.util.List;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -10,7 +11,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 /**
  * Spring Boot application for Table -> Player saga.
  *
- * <p>Uses the functional EventRouter pattern.
+ * <p>Uses the functional EventRouter pattern. Sagas are stateless translators - framework handles
+ * sequence stamping.
  */
 @SpringBootApplication
 public class Main {
@@ -24,17 +26,9 @@ public class Main {
     private final EventRouter router = TablePlayerRouter.createRouter();
 
     @Override
-    public void prepare(
-        SagaPrepareRequest request, StreamObserver<SagaPrepareResponse> responseObserver) {
-      var destinations = router.prepareDestinations(request.getSource());
-      responseObserver.onNext(
-          SagaPrepareResponse.newBuilder().addAllDestinations(destinations).build());
-      responseObserver.onCompleted();
-    }
-
-    @Override
-    public void execute(SagaExecuteRequest request, StreamObserver<SagaResponse> responseObserver) {
-      var commands = router.dispatch(request.getSource(), request.getDestinationsList());
+    public void handle(SagaHandleRequest request, StreamObserver<SagaResponse> responseObserver) {
+      // Sagas receive source events only - framework handles destinations and sequences
+      var commands = router.dispatch(request.getSource(), List.of());
       responseObserver.onNext(SagaResponse.newBuilder().addAllCommands(commands).build());
       responseObserver.onCompleted();
     }

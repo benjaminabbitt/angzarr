@@ -6,7 +6,12 @@ import dev.angzarr.examples.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Saga: Table -> Hand (Functional Pattern) */
+/**
+ * Saga: Table -> Hand (Functional Pattern)
+ *
+ * <p>Sagas are stateless translators - framework handles sequence stamping. Commands use
+ * angzarr_deferred for sequences.
+ */
 public final class TableHandRouter {
 
   private TableHandRouter() {}
@@ -15,24 +20,14 @@ public final class TableHandRouter {
   public static EventRouter createRouter() {
     return new EventRouter("saga-table-hand")
         .domain("table")
-        .prepare(HandStarted.class, TableHandRouter::prepareHandStarted)
         .on(HandStarted.class, TableHandRouter::handleHandStarted);
   }
 
   // docs:end:event_router
 
-  public static List<Cover> prepareHandStarted(HandStarted event) {
-    return List.of(
-        Cover.newBuilder()
-            .setDomain("hand")
-            .setRoot(UUID.newBuilder().setValue(event.getHandRoot()))
-            .build());
-  }
-
   // docs:start:saga_handler
   public static CommandBook handleHandStarted(HandStarted event, List<EventBook> destinations) {
-    int destSeq = EventRouter.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
-
+    // Sagas are stateless - destinations not used, framework stamps sequences
     List<PlayerInHand> players = new ArrayList<>();
     for (SeatSnapshot seat : event.getActivePlayersList()) {
       players.add(
@@ -61,7 +56,10 @@ public final class TableHandRouter {
                 .setRoot(UUID.newBuilder().setValue(event.getHandRoot())))
         .addPages(
             CommandPage.newBuilder()
-                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
+                .setHeader(
+                    PageHeader.newBuilder()
+                        .setAngzarrDeferred(AngzarrDeferredSequence.newBuilder().build())
+                        .build())
                 .setCommand(EventRouter.packCommand(dealCards)))
         .build();
   }
