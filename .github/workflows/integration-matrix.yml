@@ -279,6 +279,8 @@ jobs:
 
       # Deploy language-specific services via skaffold
       - name: Deploy ${{ matrix.language }} services
+        env:
+          DOCKER_BUILDKIT: "1"
         run: |
           cd examples/${{ matrix.language }}
           skaffold run --cache-artifacts=false
