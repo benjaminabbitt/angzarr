@@ -1,8 +1,9 @@
 # RabbitMQ service
+# Named to match expected service name (angzarr-mq)
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "rabbitmq-simple.fullname" . }}
+  name: {{ include "rabbitmq-simple.serviceName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "rabbitmq-simple.labels" . | nindent 4 }}

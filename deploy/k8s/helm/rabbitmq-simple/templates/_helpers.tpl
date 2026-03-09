@@ -22,6 +22,14 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
+Service name - just the release name to match expected service naming
+Apps expect service at "angzarr-mq" when release is "angzarr-mq"
+*/}}
+{{- define "rabbitmq-simple.serviceName" -}}
+{{- .Release.Name }}
+{{- end }}
+
+{{/*
 Common labels
 */}}
 {{- define "rabbitmq-simple.labels" -}}
