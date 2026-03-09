@@ -77,7 +77,7 @@ public class OutputProjector {
     int seq = 0;
     if (eventBook.getPagesCount() > 0) {
       EventPage lastPage = eventBook.getPages(eventBook.getPagesCount() - 1);
-      seq = lastPage.getSequence();
+      seq = lastPage.getHeader().getSequence();
     }
 
     return Projection.newBuilder()

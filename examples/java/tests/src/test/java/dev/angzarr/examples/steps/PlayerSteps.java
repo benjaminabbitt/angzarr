@@ -253,7 +253,10 @@ public class PlayerSteps {
   private void addEvent(Message event) {
     Any eventAny = Any.pack(event, "type.googleapis.com/");
     EventPage page =
-        EventPage.newBuilder().setSequence(eventPages.size()).setEvent(eventAny).build();
+        EventPage.newBuilder()
+            .setHeader(PageHeader.newBuilder().setSequence(eventPages.size()).build())
+            .setEvent(eventAny)
+            .build();
     eventPages.add(page);
   }
 

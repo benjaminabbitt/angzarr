@@ -71,7 +71,7 @@ public class HandPlayerSaga extends Saga {
                       .setRoot(UUID.newBuilder().setValue(winner.getPlayerRoot())))
               .addPages(
                   CommandPage.newBuilder()
-                      .setSequence(destSeq)
+                      .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                       .setCommand(Any.pack(depositFunds, "type.googleapis.com/")))
               .build());
     }

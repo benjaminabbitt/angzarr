@@ -61,7 +61,7 @@ public final class TableHandRouter {
                 .setRoot(UUID.newBuilder().setValue(event.getHandRoot())))
         .addPages(
             CommandPage.newBuilder()
-                .setSequence(destSeq)
+                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                 .setCommand(EventRouter.packCommand(dealCards)))
         .build();
   }

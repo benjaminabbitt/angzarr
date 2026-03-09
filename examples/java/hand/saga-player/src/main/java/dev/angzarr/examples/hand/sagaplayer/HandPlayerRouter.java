@@ -72,7 +72,7 @@ public final class HandPlayerRouter {
                 .setRoot(UUID.newBuilder().setValue(winner.getPlayerRoot())))
         .addPages(
             CommandPage.newBuilder()
-                .setSequence(destSeq)
+                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                 .setCommand(EventRouter.packCommand(depositFunds)))
         .build();
   }

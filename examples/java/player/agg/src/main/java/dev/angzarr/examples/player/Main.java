@@ -102,7 +102,7 @@ public class Main {
                   .setCover(request.getCommand().getCover())
                   .addPages(
                       EventPage.newBuilder()
-                          .setSequence(seq)
+                          .setHeader(PageHeader.newBuilder().setSequence(seq).build())
                           .setEvent(Any.pack(event, TYPE_URL_PREFIX))
                           .build())
                   .build();

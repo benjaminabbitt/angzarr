@@ -85,7 +85,7 @@ public class TableHandSaga extends Saga {
                 .setRoot(UUID.newBuilder().setValue(event.getHandRoot())))
         .addPages(
             CommandPage.newBuilder()
-                .setSequence(destSeq)
+                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                 .setCommand(Any.pack(dealCards, "type.googleapis.com/")))
         .build();
   }

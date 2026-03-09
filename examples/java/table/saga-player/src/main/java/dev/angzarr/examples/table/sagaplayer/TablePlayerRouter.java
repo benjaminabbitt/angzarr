@@ -72,7 +72,7 @@ public final class TablePlayerRouter {
                 .setRoot(UUID.newBuilder().setValue(ByteString.copyFrom(playerRoot))))
         .addPages(
             CommandPage.newBuilder()
-                .setSequence(destSeq)
+                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                 .setCommand(EventRouter.packCommand(releaseFunds)))
         .build();
   }

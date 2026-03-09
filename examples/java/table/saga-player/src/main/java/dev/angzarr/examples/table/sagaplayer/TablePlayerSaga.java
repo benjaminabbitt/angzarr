@@ -70,7 +70,7 @@ public class TablePlayerSaga extends Saga {
                       .setRoot(UUID.newBuilder().setValue(ByteString.copyFrom(playerRoot))))
               .addPages(
                   CommandPage.newBuilder()
-                      .setSequence(destSeq)
+                      .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                       .setCommand(Any.pack(releaseFunds, "type.googleapis.com/")))
               .build());
     }
