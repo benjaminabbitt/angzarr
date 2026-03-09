@@ -45,7 +45,7 @@ class StateBuildingTest : public ::testing::Test {
 
         for (int i = 0; i < event_count; i++) {
             auto* page = book.add_pages();
-            page->set_sequence(i + 1);
+            page->mutable_header()->set_sequence(i + 1);
             auto* event = page->mutable_event();
             event->set_type_url("type.googleapis.com/TestEvent");
         }
@@ -109,7 +109,7 @@ TEST_F(StateBuildingTest, WithSnapshot_ShouldRestoreFromSnapshot) {
     // And some events after the snapshot
     for (int i = 11; i <= 15; i++) {
         auto* page = book.add_pages();
-        page->set_sequence(i);
+        page->mutable_header()->set_sequence(i);
         page->mutable_event()->set_type_url("type.googleapis.com/TestEvent");
     }
 

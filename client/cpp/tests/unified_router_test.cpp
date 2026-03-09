@@ -54,7 +54,7 @@ class MockAggregateHandler : public AggregateDomainHandler<TestState> {
         if (suffix == "CreateOrder") {
             EventBook events;
             auto* page = events.add_pages();
-            page->set_sequence(seq);
+            page->mutable_header()->set_sequence(seq);
             page->mutable_event()->set_type_url("type.googleapis.com/OrderCreated");
             return events;
         }
@@ -186,7 +186,7 @@ class StateRouterTest : public ::testing::Test {
         EventBook book;
         for (int i = 0; i < event_count; i++) {
             auto* page = book.add_pages();
-            page->set_sequence(i + 1);
+            page->mutable_header()->set_sequence(i + 1);
             page->mutable_event()->set_type_url("type.googleapis.com/TestEvent");
         }
         return book;
@@ -242,17 +242,17 @@ TEST_F(StateRouterTest, TypeMatching_ShouldMatchBySimpleName) {
     StateRouter<TestState> router;
     router.on<EventPage>([&applier_called](TestState& s, const EventPage& e) {
         applier_called = true;
-        s.counter = static_cast<int>(e.sequence());
+        s.counter = e.has_header() ? static_cast<int>(e.header().sequence()) : 0;
     });
 
     // When I apply an event with matching type URL
     EventBook book;
     auto* page = book.add_pages();
-    page->set_sequence(42);
+    page->mutable_header()->set_sequence(42);
 
     // Pack an EventPage into the event Any
     EventPage inner_event;
-    inner_event.set_sequence(99);
+    inner_event.mutable_header()->set_sequence(99);
     page->mutable_event()->PackFrom(inner_event, "type.googleapis.com/");
 
     auto state = router.with_event_book(&book);
@@ -292,7 +292,7 @@ class AggregateRouterTest : public ::testing::Test {
         cover->set_correlation_id("test-correlation");
 
         auto* page = cmd_book->add_pages();
-        page->set_sequence(1);
+        page->mutable_header()->set_sequence(1);
         page->mutable_command()->set_type_url("type.googleapis.com/" + command_type);
 
         return ctx_cmd;
@@ -424,7 +424,7 @@ class SagaRouterTest : public ::testing::Test {
         cover->set_correlation_id("test-correlation");
 
         auto* page = book.add_pages();
-        page->set_sequence(1);
+        page->mutable_header()->set_sequence(1);
         page->mutable_event()->set_type_url("type.googleapis.com/" + event_type);
 
         return book;
@@ -540,7 +540,7 @@ class ProcessManagerRouterTest : public ::testing::Test {
         cover->set_correlation_id("test-correlation");
 
         auto* page = book.add_pages();
-        page->set_sequence(1);
+        page->mutable_header()->set_sequence(1);
         page->mutable_event()->set_type_url("type.googleapis.com/" + event_type);
 
         return book;
@@ -692,7 +692,7 @@ class ProjectorRouterTest : public ::testing::Test {
         cover->set_domain(domain);
 
         auto* page = book.add_pages();
-        page->set_sequence(1);
+        page->mutable_header()->set_sequence(1);
         page->mutable_event()->set_type_url("type.googleapis.com/" + event_type);
 
         return book;
@@ -815,7 +815,7 @@ TEST(RejectionHandlerResponse, Empty_ShouldHaveNoValues) {
 
 TEST(RejectionHandlerResponse, WithEvents_ShouldHaveEvents) {
     EventBook events;
-    events.add_pages()->set_sequence(1);
+    events.add_pages()->mutable_header()->set_sequence(1);
 
     auto response = RejectionHandlerResponse::with_events(events);
     EXPECT_TRUE(response.events.has_value());
@@ -853,7 +853,7 @@ TEST(ProcessManagerResponse, WithCommands_ShouldHaveCommands) {
 
 TEST(ProcessManagerResponse, WithProcessEvents_ShouldHaveEvents) {
     EventBook events;
-    events.add_pages()->set_sequence(1);
+    events.add_pages()->mutable_header()->set_sequence(1);
 
     auto response = ProcessManagerResponse::with_process_events(events);
     EXPECT_TRUE(response.commands.empty());
@@ -864,7 +864,7 @@ TEST(ProcessManagerResponse, WithBoth_ShouldHaveBoth) {
     CommandBook cmd;
     cmd.mutable_cover()->set_domain("test");
     EventBook events;
-    events.add_pages()->set_sequence(1);
+    events.add_pages()->mutable_header()->set_sequence(1);
 
     auto response = ProcessManagerResponse::with_both({cmd}, events);
     EXPECT_EQ(response.commands.size(), 1);

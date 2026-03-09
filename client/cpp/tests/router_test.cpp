@@ -32,7 +32,7 @@ class EventRouterTest : public ::testing::Test {
         cover->set_correlation_id("test-correlation");
 
         auto* page = book.add_pages();
-        page->set_sequence(1);
+        page->mutable_header()->set_sequence(1);
         auto* event = page->mutable_event();
         event->set_type_url("type.googleapis.com/" + event_type);
 
@@ -109,7 +109,7 @@ class CommandRouterTest : public ::testing::Test {
         cover->set_correlation_id("test-correlation");
 
         auto* page = cmd_book->add_pages();
-        page->set_sequence(1);
+        page->mutable_header()->set_sequence(1);
         auto* command = page->mutable_command();
         command->set_type_url("type.googleapis.com/" + command_type);
 
@@ -125,7 +125,7 @@ TEST_F(CommandRouterTest, Dispatch_RegisteredCommand_ShouldReturnEvents) {
               [](const CommandBook&, const google::protobuf::Any&, TestState&, int seq) {
                   EventBook events;
                   auto* page = events.add_pages();
-                  page->set_sequence(seq);
+                  page->mutable_header()->set_sequence(seq);
                   auto* event = page->mutable_event();
                   event->set_type_url("type.googleapis.com/OrderCreated");
                   return events;
@@ -188,7 +188,7 @@ class StateBuildingTest : public ::testing::Test {
         EventBook book;
         for (int i = 0; i < count; i++) {
             auto* page = book.add_pages();
-            page->set_sequence(i + 1);
+            page->mutable_header()->set_sequence(i + 1);
             auto* event = page->mutable_event();
             event->set_type_url("type.googleapis.com/TestEvent");
         }
