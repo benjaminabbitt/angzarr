@@ -441,8 +441,6 @@ class ProcessManagerRouterTest {
                 .build();
 
         RejectionNotification rejection = RejectionNotification.newBuilder()
-                .setIssuerName("test-aggregate")
-                .setIssuerType("aggregate")
                 .setRejectionReason(reason)
                 .setRejectedCommand(rejectedCommand)
                 .build();

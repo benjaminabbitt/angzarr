@@ -30,7 +30,10 @@ uint32_t SagaContext::get_sequence(const std::string& domain,
         return 1;
     }
     const auto& last_page = it->second.pages(it->second.pages_size() - 1);
-    return last_page.sequence() + 1;
+    if (last_page.has_header()) {
+        return last_page.header().sequence() + 1;
+    }
+    return 1;
 }
 
 const EventBook* SagaContext::get_destination(const std::string& domain,

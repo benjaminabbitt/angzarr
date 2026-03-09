@@ -49,7 +49,10 @@ func (ctx *SagaContext) GetSequence(domain string, aggregateRoot []byte) uint32 
 		return 1
 	}
 	lastPage := book.GetPages()[len(book.GetPages())-1]
-	return lastPage.GetSequence() + 1
+	if header := lastPage.GetHeader(); header != nil {
+		return header.GetSequence() + 1
+	}
+	return 1
 }
 
 // GetDestination returns the EventBook for a destination aggregate, if available.

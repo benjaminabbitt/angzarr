@@ -112,8 +112,6 @@ class RejectionHandlerResponseTest {
                 .build();
 
         RejectionNotification rejection = RejectionNotification.newBuilder()
-                .setIssuerName("test-saga")
-                .setIssuerType("saga")
                 .setRejectionReason(reason)
                 .setRejectedCommand(rejectedCommand)
                 .build();

@@ -387,7 +387,10 @@ func (w *CommandPageW) Sequence() uint32 {
 	if w.CommandPage == nil {
 		return 0
 	}
-	return w.CommandPage.Sequence
+	if header := w.CommandPage.GetHeader(); header != nil {
+		return header.GetSequence()
+	}
+	return 0
 }
 
 // CommandResponseW wraps a CommandResponse proto with extension methods.
