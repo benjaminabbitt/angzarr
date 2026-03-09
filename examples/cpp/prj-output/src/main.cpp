@@ -44,10 +44,13 @@ class OutputProjectorService final : public angzarr::ProjectorService::Service {
 
     grpc::Status HandleSpeculative(grpc::ServerContext* context, const angzarr::EventBook* request,
                                    angzarr::Projection* response) override {
+        (void)context;
         // Speculative mode - don't write to file
         uint32_t seq = 0;
         for (const auto& page : request->pages()) {
-            seq = page.sequence();
+            if (page.has_header() && page.header().has_sequence()) {
+                seq = page.header().sequence();
+            }
         }
 
         response->mutable_cover()->CopyFrom(request->cover());
@@ -64,7 +67,9 @@ class OutputProjectorService final : public angzarr::ProjectorService::Service {
 
         for (const auto& page : event_book.pages()) {
             const auto& event_any = page.event();
-            seq = page.sequence();
+            if (page.has_header() && page.header().has_sequence()) {
+                seq = page.header().sequence();
+            }
 
             // Format and write event
             std::string formatted = format_event(event_any, event_book.cover().domain());

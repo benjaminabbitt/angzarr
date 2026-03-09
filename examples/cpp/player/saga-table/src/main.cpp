@@ -17,26 +17,15 @@ namespace {
 constexpr int DEFAULT_PORT = 50214;
 
 /// gRPC service implementation for player-table saga using EventRouter.
+/// Sagas are stateless translators - framework handles sequence stamping.
 ///
 /// Propagates player sit-out/sit-in intent as facts to the table domain.
 class PlayerTableSagaService final : public angzarr::SagaService::Service {
    public:
     PlayerTableSagaService() : router_(player::saga::create_player_table_router()) {}
 
-    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
-                         angzarr::SagaPrepareResponse* response) override {
-        (void)context;
-
-        auto covers = router_.prepare_destinations(request->source());
-        for (auto& cover : covers) {
-            *response->add_destinations() = std::move(cover);
-        }
-
-        return grpc::Status::OK;
-    }
-
-    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
-                         angzarr::SagaResponse* response) override {
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::SagaHandleRequest* request,
+                        angzarr::SagaResponse* response) override {
         (void)context;
 
         try {
@@ -46,9 +35,8 @@ class PlayerTableSagaService final : public angzarr::SagaService::Service {
             // Set source root for handler access
             player::saga::set_source_root(&request->source());
 
-            // Dispatch events through the router
-            std::vector<angzarr::EventBook> destinations(request->destinations().begin(),
-                                                         request->destinations().end());
+            // Dispatch events through the router - no destinations, framework handles sequences
+            std::vector<angzarr::EventBook> destinations;
             auto commands = router_.dispatch(request->source(), destinations);
 
             // Add commands to response

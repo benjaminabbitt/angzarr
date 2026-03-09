@@ -19,55 +19,14 @@ constexpr const char* INPUT_DOMAIN = "table";
 constexpr const char* OUTPUT_DOMAIN = "player";
 
 /// gRPC service implementation for table-player saga.
+/// Sagas are stateless translators - framework handles sequence stamping.
 class TablePlayerSagaService final : public angzarr::SagaService::Service {
    public:
-    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
-                         angzarr::SagaPrepareResponse* response) override {
-        // Find HandEnded event and extract player roots
-        const auto& source = request->source();
-        for (const auto& page : source.pages()) {
-            const auto& event_any = page.event();
-            if (event_any.type_url().find("HandEnded") != std::string::npos) {
-                examples::HandEnded event;
-                event_any.UnpackTo(&event);
-
-                // Add each player in stack_changes as a destination
-                for (const auto& [player_hex, stack_change] : event.stack_changes()) {
-                    auto* dest = response->add_destinations();
-                    dest->set_domain(OUTPUT_DOMAIN);
-
-                    // Convert hex string to bytes
-                    std::string bytes;
-                    for (size_t i = 0; i < player_hex.length(); i += 2) {
-                        bytes += static_cast<char>(std::stoi(player_hex.substr(i, 2), nullptr, 16));
-                    }
-                    dest->mutable_root()->set_value(bytes);
-                }
-                break;
-            }
-        }
-
-        return grpc::Status::OK;
-    }
-
-    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
-                         angzarr::SagaResponse* response) override {
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::SagaHandleRequest* request,
+                        angzarr::SagaResponse* response) override {
+        (void)context;
         try {
             const auto& source = request->source();
-
-            // Build map from player root to destination EventBook for sequence lookup
-            std::map<std::string, const angzarr::EventBook*> dest_map;
-            for (const auto& dest : request->destinations()) {
-                if (dest.has_cover() && dest.cover().has_root()) {
-                    std::string key;
-                    for (unsigned char c : dest.cover().root().value()) {
-                        char buf[3];
-                        snprintf(buf, sizeof(buf), "%02x", c);
-                        key += buf;
-                    }
-                    dest_map[key] = &dest;
-                }
-            }
 
             // Find HandEnded event
             for (const auto& page : source.pages()) {
@@ -78,19 +37,12 @@ class TablePlayerSagaService final : public angzarr::SagaService::Service {
 
                     // Create ReleaseFunds commands for each player
                     for (const auto& [player_hex, stack_change] : event.stack_changes()) {
+                        (void)stack_change;
                         // Convert hex string to bytes
                         std::string player_bytes;
                         for (size_t i = 0; i < player_hex.length(); i += 2) {
                             player_bytes +=
                                 static_cast<char>(std::stoi(player_hex.substr(i, 2), nullptr, 16));
-                        }
-
-                        // Get sequence from destination state
-                        uint64_t dest_seq = 0;
-                        auto it = dest_map.find(player_hex);
-                        if (it != dest_map.end() && it->second->pages_size() > 0) {
-                            dest_seq =
-                                it->second->pages(it->second->pages_size() - 1).sequence() + 1;
                         }
 
                         // Create ReleaseFunds command
@@ -105,7 +57,8 @@ class TablePlayerSagaService final : public angzarr::SagaService::Service {
                         cover->set_correlation_id(source.cover().correlation_id());
 
                         auto* cmd_page = cmd_book->add_pages();
-                        cmd_page->set_sequence(dest_seq);
+                        // Framework handles sequence stamping
+                        cmd_page->mutable_header()->mutable_angzarr_deferred();
                         cmd_page->mutable_command()->PackFrom(release_funds);
                     }
 

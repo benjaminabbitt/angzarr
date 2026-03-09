@@ -19,32 +19,12 @@ constexpr const char* INPUT_DOMAIN = "hand";
 constexpr const char* OUTPUT_DOMAIN = "table";
 
 /// gRPC service implementation for hand-table saga.
+/// Sagas are stateless translators - framework handles sequence stamping.
 class HandTableSagaService final : public angzarr::SagaService::Service {
    public:
-    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
-                         angzarr::SagaPrepareResponse* response) override {
-        // Find HandComplete event and extract table root
-        const auto& source = request->source();
-        for (const auto& page : source.pages()) {
-            const auto& event_any = page.event();
-            if (event_any.type_url().find("HandComplete") != std::string::npos) {
-                examples::HandComplete event;
-                event_any.UnpackTo(&event);
-
-                // Add table as destination
-                auto* dest = response->add_destinations();
-                dest->set_domain(OUTPUT_DOMAIN);
-                dest->mutable_root()->set_value(event.table_root());
-
-                break;
-            }
-        }
-
-        return grpc::Status::OK;
-    }
-
-    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
-                         angzarr::SagaResponse* response) override {
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::SagaHandleRequest* request,
+                        angzarr::SagaResponse* response) override {
+        (void)context;
         try {
             const auto& source = request->source();
 
@@ -59,15 +39,6 @@ class HandTableSagaService final : public angzarr::SagaService::Service {
                     std::string hand_root;
                     if (source.has_cover() && source.cover().has_root()) {
                         hand_root = source.cover().root().value();
-                    }
-
-                    // Get sequence from destination state
-                    uint64_t dest_seq = 0;
-                    if (request->destinations_size() > 0) {
-                        const auto& dest = request->destinations(0);
-                        if (dest.pages_size() > 0) {
-                            dest_seq = dest.pages(dest.pages_size() - 1).sequence() + 1;
-                        }
                     }
 
                     // Build EndHand command
@@ -91,7 +62,8 @@ class HandTableSagaService final : public angzarr::SagaService::Service {
                     cover->set_correlation_id(source.cover().correlation_id());
 
                     auto* cmd_page = cmd_book->add_pages();
-                    cmd_page->set_sequence(dest_seq);
+                    // Framework handles sequence stamping
+                    cmd_page->mutable_header()->mutable_angzarr_deferred();
                     cmd_page->mutable_command()->PackFrom(end_hand);
 
                     break;

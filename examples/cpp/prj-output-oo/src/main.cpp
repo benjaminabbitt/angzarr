@@ -110,18 +110,23 @@ class OutputProjectorService final : public angzarr::ProjectorService::Service {
    public:
     grpc::Status Handle(grpc::ServerContext* context, const angzarr::EventBook* request,
                         angzarr::Projection* response) override {
+        (void)context;
         uint32_t seq = 0;
 
         // Use the OO projector for player domain
         if (request->cover().domain() == "player") {
             auto projections = projector_.project(*request);
             for (const auto& page : request->pages()) {
-                seq = page.sequence();
+                if (page.has_header() && page.header().has_sequence()) {
+                    seq = page.header().sequence();
+                }
             }
         } else {
             // Handle other domains inline for this example
             for (const auto& page : request->pages()) {
-                seq = page.sequence();
+                if (page.has_header() && page.header().has_sequence()) {
+                    seq = page.header().sequence();
+                }
                 const auto& event_any = page.event();
                 handle_other_domain(event_any, request->cover().domain());
             }

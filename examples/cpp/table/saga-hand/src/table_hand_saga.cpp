@@ -6,37 +6,17 @@
 namespace table {
 namespace saga {
 
-// Prepare handler: declare hand as destination.
-static std::vector<angzarr::Cover> prepare_hand_started(const google::protobuf::Any& event_any,
-                                                        const angzarr::UUID* root) {
-    (void)root;
-
-    examples::HandStarted event;
-    event_any.UnpackTo(&event);
-
-    std::vector<angzarr::Cover> covers;
-    angzarr::Cover cover;
-    cover.set_domain("hand");
-    cover.mutable_root()->set_value(event.hand_root());
-    covers.push_back(cover);
-    return covers;
-}
-
 // docs:start:saga_handler
 // Handle HandStarted: produce DealCards command for hand.
+// Sagas are stateless translators - framework handles sequence stamping.
 static std::vector<angzarr::CommandBook> handle_hand_started(
     const google::protobuf::Any& event_any, const std::string& source_root,
     const std::string& correlation_id, const std::vector<angzarr::EventBook>& destinations) {
     (void)source_root;
+    (void)destinations;  // Sagas are stateless - destinations not used
 
     examples::HandStarted event;
     event_any.UnpackTo(&event);
-
-    // Why sequence from destination state? Sagas MUST set command sequences from
-    // destination EventBooks. The framework provides destination state so sagas
-    // can make business decisions AND compute correct sequences. Commands with
-    // wrong sequences are rejected for optimistic concurrency.
-    int dest_seq = destinations.empty() ? 0 : destinations[0].next_sequence();
 
     // Build DealCards command from HandStarted event
     examples::DealCards deal_cards;
@@ -66,7 +46,8 @@ static std::vector<angzarr::CommandBook> handle_hand_started(
     cmd_book.mutable_cover()->set_correlation_id(correlation_id);
 
     auto* page = cmd_book.add_pages();
-    page->set_sequence(dest_seq);
+    // Framework handles sequence stamping
+    page->mutable_header()->mutable_angzarr_deferred();
     page->mutable_command()->CopyFrom(cmd_any);
 
     return {std::move(cmd_book)};
@@ -77,7 +58,6 @@ static std::vector<angzarr::CommandBook> handle_hand_started(
 angzarr::EventRouter create_table_hand_router() {
     return angzarr::EventRouter("saga-table-hand")
         .domain("table")
-        .prepare("HandStarted", prepare_hand_started)
         .on("HandStarted", handle_hand_started);
 }
 // docs:end:event_router

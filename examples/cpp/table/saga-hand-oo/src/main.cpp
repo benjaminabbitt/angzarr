@@ -33,35 +33,19 @@ constexpr int DEFAULT_PORT = 50412;
  *
  * Reacts to HandStarted events from Table domain.
  * Sends DealCards commands to Hand domain.
+ * Sagas are stateless translators - framework handles sequence stamping.
  *
  * Uses macro-based handler registration with:
- * - ANGZARR_PREPARES(EventType) for prepare phase handlers
- * - ANGZARR_REACTS_TO(EventType) for execute phase handlers
+ * - ANGZARR_REACTS_TO(EventType) for handle phase handlers
  */
 class TableHandSaga : public angzarr::Saga {
    public:
     ANGZARR_SAGA("saga-table-hand", "table", "hand")
 
     /**
-     * Prepare phase: declare which destination aggregates we need to read.
+     * Handle phase: translate Table.HandStarted -> Hand.DealCards.
      *
-     * Called during the prepare phase of the two-phase saga protocol.
-     * Returns a list of Cover objects identifying the destination aggregates
-     * needed for the execute phase.
-     */
-    ANGZARR_PREPARES(HandStarted)
-    (const examples::HandStarted& event) {
-        angzarr::Cover cover;
-        cover.set_domain("hand");
-        cover.mutable_root()->set_value(event.hand_root());
-        return {cover};
-    }
-
-    /**
-     * Execute phase: translate Table.HandStarted -> Hand.DealCards.
-     *
-     * Called during the execute phase with the source event and
-     * fetched destination EventBooks. Returns the command to send.
+     * Called with the source event. Framework handles sequence stamping.
      */
     ANGZARR_REACTS_TO(HandStarted)
     (const examples::HandStarted& event) {
@@ -89,22 +73,15 @@ class TableHandSaga : public angzarr::Saga {
 // docs:start:saga_oo_service
 /**
  * gRPC service for Table->Hand saga using OO pattern.
+ * Sagas are stateless translators - framework handles sequence stamping.
  */
 class TableHandSagaService final : public angzarr::SagaService::Service {
    public:
-    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
-                         angzarr::SagaPrepareResponse* response) override {
-        auto destinations = saga_.prepare_destinations(request->source());
-        for (const auto& dest : destinations) {
-            *response->add_destinations() = dest;
-        }
-        return grpc::Status::OK;
-    }
-
-    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
-                         angzarr::SagaResponse* response) override {
-        std::vector<angzarr::EventBook> destinations(request->destinations().begin(),
-                                                     request->destinations().end());
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::SagaHandleRequest* request,
+                        angzarr::SagaResponse* response) override {
+        (void)context;
+        // No destinations - framework handles sequences
+        std::vector<angzarr::EventBook> destinations;
 
         auto result = saga_.dispatch(request->source(), destinations);
 

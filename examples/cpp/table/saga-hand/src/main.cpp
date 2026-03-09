@@ -20,17 +20,12 @@ constexpr const char* INPUT_DOMAIN = "table";
 constexpr const char* OUTPUT_DOMAIN = "hand";
 
 /// gRPC service implementation for table-hand saga.
+/// Sagas are stateless translators - framework handles sequence stamping.
 class TableHandSagaService final : public angzarr::SagaService::Service {
    public:
-    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
-                         angzarr::SagaPrepareResponse* response) override {
-        // Table-hand saga doesn't need to read destination state
-        // Hand is created fresh, no prior state needed
-        return grpc::Status::OK;
-    }
-
-    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
-                         angzarr::SagaResponse* response) override {
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::SagaHandleRequest* request,
+                        angzarr::SagaResponse* response) override {
+        (void)context;
         try {
             const auto& source = request->source();
 
@@ -66,6 +61,8 @@ class TableHandSagaService final : public angzarr::SagaService::Service {
                     cover->set_correlation_id(source.cover().correlation_id());
 
                     auto* cmd_page = cmd_book->add_pages();
+                    // Framework handles sequence stamping
+                    cmd_page->mutable_header()->mutable_angzarr_deferred();
                     cmd_page->mutable_command()->PackFrom(deal_cmd);
 
                     break;
