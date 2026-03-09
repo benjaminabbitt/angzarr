@@ -158,12 +158,13 @@ jobs:
       matrix:
         language: [rust, go, python, java, csharp, cpp]
         exclude:
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'python' && 'python' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'java' && 'java' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'csharp' && 'csharp' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'cpp' && 'cpp' || '' }}
+          # Only exclude languages when workflow_dispatch with specific language selected
+          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
+          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
+          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'python' && 'python' || '' }}
+          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'java' && 'java' || '' }}
+          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'csharp' && 'csharp' || '' }}
+          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'cpp' && 'cpp' || '' }}
 
     steps:
       - uses: actions/checkout@v4
