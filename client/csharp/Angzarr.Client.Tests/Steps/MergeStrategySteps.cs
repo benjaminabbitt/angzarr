@@ -103,7 +103,7 @@ public class MergeStrategySteps
         _targetSequence = (uint)sequence;
         if (_command != null && _command.Pages.Count > 0)
         {
-            _command.Pages[0].Sequence = _targetSequence;
+            Helpers.SetSequence(_command.Pages[0], _targetSequence);
         }
     }
 
@@ -119,17 +119,16 @@ public class MergeStrategySteps
     public void GivenTheDestinationAggregateHasAdvanced()
     {
         _aggregate ??= new Angzarr.EventBook();
-        _aggregate.Pages.Add(
-            new Angzarr.EventPage
+        var page = new Angzarr.EventPage
+        {
+            Header = new Angzarr.PageHeader { Sequence = (uint)(_aggregate.Pages.Count + 1) },
+            Event = new Any
             {
-                Sequence = (uint)(_aggregate.Pages.Count + 1),
-                Event = new Any
-                {
-                    TypeUrl = "type.googleapis.com/examples.ConcurrentEvent",
-                    Value = Google.Protobuf.ByteString.Empty,
-                },
-            }
-        );
+                TypeUrl = "type.googleapis.com/examples.ConcurrentEvent",
+                Value = Google.Protobuf.ByteString.Empty,
+            },
+        };
+        _aggregate.Pages.Add(page);
     }
 
     [Given(@"the aggregate accepts the command")]
@@ -243,7 +242,7 @@ public class MergeStrategySteps
     {
         _targetSequence = (uint)sequence;
         InitializeCommand();
-        _command!.Pages[0].Sequence = _targetSequence;
+        Helpers.SetSequence(_command!.Pages[0], _targetSequence);
     }
 
     [Given(@"an aggregate with snapshot at sequence (\d+)")]
@@ -394,7 +393,7 @@ public class MergeStrategySteps
         _targetSequence = (uint)sequence;
         if (_command != null && _command.Pages.Count > 0)
         {
-            _command.Pages[0].Sequence = _targetSequence;
+            Helpers.SetSequence(_command.Pages[0], _targetSequence);
         }
     }
 
@@ -508,7 +507,7 @@ public class MergeStrategySteps
             _ => Angzarr.MergeStrategy.MergeCommutative,
         };
         InitializeCommand();
-        _command!.Pages[0].Sequence = _targetSequence;
+        Helpers.SetSequence(_command!.Pages[0], _targetSequence);
         WhenTheCoordinatorProcessesTheCommand();
     }
 
@@ -518,7 +517,7 @@ public class MergeStrategySteps
         _mergeStrategy = Angzarr.MergeStrategy.MergeStrict;
         _targetSequence = (uint)sequence;
         InitializeCommand();
-        _command!.Pages[0].Sequence = _targetSequence;
+        Helpers.SetSequence(_command!.Pages[0], _targetSequence);
         WhenTheCoordinatorProcessesTheCommand();
     }
 

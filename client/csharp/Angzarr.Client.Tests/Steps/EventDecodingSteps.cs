@@ -68,7 +68,7 @@ public class EventDecodingSteps
     {
         foreach (var page in _eventBook!.Pages)
         {
-            _ctx.Add($"page_{page.Sequence}", page.Event);
+            _ctx.Add($"page_{Helpers.SequenceNum(page)}", page.Event);
         }
     }
 
@@ -95,14 +95,18 @@ public class EventDecodingSteps
     {
         foreach (var page in _eventBook!.Pages)
         {
-            _ctx.ContainsKey($"page_{page.Sequence}").Should().BeTrue();
+            _ctx.ContainsKey($"page_{Helpers.SequenceNum(page)}").Should().BeTrue();
         }
     }
 
     [Given(@"an EventPage with type_url ""(.*)""")]
     public void GivenEventPageWithTypeUrl(string typeUrl)
     {
-        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty(), typeUrl) };
+        _eventPage = new Angzarr.EventPage
+        {
+            Header = new Angzarr.PageHeader { Sequence = 1 },
+            Event = Any.Pack(new Empty(), typeUrl),
+        };
 
         // Create event book and share via context for StateBuildingSteps
         _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
@@ -136,7 +140,7 @@ public class EventDecodingSteps
     {
         _eventPage = new Angzarr.EventPage
         {
-            Sequence = (uint)sequence,
+            Header = new Angzarr.PageHeader { Sequence = (uint)sequence },
             Event = Any.Pack(new Empty()),
         };
     }
@@ -144,7 +148,7 @@ public class EventDecodingSteps
     [Then(@"event\.sequence should be (\d+)")]
     public void ThenEventSequenceShouldBe(int expected)
     {
-        _eventPage!.Sequence.Should().Be((uint)expected);
+        Helpers.SequenceNum(_eventPage!).Should().Be((uint)expected);
     }
 
     [Then(@"the EventBook metadata should be stripped")]
@@ -175,7 +179,7 @@ public class EventDecodingSteps
         {
             for (int i = 0; i < _eventBook.Pages.Count; i++)
             {
-                _eventBook.Pages[i].Sequence.Should().Be((uint)(i + 1));
+                Helpers.SequenceNum(_eventBook.Pages[i]).Should().Be((uint)(i + 1));
             }
         }
     }
@@ -491,7 +495,7 @@ public class EventDecodingSteps
             );
         foreach (var page in book!.Pages)
         {
-            _ctx[$"decoded_{page.Sequence}"] = page.Event;
+            _ctx[$"decoded_{Helpers.SequenceNum(page)}"] = page.Event;
         }
     }
 

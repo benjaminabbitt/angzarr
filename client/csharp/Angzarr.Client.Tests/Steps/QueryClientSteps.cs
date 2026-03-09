@@ -154,7 +154,7 @@ public class QueryClientSteps
     {
         if (_eventBook?.Pages.Count > 0)
         {
-            _eventBook.Pages[0].Sequence.Should().Be((uint)expected);
+            Helpers.SequenceNum(_eventBook.Pages[0]).Should().Be((uint)expected);
         }
     }
 
@@ -163,7 +163,7 @@ public class QueryClientSteps
     {
         if (_eventBook?.Pages.Count > 0)
         {
-            _eventBook.Pages[^1].Sequence.Should().Be((uint)expected);
+            Helpers.SequenceNum(_eventBook.Pages[^1]).Should().Be((uint)expected);
         }
     }
 

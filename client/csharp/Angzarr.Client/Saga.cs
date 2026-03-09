@@ -135,7 +135,8 @@ public abstract class Saga
     {
         if (destination == null || destination.Pages.Count == 0)
             return 1;
-        return destination.Pages[^1].Sequence + 1;
+        var lastPage = destination.Pages[^1];
+        return (lastPage.Header?.Sequence ?? 0) + 1;
     }
 
     /// <summary>

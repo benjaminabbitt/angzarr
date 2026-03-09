@@ -94,7 +94,7 @@ public class StateBuildingSteps
             foreach (var page in _eventBook.Pages)
             {
                 // Only apply events after snapshot (or all if no snapshot)
-                if (snapshotSeq == 0 || page.Sequence > snapshotSeq)
+                if (snapshotSeq == 0 || Helpers.SequenceNum(page) > snapshotSeq)
                 {
                     _state.Counter++;
                 }
@@ -107,15 +107,15 @@ public class StateBuildingSteps
             uint snapshotSeq = _eventBook.Snapshot?.Sequence ?? 0;
             foreach (var page in _eventBook.Pages)
             {
+                var seq = Helpers.SequenceNum(page);
                 if (
-                    (snapshotSeq == 0 || page.Sequence > snapshotSeq)
-                    && _ctx.ContainsKey($"event_{page.Sequence}_type")
+                    (snapshotSeq == 0 || seq > snapshotSeq) && _ctx.ContainsKey($"event_{seq}_type")
                 )
                 {
-                    var eventType = _ctx[$"event_{page.Sequence}_type"] as string;
+                    var eventType = _ctx[$"event_{seq}_type"] as string;
                     if (eventType == "ItemAdded")
                     {
-                        _state.Items.Add($"item-{page.Sequence}");
+                        _state.Items.Add($"item-{seq}");
                     }
                 }
             }

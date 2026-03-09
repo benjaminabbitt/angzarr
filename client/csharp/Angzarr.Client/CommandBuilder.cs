@@ -150,7 +150,7 @@ public class CommandBuilder
 
         var page = new Angzarr.CommandPage
         {
-            Sequence = _sequence,
+            Header = new Angzarr.PageHeader { Sequence = _sequence },
             Command = commandAny,
             MergeStrategy = _mergeStrategy,
         };

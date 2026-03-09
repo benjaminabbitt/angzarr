@@ -102,7 +102,7 @@ public class UpcasterRouter
                     var newPage = new Angzarr.EventPage
                     {
                         Event = newEvent,
-                        Sequence = page.Sequence,
+                        Header = page.Header?.Clone() ?? new Angzarr.PageHeader(),
                         CreatedAt = page.CreatedAt,
                     };
                     result.Add(newPage);

@@ -98,14 +98,32 @@ public class CompensationContext
             }
         }
 
+        // Extract source info from the rejected command's angzarr_deferred header
+        var sourceAggregate = (Angzarr.Cover?)null;
+        var sourceSeq = 0u;
+        var issuerName = "";
+
+        if (rejection.RejectedCommand?.Pages.Count > 0)
+        {
+            var page = rejection.RejectedCommand.Pages[0];
+            if (page.Header?.AngzarrDeferred != null)
+            {
+                var deferred = page.Header.AngzarrDeferred;
+                sourceAggregate = deferred.Source;
+                sourceSeq = deferred.SourceSeq;
+                // Use source domain as issuer name since that's where compensation routes
+                issuerName = deferred.Source?.Domain ?? "";
+            }
+        }
+
         return new CompensationContext
         {
-            IssuerName = rejection.IssuerName ?? "",
-            IssuerType = rejection.IssuerType ?? "",
-            SourceEventSequence = rejection.SourceEventSequence,
+            IssuerName = issuerName,
+            IssuerType = "", // No longer available in proto - kept for API compat
+            SourceEventSequence = sourceSeq,
             RejectionReason = rejection.RejectionReason ?? "",
             RejectedCommand = rejection.RejectedCommand,
-            SourceAggregate = rejection.SourceAggregate,
+            SourceAggregate = sourceAggregate,
         };
     }
 

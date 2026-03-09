@@ -347,7 +347,7 @@ public class FactFlowSteps
     public void ThenTheFactIsPersistedWithTheNextSequenceNumber()
     {
         _injectedFact.Should().NotBeNull();
-        _injectedFact!.Sequence.Should().BeGreaterThan(0);
+        Helpers.SequenceNum(_injectedFact!).Should().BeGreaterThan(0);
     }
 
     [Then(@"the player aggregate contains an ActionRequested event")]
@@ -360,7 +360,7 @@ public class FactFlowSteps
     public void ThenTheFactIsPersistedWithSequenceNumber(int expected)
     {
         _injectedFact.Should().NotBeNull();
-        _injectedFact!.Sequence.Should().Be((uint)expected);
+        Helpers.SequenceNum(_injectedFact!).Should().Be((uint)expected);
     }
 
     [Then(@"subsequent events continue from sequence (\d+)")]
@@ -387,7 +387,7 @@ public class FactFlowSteps
     public void ThenTheFactHasASequenceNumberInTheTablesEventStream()
     {
         _injectedFact.Should().NotBeNull();
-        _injectedFact!.Sequence.Should().BeGreaterThan(0);
+        Helpers.SequenceNum(_injectedFact!).Should().BeGreaterThan(0);
     }
 
     [Then(@"a PlayerSatIn fact is injected into the table aggregate")]

@@ -138,7 +138,7 @@ public class AggregateClientSteps
     public void WhenReceiveCommandAtSequence(int seq)
     {
         var ctx = MakeContextualCommand("TestCommand");
-        ctx.Command.Pages[0].Sequence = (uint)seq;
+        Helpers.SetSequence(ctx.Command.Pages[0], (uint)seq);
         if (_eventBook != null)
         {
             ctx.Events = _eventBook;
@@ -603,7 +603,7 @@ public class AggregateClientSteps
     [Then(@"the response should contain events starting at sequence (\d+)")]
     public void ThenResponseShouldContainEventsStartingAtSequence(int seq)
     {
-        _response!.Events.Pages[0].Sequence.Should().BeGreaterOrEqualTo((uint)seq);
+        Helpers.SequenceNum(_response!.Events.Pages[0]).Should().BeGreaterOrEqualTo((uint)seq);
     }
 
     [Then(@"the response events should have correlation ID ""(.*)""")]
@@ -1364,7 +1364,7 @@ public class AggregateClientSteps
             // If there are pages, use the last page's sequence
             if (eventBook.Pages.Count > 0)
             {
-                nextSeq = eventBook.Pages[^1].Sequence;
+                nextSeq = Helpers.SequenceNum(eventBook.Pages[^1]);
             }
             // Next sequence is current + 1
             nextSeq++;
@@ -1404,7 +1404,7 @@ public class AggregateClientSteps
             uint snapshotSeq = eventBook.Snapshot?.Sequence ?? 0;
             foreach (var page in eventBook.Pages)
             {
-                if (snapshotSeq == 0 || page.Sequence > snapshotSeq)
+                if (snapshotSeq == 0 || Helpers.SequenceNum(page) > snapshotSeq)
                 {
                     _state.Counter++;
                 }

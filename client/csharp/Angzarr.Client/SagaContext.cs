@@ -57,7 +57,8 @@ public class SagaContext
         {
             if (book.Pages.Count == 0)
                 return 1;
-            return book.Pages[^1].Sequence + 1;
+            var lastPage = book.Pages[^1];
+            return (lastPage.Header?.Sequence ?? 0) + 1;
         }
         return 1;
     }

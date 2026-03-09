@@ -188,7 +188,7 @@ public class CommandBuilderSteps
     public void ThenBuiltCommandShouldHaveSequence(int expected)
     {
         BuildCommand();
-        _command!.Pages[0].Sequence.Should().Be((uint)expected);
+        Helpers.SequenceNum(_command!.Pages[0]).Should().Be((uint)expected);
     }
 
     [Then(@"building should fail")]
@@ -266,7 +266,7 @@ public class CommandBuilderSteps
         else
         {
             _command!.Cover.CorrelationId.Should().Be("trace-456");
-            _command.Pages[0].Sequence.Should().Be(3u);
+            Helpers.SequenceNum(_command.Pages[0]).Should().Be(3u);
         }
     }
 

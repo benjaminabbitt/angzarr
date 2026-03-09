@@ -77,12 +77,51 @@ public static class Helpers
 
     /// <summary>
     /// Calculate the next sequence number from an EventBook.
+    /// Uses the framework-computed next_sequence field.
     /// </summary>
-    public static int NextSequence(Angzarr.EventBook? book)
+    public static uint NextSequence(Angzarr.EventBook? book)
     {
-        if (book == null || book.Pages.Count == 0)
-            return 0;
-        return book.Pages.Count;
+        if (book == null)
+            return 1;
+        return book.NextSequence > 0 ? book.NextSequence : 1;
+    }
+
+    /// <summary>
+    /// Get the sequence number from an EventPage's header.
+    /// Returns 0 if header or sequence is not set.
+    /// </summary>
+    public static uint SequenceNum(Angzarr.EventPage page)
+    {
+        return page.Header?.Sequence ?? 0;
+    }
+
+    /// <summary>
+    /// Get the sequence number from a CommandPage's header.
+    /// Returns 0 if header or sequence is not set.
+    /// </summary>
+    public static uint SequenceNum(Angzarr.CommandPage page)
+    {
+        return page.Header?.Sequence ?? 0;
+    }
+
+    /// <summary>
+    /// Set the sequence number on an EventPage's header.
+    /// Creates the header if it doesn't exist.
+    /// </summary>
+    public static void SetSequence(Angzarr.EventPage page, uint sequence)
+    {
+        page.Header ??= new Angzarr.PageHeader();
+        page.Header.Sequence = sequence;
+    }
+
+    /// <summary>
+    /// Set the sequence number on a CommandPage's header.
+    /// Creates the header if it doesn't exist.
+    /// </summary>
+    public static void SetSequence(Angzarr.CommandPage page, uint sequence)
+    {
+        page.Header ??= new Angzarr.PageHeader();
+        page.Header.Sequence = sequence;
     }
 
     /// <summary>

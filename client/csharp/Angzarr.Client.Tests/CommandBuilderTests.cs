@@ -34,7 +34,7 @@ public class CommandBuilderTests
         command.Cover.Domain.Should().Be("test");
         Helpers.ProtoToUuid(command.Cover.Root).Should().Be(rootGuid);
         command.Cover.CorrelationId.Should().Be(correlationId);
-        command.Pages[0].Sequence.Should().Be((uint)sequence);
+        Helpers.SequenceNum(command.Pages[0]).Should().Be((uint)sequence);
         command.Pages[0].Command.TypeUrl.Should().Be("type.googleapis.com/test.TestCommand");
     }
 
@@ -82,7 +82,7 @@ public class CommandBuilderTests
         var command = builder.Build();
 
         // Then the resulting CommandBook should have sequence 0
-        command.Pages[0].Sequence.Should().Be(0u);
+        Helpers.SequenceNum(command.Pages[0]).Should().Be(0u);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class CommandBuilderTests
 
         var command = builder.Build();
         command.Cover.CorrelationId.Should().Be("chain-test");
-        command.Pages[0].Sequence.Should().Be(10u);
+        Helpers.SequenceNum(command.Pages[0]).Should().Be(10u);
     }
 
     [Fact]
