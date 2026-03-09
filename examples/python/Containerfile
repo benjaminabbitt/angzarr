@@ -32,8 +32,27 @@ WORKDIR /app
 # ============================================================================
 FROM base AS deps
 
-# Copy client library first (it's a local dependency)
+# Install buf for proto generation
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+        amd64) BUF_ARCH="x86_64" ;; \
+        arm64) BUF_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fLo /usr/local/bin/buf \
+        "https://github.com/bufbuild/buf/releases/download/v1.47.2/buf-Linux-${BUF_ARCH}" && \
+    chmod +x /usr/local/bin/buf
+
+# Copy proto definitions and generate Python code
+COPY proto /app/proto
+RUN cd /app/proto && buf generate --template buf.gen.python.yaml
+
+# Copy client library (proto files now generated)
 COPY client/python /app/client/python
+
+# Fix Python proto imports to use angzarr_client package prefix
+RUN find /app/client/python/angzarr_client/proto -name "*.py" -exec sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \; && \
+    find /app/client/python/angzarr_client/proto/examples -name "*.py" -exec sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
 
 # Create a container-specific pyproject.toml that points to the right path
 COPY examples/python/pyproject.toml ./pyproject.toml.orig
