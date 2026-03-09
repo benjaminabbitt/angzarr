@@ -57,7 +57,7 @@ func (s *PlayerTableSaga) handleSittingOut(
 			Root:   &pb.UUID{Value: event.TableRoot},
 		},
 		Pages: []*pb.EventPage{
-			{Event: factAny},
+			{Payload: &pb.EventPage_Event{Event: factAny}},
 		},
 	}
 
@@ -89,7 +89,7 @@ func (s *PlayerTableSaga) handleReturningToPlay(
 			Root:   &pb.UUID{Value: event.TableRoot},
 		},
 		Pages: []*pb.EventPage{
-			{Event: factAny},
+			{Payload: &pb.EventPage_Event{Event: factAny}},
 		},
 	}
 
