@@ -19,8 +19,8 @@ build: client-proto
 test-unit:
     @echo "No unit tests for Go examples (using BDD tests in ./tests/)"
 
-test-acceptance:
-    @if [ -d "./tests" ]; then go test -v ./tests/...; else echo "No acceptance tests yet"; fi
+test-acceptance: client-proto
+    @if [ -d "./tests" ]; then go mod tidy && go test -v ./tests/...; else echo "No acceptance tests yet"; fi
 
 test: test-unit test-acceptance
 
