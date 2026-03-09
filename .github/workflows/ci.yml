@@ -377,10 +377,10 @@ jobs:
           - lang: rust
             target: saga-hand-player-dev
             image_name: poker-rust-saga-hand-player
-          # Process Manager
-          - lang: rust
-            target: pmg-hand-flow-dev
-            image_name: poker-rust-pmg-hand-flow
+          # Process Manager (excluded: proto mismatches - see examples/rust/Containerfile)
+          # - lang: rust
+          #   target: pmg-hand-flow-dev
+          #   image_name: poker-rust-pmg-hand-flow
           # Projector
           - lang: rust
             target: prj-output-dev

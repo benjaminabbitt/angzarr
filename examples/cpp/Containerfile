@@ -41,12 +41,14 @@ COPY examples/cpp/CMakeLists.txt ./examples/cpp/
 COPY examples/cpp/client ./examples/cpp/client
 
 # Create stub CMakeLists for subdirectories
-RUN mkdir -p examples/cpp/player/agg examples/cpp/table/agg examples/cpp/hand/agg \
+RUN mkdir -p examples/cpp/player/agg examples/cpp/player/upc examples/cpp/player/saga-table \
+    examples/cpp/table/agg examples/cpp/hand/agg \
     examples/cpp/table/saga-hand examples/cpp/table/saga-player \
     examples/cpp/hand/saga-table examples/cpp/hand/saga-player \
     examples/cpp/hand-flow examples/cpp/hand-flow-oo examples/cpp/prj-output \
-    && for dir in player/agg table/agg hand/agg table/saga-hand table/saga-player \
-       hand/saga-table hand/saga-player hand-flow hand-flow-oo prj-output; do \
+    && for dir in player/agg player/upc player/saga-table table/agg hand/agg \
+       table/saga-hand table/saga-player hand/saga-table hand/saga-player \
+       hand-flow hand-flow-oo prj-output; do \
        echo "# Stub" > examples/cpp/$dir/CMakeLists.txt; \
     done
 
