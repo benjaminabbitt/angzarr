@@ -5,6 +5,8 @@ set shell := ["bash", "-c"]
 
 REGISTRY := "ghcr.io/angzarr-io"
 TOP := `git rev-parse --show-toplevel`
+# Container runtime: prefer podman, fall back to docker
+CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null`
 
 default:
     @just --list
@@ -14,7 +16,7 @@ build-all: build-base build-languages
 
 # Build base image
 build-base:
-    podman build --network=host \
+    {{CONTAINER_CMD}} build --network=host \
         -t {{REGISTRY}}/angzarr-base:latest \
         -f "{{TOP}}/build/images/base/Containerfile" \
         "{{TOP}}/build/images/base"
@@ -30,7 +32,7 @@ build-languages: build-base
 
 # Build specific language image
 build LANG: build-base
-    podman build --network=host \
+    {{CONTAINER_CMD}} build --network=host \
         --build-arg BASE_IMAGE={{REGISTRY}}/angzarr-base:latest \
         -t {{REGISTRY}}/angzarr-{{LANG}}:latest \
         -f "{{TOP}}/build/images/{{LANG}}/Containerfile" \
@@ -41,7 +43,7 @@ push-all: push-base push-languages
 
 # Push base image
 push-base:
-    podman push {{REGISTRY}}/angzarr-base:latest
+    {{CONTAINER_CMD}} push {{REGISTRY}}/angzarr-base:latest
 
 # Push all language images
 push-languages:
@@ -54,7 +56,7 @@ push-languages:
 
 # Push specific language image
 push LANG:
-    podman push {{REGISTRY}}/angzarr-{{LANG}}:latest
+    {{CONTAINER_CMD}} push {{REGISTRY}}/angzarr-{{LANG}}:latest
 
 # Pull all images from registry (tries branch tag, falls back to latest)
 pull-all:
@@ -71,6 +73,7 @@ pull IMAGE:
     set -e
     REGISTRY="{{REGISTRY}}"
     IMAGE="{{IMAGE}}"
+    CMD="{{CONTAINER_CMD}}"
 
     # Get current branch and sanitize for docker tag
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -80,17 +83,17 @@ pull IMAGE:
     if [ "$BRANCH" != "main" ]; then
         PR_TAG="pr-$BRANCH_TAG"
         echo "Trying $REGISTRY/angzarr-$IMAGE:$PR_TAG..."
-        if podman pull "$REGISTRY/angzarr-$IMAGE:$PR_TAG" 2>/dev/null; then
+        if $CMD pull "$REGISTRY/angzarr-$IMAGE:$PR_TAG" 2>/dev/null; then
             echo "Pulled branch-specific image: $PR_TAG"
             # Tag as latest locally for consistency
-            podman tag "$REGISTRY/angzarr-$IMAGE:$PR_TAG" "$REGISTRY/angzarr-$IMAGE:latest"
+            $CMD tag "$REGISTRY/angzarr-$IMAGE:$PR_TAG" "$REGISTRY/angzarr-$IMAGE:latest"
             exit 0
         fi
         echo "Branch tag not found, falling back to latest..."
     fi
 
     # Fall back to latest
-    podman pull "$REGISTRY/angzarr-$IMAGE:latest"
+    $CMD pull "$REGISTRY/angzarr-$IMAGE:latest"
 
 # Pull core runtime images (tries branch tag, falls back to latest)
 pull-core:
@@ -107,6 +110,7 @@ pull-core-image IMAGE:
     set -e
     REGISTRY="{{REGISTRY}}"
     IMAGE="{{IMAGE}}"
+    CMD="{{CONTAINER_CMD}}"
 
     # Get current branch and sanitize for docker tag
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -117,19 +121,19 @@ pull-core-image IMAGE:
     if [ "$BRANCH" != "main" ]; then
         PR_TAG="pr-$BRANCH_TAG"
         echo "Trying $REGISTRY/angzarr-$IMAGE-dev:$PR_TAG..."
-        if podman pull "$REGISTRY/angzarr-$IMAGE-dev:$PR_TAG" 2>/dev/null; then
+        if $CMD pull "$REGISTRY/angzarr-$IMAGE-dev:$PR_TAG" 2>/dev/null; then
             echo "Pulled branch-specific image: $PR_TAG"
-            podman tag "$REGISTRY/angzarr-$IMAGE-dev:$PR_TAG" "$REGISTRY/angzarr-$IMAGE:latest"
+            $CMD tag "$REGISTRY/angzarr-$IMAGE-dev:$PR_TAG" "$REGISTRY/angzarr-$IMAGE:latest"
             exit 0
         fi
         echo "Branch tag not found, falling back to latest..."
     fi
 
     # Fall back to latest
-    if podman pull "$REGISTRY/angzarr-$IMAGE-dev:latest" 2>/dev/null; then
-        podman tag "$REGISTRY/angzarr-$IMAGE-dev:latest" "$REGISTRY/angzarr-$IMAGE:latest"
+    if $CMD pull "$REGISTRY/angzarr-$IMAGE-dev:latest" 2>/dev/null; then
+        $CMD tag "$REGISTRY/angzarr-$IMAGE-dev:latest" "$REGISTRY/angzarr-$IMAGE:latest"
     else
-        podman pull "$REGISTRY/angzarr-$IMAGE:latest"
+        $CMD pull "$REGISTRY/angzarr-$IMAGE:latest"
     fi
 
 # Load image into Kind cluster
@@ -147,8 +151,8 @@ load-all CLUSTER="angzarr":
 
 # List all local angzarr images
 list:
-    @podman images --filter "reference={{REGISTRY}}/angzarr-*" --format "table {{{{.Repository}}}}:{{{{.Tag}}}}\t{{{{.Size}}}}\t{{{{.Created}}}}"
+    @{{CONTAINER_CMD}} images --filter "reference={{REGISTRY}}/angzarr-*" --format "table {{{{.Repository}}}}:{{{{.Tag}}}}\t{{{{.Size}}}}\t{{{{.Created}}}}"
 
 # Remove all local angzarr images
 clean:
-    @podman images --filter "reference={{REGISTRY}}/angzarr-*" -q | xargs -r podman rmi -f
+    @{{CONTAINER_CMD}} images --filter "reference={{REGISTRY}}/angzarr-*" -q | xargs -r {{CONTAINER_CMD}} rmi -f
