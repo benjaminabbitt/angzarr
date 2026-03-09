@@ -18,8 +18,7 @@ import dev.angzarr.client.Helpers;
  * @Rejected(domain = "payment", command = "ProcessPayment")
  * public FundsReleased handlePaymentRejected(Notification notification) {
  *     var ctx = CompensationContext.from(notification);
- *     logger.warn("Compensation: issuer={} reason={}",
- *         ctx.getIssuerName(), ctx.getRejectionReason());
+ *     logger.warn("Compensation: reason={}", ctx.getRejectionReason());
  *
  *     return FundsReleased.newBuilder()
  *         .setAmount(getState().getReservedFunds())
@@ -29,20 +28,30 @@ import dev.angzarr.client.Helpers;
  */
 public class CompensationContext {
 
-    private final String issuerName;
-    private final String issuerType;
     private final int sourceEventSequence;
     private final String rejectionReason;
     private final CommandBook rejectedCommand;
     private final Cover sourceAggregate;
 
     private CompensationContext(RejectionNotification rejection) {
-        this.issuerName = rejection.getIssuerName();
-        this.issuerType = rejection.getIssuerType();
-        this.sourceEventSequence = rejection.getSourceEventSequence();
         this.rejectionReason = rejection.getRejectionReason();
         this.rejectedCommand = rejection.hasRejectedCommand() ? rejection.getRejectedCommand() : null;
-        this.sourceAggregate = rejection.hasSourceAggregate() ? rejection.getSourceAggregate() : null;
+
+        // Extract source info from rejected_command.pages[].header.angzarr_deferred
+        if (this.rejectedCommand != null && !this.rejectedCommand.getPagesList().isEmpty()) {
+            var page = this.rejectedCommand.getPages(0);
+            if (page.hasHeader() && page.getHeader().hasAngzarrDeferred()) {
+                var deferred = page.getHeader().getAngzarrDeferred();
+                this.sourceAggregate = deferred.hasSource() ? deferred.getSource() : null;
+                this.sourceEventSequence = deferred.getSourceSeq();
+            } else {
+                this.sourceAggregate = null;
+                this.sourceEventSequence = 0;
+            }
+        } else {
+            this.sourceAggregate = null;
+            this.sourceEventSequence = 0;
+        }
     }
 
     /**
@@ -60,20 +69,6 @@ public class CompensationContext {
         } catch (InvalidProtocolBufferException e) {
             throw new RuntimeException("Failed to unpack RejectionNotification", e);
         }
-    }
-
-    /**
-     * Name of the saga/PM that issued the rejected command.
-     */
-    public String getIssuerName() {
-        return issuerName;
-    }
-
-    /**
-     * Type of issuer: "saga" or "process_manager".
-     */
-    public String getIssuerType() {
-        return issuerType;
     }
 
     /**

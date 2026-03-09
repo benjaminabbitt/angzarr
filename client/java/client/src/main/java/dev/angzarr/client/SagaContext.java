@@ -2,6 +2,7 @@ package dev.angzarr.client;
 
 import com.google.protobuf.ByteString;
 import dev.angzarr.*;
+import dev.angzarr.EventPage;
 
 import java.util.HashMap;
 import java.util.List;
@@ -51,7 +52,11 @@ public class SagaContext {
         if (book == null || book.getPagesList().isEmpty()) {
             return 1;
         }
-        return book.getPagesList().get(book.getPagesList().size() - 1).getSequence() + 1;
+        EventPage lastPage = book.getPagesList().get(book.getPagesList().size() - 1);
+        if (lastPage.hasHeader()) {
+            return lastPage.getHeader().getSequence() + 1;
+        }
+        return 1;
     }
 
     /**

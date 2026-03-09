@@ -6,6 +6,7 @@ import dev.angzarr.CommandBook;
 import dev.angzarr.CommandPage;
 import dev.angzarr.CommandResponse;
 import dev.angzarr.Cover;
+import dev.angzarr.PageHeader;
 
 import java.util.UUID;
 
@@ -145,7 +146,7 @@ public class CommandBuilder {
             .build();
 
         CommandPage page = CommandPage.newBuilder()
-            .setSequence(sequence)
+            .setHeader(PageHeader.newBuilder().setSequence(sequence).build())
             .setCommand(commandAny)
             .build();
 

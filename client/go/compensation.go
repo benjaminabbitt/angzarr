@@ -35,12 +35,6 @@ const NotificationTypeName = "angzarr.Notification"
 
 // CompensationContext provides easy access to rejection details.
 type CompensationContext struct {
-	// IssuerName is the name of the saga/PM that issued the rejected command.
-	IssuerName string
-
-	// IssuerType is "saga" or "process_manager".
-	IssuerType string
-
 	// SourceEventSequence is the sequence of the event that triggered the saga/PM.
 	SourceEventSequence uint32
 
@@ -61,12 +55,19 @@ func NewCompensationContext(notification *pb.Notification) *CompensationContext 
 	if notification.Payload != nil {
 		var rejection pb.RejectionNotification
 		if err := proto.Unmarshal(notification.Payload.Value, &rejection); err == nil {
-			ctx.IssuerName = rejection.IssuerName
-			ctx.IssuerType = rejection.IssuerType
-			ctx.SourceEventSequence = rejection.SourceEventSequence
 			ctx.RejectionReason = rejection.RejectionReason
 			ctx.RejectedCommand = rejection.RejectedCommand
-			ctx.SourceAggregate = rejection.SourceAggregate
+
+			// Extract source info from rejected_command.pages[].header.angzarr_deferred
+			if rejection.RejectedCommand != nil && len(rejection.RejectedCommand.Pages) > 0 {
+				page := rejection.RejectedCommand.Pages[0]
+				if header := page.GetHeader(); header != nil {
+					if deferred := header.GetAngzarrDeferred(); deferred != nil {
+						ctx.SourceAggregate = deferred.Source
+						ctx.SourceEventSequence = deferred.SourceSeq
+					}
+				}
+			}
 		}
 	}
 

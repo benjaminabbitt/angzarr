@@ -231,9 +231,9 @@ func NewEventBook(cover *pb.Cover, seq uint32, event *anypb.Any) *pb.EventBook {
 		Cover: cover,
 		Pages: []*pb.EventPage{
 			{
-				SequenceType: &pb.EventPage_Sequence{Sequence: seq},
-				Payload:      &pb.EventPage_Event{Event: event},
-				CreatedAt:    timestamppb.Now(),
+				Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: seq}},
+				Payload:   &pb.EventPage_Event{Event: event},
+				CreatedAt: timestamppb.Now(),
 			},
 		},
 	}
@@ -246,9 +246,9 @@ func NewEventBookMulti(cover *pb.Cover, startSeq uint32, events ...*anypb.Any) *
 	now := timestamppb.Now()
 	for i, event := range events {
 		pages[i] = &pb.EventPage{
-			SequenceType: &pb.EventPage_Sequence{Sequence: startSeq + uint32(i)},
-			Payload:      &pb.EventPage_Event{Event: event},
-			CreatedAt:    now,
+			Header:    &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: startSeq + uint32(i)}},
+			Payload:   &pb.EventPage_Event{Event: event},
+			CreatedAt: now,
 		}
 	}
 	return &pb.EventBook{
@@ -405,8 +405,8 @@ func NewCoverWithEdition(domain string, root uuid.UUID, correlationID string, ed
 // NewCommandPage creates a command page from a sequence and Any message.
 func NewCommandPage(sequence uint32, command *anypb.Any) *pb.CommandPage {
 	return &pb.CommandPage{
-		Sequence: sequence,
-		Payload:  &pb.CommandPage_Command{Command: command},
+		Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: sequence}},
+		Payload: &pb.CommandPage_Command{Command: command},
 	}
 }
 

@@ -4,6 +4,7 @@ import com.google.protobuf.Any;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import dev.angzarr.*;
+import dev.angzarr.PageHeader;
 
 import java.util.HashMap;
 import java.util.List;
@@ -135,7 +136,7 @@ public class CommandRouter<S> {
             return EventBook.newBuilder()
                     .setCover(commandBook.getCover())
                     .addPages(EventPage.newBuilder()
-                            .setSequence(seq)
+                            .setHeader(PageHeader.newBuilder().setSequence(seq).build())
                             .setEvent(Any.pack(event, TYPE_URL_PREFIX))
                             .build())
                     .build();

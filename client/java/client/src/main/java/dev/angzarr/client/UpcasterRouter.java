@@ -91,12 +91,13 @@ public class UpcasterRouter {
             for (UpcasterEntry entry : handlers) {
                 if (typeUrl.endsWith(entry.suffix)) {
                     Any newEvent = entry.handler.apply(event);
-                    EventPage newPage = EventPage.newBuilder()
+                    EventPage.Builder newPageBuilder = EventPage.newBuilder()
                             .setEvent(newEvent)
-                            .setSequence(page.getSequence())
-                            .setCreatedAt(page.getCreatedAt())
-                            .build();
-                    result.add(newPage);
+                            .setCreatedAt(page.getCreatedAt());
+                    if (page.hasHeader()) {
+                        newPageBuilder.setHeader(page.getHeader());
+                    }
+                    result.add(newPageBuilder.build());
                     transformed = true;
                     break;
                 }

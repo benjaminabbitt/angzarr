@@ -29,6 +29,7 @@ COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 COPY crates/ ./crates/
+COPY xtask/ ./xtask/
 
 # Create minimal source stubs to satisfy cargo
 RUN mkdir -p src/bin client/rust/src client/rust/tests && \
@@ -109,6 +110,7 @@ COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 COPY crates/ ./crates/
+COPY xtask/ ./xtask/
 
 # Create minimal source stubs to satisfy cargo
 RUN mkdir -p src/bin client/rust/src client/rust/tests && \

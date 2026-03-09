@@ -62,7 +62,7 @@ class SagaRouterTest {
                                 .setRoot(source.getCover().getRoot())
                                 .build())
                         .addPages(CommandPage.newBuilder()
-                                .setSequence(destSeq)
+                                .setHeader(PageHeader.newBuilder().setSequence(destSeq).build())
                                 .setCommand(Any.newBuilder()
                                         .setTypeUrl("type.googleapis.com/test.StartFulfillment")
                                         .build())
@@ -238,7 +238,7 @@ class SagaRouterTest {
 
             SagaResponse response = router.dispatch(source, destinations);
 
-            assertThat(response.getCommands(0).getPages(0).getSequence()).isEqualTo(3);
+            assertThat(response.getCommands(0).getPages(0).getHeader().getSequence()).isEqualTo(3);
         }
 
         @Test

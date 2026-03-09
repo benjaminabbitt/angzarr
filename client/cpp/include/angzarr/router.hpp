@@ -64,7 +64,7 @@ class CommandRouter {
                 EventBook result;
                 result.mutable_cover()->CopyFrom(cmd_book.cover());
                 auto* page = result.add_pages();
-                page->set_sequence(seq);
+                page->mutable_header()->set_sequence(seq);
                 page->mutable_event()->PackFrom(event);
                 return result;
             });
