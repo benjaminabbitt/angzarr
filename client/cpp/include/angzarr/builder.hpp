@@ -140,7 +140,7 @@ class CommandBuilder {
         }
 
         auto* page = book.add_pages();
-        page->set_sequence(sequence_);
+        page->mutable_header()->set_sequence(sequence_);
         auto* cmd = page->mutable_command();
         cmd->set_type_url(type_url_.value());
         cmd->set_value(payload_.value());

@@ -18,6 +18,7 @@ type FactFlowContext struct {
 	sagaResponse   *pb.SagaResponse
 	fact           *pb.EventPage
 	factCover      *pb.Cover
+	externalID     string // ExternalId moved from Cover to PageHeader.ExternalDeferredSequence
 	err            error
 	injectionCount int
 }
@@ -157,7 +158,6 @@ func (f *FactFlowContext) givenPlayerSittingOutAtTable(playerName, tableID strin
 func (f *FactFlowContext) givenSagaThatEmitsFact() error {
 	f.factCover = &pb.Cover{
 		Domain:        "player",
-		ExternalId:    uuid.New().String(),
 		CorrelationId: uuid.New().String(),
 	}
 	return nil
@@ -171,10 +171,11 @@ func (f *FactFlowContext) givenSagaEmitsFactToDomain(domain string) error {
 }
 
 func (f *FactFlowContext) givenFactWithExternalID(externalID string) error {
+	// ExternalId moved to PageHeader.ExternalDeferredSequence; store in context for test validation
 	f.factCover = &pb.Cover{
-		Domain:     "player",
-		ExternalId: externalID,
+		Domain: "player",
 	}
+	f.externalID = externalID
 	f.injectionCount = 0
 	return nil
 }
@@ -273,8 +274,9 @@ func (f *FactFlowContext) whenFactConstructed() error {
 	if f.factCover.Root == nil {
 		f.factCover.Root = angzarr.UUIDToProto(uuid.New())
 	}
-	if f.factCover.ExternalId == "" {
-		f.factCover.ExternalId = uuid.New().String()
+	// ExternalId moved to PageHeader.ExternalDeferredSequence
+	if f.externalID == "" {
+		f.externalID = uuid.New().String()
 	}
 	if f.factCover.CorrelationId == "" {
 		f.factCover.CorrelationId = uuid.New().String()
@@ -420,8 +422,9 @@ func (f *FactFlowContext) thenFactCoverHasRoot() error {
 }
 
 func (f *FactFlowContext) thenFactCoverHasExternalID() error {
-	if f.factCover == nil || f.factCover.ExternalId == "" {
-		return fmt.Errorf("fact cover has no external_id")
+	// ExternalId moved to PageHeader.ExternalDeferredSequence; check context field
+	if f.externalID == "" {
+		return fmt.Errorf("fact has no external_id")
 	}
 	return nil
 }

@@ -46,7 +46,7 @@ TEST_F(CommandBuilderTest, Build_WithExplicitFieldValues_ShouldSetAllFields) {
     // Then the resulting CommandBook should have the specified values
     EXPECT_EQ(command.cover().domain(), "test");
     EXPECT_EQ(command.cover().correlation_id(), correlation_id);
-    EXPECT_EQ(command.pages(0).sequence(), sequence);
+    EXPECT_EQ(command.pages(0).header().sequence(), sequence);
     EXPECT_EQ(command.pages(0).command().type_url(), "type.googleapis.com/test.TestCommand");
 }
 
@@ -91,7 +91,7 @@ TEST_F(CommandBuilderTest, Build_WithoutSequence_ShouldDefaultToZero) {
     auto command = builder.build();
 
     // Then the resulting CommandBook should have sequence 0
-    EXPECT_EQ(command.pages(0).sequence(), 0u);
+    EXPECT_EQ(command.pages(0).header().sequence(), 0u);
 }
 
 TEST_F(CommandBuilderTest, MethodChaining_ShouldReturnBuilder) {
@@ -112,7 +112,7 @@ TEST_F(CommandBuilderTest, MethodChaining_ShouldReturnBuilder) {
 
     auto command = builder.build();
     EXPECT_EQ(command.cover().correlation_id(), "chain-test");
-    EXPECT_EQ(command.pages(0).sequence(), 10u);
+    EXPECT_EQ(command.pages(0).header().sequence(), 10u);
 }
 
 TEST_F(CommandBuilderTest, Build_WithoutCommand_ShouldThrow) {
