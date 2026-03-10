@@ -98,10 +98,10 @@ Angzarr addresses this by allowing sagas and external systems to pass **events**
 
 ### Commands vs Fact Events
 
-| Message Type | Sequence Field | Validation | Concurrency |
-|--------------|---------------|------------|-------------|
-| Command | Expected sequence (integer) | Full business rules | Optimistic locking |
-| Fact Event | Fact indicator (oneof) | Idempotency only | Append-only |
+| Message Type | PageHeader.sequence_type | Validation | Concurrency |
+|--------------|--------------------------|------------|-------------|
+| Command | `sequence` (integer) | Full business rules | Optimistic locking |
+| Fact Event | `external_deferred` | Idempotency only | Append-only |
 
 When the aggregate coordinator receives a fact event:
 1. **No business validation** — the fact already happened
@@ -111,15 +111,15 @@ When the aggregate coordinator receives a fact event:
 
 ### Protocol Structure
 
-The sequence field uses a `oneof` to distinguish:
+The `PageHeader` uses a `oneof` to distinguish sequence types:
 
-```protobuf file=proto/angzarr/types.proto start=docs:start:fact_sequence end=docs:end:fact_sequence
+```protobuf file=proto/angzarr/types.proto start=docs:start:page_header end=docs:end:page_header
 ```
 
-**Key design:** The `external_id` lives on `Cover`, not `FactSequence`. This ensures:
-- Idempotency key propagates through the entire system (sagas, PMs, projectors)
-- Consistent deduplication at every coordinator
-- Full traceability from external system to all downstream effects
+**Key design:** For external facts, `ExternalDeferredSequence` carries both the idempotency key (`external_id`) and a human-readable description. This ensures:
+- Consistent deduplication at the coordinator
+- Clear provenance tracking for audit trails
+- Human-readable context for debugging
 
 ### Flow Comparison
 
@@ -134,10 +134,9 @@ Aggregate:     Validate → Accept/Reject → Emit PaymentRecorded
 ```text title="illustrative - Angzarr fact flow"
 Saga receives: OrderCompleted
 Saga emits:    PaymentRecorded event
-               - Cover.external_id = "pi_xxx" (Stripe payment ID)
-               - EventPage.fact = { source: "stripe" }
+               - PageHeader.external_deferred.external_id = "pi_xxx" (Stripe payment ID)
+               - PageHeader.external_deferred.description = "Stripe webhook"
 Coordinator:   Check external_id → Assign sequence → Append → Publish
-               (external_id propagates to downstream sagas/projectors)
 ```
 
 ### Fact Processing Pipeline
@@ -145,30 +144,30 @@ Coordinator:   Check external_id → Assign sequence → Append → Publish
 The coordinator handles fact events through a configurable pipeline:
 
 ```text title="illustrative - fact processing pipeline"
-Fact Event arrives (with FactSequence marker)
+Fact Event arrives (with ExternalDeferredSequence)
         ↓
-Check idempotency (Cover.external_id)
+Check idempotency (external_deferred.external_id)
         ↓
 [If route_facts_to_aggregate = true]  ←── Default: true
         ↓
 Route to aggregate for state update
         ↓
-Aggregate returns event (still has FactSequence)
+Aggregate returns event
         ↓
 Coordinator assigns real sequence number
         ↓
-Persist event (FactSequence replaced with sequence)
+Persist event (sequence assigned in PageHeader)
         ↓
-Publish event (propagates with valid sequence)
+Publish event (with valid sequence)
 ```
 
-**Key behavior:** The `FactSequence` marker is **eliminated at persistence time**. When the aggregate returns events, the coordinator:
+**Key behavior:** The `ExternalDeferredSequence` marker triggers deferred sequence assignment. When the aggregate returns events, the coordinator:
 
 1. Takes the next available sequence number for the aggregate root
-2. Replaces `EventPage.fact` with `EventPage.sequence`
+2. Replaces `external_deferred` with `sequence` in the `PageHeader`
 3. Persists and publishes the event with a valid sequence
 
-This means downstream consumers (sagas, projectors, process managers) always receive events with proper sequence numbers. The `FactSequence` is purely an ingestion-time marker.
+Downstream consumers (sagas, projectors, process managers) always receive events with proper sequence numbers. The deferred sequence is purely an ingestion-time marker.
 
 #### Configuration
 
@@ -245,26 +244,31 @@ fn execute(&self, event: OrderCompleted, dest: &EventBook) -> EventBook {
         cover: Some(Cover {
             domain: "order".into(),
             root: event.order_id.into(),
-            external_id: event.payment_id.clone(),  // Stripe ID for idempotency
             ..Default::default()
         }),
-        pages: vec![EventPage::fact(
-            PaymentRecorded { order_id: event.order_id, amount: event.total },
-            FactSequence {
-                source: "stripe".into(),
-                description: "Payment confirmed by Stripe webhook".into(),
-            },
-        )],
+        pages: vec![EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(ExternalDeferred(ExternalDeferredSequence {
+                    external_id: event.payment_id.clone(),  // Stripe ID for idempotency
+                    description: "Payment confirmed by Stripe webhook".into(),
+                })),
+            }),
+            payload: Some(Event(Any::pack(PaymentRecorded {
+                order_id: event.order_id,
+                amount: event.total,
+            }))),
+            ..Default::default()
+        }],
         ..Default::default()
     }
 }
 ```
 
 The aggregate coordinator handles fact events differently:
-- Checks idempotency via `Cover.external_id`
+- Checks idempotency via `PageHeader.external_deferred.external_id`
 - Skips business validation (fact already happened)
-- Appends directly to event stream
-- Propagates `external_id` to all downstream events
+- Assigns sequence number and appends to event stream
+- Publishes with assigned sequence to downstream consumers
 
 ---
 

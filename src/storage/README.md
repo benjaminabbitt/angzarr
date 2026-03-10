@@ -9,13 +9,6 @@ Event sourcing requires three storage capabilities: persisting events, tracking 
 
 ## EventStore
 
-### Contract
-
-```gherkin file=tests/interfaces/features/event_store.feature start=docs:start:store_contract end=docs:end:store_contract
-```
-
-> Source: [`event_store.feature`](../../tests/interfaces/features/event_store.feature)
-
 The EventStore is the source of truth. Every state change in the system exists because an event recorded it. This immutability provides a complete audit trail and enables temporal queries—you can reconstruct any aggregate's state at any point in history.
 
 ### Why Strict Sequence Ordering
@@ -44,13 +37,6 @@ Events carry an optional correlation_id linking related events across aggregates
 
 ## PositionStore
 
-### Contract
-
-```gherkin file=tests/interfaces/features/position_store.feature start=docs:start:position_contract end=docs:end:position_contract
-```
-
-> Source: [`position_store.feature`](../../tests/interfaces/features/position_store.feature)
-
 Handlers (projectors, sagas) must remember where they left off. Without position tracking:
 
 - Restarts would reprocess every event from the beginning
@@ -74,13 +60,6 @@ Positions store sequence numbers, not event IDs or timestamps. Sequences are:
 - **Stable**: An event's sequence never changes after write
 
 ## SnapshotStore
-
-### Contract
-
-```gherkin file=tests/interfaces/features/snapshot_store.feature start=docs:start:snapshot_contract end=docs:end:snapshot_contract
-```
-
-> Source: [`snapshot_store.feature`](../../tests/interfaces/features/snapshot_store.feature)
 
 Aggregates with long histories (thousands of events) become expensive to load. Replaying all events on every command would be unacceptable. Snapshots cache aggregate state at a point-in-time.
 
@@ -144,15 +123,7 @@ The `SqlDatabase` trait abstracts over database differences:
 
 This eliminates ~300 lines of duplicated code while maintaining full type safety.
 
-## Feature Specifications
-
-See the embedded contracts above, or view the full specifications:
-
-- [EventStore](../../tests/interfaces/features/event_store.feature) - Event persistence, sequencing, concurrency control
-- [PositionStore](../../tests/interfaces/features/position_store.feature) - Handler checkpoint tracking
-- [SnapshotStore](../../tests/interfaces/features/snapshot_store.feature) - Aggregate state caching
-
-## Running Interface Tests
+## Running Contract Tests
 
 ```bash
 # Test against SQLite (default, fast)

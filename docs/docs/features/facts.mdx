@@ -60,32 +60,32 @@ Facts need two things that regular commands don't:
 
 These concerns live in different places, and understanding why matters.
 
-### The Cover: Permanent Identity
+### The Cover: Aggregate Identity
 
-Every event has a **Cover** — metadata that travels with the event forever. For facts, the Cover carries an `external_id`: the identifier from the external system (Stripe's payment intent ID, the sensor's reading ID, the ruling number).
+Every event has a **Cover** — metadata identifying the aggregate (domain, root, edition) and optional correlation ID for cross-domain tracing.
 
 ```protobuf file=proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
 ```
 
-The `external_id` is your permanent link back to reality. When the same webhook arrives again, the coordinator checks: "Have I seen this `external_id` before?" If yes, it silently ignores the duplicate. The Cover—and its `external_id`—survives the entire event lifecycle.
+The Cover identifies *which* aggregate the event belongs to. For facts, the idempotency key lives in the `PageHeader`'s `ExternalDeferredSequence`, not the Cover.
 
-### The FactSequence: Transient Marker
+### The PageHeader: Sequence Type Selection
 
-The `FactSequence` marker tells the coordinator: "This event doesn't have a sequence number yet. Assign one."
+The `PageHeader` tells the coordinator how to handle sequencing. For facts, use `ExternalDeferredSequence`:
 
-```protobuf file=proto/angzarr/types.proto start=docs:start:fact_sequence end=docs:end:fact_sequence
+```protobuf file=proto/angzarr/types.proto start=docs:start:page_header end=docs:end:page_header
 ```
 
-Unlike the Cover, the `FactSequence` is **transient**. After processing, it's replaced with a real sequence number. The event then looks like any other sequenced event—but the `external_id` on the Cover remains, providing that permanent link to the external system.
+The `external_deferred` variant is **transient**—after processing, it's replaced with a real `sequence` number. The event then looks like any other sequenced event. The `external_id` within the deferred sequence provides idempotency.
 
 ### Processing Flow
 
 The coordinator handles facts in five steps:
 
-1. Checks idempotency via `external_id` on the Cover
+1. Checks idempotency via `external_id` in `ExternalDeferredSequence`
 2. Routes to aggregate for state update (if configured)
-3. **Replaces** the FactSequence marker with a real sequence number
-4. Persists the event (Cover preserved, including `external_id`)
+3. **Replaces** the `external_deferred` with a real `sequence` number
+4. Persists the event
 5. Publishes to downstream consumers
 
 ---
@@ -98,13 +98,14 @@ Here's how you emit a fact with proper idempotency:
 cover = Cover(
     domain="payments",
     root=payment_id,
-    external_id="stripe_pi_abc123",  # Permanent link to Stripe
 )
 
 fact_event = EventPage(
-    fact=FactSequence(
-        source="stripe",
-        description="Payment intent succeeded",
+    header=PageHeader(
+        external_deferred=ExternalDeferredSequence(
+            external_id="stripe_pi_abc123",  # Idempotency key
+            description="Payment intent succeeded",
+        ),
     ),
     event=Any.pack(PaymentConfirmed(
         amount=Money(amount=5000, currency="USD"),
@@ -114,8 +115,7 @@ fact_event = EventPage(
 ```
 
 After processing:
-- `cover.external_id = "stripe_pi_abc123"` (preserved forever)
-- `sequence = 42` (assigned, replacing FactSequence)
+- `header.sequence = 42` (assigned, replacing `external_deferred`)
 
 Webhook retries? Network hiccups? Duplicate deliveries? The coordinator checks `external_id`, finds it already exists, and silently ignores the duplicate.
 
@@ -152,7 +152,8 @@ def handle_stripe_webhook(event: StripeEvent):
         emit_fact(
             domain="orders",
             root=order_id_from_metadata(event),
-            external_id=event.id,
+            external_id=event.id,  # Idempotency key
+            description="Stripe payment intent succeeded",
             event=PaymentConfirmed(
                 amount=event.data.amount,
                 provider="stripe",
@@ -167,7 +168,8 @@ def handle_stripe_webhook(event: StripeEvent):
 emit_fact(
     domain="warehouse",
     root=zone_id,
-    external_id=f"{sensor_id}:{timestamp}",
+    external_id=f"{sensor_id}:{timestamp}",  # Idempotency key
+    description="Sensor reading",
     event=TemperatureRecorded(
         celsius=reading.value,
         sensor_id=sensor_id,
@@ -182,7 +184,8 @@ emit_fact(
 emit_fact(
     domain="hand",
     root=hand_id,
-    external_id=f"ruling:{ruling_id}",
+    external_id=f"ruling:{ruling_id}",  # Idempotency key
+    description="Floor manager ruling",
     event=RulingIssued(
         ruling_type=RulingType.DEAD_HAND,
         issued_by="floor_manager_jane",
