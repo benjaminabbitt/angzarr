@@ -10,7 +10,7 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-ARG UV_VERSION=0.10.0
+ARG UV_VERSION=0.10.3
 
 # Install Python (Debian Bookworm ships with 3.11)
 RUN apt-get update && apt-get install -y --no-install-recommends \
