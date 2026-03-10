@@ -96,6 +96,25 @@ impl CommandClient {
             .map_err(Into::into)
     }
 
+    /// Execute with CASCADE mode and specified error handling mode.
+    ///
+    /// Error modes control how saga/PM failures are handled:
+    /// - FAIL_FAST: Stop on first error, fail request (default)
+    /// - CONTINUE: Continue through all, return successes + errors
+    /// - COMPENSATE: On error, compensate executed commands, fail request
+    /// - DEAD_LETTER: On error, send to DLQ and continue
+    #[trivial_delegation]
+    pub async fn execute_cascade_with_error_mode(
+        &self,
+        command: CommandBook,
+        cascade_error_mode: crate::proto::CascadeErrorMode,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
+        self.router
+            .execute_cascade_with_error_mode(command, cascade_error_mode)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Speculatively execute a command against temporal state (dry-run).
     ///
     /// Runs the aggregate handler at a historical point in time and returns the

@@ -667,12 +667,16 @@ async fn test_manual_is_not_retryable() {
 // 5. If field changes are disjoint → allow (commutative)
 // 6. If field changes overlap → return FAILED_PRECONDITION (retry)
 
-/// Test aggregate that tracks state with multiple fields for commutative merge testing.
+use angzarr::proto::examples::PlayerState;
+use prost::Message;
+
+/// Test aggregate that tracks state using real examples.PlayerState proto type.
 ///
+/// Uses actual proto encoding so proto_reflect can properly diff fields.
 /// Commands:
-/// - "update_field_a:<value>" - Updates field_a
-/// - "update_field_b:<value>" - Updates field_b
-/// - "update_both:<a>:<b>" - Updates both fields
+/// - "update_display_name:<value>" - Updates display_name field
+/// - "update_status:<value>" - Updates status field
+/// - "update_both:<name>:<status>" - Updates both fields
 ///
 /// The aggregate implements Replay to return state as Any for field diff detection.
 struct StatefulAggregate;
@@ -682,34 +686,34 @@ impl StatefulAggregate {
         Self
     }
 
-    /// Rebuild state from events.
-    fn rebuild_state(events: &EventBook) -> (i32, String) {
-        let mut field_a: i32 = 0;
-        let mut field_b: String = String::new();
+    /// Rebuild state from events into PlayerState.
+    fn rebuild_state(events: &EventBook) -> PlayerState {
+        let mut state = PlayerState::default();
 
         for page in &events.pages {
             if let Some(event_page::Payload::Event(event)) = &page.payload {
                 let value = String::from_utf8_lossy(&event.value);
-                if event.type_url.contains("FieldAUpdated") {
-                    field_a = value.parse().unwrap_or(0);
-                } else if event.type_url.contains("FieldBUpdated") {
-                    field_b = value.to_string();
+                if event.type_url.contains("DisplayNameUpdated") {
+                    state.display_name = value.to_string();
+                } else if event.type_url.contains("StatusUpdated") {
+                    state.status = value.to_string();
                 }
             }
         }
 
-        (field_a, field_b)
+        state
     }
 
-    /// Pack state as Any for Replay RPC.
-    /// Uses a simple JSON-like encoding for test purposes.
-    fn pack_state(field_a: i32, field_b: &str) -> prost_types::Any {
-        // For testing, encode as JSON-like bytes with type URL
-        // In production, this would use proper proto encoding
-        let value = format!(r#"{{"field_a":{},"field_b":"{}"}}"#, field_a, field_b);
+    /// Pack PlayerState as Any for Replay RPC.
+    /// Uses proper proto encoding via prost::Message.
+    fn pack_state(state: &PlayerState) -> prost_types::Any {
+        let mut buf = Vec::new();
+        state
+            .encode(&mut buf)
+            .expect("Failed to encode PlayerState");
         prost_types::Any {
-            type_url: "test.StatefulState".to_string(),
-            value: value.into_bytes(),
+            type_url: "type.googleapis.com/examples.PlayerState".to_string(),
+            value: buf,
         }
     }
 }
@@ -738,8 +742,10 @@ impl CommandHandler for StatefulAggregate {
             if let Some(command_page::Payload::Command(cmd)) = &cmd_page.payload {
                 let cmd_value = String::from_utf8_lossy(&cmd.value);
 
-                if cmd_value.starts_with("update_field_a:") {
-                    let value = cmd_value.strip_prefix("update_field_a:").unwrap_or("0");
+                if cmd_value.starts_with("update_display_name:") {
+                    let value = cmd_value
+                        .strip_prefix("update_display_name:")
+                        .unwrap_or("unknown");
                     event_pages.push(EventPage {
                         header: Some(PageHeader {
                             sequence_type: Some(page_header::SequenceType::Sequence(
@@ -747,13 +753,13 @@ impl CommandHandler for StatefulAggregate {
                             )),
                         }),
                         payload: Some(event_page::Payload::Event(Any {
-                            type_url: "test.FieldAUpdated".to_string(),
+                            type_url: "test.DisplayNameUpdated".to_string(),
                             value: value.as_bytes().to_vec(),
                         })),
                         created_at: None,
                     });
-                } else if cmd_value.starts_with("update_field_b:") {
-                    let value = cmd_value.strip_prefix("update_field_b:").unwrap_or("");
+                } else if cmd_value.starts_with("update_status:") {
+                    let value = cmd_value.strip_prefix("update_status:").unwrap_or("active");
                     event_pages.push(EventPage {
                         header: Some(PageHeader {
                             sequence_type: Some(page_header::SequenceType::Sequence(
@@ -761,7 +767,7 @@ impl CommandHandler for StatefulAggregate {
                             )),
                         }),
                         payload: Some(event_page::Payload::Event(Any {
-                            type_url: "test.FieldBUpdated".to_string(),
+                            type_url: "test.StatusUpdated".to_string(),
                             value: value.as_bytes().to_vec(),
                         })),
                         created_at: None,
@@ -769,11 +775,11 @@ impl CommandHandler for StatefulAggregate {
                 } else if cmd_value.starts_with("update_both:") {
                     let parts: Vec<&str> = cmd_value
                         .strip_prefix("update_both:")
-                        .unwrap_or("0:default")
+                        .unwrap_or("unknown:active")
                         .split(':')
                         .collect();
-                    let a_val = parts.first().unwrap_or(&"0");
-                    let b_val = parts.get(1).unwrap_or(&"default");
+                    let name_val = parts.first().unwrap_or(&"unknown");
+                    let status_val = parts.get(1).unwrap_or(&"active");
 
                     event_pages.push(EventPage {
                         header: Some(PageHeader {
@@ -782,8 +788,8 @@ impl CommandHandler for StatefulAggregate {
                             )),
                         }),
                         payload: Some(event_page::Payload::Event(Any {
-                            type_url: "test.FieldAUpdated".to_string(),
-                            value: a_val.as_bytes().to_vec(),
+                            type_url: "test.DisplayNameUpdated".to_string(),
+                            value: name_val.as_bytes().to_vec(),
                         })),
                         created_at: None,
                     });
@@ -794,8 +800,8 @@ impl CommandHandler for StatefulAggregate {
                             )),
                         }),
                         payload: Some(event_page::Payload::Event(Any {
-                            type_url: "test.FieldBUpdated".to_string(),
-                            value: b_val.as_bytes().to_vec(),
+                            type_url: "test.StatusUpdated".to_string(),
+                            value: status_val.as_bytes().to_vec(),
                         })),
                         created_at: None,
                     });
@@ -828,13 +834,18 @@ impl CommandHandler for StatefulAggregate {
     }
 
     async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {
-        let (field_a, field_b) = Self::rebuild_state(events);
-        Ok(Self::pack_state(field_a, &field_b))
+        let state = Self::rebuild_state(events);
+        Ok(Self::pack_state(&state))
     }
 }
 
-/// Create a command that updates field_a.
-fn create_field_a_command(domain: &str, root: Uuid, sequence: u32, value: i32) -> CommandBook {
+/// Create a command that updates display_name field.
+fn create_display_name_command(
+    domain: &str,
+    root: Uuid,
+    sequence: u32,
+    value: &str,
+) -> CommandBook {
     CommandBook {
         cover: Some(Cover {
             domain: domain.to_string(),
@@ -849,16 +860,16 @@ fn create_field_a_command(domain: &str, root: Uuid, sequence: u32, value: i32) -
                 sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
             }),
             payload: Some(command_page::Payload::Command(Any {
-                type_url: "test.UpdateFieldA".to_string(),
-                value: format!("update_field_a:{}", value).into_bytes(),
+                type_url: "test.UpdateDisplayName".to_string(),
+                value: format!("update_display_name:{}", value).into_bytes(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
     }
 }
 
-/// Create a command that updates field_b.
-fn create_field_b_command(domain: &str, root: Uuid, sequence: u32, value: &str) -> CommandBook {
+/// Create a command that updates status field.
+fn create_status_command(domain: &str, root: Uuid, sequence: u32, value: &str) -> CommandBook {
     CommandBook {
         cover: Some(Cover {
             domain: domain.to_string(),
@@ -873,8 +884,8 @@ fn create_field_b_command(domain: &str, root: Uuid, sequence: u32, value: &str) 
                 sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
             }),
             payload: Some(command_page::Payload::Command(Any {
-                type_url: "test.UpdateFieldB".to_string(),
-                value: format!("update_field_b:{}", value).into_bytes(),
+                type_url: "test.UpdateStatus".to_string(),
+                value: format!("update_status:{}", value).into_bytes(),
             })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
@@ -887,9 +898,12 @@ async fn test_commutative_disjoint_fields_succeeds() {
     // even with stale sequences, because their changes are commutative.
     //
     // Scenario:
-    // 1. Command A modifies field_a (sequence 0)
-    // 2. Command B modifies field_b (sequence 0 - stale!)
-    // 3. Because field_a and field_b are disjoint, B should succeed
+    // 1. Command A modifies display_name (sequence 0)
+    // 2. Command B modifies status (sequence 0 - stale!)
+    // 3. Because display_name and status are disjoint, B should succeed
+
+    // Initialize proto_reflect so field diffing works with real proto types
+    let _ = angzarr::proto_reflect::init_from_embedded();
 
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
@@ -901,20 +915,19 @@ async fn test_commutative_disjoint_fields_succeeds() {
     let client = runtime.command_client();
     let root = Uuid::new_v4();
 
-    // First command: update field_a at sequence 0
-    let cmd_a = create_field_a_command("stateful", root, 0, 100);
+    // First command: update display_name at sequence 0
+    let cmd_a = create_display_name_command("stateful", root, 0, "Alice");
     client
         .execute(cmd_a)
         .await
-        .expect("First command (field_a) failed");
+        .expect("First command (display_name) failed");
 
-    // Second command: update field_b at stale sequence 0 (should be 1)
+    // Second command: update status at stale sequence 0 (should be 1)
     // This modifies a DIFFERENT field, so it should be allowed (commutative)
-    let cmd_b = create_field_b_command("stateful", root, 0, "hello");
+    let cmd_b = create_status_command("stateful", root, 0, "active");
     let result = client.execute(cmd_b).await;
 
     // EXPECTED: Should succeed because fields are disjoint
-    // CURRENT: Will fail because COMMUTATIVE logic isn't implemented yet
     assert!(
         result.is_ok(),
         "Disjoint field changes should succeed with COMMUTATIVE strategy. Got: {:?}",
@@ -937,9 +950,12 @@ async fn test_commutative_overlapping_fields_returns_retryable() {
     // FAILED_PRECONDITION when sequences don't match.
     //
     // Scenario:
-    // 1. Command A modifies field_a (sequence 0)
-    // 2. Command B also modifies field_a (sequence 0 - stale!)
-    // 3. Because both touch field_a, B should fail with retryable error
+    // 1. Command A modifies display_name (sequence 0)
+    // 2. Command B also modifies display_name (sequence 0 - stale!)
+    // 3. Because both touch display_name, B should fail with retryable error
+
+    // Initialize proto_reflect so field diffing works with real proto types
+    let _ = angzarr::proto_reflect::init_from_embedded();
 
     let runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
@@ -951,13 +967,13 @@ async fn test_commutative_overlapping_fields_returns_retryable() {
     let client = runtime.command_client();
     let root = Uuid::new_v4();
 
-    // First command: update field_a at sequence 0
-    let cmd_a = create_field_a_command("stateful", root, 0, 100);
+    // First command: update display_name at sequence 0
+    let cmd_a = create_display_name_command("stateful", root, 0, "Alice");
     client.execute(cmd_a).await.expect("First command failed");
 
-    // Second command: also update field_a at stale sequence 0
+    // Second command: also update display_name at stale sequence 0
     // This modifies the SAME field, so it should fail
-    let cmd_b = create_field_a_command("stateful", root, 0, 200);
+    let cmd_b = create_display_name_command("stateful", root, 0, "Bob");
     let result = client.execute(cmd_b).await;
 
     // EXPECTED: Should fail with FAILED_PRECONDITION (retryable)
