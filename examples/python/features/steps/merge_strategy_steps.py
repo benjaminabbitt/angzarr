@@ -54,7 +54,9 @@ def make_event_book(
         event_any = ProtoAny()
         event_any.type_url = f"type.googleapis.com/test.TestEvent{seq}"
         event_any.value = b""
-        pages.append(types.EventPage(sequence=seq, event=event_any))
+        pages.append(
+            types.EventPage(header=types.PageHeader(sequence=seq), event=event_any)
+        )
 
     return types.EventBook(
         cover=types.Cover(

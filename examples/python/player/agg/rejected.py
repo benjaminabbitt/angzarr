@@ -60,7 +60,7 @@ def handle_join_rejected(
     # Build the EventBook using the notification's cover for routing
     return types.EventBook(
         cover=notification.cover,
-        pages=[types.EventPage(sequence=0, event=event_any)],
+        pages=[types.EventPage(header=types.PageHeader(sequence=0), event=event_any)],
     )
 
 

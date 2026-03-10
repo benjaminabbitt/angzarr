@@ -11,7 +11,7 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        var port = Environment.GetEnvironmentVariable("GRPC_PORT") ?? "50614";
+        var port = Environment.GetEnvironmentVariable("PORT") ?? "50614";
 
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddGrpc();

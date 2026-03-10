@@ -7,7 +7,7 @@ use angzarr_client::proto::examples::{
     CreateTable, EndHand, GameVariant, HandEnded, HandStarted, JoinTable, LeaveTable,
     PlayerJoined, PlayerLeft, PotResult, StartHand, TableCreated,
 };
-use angzarr_client::proto::{event_page, page_header, CommandBook, Cover, EventBook, EventPage, Uuid};
+use angzarr_client::proto::{event_page, page_header, CommandBook, Cover, EventBook, EventPage, PageHeader, Uuid};
 use angzarr_client::{pack_event, try_unpack, type_matches, type_name_from_url, CommandRejectedError, UnpackAny};
 use cucumber::{given, then, when, World, WriterExt};
 use prost::Message;
@@ -41,7 +41,6 @@ fn command_book(root: &[u8], domain: &str) -> CommandBook {
             ..Default::default()
         }),
         pages: vec![],
-        saga_origin: None,
     }
 }
 
@@ -91,7 +90,9 @@ impl TableWorld {
                 .iter()
                 .enumerate()
                 .map(|(i, e)| EventPage {
-                    sequence_type: Some(page_header::SequenceType::Sequence(i as u32)),
+                    header: Some(PageHeader {
+                        sequence_type: Some(page_header::SequenceType::Sequence(i as u32)),
+                    }),
                     payload: Some(event_page::Payload::Event(e.clone())),
                     created_at: None,
                 })

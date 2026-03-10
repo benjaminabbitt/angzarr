@@ -3,6 +3,7 @@
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
 
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -159,7 +160,9 @@ class HandAggregateService final : public angzarr::CommandHandlerService::Servic
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;
-    if (argc > 1) {
+    if (const char* env_port = std::getenv("PORT")) {
+        port = std::stoi(env_port);
+    } else if (argc > 1) {
         port = std::stoi(argv[1]);
     }
 

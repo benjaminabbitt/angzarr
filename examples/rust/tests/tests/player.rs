@@ -12,7 +12,7 @@ use angzarr_client::proto::examples::{
     Currency, DepositFunds, FundsDeposited, FundsReleased, FundsReserved, FundsWithdrawn,
     PlayerRegistered, PlayerType, RegisterPlayer, ReleaseFunds, ReserveFunds, WithdrawFunds,
 };
-use angzarr_client::proto::{command_page, event_page, page_header, CommandBook, CommandPage, Cover, EventBook, EventPage, Uuid};
+use angzarr_client::proto::{command_page, event_page, page_header, CommandBook, CommandPage, Cover, EventBook, EventPage, PageHeader, Uuid};
 use angzarr_client::{pack_event, try_unpack, type_matches, UnpackAny};
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -96,17 +96,20 @@ impl PlayerWorld {
                 ..Default::default()
             }),
             pages: vec![CommandPage {
-                sequence: self.next_sequence,
+                header: Some(PageHeader {
+                    sequence_type: Some(page_header::SequenceType::Sequence(self.next_sequence)),
+                }),
                 payload: Some(command_page::Payload::Command(cmd_any)),
                 ..Default::default()
             }],
-            saga_origin: None,
         }
     }
 
     fn add_event(&mut self, event_any: Any) {
         self.events.push(EventPage {
-            sequence_type: Some(page_header::SequenceType::Sequence(self.next_sequence)),
+            header: Some(PageHeader {
+                sequence_type: Some(page_header::SequenceType::Sequence(self.next_sequence)),
+            }),
             payload: Some(event_page::Payload::Event(event_any)),
             created_at: Some(angzarr_client::now()),
         });

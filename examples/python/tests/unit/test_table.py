@@ -77,7 +77,9 @@ def _handle_command(ctx: ScenarioContext, command_msg):
 
         result = types.EventBook()
         seq = len(ctx.events)
-        result.pages.append(types.EventPage(event=event_any, sequence=seq))
+        result.pages.append(
+            types.EventPage(event=event_any, header=types.PageHeader(sequence=seq))
+        )
         ctx.result = result
         ctx.error = None
     except CommandRejectedError as e:

@@ -218,7 +218,7 @@ class HandFlowProcessManager:
                     dest = dest_map.get(root_hex)
                     seq = next_sequence(dest)
                     for cmd_page in cmd.pages:
-                        cmd_page.sequence = seq
+                        cmd_page.header.CopyFrom(types.PageHeader(sequence=seq))
 
         # No PM-specific events to emit for now
         return commands, None

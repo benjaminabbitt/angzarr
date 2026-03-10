@@ -95,7 +95,9 @@ def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
         event_any.Pack(event, type_url_prefix="type.googleapis.com/")
 
         result = types.EventBook()
-        result.pages.append(types.EventPage(event=event_any, sequence=seq))
+        result.pages.append(
+            types.EventPage(event=event_any, header=types.PageHeader(sequence=seq))
+        )
         ctx.result = result
         ctx.error = None
     except CommandRejectedError as e:

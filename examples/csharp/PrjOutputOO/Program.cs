@@ -19,7 +19,7 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        var port = Environment.GetEnvironmentVariable("GRPC_PORT") ?? "50692";
+        var port = Environment.GetEnvironmentVariable("PORT") ?? "50692";
         var logFile = Environment.GetEnvironmentVariable("HAND_LOG_FILE") ?? "hand_log_oo.txt";
 
         // Clear log file at startup

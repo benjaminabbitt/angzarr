@@ -37,7 +37,7 @@ def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
     event_any = ProtoAny()
     event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
-        sequence=seq,
+        header=types.PageHeader(sequence=seq),
         event=event_any,
         created_at=make_timestamp(),
     )
@@ -694,9 +694,10 @@ def step_then_fact_has_sequence_number(context, seq):
     expected_seq = int(seq)
     assert context.injected_fact is not None, "No injected fact"
     # sequence is 0-indexed, scenario says "sequence number 4" means index 3
+    actual_seq = context.injected_fact.header.sequence
     assert (
-        context.injected_fact.sequence == expected_seq - 1
-    ), f"Expected sequence {expected_seq - 1}, got {context.injected_fact.sequence}"
+        actual_seq == expected_seq - 1
+    ), f"Expected sequence {expected_seq - 1}, got {actual_seq}"
 
 
 @then(r"subsequent events continue from sequence (?P<seq>\d+)")
