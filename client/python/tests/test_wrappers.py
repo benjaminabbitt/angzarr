@@ -22,6 +22,7 @@ from angzarr_client.proto.angzarr import (
     Edition,
     EventBook,
     EventPage,
+    PageHeader,
     Query,
 )
 from angzarr_client.wrappers import (
@@ -59,16 +60,16 @@ class TestEventBookW:
     def test_pages_returns_wrapped_list(self) -> None:
         """pages returns event pages as wrapped EventPageW instances."""
         proto = EventBook()
-        page1 = EventPage(sequence=1)
-        page2 = EventPage(sequence=2)
+        page1 = EventPage(header=PageHeader(sequence=1))
+        page2 = EventPage(header=PageHeader(sequence=2))
         proto.pages.extend([page1, page2])
         wrapper = EventBookW(proto)
         result = wrapper.pages()
         assert len(result) == 2
         assert isinstance(result[0], EventPageW)
         assert isinstance(result[1], EventPageW)
-        assert result[0].proto.sequence == 1
-        assert result[1].proto.sequence == 2
+        assert result[0].proto.header.sequence == 1
+        assert result[1].proto.header.sequence == 2
 
     def test_pages_returns_empty_list_when_none(self) -> None:
         """pages returns empty list for new EventBook."""
@@ -343,14 +344,14 @@ class TestEventPageW:
 
     def test_constructor_accepts_proto(self) -> None:
         """Wrapper accepts EventPage proto in constructor."""
-        proto = EventPage(sequence=5)
+        proto = EventPage(header=PageHeader(sequence=5))
         wrapper = EventPageW(proto)
         assert wrapper.proto is proto
 
     def test_decode_event_returns_message(self) -> None:
         """decode_event returns decoded message when type matches."""
         cover = Cover(domain="test", correlation_id="abc")
-        proto = EventPage(sequence=1)
+        proto = EventPage(header=PageHeader(sequence=1))
         proto.event.Pack(cover)
         wrapper = EventPageW(proto)
 
@@ -363,7 +364,7 @@ class TestEventPageW:
     def test_decode_event_returns_none_for_mismatch(self) -> None:
         """decode_event returns None when type doesn't match."""
         cover = Cover(domain="test")
-        proto = EventPage(sequence=1)
+        proto = EventPage(header=PageHeader(sequence=1))
         proto.event.Pack(cover)
         wrapper = EventPageW(proto)
 
@@ -372,7 +373,7 @@ class TestEventPageW:
 
     def test_decode_event_returns_none_when_no_event(self) -> None:
         """decode_event returns None when event not set."""
-        wrapper = EventPageW(EventPage(sequence=1))
+        wrapper = EventPageW(EventPage(header=PageHeader(sequence=1)))
         result = wrapper.decode_event("Cover", Cover)
         assert result is None
 

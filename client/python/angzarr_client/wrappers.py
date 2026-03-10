@@ -317,7 +317,7 @@ class CommandPageW:
 
     def sequence(self) -> int:
         """Return the sequence number."""
-        return self.proto.sequence
+        return self.proto.header.sequence if self.proto.HasField("header") else 0
 
 
 class CommandResponseW:

@@ -81,7 +81,7 @@ def given_aggregate_with_events(domain_client_context, domain, root, count, requ
 
     for i in range(count):
         page = event_book.pages.add()
-        page.sequence = i  # 0-indexed for consistency
+        page.header.sequence = i  # 0-indexed for consistency
         page.event.Pack(Empty())
 
     domain_client_context["event_book"] = event_book

@@ -406,7 +406,11 @@ class CommandRouter(Generic[S]):
                 event_any.Pack(event, type_url_prefix="type.googleapis.com/")
 
                 event_book = types.EventBook(
-                    pages=[types.EventPage(sequence=seq, event=event_any)]
+                    pages=[
+                        types.EventPage(
+                            header=types.PageHeader(sequence=seq), event=event_any
+                        )
+                    ]
                 )
                 return command_handler.BusinessResponse(events=event_book)
 

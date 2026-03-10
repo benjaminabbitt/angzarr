@@ -116,7 +116,11 @@ class MockPlayerHandler(CommandHandlerDomainHandler[PlayerState]):
             event_any.Pack(event)
             return types.EventBook(
                 cover=cmd_book.cover,
-                pages=[types.EventPage(sequence=seq, event=event_any)],
+                pages=[
+                    types.EventPage(
+                        header=types.PageHeader(sequence=seq), event=event_any
+                    )
+                ],
             )
         elif payload.type_url.endswith("DepositFunds"):
             cmd = DepositFunds()
@@ -126,7 +130,11 @@ class MockPlayerHandler(CommandHandlerDomainHandler[PlayerState]):
             event_any.Pack(event)
             return types.EventBook(
                 cover=cmd_book.cover,
-                pages=[types.EventPage(sequence=seq, event=event_any)],
+                pages=[
+                    types.EventPage(
+                        header=types.PageHeader(sequence=seq), event=event_any
+                    )
+                ],
             )
         raise ValueError(f"Unknown command: {payload.type_url}")
 
@@ -317,8 +325,8 @@ class TestCommandHandlerRouter:
         prior = types.EventBook(
             cover=types.Cover(domain="player"),
             pages=[
-                types.EventPage(sequence=0, event=reg_any),
-                types.EventPage(sequence=1, event=dep_any),
+                types.EventPage(header=types.PageHeader(sequence=0), event=reg_any),
+                types.EventPage(header=types.PageHeader(sequence=1), event=dep_any),
             ],
         )
 
@@ -562,7 +570,9 @@ class TestRouterIntegration:
 
         prior = types.EventBook(
             cover=types.Cover(domain="player"),
-            pages=[types.EventPage(sequence=0, event=reg_any)],
+            pages=[
+                types.EventPage(header=types.PageHeader(sequence=0), event=reg_any)
+            ],
         )
 
         # Rebuild state

@@ -7,7 +7,10 @@ from angzarr_client.proto.angzarr import types_pb2 as types
 def _event_book() -> types.EventBook:
     return types.EventBook(
         cover=types.Cover(domain="source"),
-        pages=[types.EventPage(sequence=0), types.EventPage(sequence=1)],
+        pages=[
+            types.EventPage(header=types.PageHeader(sequence=0)),
+            types.EventPage(header=types.PageHeader(sequence=1)),
+        ],
     )
 
 

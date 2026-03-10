@@ -206,7 +206,10 @@ class Upcaster(ABC):
         for page in events:
             if page.HasField("event"):
                 new_event = upcaster.upcast(page.event)
-                new_page = types.EventPage(event=new_event, sequence=page.sequence)
+                seq = page.header.sequence if page.HasField("header") else 0
+                new_page = types.EventPage(
+                    event=new_event, header=types.PageHeader(sequence=seq)
+                )
                 new_page.created_at.CopyFrom(page.created_at)
                 result.append(new_page)
             else:

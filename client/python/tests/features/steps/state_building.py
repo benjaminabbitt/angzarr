@@ -204,7 +204,9 @@ def given_event_type_url_for_state_building(state_context, type_url):
 
 @given("an event with corrupted payload bytes")
 def given_corrupted_payload(state_context):
-    page = types_pb2.EventPage(sequence=0, created_at=Timestamp())
+    page = types_pb2.EventPage(
+        header=types_pb2.PageHeader(sequence=0), created_at=Timestamp()
+    )
     page.event.CopyFrom(
         Any(
             type_url="type.googleapis.com/test.OrderCreated",
@@ -293,7 +295,7 @@ def when_build_state(state_context):
         state.exists = True
 
     for page in book.pages:
-        if page.sequence <= start_seq:
+        if page.header.sequence <= start_seq:
             continue
         state_context["events_applied"].append(page)
         type_url = page.event.type_url

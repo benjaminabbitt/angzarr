@@ -47,7 +47,7 @@ class TestHandle:
             # Now returns ProcessManagerHandleResponse (proto-generated type)
             return pm.ProcessManagerHandleResponse(
                 process_events=types.EventBook(
-                    pages=[types.EventPage(sequence=0)],
+                    pages=[types.EventPage(header=types.PageHeader(sequence=0))],
                 ),
                 commands=[
                     types.CommandBook(cover=types.Cover(domain="target")),

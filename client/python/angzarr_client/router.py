@@ -136,10 +136,17 @@ def _pack_events(result, start_seq: int = 0) -> types.EventBook:
     elif isinstance(result, tuple):
         for i, event in enumerate(result):
             pages.append(
-                types.EventPage(sequence=start_seq + i, event=_pack_any(event))
+                types.EventPage(
+                    header=types.PageHeader(sequence=start_seq + i),
+                    event=_pack_any(event),
+                )
             )
     else:
-        pages.append(types.EventPage(sequence=start_seq, event=_pack_any(result)))
+        pages.append(
+            types.EventPage(
+                header=types.PageHeader(sequence=start_seq), event=_pack_any(result)
+            )
+        )
 
     return types.EventBook(pages=pages)
 

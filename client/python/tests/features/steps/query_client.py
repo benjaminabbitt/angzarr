@@ -51,7 +51,7 @@ def make_event_book(
     # Add event pages
     for i in range(event_count):
         page = book.pages.add()
-        page.sequence = start_seq + i
+        page.header.sequence = start_seq + i
         page.event.Pack(Empty())
 
     return book
@@ -115,7 +115,7 @@ def given_aggregate_with_specific_event(query_context, domain, root, event_type,
     book.cover.root.value = root_uuid.bytes
 
     page = book.pages.add()
-    page.sequence = 0
+    page.header.sequence = 0
     # Store event type in type_url
     page.event.type_url = f"type.googleapis.com/{event_type}"
     page.event.value = data.encode()
@@ -215,7 +215,7 @@ def when_query_events_from_sequence(query_context, domain, root, start):
         result = types_pb2.EventBook()
         result.cover.CopyFrom(full_book.cover)
         for page in full_book.pages:
-            if page.sequence >= start:
+            if page.header.sequence >= start:
                 new_page = result.pages.add()
                 new_page.CopyFrom(page)
         query_context["result"] = result
@@ -235,7 +235,7 @@ def when_query_events_range(query_context, domain, root, start, end):
         result = types_pb2.EventBook()
         result.cover.CopyFrom(full_book.cover)
         for page in full_book.pages:
-            if start <= page.sequence < end:
+            if start <= page.header.sequence < end:
                 new_page = result.pages.add()
                 new_page.CopyFrom(page)
         query_context["result"] = result
@@ -253,7 +253,7 @@ def when_query_events_as_of_sequence(query_context, domain, root, seq):
         result = types_pb2.EventBook()
         result.cover.CopyFrom(full_book.cover)
         for page in full_book.pages:
-            if page.sequence <= seq:
+            if page.header.sequence <= seq:
                 new_page = result.pages.add()
                 new_page.CopyFrom(page)
         query_context["result"] = result
@@ -339,8 +339,8 @@ def then_events_in_sequence_order(query_context, start, end):
     assert result is not None
     for i, page in enumerate(result.pages):
         assert (
-            page.sequence == start + i
-        ), f"Expected sequence {start + i}, got {page.sequence}"
+            page.header.sequence == start + i
+        ), f"Expected sequence {start + i}, got {page.header.sequence}"
 
 
 @then(parsers.parse('the first event should have type "{event_type}"'))

@@ -115,7 +115,7 @@ def given_aggregate_with_events_spec(speculative_context, domain, root, count, r
     event_book.cover.domain = domain
     for i in range(count):
         page = event_book.pages.add()
-        page.sequence = i
+        page.header.sequence = i
         page.event.Pack(Empty())
     speculative_context["event_book"] = event_book
     speculative_context["base_event_count"] = count
@@ -408,7 +408,7 @@ def given_speculative_aggregate_with_root_has_events(
     event_book.cover.root.value = root.encode()
     for i in range(count):
         page = event_book.pages.add()
-        page.sequence = i
+        page.header.sequence = i
         page.event.Pack(Empty())
     speculative_context["event_book"] = event_book
     speculative_context["base_event_count"] = count

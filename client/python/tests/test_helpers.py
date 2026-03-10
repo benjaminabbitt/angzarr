@@ -72,6 +72,7 @@ from angzarr_client.proto.angzarr import (
     Edition,
     EventBook,
     EventPage,
+    PageHeader,
     Query,
     SequenceRange,
     TemporalQuery,
@@ -395,13 +396,13 @@ class TestEventBookHelpers:
     def test_event_pages_returns_list(self) -> None:
         """event_pages returns pages as list."""
         book = EventBook()
-        page1 = EventPage(sequence=1)
-        page2 = EventPage(sequence=2)
+        page1 = EventPage(header=PageHeader(sequence=1))
+        page2 = EventPage(header=PageHeader(sequence=2))
         book.pages.extend([page1, page2])
         result = event_pages(book)
         assert len(result) == 2
-        assert result[0].sequence == 1
-        assert result[1].sequence == 2
+        assert result[0].header.sequence == 1
+        assert result[1].header.sequence == 2
 
     def test_event_pages_none_returns_empty(self) -> None:
         """event_pages returns empty list for None."""
@@ -595,14 +596,14 @@ class TestDecodeEvent:
         """Returns None when event field not set."""
         from angzarr_client.proto.angzarr import Cover
 
-        page = EventPage(sequence=1)
+        page = EventPage(header=PageHeader(sequence=1))
         assert decode_event(page, "Cover", Cover) is None
 
     def test_returns_none_for_type_mismatch(self) -> None:
         """Returns None when type URL doesn't match."""
         from angzarr_client.proto.angzarr import Cover
 
-        page = EventPage(sequence=1)
+        page = EventPage(header=PageHeader(sequence=1))
         page.event.type_url = "type.googleapis.com/some.OtherType"
         page.event.value = b""
         assert decode_event(page, "Cover", Cover) is None
@@ -613,7 +614,7 @@ class TestDecodeEvent:
 
         # Create a cover and pack it
         cover = Cover(domain="test", correlation_id="abc")
-        page = EventPage(sequence=1)
+        page = EventPage(header=PageHeader(sequence=1))
         page.event.Pack(cover)
 
         # Use full type name for exact matching
@@ -627,7 +628,7 @@ class TestDecodeEvent:
         from angzarr_client.proto.angzarr import Cover
 
         # Create page with matching type URL but invalid data
-        page = EventPage(sequence=1)
+        page = EventPage(header=PageHeader(sequence=1))
         page.event.type_url = "type.googleapis.com/angzarr.Cover"
         page.event.value = b"invalid proto data that will fail to decode"
         # Should return None, not raise
@@ -662,7 +663,7 @@ class TestConstructionHelpers:
         """new_command_page creates page with sequence and command."""
         any_msg = ProtoAny(type_url="test/Cmd", value=b"data")
         page = new_command_page(5, any_msg)
-        assert page.sequence == 5
+        assert page.header.sequence == 5
         assert page.command.type_url == "test/Cmd"
 
     def test_new_command_book(self) -> None:

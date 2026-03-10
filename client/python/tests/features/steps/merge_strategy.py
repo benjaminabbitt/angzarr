@@ -66,7 +66,7 @@ def make_event_book(
     book.cover.root.value = uuid.uuid4().bytes
     for i in range(sequence_count):
         page = book.pages.add()
-        page.sequence = i
+        page.header.sequence = i
         page.event.Pack(Empty())
     return book
 
@@ -79,7 +79,7 @@ def make_command(
     cmd.cover.domain = domain
     cmd.cover.root.value = uuid.uuid4().bytes
     page = cmd.pages.add()
-    page.sequence = sequence
+    page.header.sequence = sequence
     page.merge_strategy = strategy
     page.command.Pack(Empty())
     return cmd

@@ -340,7 +340,7 @@ def then_events_have_sequences(router_context):
     event_book = router_context.get("event_book")
     if event_book:
         for i, page in enumerate(event_book.pages):
-            assert page.sequence >= 0
+            assert page.header.sequence >= 0
 
 
 @when(parsers.parse('I receive an "UnknownCommand" command'))

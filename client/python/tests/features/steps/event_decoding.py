@@ -338,7 +338,7 @@ def then_no_error(decode_context):
 @then(parsers.parse("event.sequence should be {expected:d}"))
 def then_sequence_is(decode_context, expected):
     page = decode_context.get("event_page")
-    assert page.sequence == expected
+    assert page.header.sequence == expected
 
 
 @then("event.created_at should be a valid timestamp")

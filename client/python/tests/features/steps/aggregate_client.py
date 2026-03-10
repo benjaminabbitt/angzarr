@@ -99,7 +99,7 @@ def given_aggregate_with_existing_events(aggregate_context):
     event_book.cover.domain = "test"
     for i in range(3):
         page = event_book.pages.add()
-        page.sequence = i
+        page.header.sequence = i
         page.event.Pack(Empty())
     aggregate_context["event_book"] = event_book
 
@@ -110,7 +110,7 @@ def given_aggregate_at_sequence(aggregate_context, seq):
     event_book.cover.domain = "test"
     for i in range(seq):
         page = event_book.pages.add()
-        page.sequence = i
+        page.header.sequence = i
         page.event.Pack(Empty())
     aggregate_context["event_book"] = event_book
 
@@ -185,7 +185,7 @@ def when_handler_emits_events(aggregate_context, count):
         book = types_pb2.EventBook()
         for i in range(count):
             page = book.pages.add()
-            page.sequence = i
+            page.header.sequence = i
             page.event.Pack(Empty())
         return book
 
@@ -268,7 +268,7 @@ def then_router_should_return_events(aggregate_context):
 @then("the events should have correct sequences")
 def then_events_should_have_correct_sequences(aggregate_context):
     for i, page in enumerate(aggregate_context["response"].pages):
-        assert page.sequence >= 0
+        assert page.header.sequence >= 0
 
 
 @then("the router should return an error")
@@ -528,7 +528,7 @@ def make_event_book(seq):
     """Create a test EventBook."""
     book = types_pb2.EventBook()
     page = book.pages.add()
-    page.sequence = seq
+    page.header.sequence = seq
     page.event.Pack(Empty())
     return book
 

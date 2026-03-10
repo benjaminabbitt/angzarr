@@ -493,7 +493,9 @@ class CommandHandler(Generic[StateT], ABC):
             self._apply_event(self._state, event_any)
 
         # Record in event book with proper sequence
-        page = types.EventPage(sequence=self._next_seq, event=event_any)
+        page = types.EventPage(
+            header=types.PageHeader(sequence=self._next_seq), event=event_any
+        )
         self._next_seq += 1
         self._event_book.pages.append(page)
 
