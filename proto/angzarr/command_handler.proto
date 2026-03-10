@@ -71,6 +71,17 @@ service CommandHandlerCoordinatorService {
 message CommandResponse {
   EventBook events = 1;               // Events from the target aggregate
   repeated Projection projections = 2; // Synchronous projector results
+  // CASCADE mode error reporting (populated when cascade_error_mode != FAIL_FAST)
+  repeated CascadeError cascade_errors = 3;
+}
+
+// Error from saga/PM during CASCADE execution.
+// Populated in CommandResponse when cascade_error_mode allows continuation after errors.
+message CascadeError {
+  string component_name = 1;   // e.g., "saga-order-fulfillment"
+  string component_type = 2;   // "saga" or "process_manager"
+  string error_message = 3;
+  string source_domain = 4;    // Which domain's events triggered this
 }
 
 // client logic requests framework to handle revocation

@@ -60,13 +60,40 @@ impl CommandClient {
         CommandBuilder::new(self.router.clone(), domain.into(), root)
     }
 
-    /// Execute a pre-built command book.
+    /// Execute a pre-built command book with SIMPLE mode (default).
+    ///
+    /// Calls sync projectors and publishes to bus.
     #[trivial_delegation]
     pub async fn execute(
         &self,
         command: CommandBook,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
         self.router.execute(command).await.map_err(Into::into)
+    }
+
+    /// Execute with ASYNC mode (fire-and-forget).
+    ///
+    /// Does NOT call sync projectors. Publishes to bus.
+    #[trivial_delegation]
+    pub async fn execute_async(
+        &self,
+        command: CommandBook,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
+        self.router.execute_async(command).await.map_err(Into::into)
+    }
+
+    /// Execute with CASCADE mode (full synchronous chain).
+    ///
+    /// Calls sync projectors, sync sagas, and sync PMs. Does NOT publish to bus.
+    #[trivial_delegation]
+    pub async fn execute_cascade(
+        &self,
+        command: CommandBook,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
+        self.router
+            .execute_with_cascade(command)
+            .await
+            .map_err(Into::into)
     }
 
     /// Speculatively execute a command against temporal state (dry-run).

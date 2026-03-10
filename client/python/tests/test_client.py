@@ -181,33 +181,6 @@ class TestCommandHandlerClient:
         client = CommandHandlerClient.from_env("AGG_ENDPOINT", "default:8000")
         mock_channel.assert_called_once_with("agg-host:9000")
 
-    def test_handle_success(self) -> None:
-        """handle returns CommandResponse on success (wraps CommandBook in CommandRequest)."""
-        channel = self._mock_channel()
-        client = CommandHandlerClient(channel)
-        expected_resp = CommandResponse()
-        expected_resp.events.next_sequence = 5
-        client._stub.HandleCommand = Mock(return_value=expected_resp)
-
-        cmd = CommandBook()
-        result = client.handle(cmd)
-
-        # handle wraps CommandBook in CommandRequest
-        client._stub.HandleCommand.assert_called_once()
-        assert result.events.next_sequence == 5
-
-    def test_handle_raises_grpc_error(self) -> None:
-        """handle raises GRPCError on RpcError."""
-        channel = self._mock_channel()
-        client = CommandHandlerClient(channel)
-        rpc_error = MockRpcError(grpc.StatusCode.FAILED_PRECONDITION)
-        client._stub.HandleCommand = Mock(side_effect=rpc_error)
-
-        cmd = CommandBook()
-        with pytest.raises(GRPCError) as exc_info:
-            client.handle(cmd)
-        assert exc_info.value.is_precondition_failed()
-
     def test_handle_command_success(self) -> None:
         """handle_command returns CommandResponse on success."""
         channel = self._mock_channel()
@@ -437,8 +410,8 @@ class TestDomainClient:
         client = DomainClient.from_env("DOMAIN_ENDPOINT", "default:8000")
         mock_channel.assert_called_once_with("domain-host:9000")
 
-    def test_execute_delegates_to_aggregate(self) -> None:
-        """execute delegates to aggregate.handle."""
+    def test_execute_delegates_to_command_handler(self) -> None:
+        """execute builds CommandRequest and delegates to command_handler.handle_command."""
         channel = self._mock_channel()
         client = DomainClient(channel)
         expected_resp = CommandResponse()

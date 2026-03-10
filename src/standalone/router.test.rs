@@ -24,7 +24,7 @@ use tonic::Status;
 use uuid::Uuid;
 
 use super::*;
-use crate::proto::{Cover, MergeStrategy, Uuid as ProtoUuid};
+use crate::proto::{CascadeErrorMode, Cover, MergeStrategy, Uuid as ProtoUuid};
 use crate::proto_ext::CommandPageExt;
 
 // ============================================================================
@@ -571,7 +571,10 @@ mod sync_pm_tests {
         let events = make_event_book("orders", Uuid::new_v4(), "");
 
         // call_sync_pms should skip PM due to missing correlation_id
-        router.call_sync_pms(&events).await.unwrap();
+        router
+            .call_sync_pms(&events, CascadeErrorMode::CascadeErrorFailFast)
+            .await
+            .unwrap();
 
         assert!(
             !handler.was_prepare_called(),
@@ -609,7 +612,10 @@ mod sync_pm_tests {
         // Event from inventory domain (PM not subscribed)
         let events = make_event_book("inventory", Uuid::new_v4(), "corr-123");
 
-        router.call_sync_pms(&events).await.unwrap();
+        router
+            .call_sync_pms(&events, CascadeErrorMode::CascadeErrorFailFast)
+            .await
+            .unwrap();
 
         assert!(
             !handler.was_prepare_called(),
@@ -638,7 +644,10 @@ mod sync_pm_tests {
         // Event from orders domain (PM subscribed)
         let events = make_event_book("orders", Uuid::new_v4(), "corr-123");
 
-        router.call_sync_pms(&events).await.unwrap();
+        router
+            .call_sync_pms(&events, CascadeErrorMode::CascadeErrorFailFast)
+            .await
+            .unwrap();
 
         assert!(
             handler.was_prepare_called(),
@@ -675,11 +684,230 @@ mod sync_pm_tests {
 
         let events = make_event_book("_infrastructure", Uuid::new_v4(), "corr-123");
 
-        router.call_sync_pms(&events).await.unwrap();
+        router
+            .call_sync_pms(&events, CascadeErrorMode::CascadeErrorFailFast)
+            .await
+            .unwrap();
 
         assert!(
             !handler.was_prepare_called(),
             "PM should skip infrastructure domains"
         );
+    }
+}
+
+// ============================================================================
+// CascadeErrorMode Tests
+// ============================================================================
+
+mod cascade_error_mode_tests {
+    use super::*;
+
+    // ========================================================================
+    // CascadeTracker Unit Tests
+    // ========================================================================
+
+    /// CascadeTracker starts empty.
+    ///
+    /// Why: New trackers should have no recorded commands.
+    #[test]
+    fn test_cascade_tracker_starts_empty() {
+        let tracker = CascadeTracker::new();
+        assert_eq!(
+            tracker.commands_for_compensation().count(),
+            0,
+            "New tracker should have no commands"
+        );
+    }
+
+    /// CascadeTracker records commands.
+    ///
+    /// Why: COMPENSATE mode needs to track executed commands for rollback.
+    #[test]
+    fn test_cascade_tracker_records_commands() {
+        let mut tracker = CascadeTracker::new();
+        let root = Uuid::new_v4();
+
+        let cmd1 = create_command_book("orders", root, "CreateOrder", vec![1]);
+        let cmd2 = create_command_book("orders", root, "UpdateOrder", vec![2]);
+
+        tracker.record_success(cmd1.clone());
+        tracker.record_success(cmd2.clone());
+
+        let commands: Vec<_> = tracker.commands_for_compensation().collect();
+        assert_eq!(commands.len(), 2, "Should have recorded 2 commands");
+    }
+
+    /// commands_for_compensation returns commands in reverse order.
+    ///
+    /// Why: Compensation must undo commands in reverse order (LIFO) to maintain
+    /// consistency. If we executed A, B, C and C fails, we compensate B then A.
+    #[test]
+    fn test_cascade_tracker_reverse_order() {
+        let mut tracker = CascadeTracker::new();
+        let root = Uuid::new_v4();
+
+        let cmd1 = create_command_book("orders", root, "FirstCommand", vec![1]);
+        let cmd2 = create_command_book("orders", root, "SecondCommand", vec![2]);
+        let cmd3 = create_command_book("orders", root, "ThirdCommand", vec![3]);
+
+        tracker.record_success(cmd1.clone());
+        tracker.record_success(cmd2.clone());
+        tracker.record_success(cmd3.clone());
+
+        let commands: Vec<_> = tracker.commands_for_compensation().collect();
+
+        // Verify reverse order: Third, Second, First
+        assert_eq!(commands.len(), 3);
+
+        // Helper to extract type_url from command page
+        fn get_type_url(cmd: &CommandBook) -> &str {
+            if let Some(crate::proto::command_page::Payload::Command(ref any)) =
+                cmd.pages[0].payload
+            {
+                &any.type_url
+            } else {
+                ""
+            }
+        }
+
+        assert_eq!(get_type_url(commands[0]), "ThirdCommand");
+        assert_eq!(get_type_url(commands[1]), "SecondCommand");
+        assert_eq!(get_type_url(commands[2]), "FirstCommand");
+    }
+
+    /// CascadeTracker handles empty pages gracefully.
+    ///
+    /// Why: Commands might theoretically have no pages. Tracker should not panic.
+    #[test]
+    fn test_cascade_tracker_handles_empty_pages() {
+        let mut tracker = CascadeTracker::new();
+
+        let empty_cmd = CommandBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: None,
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            pages: vec![],
+        };
+
+        tracker.record_success(empty_cmd);
+
+        let commands: Vec<_> = tracker.commands_for_compensation().collect();
+        assert_eq!(
+            commands.len(),
+            1,
+            "Should record command even with no pages"
+        );
+    }
+}
+
+// ============================================================================
+// DEAD_LETTER Mode Tests
+// ============================================================================
+
+mod dead_letter_tests {
+    use super::*;
+    use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqError};
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Mutex;
+
+    /// Mock DLQ publisher that counts publishes.
+    struct CountingDlqPublisher {
+        publish_count: AtomicU32,
+        published_errors: Mutex<Vec<String>>,
+    }
+
+    impl CountingDlqPublisher {
+        fn new() -> Self {
+            Self {
+                publish_count: AtomicU32::new(0),
+                published_errors: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn count(&self) -> u32 {
+            self.publish_count.load(Ordering::SeqCst)
+        }
+
+        fn published(&self) -> Vec<String> {
+            self.published_errors.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl DeadLetterPublisher for CountingDlqPublisher {
+        async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
+            self.publish_count.fetch_add(1, Ordering::SeqCst);
+            self.published_errors
+                .lock()
+                .unwrap()
+                .push(dead_letter.rejection_reason.clone());
+            Ok(())
+        }
+    }
+
+    /// AngzarrDeadLetter created from cascade error has correct fields.
+    ///
+    /// Why: DEAD_LETTER mode publishes cascade errors to DLQ. The dead letter
+    /// must contain the error details for debugging and replay.
+    #[test]
+    fn test_dead_letter_from_cascade_error() {
+        let command = create_command_book("orders", Uuid::new_v4(), "CreateOrder", vec![1, 2, 3]);
+
+        // Create dead letter similar to how publish_cascade_errors_to_dlq does
+        let dead_letter = AngzarrDeadLetter::from_event_processing_failure(
+            &crate::proto::EventBook {
+                cover: command.cover.clone(),
+                ..Default::default()
+            },
+            "Test error message",
+            0,
+            false,
+            "saga-order-fulfillment",
+            "saga",
+        )
+        .with_metadata("source_domain", "orders")
+        .with_metadata("cascade_error_mode", "DEAD_LETTER");
+
+        assert_eq!(dead_letter.source_component, "saga-order-fulfillment");
+        assert_eq!(dead_letter.source_component_type, "saga");
+        assert!(dead_letter.rejection_reason.contains("Test error message"));
+        assert_eq!(
+            dead_letter.metadata.get("source_domain"),
+            Some(&"orders".to_string())
+        );
+        assert_eq!(
+            dead_letter.metadata.get("cascade_error_mode"),
+            Some(&"DEAD_LETTER".to_string())
+        );
+    }
+
+    /// CountingDlqPublisher tracks publishes correctly.
+    ///
+    /// Why: Test infrastructure verification.
+    #[tokio::test]
+    async fn test_counting_dlq_publisher() {
+        let publisher = CountingDlqPublisher::new();
+        let command = create_command_book("orders", Uuid::new_v4(), "CreateOrder", vec![]);
+
+        let dead_letter = AngzarrDeadLetter::from_event_processing_failure(
+            &crate::proto::EventBook {
+                cover: command.cover.clone(),
+                ..Default::default()
+            },
+            "Error 1",
+            0,
+            false,
+            "component1",
+            "saga",
+        );
+
+        publisher.publish(dead_letter).await.unwrap();
+
+        assert_eq!(publisher.count(), 1);
+        assert_eq!(publisher.published().len(), 1);
     }
 }

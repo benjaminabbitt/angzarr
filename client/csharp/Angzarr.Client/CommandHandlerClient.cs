@@ -124,13 +124,23 @@ public sealed class CommandHandlerClient : IDisposable
     /// <exception cref="GrpcError">If the gRPC call fails</exception>
     public Angzarr.CommandResponse Handle(Angzarr.CommandBook command)
     {
-        return HandleCommand(
-            new Angzarr.CommandRequest
-            {
-                Command = command,
-                SyncMode = Angzarr.SyncMode.Async, // Async fire-and-forget
-            }
-        );
+        return Handle(command, Angzarr.SyncMode.Async);
+    }
+
+    /// <summary>
+    /// Execute a command with the specified sync mode.
+    ///
+    /// <para>Use SyncMode.Async for fire-and-forget (default).
+    /// Use SyncMode.Simple to wait for sync projectors.
+    /// Use SyncMode.Cascade for full sync including saga cascade.</para>
+    /// </summary>
+    /// <param name="command">The command to execute</param>
+    /// <param name="syncMode">The synchronization mode</param>
+    /// <returns>The command response</returns>
+    /// <exception cref="GrpcError">If the gRPC call fails</exception>
+    public Angzarr.CommandResponse Handle(Angzarr.CommandBook command, Angzarr.SyncMode syncMode)
+    {
+        return HandleCommand(new Angzarr.CommandRequest { Command = command, SyncMode = syncMode });
     }
 
     /// <summary>

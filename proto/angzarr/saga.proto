@@ -40,7 +40,9 @@ service SagaCoordinatorService {
 // Request for saga execution - source events only.
 // Sagas are pure translators: source events → commands with angzarr_deferred.
 message SagaHandleRequest {
-  EventBook source = 1;  // Source events that triggered the saga
+  EventBook source = 1;         // Source events that triggered the saga
+  SyncMode sync_mode = 2;       // Propagate for CASCADE recursion
+  CascadeErrorMode cascade_error_mode = 3;  // How to handle errors in CASCADE mode
 }
 
 // Request for speculative saga execution.

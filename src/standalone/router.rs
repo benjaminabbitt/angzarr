@@ -6,10 +6,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tonic::Status;
-use tracing::{debug, info, warn, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher};
 use crate::orchestration::aggregate::local::LocalAggregateContext;
 use crate::orchestration::aggregate::TemporalQuery;
 use crate::orchestration::aggregate::{
@@ -22,7 +23,8 @@ use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::shared::fetch_destinations;
 use crate::orchestration::{FactExecutor, FactInjectionError};
 use crate::proto::{
-    business_response, BusinessResponse, CommandBook, CommandResponse, ContextualCommand,
+    business_response, BusinessResponse, CascadeError, CascadeErrorMode, CommandBook,
+    CommandResponse, ContextualCommand,
 };
 use crate::proto_ext::{CoverExt, EventBookExt, EventPageExt};
 use crate::services::gap_fill::{GapFiller, LocalEventSource, PositionStoreAdapter};
@@ -30,6 +32,32 @@ use crate::storage::{EventStore, PositionStore, SnapshotStore};
 use crate::utils::retry::saga_backoff;
 
 use super::traits::{ProcessManagerHandler, ProjectorHandler, SagaHandler};
+
+/// Tracks executed commands during CASCADE for COMPENSATE mode.
+///
+/// When COMPENSATE error mode is active, we need to track all successfully
+/// executed commands so they can be compensated if a later command fails.
+#[derive(Default)]
+struct CascadeTracker {
+    /// Commands that executed successfully (in execution order).
+    executed_commands: Vec<CommandBook>,
+}
+
+impl CascadeTracker {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a successfully executed command.
+    fn record_success(&mut self, command: CommandBook) {
+        self.executed_commands.push(command);
+    }
+
+    /// Get commands for compensation (reverse order).
+    fn commands_for_compensation(&self) -> impl Iterator<Item = &CommandBook> {
+        self.executed_commands.iter().rev()
+    }
+}
 
 /// Per-domain storage.
 #[derive(Clone)]
@@ -117,6 +145,8 @@ pub struct CommandRouter {
     edition_name: Option<String>,
     /// Position store for handler checkpoint tracking.
     position_store: Arc<dyn PositionStore>,
+    /// Optional DLQ publisher for DEAD_LETTER cascade error mode.
+    dlq_publisher: Option<Arc<dyn DeadLetterPublisher>>,
 }
 
 impl CommandRouter {
@@ -153,7 +183,17 @@ impl CommandRouter {
             sync_pms: Arc::new(sync_pms),
             edition_name,
             position_store,
+            dlq_publisher: None,
         }
+    }
+
+    /// Set the DLQ publisher for DEAD_LETTER cascade error mode.
+    ///
+    /// Without a DLQ publisher, DEAD_LETTER mode behaves like CONTINUE
+    /// (errors are collected but not sent to DLQ).
+    pub fn with_dlq_publisher(mut self, publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        self.dlq_publisher = Some(publisher);
+        self
     }
 
     /// Get list of registered domains.
@@ -277,20 +317,26 @@ impl CommandRouter {
     ///
     /// Returns a BoxFuture to support async recursion (sagas trigger commands
     /// which trigger more sagas).
+    ///
+    /// Returns collected errors based on cascade_error_mode:
+    /// - FAIL_FAST: Returns first error immediately (Vec will have at most 1)
+    /// - CONTINUE/DEAD_LETTER: Continues and collects all errors
     fn call_sync_sagas<'a>(
         &'a self,
         events: &'a crate::proto::EventBook,
-    ) -> futures::future::BoxFuture<'a, Result<(), Status>> {
+        cascade_error_mode: CascadeErrorMode,
+    ) -> futures::future::BoxFuture<'a, Result<Vec<CascadeError>, Status>> {
         use futures::FutureExt;
         let source_domain = events.domain().to_string();
         let span = tracing::info_span!("router.sync_sagas", %source_domain);
 
         async move {
+            let mut collected_errors: Vec<CascadeError> = Vec::new();
             let source_domain = events.domain();
 
             // Skip infrastructure domains
             if source_domain.starts_with('_') {
-                return Ok(());
+                return Ok(collected_errors);
             }
 
             // Find sagas subscribed to this domain
@@ -301,7 +347,7 @@ impl CommandRouter {
                 .collect();
 
             if matching_sagas.is_empty() {
-                return Ok(());
+                return Ok(collected_errors);
             }
 
             let edition = events.edition().to_string();
@@ -311,7 +357,7 @@ impl CommandRouter {
                 Some(s) => s,
                 None => {
                     warn!(domain = %source_domain, "No storage for source domain, skipping saga gap-fill");
-                    return Ok(());
+                    return Ok(collected_errors);
                 }
             };
 
@@ -323,7 +369,7 @@ impl CommandRouter {
                 Some(r) => r.value.clone(),
                 None => {
                     warn!("EventBook missing root, skipping saga gap-fill");
-                    return Ok(());
+                    return Ok(collected_errors);
                 }
             };
 
@@ -343,11 +389,21 @@ impl CommandRouter {
                 let filled_events = match gap_filler.fill_if_needed(events.clone()).await {
                     Ok(filled) => filled,
                     Err(e) => {
+                        let error = CascadeError {
+                            component_name: entry.name.clone(),
+                            component_type: "saga".to_string(),
+                            error_message: format!("Gap-fill failed: {}", e),
+                            source_domain: source_domain.to_string(),
+                        };
                         warn!(
                             saga = %entry.name,
                             error = %e,
                             "Failed to fill EventBook gaps for saga"
                         );
+                        if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                            return Err(Status::internal(format!("Saga {} gap-fill failed: {}", entry.name, e)));
+                        }
+                        collected_errors.push(error);
                         continue;
                     }
                 };
@@ -358,11 +414,21 @@ impl CommandRouter {
                 let mut response = match entry.handler.handle(&filled_events).await {
                     Ok(r) => r,
                     Err(e) => {
+                        let error = CascadeError {
+                            component_name: entry.name.clone(),
+                            component_type: "saga".to_string(),
+                            error_message: format!("Handle failed: {}", e),
+                            source_domain: source_domain.to_string(),
+                        };
                         warn!(
                             saga = %entry.name,
                             error = %e,
                             "Sync saga handle failed"
                         );
+                        if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                            return Err(e);
+                        }
+                        collected_errors.push(error);
                         continue;
                     }
                 };
@@ -396,20 +462,33 @@ impl CommandRouter {
 
                 // Recursively execute commands with CASCADE mode
                 for command in response.commands {
-                    match self.execute_with_cascade(command).await {
-                        Ok(_) => {}
+                    match self.execute_with_cascade_internal(command, cascade_error_mode).await {
+                        Ok(cmd_response) => {
+                            // Propagate errors from recursive calls
+                            collected_errors.extend(cmd_response.cascade_errors);
+                        }
                         Err(e) => {
+                            let error = CascadeError {
+                                component_name: entry.name.clone(),
+                                component_type: "saga".to_string(),
+                                error_message: format!("Command execution failed: {}", e),
+                                source_domain: source_domain.to_string(),
+                            };
                             warn!(
                                 saga = %entry.name,
                                 error = %e,
                                 "Sync saga command execution failed"
                             );
+                            if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                                return Err(e);
+                            }
+                            collected_errors.push(error);
                         }
                     }
                 }
             }
 
-            Ok(())
+            Ok(collected_errors)
         }
         .instrument(span)
         .boxed()
@@ -429,20 +508,26 @@ impl CommandRouter {
     /// 9. Execute commands with CASCADE mode
     /// 10. Inject facts
     /// 11. Update trigger checkpoint
+    ///
+    /// Returns collected errors based on cascade_error_mode:
+    /// - FAIL_FAST: Returns first error immediately
+    /// - CONTINUE/DEAD_LETTER: Continues and collects all errors
     fn call_sync_pms<'a>(
         &'a self,
         events: &'a crate::proto::EventBook,
-    ) -> futures::future::BoxFuture<'a, Result<(), Status>> {
+        cascade_error_mode: CascadeErrorMode,
+    ) -> futures::future::BoxFuture<'a, Result<Vec<CascadeError>, Status>> {
         use futures::FutureExt;
         let trigger_domain = events.domain().to_string();
         let span = tracing::info_span!("router.sync_pms", %trigger_domain);
 
         async move {
+            let mut collected_errors: Vec<CascadeError> = Vec::new();
             let trigger_domain = events.domain();
 
             // Skip infrastructure domains
             if trigger_domain.starts_with('_') {
-                return Ok(());
+                return Ok(collected_errors);
             }
 
             // PMs require correlation_id
@@ -450,7 +535,7 @@ impl CommandRouter {
                 id if !id.is_empty() => id.to_string(),
                 _ => {
                     debug!("EventBook missing correlation_id, skipping PM processing");
-                    return Ok(());
+                    return Ok(collected_errors);
                 }
             };
 
@@ -464,7 +549,7 @@ impl CommandRouter {
                 .collect();
 
             if matching_pms.is_empty() {
-                return Ok(());
+                return Ok(collected_errors);
             }
 
             let edition = events.edition().to_string();
@@ -474,7 +559,7 @@ impl CommandRouter {
                 Some(s) => s,
                 None => {
                     warn!(domain = %trigger_domain, "No storage for trigger domain, skipping PM gap-fill");
-                    return Ok(());
+                    return Ok(collected_errors);
                 }
             };
 
@@ -486,7 +571,7 @@ impl CommandRouter {
                 Some(r) => r.value.clone(),
                 None => {
                     warn!("EventBook missing root, skipping PM gap-fill");
-                    return Ok(());
+                    return Ok(collected_errors);
                 }
             };
 
@@ -510,11 +595,21 @@ impl CommandRouter {
                 let filled_trigger = match gap_filler.fill_if_needed(events.clone()).await {
                     Ok(filled) => filled,
                     Err(e) => {
+                        let error = CascadeError {
+                            component_name: entry.name.clone(),
+                            component_type: "process_manager".to_string(),
+                            error_message: format!("Gap-fill failed: {}", e),
+                            source_domain: trigger_domain.to_string(),
+                        };
                         warn!(
                             pm = %entry.name,
                             error = %e,
                             "Failed to fill EventBook gaps for PM"
                         );
+                        if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                            return Err(Status::internal(format!("PM {} gap-fill failed: {}", entry.name, e)));
+                        }
+                        collected_errors.push(error);
                         continue;
                     }
                 };
@@ -554,7 +649,17 @@ impl CommandRouter {
                         let pm_storage = match self.stores.get(&entry.pm_domain) {
                             Some(s) => s,
                             None => {
+                                let error = CascadeError {
+                                    component_name: entry.name.clone(),
+                                    component_type: "process_manager".to_string(),
+                                    error_message: format!("No storage for PM domain {}", entry.pm_domain),
+                                    source_domain: trigger_domain.to_string(),
+                                };
                                 warn!(pm_domain = %entry.pm_domain, "No storage for PM domain");
+                                if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                                    return Err(Status::internal(format!("No storage for PM domain {}", entry.pm_domain)));
+                                }
+                                collected_errors.push(error);
                                 continue;
                             }
                         };
@@ -576,11 +681,21 @@ impl CommandRouter {
                             )
                             .await
                         {
+                            let error = CascadeError {
+                                component_name: entry.name.clone(),
+                                component_type: "process_manager".to_string(),
+                                error_message: format!("Failed to persist PM events: {}", e),
+                                source_domain: trigger_domain.to_string(),
+                            };
                             warn!(
                                 pm = %entry.name,
                                 error = %e,
                                 "Failed to persist PM events"
                             );
+                            if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                                return Err(Status::internal(format!("PM {} persist failed: {}", entry.name, e)));
+                            }
+                            collected_errors.push(error);
                             continue;
                         }
 
@@ -601,14 +716,27 @@ impl CommandRouter {
                 }
 
                 for command in commands {
-                    match self.execute_with_cascade(command).await {
-                        Ok(_) => {}
+                    match self.execute_with_cascade_internal(command, cascade_error_mode).await {
+                        Ok(cmd_response) => {
+                            // Propagate errors from recursive calls
+                            collected_errors.extend(cmd_response.cascade_errors);
+                        }
                         Err(e) => {
+                            let error = CascadeError {
+                                component_name: entry.name.clone(),
+                                component_type: "process_manager".to_string(),
+                                error_message: format!("Command execution failed: {}", e),
+                                source_domain: trigger_domain.to_string(),
+                            };
                             warn!(
                                 pm = %entry.name,
                                 error = %e,
                                 "Sync PM command execution failed"
                             );
+                            if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                                return Err(e);
+                            }
+                            collected_errors.push(error);
                         }
                     }
                 }
@@ -625,11 +753,21 @@ impl CommandRouter {
                     match self.inject_fact(fact, true).await {
                         Ok(_) => {}
                         Err(e) => {
+                            let error = CascadeError {
+                                component_name: entry.name.clone(),
+                                component_type: "process_manager".to_string(),
+                                error_message: format!("Fact injection failed: {}", e),
+                                source_domain: trigger_domain.to_string(),
+                            };
                             warn!(
                                 pm = %entry.name,
                                 error = %e,
                                 "PM fact injection failed"
                             );
+                            if cascade_error_mode == CascadeErrorMode::CascadeErrorFailFast {
+                                return Err(Status::internal(format!("PM {} fact injection failed: {}", entry.name, e)));
+                            }
+                            collected_errors.push(error);
                         }
                     }
                 }
@@ -648,20 +786,612 @@ impl CommandRouter {
                 }
             }
 
-            Ok(())
+            Ok(collected_errors)
         }
         .instrument(span)
         .boxed()
+    }
+
+    /// Call sync sagas with command tracking for COMPENSATE mode.
+    ///
+    /// Same as `call_sync_sagas` but uses CONTINUE semantics and tracks
+    /// executed commands in the provided tracker.
+    async fn call_sync_sagas_tracked(
+        &self,
+        events: &crate::proto::EventBook,
+        tracker: &mut CascadeTracker,
+    ) -> Result<Vec<CascadeError>, Status> {
+        let mut collected_errors: Vec<CascadeError> = Vec::new();
+        let source_domain = events.domain();
+
+        // Skip infrastructure domains
+        if source_domain.starts_with('_') {
+            return Ok(collected_errors);
+        }
+
+        // Find sagas subscribed to this domain
+        let matching_sagas: Vec<_> = self
+            .sync_sagas
+            .iter()
+            .filter(|s| s.source_domain == source_domain)
+            .collect();
+
+        if matching_sagas.is_empty() {
+            return Ok(collected_errors);
+        }
+
+        let edition = events.edition().to_string();
+        let storage = match self.stores.get(source_domain) {
+            Some(s) => s,
+            None => {
+                warn!(domain = %source_domain, "No storage for source domain, skipping saga gap-fill");
+                return Ok(collected_errors);
+            }
+        };
+
+        let repo = Arc::new(storage.event_book_repo());
+        let event_source = LocalEventSource::new(repo);
+        let root = match events.cover.as_ref().and_then(|c| c.root.as_ref()) {
+            Some(r) => r.value.clone(),
+            None => {
+                warn!("EventBook missing root, skipping saga gap-fill");
+                return Ok(collected_errors);
+            }
+        };
+
+        for entry in matching_sagas {
+            let position_store = PositionStoreAdapter::new(
+                self.position_store.clone(),
+                &entry.name,
+                source_domain,
+                &edition,
+            );
+            let gap_filler = GapFiller::new(position_store, event_source.clone());
+
+            let filled_events = match gap_filler.fill_if_needed(events.clone()).await {
+                Ok(filled) => filled,
+                Err(e) => {
+                    collected_errors.push(CascadeError {
+                        component_name: entry.name.clone(),
+                        component_type: "saga".to_string(),
+                        error_message: format!("Gap-fill failed: {}", e),
+                        source_domain: source_domain.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            let mut response = match entry.handler.handle(&filled_events).await {
+                Ok(r) => r,
+                Err(e) => {
+                    collected_errors.push(CascadeError {
+                        component_name: entry.name.clone(),
+                        component_type: "saga".to_string(),
+                        error_message: format!("Handle failed: {}", e),
+                        source_domain: source_domain.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            if let Some(last_page) = filled_events.last_page() {
+                let max_seq = last_page.sequence_num();
+                if let Err(e) = gap_filler.update_checkpoint(&root, max_seq).await {
+                    warn!(saga = %entry.name, sequence = max_seq, error = %e, "Failed to update saga checkpoint");
+                }
+            }
+
+            for cmd in &mut response.commands {
+                if let Some(c) = &mut cmd.cover {
+                    c.stamp_edition_if_empty(&edition);
+                }
+            }
+
+            // Recursively execute with tracking
+            for command in response.commands {
+                match self.execute_with_cascade_tracked(command, tracker).await {
+                    Ok(cmd_response) => {
+                        collected_errors.extend(cmd_response.cascade_errors);
+                    }
+                    Err(e) => {
+                        collected_errors.push(CascadeError {
+                            component_name: entry.name.clone(),
+                            component_type: "saga".to_string(),
+                            error_message: format!("Command execution failed: {}", e),
+                            source_domain: source_domain.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(collected_errors)
+    }
+
+    /// Call sync PMs with command tracking for COMPENSATE mode.
+    ///
+    /// Same as `call_sync_pms` but uses CONTINUE semantics and tracks
+    /// executed commands in the provided tracker.
+    async fn call_sync_pms_tracked(
+        &self,
+        events: &crate::proto::EventBook,
+        tracker: &mut CascadeTracker,
+    ) -> Result<Vec<CascadeError>, Status> {
+        let mut collected_errors: Vec<CascadeError> = Vec::new();
+        let trigger_domain = events.domain();
+
+        // Skip infrastructure domains
+        if trigger_domain.starts_with('_') {
+            return Ok(collected_errors);
+        }
+
+        // PMs require correlation_id
+        let correlation_id = match events.correlation_id() {
+            id if !id.is_empty() => id.to_string(),
+            _ => {
+                debug!("EventBook missing correlation_id, skipping PM processing");
+                return Ok(collected_errors);
+            }
+        };
+
+        // Find PMs subscribed to this domain
+        let matching_pms: Vec<_> = self
+            .sync_pms
+            .iter()
+            .filter(|pm| {
+                pm.subscriptions
+                    .iter()
+                    .any(|sub| sub.domain == trigger_domain)
+            })
+            .collect();
+
+        if matching_pms.is_empty() {
+            return Ok(collected_errors);
+        }
+
+        let edition = events.edition().to_string();
+
+        // Get storage for the trigger domain to fill gaps
+        let trigger_storage = match self.stores.get(trigger_domain) {
+            Some(s) => s,
+            None => {
+                warn!(domain = %trigger_domain, "No storage for trigger domain, skipping PM gap-fill");
+                return Ok(collected_errors);
+            }
+        };
+
+        let repo = Arc::new(trigger_storage.event_book_repo());
+        let event_source = LocalEventSource::new(repo);
+
+        // Extract root for checkpoint tracking
+        let trigger_root = match events.cover.as_ref().and_then(|c| c.root.as_ref()) {
+            Some(r) => r.value.clone(),
+            None => {
+                warn!("EventBook missing root, skipping PM gap-fill");
+                return Ok(collected_errors);
+            }
+        };
+
+        // Create fetcher for PM state and destinations
+        let fetcher = LocalDestinationFetcher::new((*self.stores).clone());
+
+        for entry in matching_pms {
+            // Create per-PM position store adapter for trigger gap-filling
+            let position_store = PositionStoreAdapter::new(
+                self.position_store.clone(),
+                &entry.name,
+                trigger_domain,
+                &edition,
+            );
+
+            // Create gap filler for trigger events
+            let gap_filler = GapFiller::new(position_store, event_source.clone());
+
+            // Gap-fill trigger EventBook relative to this PM's checkpoint
+            let filled_trigger = match gap_filler.fill_if_needed(events.clone()).await {
+                Ok(filled) => filled,
+                Err(e) => {
+                    collected_errors.push(CascadeError {
+                        component_name: entry.name.clone(),
+                        component_type: "process_manager".to_string(),
+                        error_message: format!("Gap-fill failed: {}", e),
+                        source_domain: trigger_domain.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            // Fetch PM state by correlation_id (sync fetch, no gap-fill needed)
+            let pm_state = fetcher
+                .fetch_by_correlation(&entry.pm_domain, &correlation_id)
+                .await;
+
+            // Phase 1: Prepare — PM declares additional destinations (SYNC call, no await)
+            let destination_covers = entry.handler.prepare(&filled_trigger, pm_state.as_ref());
+
+            // Stamp edition on destination covers
+            let destination_covers: Vec<_> = destination_covers
+                .into_iter()
+                .map(|mut cover| {
+                    cover.stamp_edition_if_empty(&edition);
+                    cover
+                })
+                .collect();
+
+            // Fetch destinations (sync fetch, no gap-fill needed)
+            let destinations =
+                fetch_destinations(&fetcher, &destination_covers, &correlation_id).await;
+
+            // Phase 2: Handle — produce commands + PM events + facts (SYNC call, no await)
+            let result = entry
+                .handler
+                .handle(&filled_trigger, pm_state.as_ref(), &destinations);
+
+            debug!(
+                pm = %entry.name,
+                commands = result.commands.len(),
+                has_process_events = result.process_events.is_some(),
+                facts = result.facts.len(),
+                "Sync PM (tracked) produced output"
+            );
+
+            // Persist PM events before executing commands (crash recovery invariant)
+            if let Some(ref process_events) = result.process_events {
+                if !process_events.pages.is_empty() {
+                    let pm_storage = match self.stores.get(&entry.pm_domain) {
+                        Some(s) => s,
+                        None => {
+                            collected_errors.push(CascadeError {
+                                component_name: entry.name.clone(),
+                                component_type: "process_manager".to_string(),
+                                error_message: format!(
+                                    "No storage for PM domain {}",
+                                    entry.pm_domain
+                                ),
+                                source_domain: trigger_domain.to_string(),
+                            });
+                            continue;
+                        }
+                    };
+
+                    // PM root = correlation_id as UUID
+                    let pm_root = uuid::Uuid::parse_str(&correlation_id)
+                        .unwrap_or_else(|_| uuid::Uuid::nil());
+
+                    if let Err(e) = pm_storage
+                        .event_store
+                        .add(
+                            &entry.pm_domain,
+                            &edition,
+                            pm_root,
+                            process_events.pages.clone(),
+                            &correlation_id,
+                            None, // No idempotency key
+                            None, // No source tracking
+                        )
+                        .await
+                    {
+                        collected_errors.push(CascadeError {
+                            component_name: entry.name.clone(),
+                            component_type: "process_manager".to_string(),
+                            error_message: format!("Failed to persist PM events: {}", e),
+                            source_domain: trigger_domain.to_string(),
+                        });
+                        continue;
+                    }
+
+                    info!(
+                        pm = %entry.name,
+                        events = process_events.pages.len(),
+                        "PM events persisted (tracked)"
+                    );
+                }
+            }
+
+            // Execute commands with CASCADE mode + tracking
+            let mut commands = result.commands;
+            for cmd in &mut commands {
+                if let Some(c) = &mut cmd.cover {
+                    c.stamp_edition_if_empty(&edition);
+                }
+            }
+
+            for command in commands {
+                match self.execute_with_cascade_tracked(command, tracker).await {
+                    Ok(cmd_response) => {
+                        // Propagate errors from recursive calls
+                        collected_errors.extend(cmd_response.cascade_errors);
+                    }
+                    Err(e) => {
+                        collected_errors.push(CascadeError {
+                            component_name: entry.name.clone(),
+                            component_type: "process_manager".to_string(),
+                            error_message: format!("Command execution failed: {}", e),
+                            source_domain: trigger_domain.to_string(),
+                        });
+                    }
+                }
+            }
+
+            // Inject facts
+            for fact in result.facts {
+                let fact_domain = fact
+                    .cover
+                    .as_ref()
+                    .map(|c| c.domain.as_str())
+                    .unwrap_or("unknown");
+                debug!(pm = %entry.name, domain = %fact_domain, "Injecting fact from PM (tracked)");
+
+                if let Err(e) = self.inject_fact(fact, true).await {
+                    collected_errors.push(CascadeError {
+                        component_name: entry.name.clone(),
+                        component_type: "process_manager".to_string(),
+                        error_message: format!("Fact injection failed: {}", e),
+                        source_domain: trigger_domain.to_string(),
+                    });
+                }
+            }
+
+            // Update trigger checkpoint after successful handling
+            if let Some(last_page) = filled_trigger.last_page() {
+                let max_seq = last_page.sequence_num();
+                if let Err(e) = gap_filler.update_checkpoint(&trigger_root, max_seq).await {
+                    warn!(
+                        pm = %entry.name,
+                        sequence = max_seq,
+                        error = %e,
+                        "Failed to update PM trigger checkpoint"
+                    );
+                }
+            }
+        }
+
+        Ok(collected_errors)
     }
 
     /// Execute a command with CASCADE mode (sync projectors + sync sagas + sync PMs).
     ///
     /// Used by sync sagas to recursively execute their output commands.
     /// Also used by `LocalCommandExecutor` when receiving a CASCADE command.
+    /// Uses FAIL_FAST error mode by default.
     #[tracing::instrument(name = "router.execute_cascade", skip_all, fields(domain = %command_book.domain()))]
     pub async fn execute_with_cascade(
         &self,
         command_book: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        self.execute_with_cascade_internal(command_book, CascadeErrorMode::CascadeErrorFailFast)
+            .await
+    }
+
+    /// Execute a command with CASCADE mode with specified error handling mode.
+    ///
+    /// Used when clients specify a cascade_error_mode other than FAIL_FAST.
+    /// - FAIL_FAST: Stop on first error, fail request (default)
+    /// - CONTINUE: Continue through all, return successes + errors
+    /// - DEAD_LETTER: On error, send to DLQ and continue
+    /// - COMPENSATE: On first error, compensate executed commands, fail request
+    #[tracing::instrument(name = "router.execute_cascade_with_error_mode", skip_all, fields(domain = %command_book.domain()))]
+    pub async fn execute_cascade_with_error_mode(
+        &self,
+        command_book: CommandBook,
+        cascade_error_mode: CascadeErrorMode,
+    ) -> Result<CommandResponse, Status> {
+        match cascade_error_mode {
+            CascadeErrorMode::CascadeErrorCompensate => {
+                self.execute_with_compensate(command_book).await
+            }
+            CascadeErrorMode::CascadeErrorDeadLetter => {
+                self.execute_with_dead_letter(command_book).await
+            }
+            _ => {
+                self.execute_with_cascade_internal(command_book, cascade_error_mode)
+                    .await
+            }
+        }
+    }
+
+    /// Execute CASCADE with DEAD_LETTER error mode.
+    ///
+    /// Uses CONTINUE semantics (don't fail fast). After execution, publishes
+    /// any cascade errors to the DLQ, then returns success with errors included.
+    #[tracing::instrument(name = "router.execute_with_dead_letter", skip_all, fields(domain = %command_book.domain()))]
+    async fn execute_with_dead_letter(
+        &self,
+        command_book: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        // Execute with CONTINUE mode to collect all errors
+        let response = self
+            .execute_with_cascade_internal(
+                command_book.clone(),
+                CascadeErrorMode::CascadeErrorContinue,
+            )
+            .await?;
+
+        // Publish any cascade errors to DLQ
+        if !response.cascade_errors.is_empty() {
+            self.publish_cascade_errors_to_dlq(&command_book, &response.cascade_errors)
+                .await;
+        }
+
+        Ok(response)
+    }
+
+    /// Publish cascade errors to the Dead Letter Queue.
+    ///
+    /// Creates an AngzarrDeadLetter for each cascade error and publishes it.
+    /// Errors during DLQ publishing are logged but don't fail the request.
+    async fn publish_cascade_errors_to_dlq(
+        &self,
+        original_command: &CommandBook,
+        cascade_errors: &[CascadeError],
+    ) {
+        let dlq_publisher = match &self.dlq_publisher {
+            Some(p) => p,
+            None => {
+                warn!(
+                    errors = cascade_errors.len(),
+                    "DEAD_LETTER mode requested but no DLQ publisher configured"
+                );
+                return;
+            }
+        };
+
+        for error in cascade_errors {
+            let dead_letter = AngzarrDeadLetter::from_event_processing_failure(
+                &crate::proto::EventBook {
+                    cover: original_command.cover.clone(),
+                    ..Default::default()
+                },
+                &error.error_message,
+                0,     // No retries for CASCADE errors
+                false, // Not transient
+                &error.component_name,
+                &error.component_type,
+            )
+            .with_metadata("source_domain", &error.source_domain)
+            .with_metadata("cascade_error_mode", "DEAD_LETTER");
+
+            if let Err(e) = dlq_publisher.publish(dead_letter).await {
+                error!(
+                    component = %error.component_name,
+                    error = %e,
+                    "Failed to publish cascade error to DLQ"
+                );
+            } else {
+                info!(
+                    component = %error.component_name,
+                    source_domain = %error.source_domain,
+                    "Cascade error published to DLQ"
+                );
+            }
+        }
+    }
+
+    /// Execute CASCADE with COMPENSATE error mode.
+    ///
+    /// Tracks all executed commands. If any error occurs, compensates all
+    /// previously executed commands in reverse order, then returns the error.
+    #[tracing::instrument(name = "router.execute_with_compensate", skip_all, fields(domain = %command_book.domain()))]
+    async fn execute_with_compensate(
+        &self,
+        command_book: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        let mut tracker = CascadeTracker::new();
+
+        // Execute with CONTINUE mode internally to collect all results
+        // We use a separate tracking method for COMPENSATE
+        let result = self
+            .execute_with_cascade_tracked(command_book.clone(), &mut tracker)
+            .await;
+
+        match result {
+            Ok(response) => {
+                // Check if any cascade errors occurred
+                if response.cascade_errors.is_empty() {
+                    Ok(response)
+                } else {
+                    // Errors occurred - compensate all executed commands
+                    let first_error = response.cascade_errors.first().cloned();
+                    self.compensate_commands(&tracker).await;
+
+                    // Return the first error as the response
+                    Err(Status::aborted(format!(
+                        "CASCADE failed with compensation: {}",
+                        first_error
+                            .map(|e| e.error_message)
+                            .unwrap_or_else(|| "unknown error".to_string())
+                    )))
+                }
+            }
+            Err(e) => {
+                // Direct error - compensate all executed commands
+                self.compensate_commands(&tracker).await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Compensate all tracked commands in reverse order.
+    async fn compensate_commands(&self, tracker: &CascadeTracker) {
+        for command in tracker.commands_for_compensation() {
+            let domain = command.domain();
+            debug!(domain = %domain, "Compensating command");
+
+            if let Err(e) = self.execute_compensation(command.clone()).await {
+                warn!(
+                    domain = %domain,
+                    error = %e,
+                    "Compensation failed (continuing with remaining)"
+                );
+            }
+        }
+    }
+
+    /// Execute CASCADE with command tracking for COMPENSATE mode.
+    fn execute_with_cascade_tracked<'a>(
+        &'a self,
+        command_book: CommandBook,
+        tracker: &'a mut CascadeTracker,
+    ) -> futures::future::BoxFuture<'a, Result<CommandResponse, Status>> {
+        use futures::FutureExt;
+        let span =
+            tracing::info_span!("router.execute_cascade_tracked", domain = %command_book.domain());
+
+        async move {
+            let (domain, _root_uuid) = parse_command_cover(&command_book)?;
+            let (business, storage) = self.get_domain_resources(&domain)?;
+
+            let ctx = self.create_context(storage, Some(crate::proto::SyncMode::Cascade));
+
+            let mut response = execute_command_with_retry(
+                &*ctx,
+                &**business,
+                command_book.clone(),
+                saga_backoff(),
+            )
+            .await?;
+
+            // Track this command as successfully executed
+            tracker.record_success(command_book);
+
+            // Call sync projectors
+            if !self.sync_projectors.is_empty() {
+                if let Some(ref events) = response.events {
+                    let projections = self.call_sync_projectors(events).await;
+                    response.projections.extend(projections);
+                }
+            }
+
+            // Call sync sagas with tracking
+            if !self.sync_sagas.is_empty() {
+                if let Some(ref events) = response.events {
+                    let saga_errors = self.call_sync_sagas_tracked(events, tracker).await?;
+                    response.cascade_errors.extend(saga_errors);
+                }
+            }
+
+            // Call sync PMs with tracking
+            if !self.sync_pms.is_empty() {
+                if let Some(ref events) = response.events {
+                    let pm_errors = self.call_sync_pms_tracked(events, tracker).await?;
+                    response.cascade_errors.extend(pm_errors);
+                }
+            }
+
+            Ok(response)
+        }
+        .instrument(span)
+        .boxed()
+    }
+
+    /// Execute a command with CASCADE mode with specified error handling mode.
+    ///
+    /// Internal version that accepts cascade_error_mode.
+    #[tracing::instrument(name = "router.execute_cascade_internal", skip_all, fields(domain = %command_book.domain()))]
+    async fn execute_with_cascade_internal(
+        &self,
+        command_book: CommandBook,
+        cascade_error_mode: CascadeErrorMode,
     ) -> Result<CommandResponse, Status> {
         let (domain, _root_uuid) = parse_command_cover(&command_book)?;
         let (business, storage) = self.get_domain_resources(&domain)?;
@@ -683,14 +1413,16 @@ impl CommandRouter {
         // CASCADE: call sync sagas (recursive)
         if !self.sync_sagas.is_empty() {
             if let Some(ref events) = response.events {
-                self.call_sync_sagas(events).await?;
+                let saga_errors = self.call_sync_sagas(events, cascade_error_mode).await?;
+                response.cascade_errors.extend(saga_errors);
             }
         }
 
         // CASCADE: call sync process managers
         if !self.sync_pms.is_empty() {
             if let Some(ref events) = response.events {
-                self.call_sync_pms(events).await?;
+                let pm_errors = self.call_sync_pms(events, cascade_error_mode).await?;
+                response.cascade_errors.extend(pm_errors);
             }
         }
 
@@ -700,23 +1432,26 @@ impl CommandRouter {
         Ok(response)
     }
 
-    /// Core command execution with sequence validation.
+    /// Execute command with SIMPLE mode (sync projectors + bus publishing).
+    ///
+    /// This is the default execution mode. Projectors run synchronously and
+    /// events are published to the bus for async processing by sagas/PMs.
     async fn execute_inner(&self, command_book: CommandBook) -> Result<CommandResponse, Status> {
         let (domain, root_uuid) = parse_command_cover(&command_book)?;
 
         debug!(
             domain = %domain,
             root = %root_uuid,
-            "Executing command"
+            "Executing command (SIMPLE mode)"
         );
 
         let (business, storage) = self.get_domain_resources(&domain)?;
-        let ctx = self.create_context(storage, None);
+        let ctx = self.create_context(storage, Some(crate::proto::SyncMode::Simple));
 
         let mut response =
             execute_command_with_retry(&*ctx, &**business, command_book, saga_backoff()).await?;
 
-        // Call in-process sync projectors (standalone mode)
+        // SIMPLE mode: call sync projectors
         if !self.sync_projectors.is_empty() {
             if let Some(ref events) = response.events {
                 let projections = self.call_sync_projectors(events).await;
@@ -725,6 +1460,29 @@ impl CommandRouter {
         }
 
         Ok(response)
+    }
+
+    /// Execute command with ASYNC mode (fire-and-forget).
+    ///
+    /// Persists events and publishes to bus, but does NOT call sync projectors.
+    /// Fastest mode - returns immediately after persistence.
+    pub async fn execute_async(
+        &self,
+        command_book: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        let (domain, root_uuid) = parse_command_cover(&command_book)?;
+
+        debug!(
+            domain = %domain,
+            root = %root_uuid,
+            "Executing command (ASYNC mode)"
+        );
+
+        let (business, storage) = self.get_domain_resources(&domain)?;
+        let ctx = self.create_context(storage, Some(crate::proto::SyncMode::Async));
+
+        // ASYNC mode: no sync projectors, just persist and publish
+        execute_command_with_retry(&*ctx, &**business, command_book, saga_backoff()).await
     }
 
     /// Speculatively execute a command against temporal state (dry-run).

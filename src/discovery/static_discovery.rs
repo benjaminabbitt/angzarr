@@ -100,6 +100,20 @@ struct ProjectorEntry {
     url: String,
 }
 
+/// Discovered saga with its source domain for filtering.
+#[derive(Debug, Clone)]
+pub struct SagaService {
+    pub service: DiscoveredService,
+    pub source_domain: String,
+}
+
+/// Discovered PM with its subscribed domains for filtering.
+#[derive(Debug, Clone)]
+pub struct PmService {
+    pub service: DiscoveredService,
+    pub subscriptions: Vec<String>,
+}
+
 /// Static service discovery without K8s dependencies.
 ///
 /// Services are registered manually via `register_aggregate`/`register_projector`
@@ -107,6 +121,8 @@ struct ProjectorEntry {
 pub struct StaticServiceDiscovery {
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     projectors: Arc<RwLock<HashMap<String, DiscoveredService>>>,
+    pub(crate) sagas: Arc<RwLock<HashMap<String, SagaService>>>,
+    pub(crate) pms: Arc<RwLock<HashMap<String, PmService>>>,
     aggregate_clients:
         Arc<RwLock<HashMap<String, CommandHandlerCoordinatorServiceClient<Channel>>>>,
     event_query_clients: Arc<RwLock<HashMap<String, EventQueryServiceClient<Channel>>>>,
@@ -125,6 +141,8 @@ impl StaticServiceDiscovery {
         Self {
             aggregates: empty_cache(),
             projectors: empty_cache(),
+            sagas: empty_cache(),
+            pms: empty_cache(),
             aggregate_clients: empty_cache(),
             event_query_clients: empty_cache(),
             projector_clients: empty_cache(),
@@ -193,6 +211,54 @@ impl StaticServiceDiscovery {
         self.projectors
             .blocking_write()
             .insert(service.name.clone(), service);
+    }
+
+    /// Register a saga synchronously (for use in constructors).
+    pub fn register_saga_sync(&self, name: &str, source_domain: &str, address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: Some(source_domain.to_string()),
+        };
+        let saga_service = SagaService {
+            service,
+            source_domain: source_domain.to_string(),
+        };
+        info!(
+            name = %name,
+            source_domain = %source_domain,
+            address = %address,
+            port = port,
+            "Registered static saga"
+        );
+        self.sagas
+            .blocking_write()
+            .insert(name.to_string(), saga_service);
+    }
+
+    /// Register a PM synchronously (for use in constructors).
+    pub fn register_pm_sync(&self, name: &str, subscriptions: &[&str], address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: None, // PMs don't have a single domain
+        };
+        let pm_service = PmService {
+            service,
+            subscriptions: subscriptions.iter().map(|s| s.to_string()).collect(),
+        };
+        info!(
+            name = %name,
+            subscriptions = ?subscriptions,
+            address = %address,
+            port = port,
+            "Registered static PM"
+        );
+        self.pms
+            .blocking_write()
+            .insert(name.to_string(), pm_service);
     }
 
     async fn get_or_create_aggregate_client(
@@ -274,6 +340,51 @@ impl super::ServiceDiscovery for StaticServiceDiscovery {
             .write()
             .await
             .insert(service.name.clone(), service);
+    }
+
+    async fn register_saga(&self, name: &str, source_domain: &str, address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: Some(source_domain.to_string()),
+        };
+        let saga_service = SagaService {
+            service,
+            source_domain: source_domain.to_string(),
+        };
+        info!(
+            name = %name,
+            source_domain = %source_domain,
+            address = %address,
+            port = port,
+            "Registered static saga"
+        );
+        self.sagas
+            .write()
+            .await
+            .insert(name.to_string(), saga_service);
+    }
+
+    async fn register_pm(&self, name: &str, subscriptions: &[&str], address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: None, // PMs don't have a single domain
+        };
+        let pm_service = PmService {
+            service,
+            subscriptions: subscriptions.iter().map(|s| s.to_string()).collect(),
+        };
+        info!(
+            name = %name,
+            subscriptions = ?subscriptions,
+            address = %address,
+            port = port,
+            "Registered static PM"
+        );
+        self.pms.write().await.insert(name.to_string(), pm_service);
     }
 
     async fn get_aggregate(
@@ -397,6 +508,34 @@ impl super::ServiceDiscovery for StaticServiceDiscovery {
 
     async fn has_projectors(&self) -> bool {
         !self.projectors.read().await.is_empty()
+    }
+
+    async fn has_sagas(&self) -> bool {
+        !self.sagas.read().await.is_empty()
+    }
+
+    async fn has_pms(&self) -> bool {
+        !self.pms.read().await.is_empty()
+    }
+
+    async fn get_saga_endpoints_for_domain(&self, source_domain: &str) -> Vec<DiscoveredService> {
+        self.sagas
+            .read()
+            .await
+            .values()
+            .filter(|s| s.source_domain == source_domain)
+            .map(|s| s.service.clone())
+            .collect()
+    }
+
+    async fn get_pm_endpoints_for_domain(&self, domain: &str) -> Vec<DiscoveredService> {
+        self.pms
+            .read()
+            .await
+            .values()
+            .filter(|pm| pm.subscriptions.iter().any(|sub| sub == domain))
+            .map(|pm| pm.service.clone())
+            .collect()
     }
 
     async fn initial_sync(&self) -> Result<(), DiscoveryError> {

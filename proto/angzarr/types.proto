@@ -56,6 +56,17 @@ enum SyncMode {
 }
 // docs:end:sync_mode
 
+// docs:start:cascade_error_mode
+// Controls how CASCADE mode handles errors from sagas/PMs.
+// Only relevant when sync_mode = CASCADE.
+enum CascadeErrorMode {
+  CASCADE_ERROR_FAIL_FAST = 0;   // Stop on first error, fail request (default)
+  CASCADE_ERROR_CONTINUE = 1;    // Continue through all, return successes + errors
+  CASCADE_ERROR_COMPENSATE = 2;  // On first error, compensate executed commands, fail request
+  CASCADE_ERROR_DEAD_LETTER = 3; // On error, send to DLQ and continue with remaining
+}
+// docs:end:cascade_error_mode
+
 // docs:start:merge_strategy
 // Controls how concurrent commands to the same aggregate are handled
 enum MergeStrategy {
@@ -199,10 +210,11 @@ message CommandBook {
 }
 
 // Request wrapper for command operations.
-// Adds execution metadata (sync_mode) to CommandBook.
+// Adds execution metadata (sync_mode, cascade_error_mode) to CommandBook.
 message CommandRequest {
   CommandBook command = 1;
   SyncMode sync_mode = 2;
+  CascadeErrorMode cascade_error_mode = 3;  // How to handle saga/PM errors in CASCADE mode
 }
 
 message ContextualCommand {

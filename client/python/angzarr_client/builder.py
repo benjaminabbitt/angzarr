@@ -12,12 +12,15 @@ from .helpers import implicit_edition, parse_timestamp, uuid_to_proto
 from .proto.angzarr import (
     CommandBook,
     CommandPage,
+    CommandRequest,
     CommandResponse,
     Cover,
     EventBook,
     EventPage,
+    PageHeader,
     Query,
     SequenceRange,
+    SyncMode,
     TemporalQuery,
 )
 
@@ -75,7 +78,8 @@ class CommandBuilder:
             cover.root.CopyFrom(uuid_to_proto(self._root))
 
         command_any = ProtoAny(type_url=self._type_url, value=self._payload)
-        page = CommandPage(sequence=self._sequence)
+        header = PageHeader(sequence=self._sequence)
+        page = CommandPage(header=header)
         page.command.CopyFrom(command_any)
 
         book = CommandBook()
@@ -83,10 +87,18 @@ class CommandBuilder:
         book.pages.append(page)
         return book
 
-    def execute(self) -> CommandResponse:
-        """Build and execute the command."""
+    def execute(
+        self, sync_mode: SyncMode = SyncMode.SYNC_MODE_ASYNC
+    ) -> CommandResponse:
+        """Build and execute the command.
+
+        Args:
+            sync_mode: Execution mode (ASYNC, SIMPLE, or CASCADE).
+                      Defaults to ASYNC for fire-and-forget behavior.
+        """
         cmd = self.build()
-        return self._client.handle(cmd)
+        request = CommandRequest(command=cmd, sync_mode=sync_mode)
+        return self._client.handle_command(request)
 
 
 class QueryBuilder:

@@ -378,11 +378,16 @@ impl AggregateContext for LocalAggregateContext {
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
-        // Call sync projectors
-        let projections = self.call_sync_projectors(events).await;
+        // ASYNC mode: fire-and-forget — no sync projectors
+        // SIMPLE and CASCADE: call sync projectors
+        let projections = if self.sync_mode == Some(crate::proto::SyncMode::Async) {
+            vec![]
+        } else {
+            self.call_sync_projectors(events).await
+        };
 
-        // CASCADE mode: do NOT publish to bus (events flow via sync sagas)
-        // SIMPLE and UNSPECIFIED: publish to bus
+        // CASCADE mode: do NOT publish to bus (events flow via sync sagas/PMs)
+        // ASYNC and SIMPLE: publish to bus for async processing
         let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
         if !is_cascade {
             tracing::info!(

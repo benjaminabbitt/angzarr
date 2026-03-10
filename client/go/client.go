@@ -380,9 +380,23 @@ func DomainClientForDomain(domain string, mode TransportMode) (*DomainClient, er
 	return NewDomainClient(endpoint)
 }
 
-// Execute is a convenience method that delegates to CommandHandler.Handle.
+// Execute executes a command asynchronously (fire-and-forget).
+// Use ExecuteWithMode to specify a different sync mode.
 func (c *DomainClient) Execute(ctx context.Context, cmd *pb.CommandBook) (*pb.CommandResponse, error) {
 	return c.CommandHandler.Handle(ctx, cmd)
+}
+
+// ExecuteWithMode executes a command with the specified sync mode.
+//
+// Use pb.SyncMode_SYNC_MODE_ASYNC for fire-and-forget (default).
+// Use pb.SyncMode_SYNC_MODE_SIMPLE to wait for sync projectors.
+// Use pb.SyncMode_SYNC_MODE_CASCADE for full sync including saga cascade.
+func (c *DomainClient) ExecuteWithMode(ctx context.Context, cmd *pb.CommandBook, syncMode pb.SyncMode) (*pb.CommandResponse, error) {
+	request := &pb.CommandRequest{
+		Command:  cmd,
+		SyncMode: syncMode,
+	}
+	return c.CommandHandler.HandleCommand(ctx, request)
 }
 
 // Close closes the underlying connection.

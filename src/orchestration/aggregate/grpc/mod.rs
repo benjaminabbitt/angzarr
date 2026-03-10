@@ -13,9 +13,12 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
+use crate::proto::process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient;
+use crate::proto::saga_coordinator_service_client::SagaCoordinatorServiceClient;
 use crate::proto::{
-    CommandBook, Cover, EventBook, EventRequest, MergeStrategy, Projection, Snapshot,
-    SnapshotRetention, Uuid as ProtoUuid,
+    CascadeErrorMode, CommandBook, Cover, EventBook, EventRequest, MergeStrategy,
+    ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest, Snapshot, SnapshotRetention,
+    Uuid as ProtoUuid,
 };
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
@@ -120,6 +123,126 @@ impl GrpcAggregateContext {
     pub fn with_component_name(mut self, name: impl Into<String>) -> Self {
         self.component_name = name.into();
         self
+    }
+
+    /// Call sync sagas via service discovery for CASCADE mode.
+    ///
+    /// Sagas subscribed to this domain's events are called synchronously.
+    /// Each saga receives the events and may produce commands for other aggregates,
+    /// enabling recursive CASCADE execution.
+    #[tracing::instrument(name = "aggregate.sync_sagas", skip_all)]
+    async fn call_sync_sagas(
+        &self,
+        events: &EventBook,
+        sync_mode: crate::proto::SyncMode,
+    ) -> Result<(), Status> {
+        let source_domain = events.domain();
+        let endpoints = self
+            .discovery
+            .get_saga_endpoints_for_domain(source_domain)
+            .await;
+
+        if endpoints.is_empty() {
+            return Ok(());
+        }
+
+        let correlation_id = events.correlation_id();
+
+        for endpoint in endpoints {
+            let address = endpoint.grpc_url();
+            let channel = tonic::transport::Channel::from_shared(address.clone())
+                .map_err(|e| Status::internal(format!("Invalid saga address: {e}")))?
+                .connect()
+                .await
+                .map_err(|e| {
+                    Status::unavailable(format!("Cannot connect to saga {}: {e}", endpoint.name))
+                })?;
+
+            let mut client = SagaCoordinatorServiceClient::new(channel);
+
+            let request = correlated_request(
+                SagaHandleRequest {
+                    source: Some(events.clone()),
+                    sync_mode: sync_mode.into(),
+                    cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+                },
+                correlation_id,
+            );
+
+            client.execute(request).await.map_err(|e| {
+                warn!(
+                    saga = %endpoint.name,
+                    error = %e,
+                    "Saga coordinator call failed"
+                );
+                Status::internal(format!("Saga {} failed: {e}", endpoint.name))
+            })?;
+        }
+
+        Ok(())
+    }
+
+    /// Call sync PMs via service discovery for CASCADE mode.
+    ///
+    /// PMs subscribed to this domain's events are called synchronously.
+    /// Each PM receives the events and may produce commands for other aggregates,
+    /// enabling recursive CASCADE execution.
+    ///
+    /// PMs require correlation_id - events without one are skipped.
+    #[tracing::instrument(name = "aggregate.sync_pms", skip_all)]
+    async fn call_sync_pms(
+        &self,
+        events: &EventBook,
+        sync_mode: crate::proto::SyncMode,
+    ) -> Result<(), Status> {
+        let correlation_id = events.correlation_id();
+        if correlation_id.is_empty() {
+            // PMs require correlation_id for state lookup
+            return Ok(());
+        }
+
+        let source_domain = events.domain();
+        let endpoints = self
+            .discovery
+            .get_pm_endpoints_for_domain(source_domain)
+            .await;
+
+        if endpoints.is_empty() {
+            return Ok(());
+        }
+
+        for endpoint in endpoints {
+            let address = endpoint.grpc_url();
+            let channel = tonic::transport::Channel::from_shared(address.clone())
+                .map_err(|e| Status::internal(format!("Invalid PM address: {e}")))?
+                .connect()
+                .await
+                .map_err(|e| {
+                    Status::unavailable(format!("Cannot connect to PM {}: {e}", endpoint.name))
+                })?;
+
+            let mut client = ProcessManagerCoordinatorServiceClient::new(channel);
+
+            let request = correlated_request(
+                ProcessManagerCoordinatorRequest {
+                    trigger: Some(events.clone()),
+                    sync_mode: sync_mode.into(),
+                    cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+                },
+                correlation_id,
+            );
+
+            client.handle(request).await.map_err(|e| {
+                warn!(
+                    pm = %endpoint.name,
+                    error = %e,
+                    "PM coordinator call failed"
+                );
+                Status::internal(format!("PM {} failed: {e}", endpoint.name))
+            })?;
+        }
+
+        Ok(())
     }
 
     /// Call sync projectors via K8s service discovery.
@@ -311,17 +434,29 @@ impl AggregateContext for GrpcAggregateContext {
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
-        // Call sync projectors if sync_mode is set
-        let projections = if let Some(mode) = self.sync_mode {
-            self.call_sync_projectors(events, mode).await?
-        } else {
-            vec![]
+        // ASYNC mode: fire-and-forget — no sync projectors
+        // SIMPLE and CASCADE: call sync projectors
+        let projections = match self.sync_mode {
+            Some(crate::proto::SyncMode::Simple) | Some(crate::proto::SyncMode::Cascade) => {
+                self.call_sync_projectors(events, self.sync_mode.unwrap())
+                    .await?
+            }
+            // ASYNC or None: skip sync projectors
+            _ => vec![],
         };
 
-        // CASCADE mode: do NOT publish to bus (events flow via sync sagas)
-        // SIMPLE and UNSPECIFIED: publish to bus
+        // CASCADE mode: call sync sagas and PMs instead of publishing to bus
         let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
-        if !is_cascade {
+        if is_cascade {
+            // Call sagas synchronously - they may produce commands for other aggregates
+            self.call_sync_sagas(events, crate::proto::SyncMode::Cascade)
+                .await?;
+
+            // Call PMs synchronously - they may produce commands for other aggregates
+            self.call_sync_pms(events, crate::proto::SyncMode::Cascade)
+                .await?;
+        } else {
+            // ASYNC and SIMPLE: publish to bus for async processing
             // Publish events to bus — cover.domain stays bare, bus computes routing key
             let bus_events = Arc::new(events.clone());
             let publish_result = self.event_bus.publish(bus_events).await;

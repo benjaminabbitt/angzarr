@@ -232,3 +232,131 @@ async fn test_static_discovery_get_projector_not_found() {
     let err = result.unwrap_err();
     assert!(matches!(err, DiscoveryError::NoServicesFound(_)));
 }
+
+// ============================================================================
+// Saga Discovery Tests
+// ============================================================================
+
+/// Saga registration adds service and updates has_sagas().
+///
+/// Sagas subscribe to a source domain's events and translate them
+/// to commands for target domains. CASCADE mode needs to discover
+/// saga coordinators by source domain.
+#[tokio::test]
+async fn test_static_discovery_register_saga() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery
+        .register_saga("saga-order-fulfillment", "order", "localhost", 50060)
+        .await;
+
+    assert!(discovery.has_sagas().await);
+}
+
+/// Saga sync registration works for use in constructors.
+#[test]
+fn test_static_discovery_saga_sync_registration() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery.register_saga_sync("saga-order-fulfillment", "order", "localhost", 50060);
+
+    assert!(!discovery.sagas.blocking_read().is_empty());
+}
+
+/// get_sagas_for_domain returns sagas subscribed to that domain.
+///
+/// CASCADE mode calls all saga coordinators subscribed to a domain
+/// when processing events synchronously.
+#[tokio::test]
+async fn test_static_discovery_get_sagas_for_domain() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery
+        .register_saga("saga-order-fulfillment", "order", "localhost", 50060)
+        .await;
+    discovery
+        .register_saga("saga-order-notification", "order", "localhost", 50061)
+        .await;
+    discovery
+        .register_saga("saga-inventory-restock", "inventory", "localhost", 50062)
+        .await;
+
+    // Should only return sagas for the "order" domain
+    let sagas = discovery.get_saga_endpoints_for_domain("order").await;
+    assert_eq!(sagas.len(), 2);
+    assert!(sagas.iter().any(|s| s.name == "saga-order-fulfillment"));
+    assert!(sagas.iter().any(|s| s.name == "saga-order-notification"));
+}
+
+/// New discovery has no sagas.
+#[tokio::test]
+async fn test_static_discovery_has_no_sagas_initially() {
+    let discovery = StaticServiceDiscovery::new();
+    assert!(!discovery.has_sagas().await);
+}
+
+// ============================================================================
+// Process Manager Discovery Tests
+// ============================================================================
+
+/// PM registration adds service and updates has_pms().
+///
+/// Process managers subscribe to events from multiple domains via
+/// correlation_id. CASCADE mode needs to discover PM coordinators.
+#[tokio::test]
+async fn test_static_discovery_register_pm() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery
+        .register_pm(
+            "pm-order-flow",
+            &["order", "inventory", "fulfillment"],
+            "localhost",
+            50070,
+        )
+        .await;
+
+    assert!(discovery.has_pms().await);
+}
+
+/// PM sync registration works for use in constructors.
+#[test]
+fn test_static_discovery_pm_sync_registration() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery.register_pm_sync("pm-order-flow", &["order", "inventory"], "localhost", 50070);
+
+    assert!(!discovery.pms.blocking_read().is_empty());
+}
+
+/// get_pms_for_domain returns PMs subscribed to that domain.
+///
+/// Unlike sagas which have a single source domain, PMs subscribe to
+/// multiple domains. A PM should be returned if it subscribes to the
+/// queried domain.
+#[tokio::test]
+async fn test_static_discovery_get_pms_for_domain() {
+    let discovery = StaticServiceDiscovery::new();
+    discovery
+        .register_pm(
+            "pm-order-flow",
+            &["order", "inventory", "fulfillment"],
+            "localhost",
+            50070,
+        )
+        .await;
+    discovery
+        .register_pm("pm-payment-flow", &["payment", "order"], "localhost", 50071)
+        .await;
+    discovery
+        .register_pm("pm-shipping-flow", &["shipping"], "localhost", 50072)
+        .await;
+
+    // Query for "order" domain - should return pm-order-flow and pm-payment-flow
+    let pms = discovery.get_pm_endpoints_for_domain("order").await;
+    assert_eq!(pms.len(), 2);
+    assert!(pms.iter().any(|s| s.name == "pm-order-flow"));
+    assert!(pms.iter().any(|s| s.name == "pm-payment-flow"));
+}
+
+/// New discovery has no PMs.
+#[tokio::test]
+async fn test_static_discovery_has_no_pms_initially() {
+    let discovery = StaticServiceDiscovery::new();
+    assert!(!discovery.has_pms().await);
+}

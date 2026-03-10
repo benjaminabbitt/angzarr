@@ -111,6 +111,7 @@ pub fn build_command_response(
     CommandResponse {
         events: Some(Arc::try_unwrap(event_book).unwrap_or_else(|arc| (*arc).clone())),
         projections: publish_result.projections,
+        cascade_errors: vec![],
     }
 }
 

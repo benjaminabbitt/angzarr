@@ -284,6 +284,7 @@ async fn execute_mode(
     Ok(CommandResponse {
         events: Some(persisted),
         projections,
+        cascade_errors: vec![],
     })
 }
 
@@ -323,6 +324,7 @@ async fn speculative_mode(
     Ok(CommandResponse {
         events: Some(speculative_events),
         projections: vec![],
+        cascade_errors: vec![],
     })
 }
 

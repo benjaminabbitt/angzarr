@@ -49,6 +49,16 @@ const DOMAIN_LABEL: &str = "angzarr.io/domain";
 /// Component values.
 const COMPONENT_AGGREGATE: &str = "aggregate";
 const COMPONENT_PROJECTOR: &str = "projector";
+// Future: K8s watcher support for sagas/PMs
+#[allow(dead_code)]
+const COMPONENT_SAGA: &str = "saga";
+#[allow(dead_code)]
+const COMPONENT_PROCESS_MANAGER: &str = "process-manager";
+
+/// Label for PM subscriptions (comma-separated domains).
+/// Future: K8s watcher support for PMs
+#[allow(dead_code)]
+const SUBSCRIPTIONS_LABEL: &str = "angzarr.io/subscriptions";
 
 /// Default gRPC port.
 const DEFAULT_GRPC_PORT: u16 = 50051;
@@ -367,6 +377,40 @@ impl ServiceDiscovery for K8sServiceDiscovery {
 
     async fn has_projectors(&self) -> bool {
         !self.projectors.read().await.is_empty()
+    }
+
+    async fn register_saga(&self, name: &str, source_domain: &str, address: &str, port: u16) {
+        // Delegate to inner - K8s watches don't apply to sagas registered this way
+        self.inner
+            .register_saga(name, source_domain, address, port)
+            .await;
+    }
+
+    async fn register_pm(&self, name: &str, subscriptions: &[&str], address: &str, port: u16) {
+        // Delegate to inner - K8s watches don't apply to PMs registered this way
+        self.inner
+            .register_pm(name, subscriptions, address, port)
+            .await;
+    }
+
+    async fn get_saga_endpoints_for_domain(&self, source_domain: &str) -> Vec<DiscoveredService> {
+        // Delegate to inner
+        self.inner
+            .get_saga_endpoints_for_domain(source_domain)
+            .await
+    }
+
+    async fn get_pm_endpoints_for_domain(&self, domain: &str) -> Vec<DiscoveredService> {
+        // Delegate to inner
+        self.inner.get_pm_endpoints_for_domain(domain).await
+    }
+
+    async fn has_sagas(&self) -> bool {
+        self.inner.has_sagas().await
+    }
+
+    async fn has_pms(&self) -> bool {
+        self.inner.has_pms().await
     }
 
     async fn initial_sync(&self) -> Result<(), DiscoveryError> {

@@ -20,6 +20,7 @@ mod runtime;
 mod saga;
 mod snapshot;
 mod streaming;
+mod sync_mode;
 // topology tests disabled until feature is implemented
 // mod topology;
 mod upcaster;

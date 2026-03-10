@@ -164,17 +164,6 @@ class CommandHandlerClient:
         endpoint = os.environ.get(env_var, default)
         return cls.connect(endpoint)
 
-    def handle(self, command: CommandBook) -> CommandResponse:
-        """Execute a command asynchronously (fire-and-forget).
-
-        Convenience method that wraps CommandBook in CommandRequest with default sync mode.
-        """
-        request = CommandRequest(
-            command=command,
-            sync_mode=SyncMode.SYNC_MODE_ASYNC,
-        )
-        return self.handle_command(request)
-
     def handle_command(self, request: CommandRequest) -> CommandResponse:
         """Execute a command with the specified sync mode."""
         try:
@@ -308,9 +297,20 @@ class DomainClient:
         endpoint = os.environ.get(env_var, default)
         return cls.connect(endpoint)
 
-    def execute(self, command: CommandBook) -> CommandResponse:
-        """Execute a command (delegates to command handler client)."""
-        return self.command_handler.handle(command)
+    def execute(
+        self,
+        command: CommandBook,
+        sync_mode: SyncMode = SyncMode.SYNC_MODE_ASYNC,
+    ) -> CommandResponse:
+        """Execute a command with the specified sync mode.
+
+        Args:
+            command: The command to execute.
+            sync_mode: Execution mode (ASYNC, SIMPLE, or CASCADE).
+                      Defaults to ASYNC for fire-and-forget behavior.
+        """
+        request = CommandRequest(command=command, sync_mode=sync_mode)
+        return self.command_handler.handle_command(request)
 
     def close(self) -> None:
         """Close the underlying channel."""

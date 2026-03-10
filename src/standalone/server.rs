@@ -19,8 +19,9 @@ use crate::config::ResourceLimits;
 use crate::proto::command_handler_coordinator_service_server::CommandHandlerCoordinatorService;
 use crate::proto::event_query_service_server::EventQueryService as EventQueryTrait;
 use crate::proto::{
-    AggregateRoot, BusinessResponse, CommandBook, CommandRequest, CommandResponse, EventBook,
-    EventRequest, FactInjectionResponse, Query, SpeculateCommandHandlerRequest, Uuid as ProtoUuid,
+    AggregateRoot, BusinessResponse, CascadeErrorMode, CommandBook, CommandRequest,
+    CommandResponse, EventBook, EventRequest, FactInjectionResponse, Query,
+    SpeculateCommandHandlerRequest, SyncMode, Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
@@ -74,13 +75,29 @@ impl CommandHandlerCoordinatorService for StandaloneAggregateService {
         request: Request<CommandRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_cmd = request.into_inner();
+        let sync_mode = SyncMode::try_from(sync_cmd.sync_mode).unwrap_or(SyncMode::Async);
+        let cascade_error_mode = CascadeErrorMode::try_from(sync_cmd.cascade_error_mode)
+            .unwrap_or(CascadeErrorMode::CascadeErrorFailFast);
         let command = sync_cmd.command.ok_or_else(|| {
             Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
         })?;
         self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
-        // Standalone mode doesn't differentiate sync modes - all execution is synchronous
-        let response = self.router.execute(command).await?;
+
+        // Branch on sync_mode:
+        // - CASCADE: sync projectors + sagas + PMs, no bus publishing
+        // - SIMPLE: sync projectors, publish to bus
+        // - ASYNC (default): no sync projectors, publish to bus (fire-and-forget)
+        let response = match sync_mode {
+            SyncMode::Cascade => {
+                self.router
+                    .execute_cascade_with_error_mode(command, cascade_error_mode)
+                    .await?
+            }
+            SyncMode::Simple => self.router.execute(command).await?,
+            SyncMode::Async => self.router.execute_async(command).await?,
+        };
+
         Ok(Response::new(response))
     }
 

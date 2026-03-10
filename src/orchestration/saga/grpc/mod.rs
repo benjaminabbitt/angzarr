@@ -15,7 +15,8 @@ use crate::config::SagaCompensationConfig;
 use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::saga_service_client::SagaServiceClient;
 use crate::proto::{
-    CommandBook, CommandRequest, Cover, EventBook, SagaHandleRequest, SagaResponse,
+    CascadeErrorMode, CommandBook, CommandRequest, Cover, EventBook, SagaHandleRequest,
+    SagaResponse, SyncMode,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::box_err;
@@ -68,6 +69,8 @@ impl SagaRetryContext for GrpcSagaContext {
         let mut client = self.saga_client.lock().await;
         let request = SagaHandleRequest {
             source: Some(self.source.clone()),
+            sync_mode: SyncMode::Async.into(),
+            cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
         };
         let mut response = client
             .handle(correlated_request(request, correlation_id))
@@ -186,7 +189,8 @@ async fn handle_command_rejection(
     // Use HandleCompensation RPC to get BusinessResponse
     let sync_command = CommandRequest {
         command: Some(notification_command),
-        sync_mode: 0, // Unspecified = async
+        sync_mode: SyncMode::Async.into(),
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     };
     let response = handler
         .handle_compensation(correlated_request(sync_command, &correlation_id))

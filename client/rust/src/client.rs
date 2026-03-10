@@ -8,10 +8,10 @@ use crate::proto::{
     event_query_service_client::EventQueryServiceClient as TonicQueryClient,
     process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient as TonicPmClient,
     projector_coordinator_service_client::ProjectorCoordinatorServiceClient as TonicProjectorClient,
-    saga_coordinator_service_client::SagaCoordinatorServiceClient as TonicSagaClient, CommandBook,
-    CommandRequest, CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query,
-    SagaResponse, SpeculateCommandHandlerRequest, SpeculatePmRequest, SpeculateProjectorRequest,
-    SpeculateSagaRequest, SyncMode,
+    saga_coordinator_service_client::SagaCoordinatorServiceClient as TonicSagaClient,
+    CascadeErrorMode, CommandBook, CommandRequest, CommandResponse, EventBook,
+    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculateCommandHandlerRequest,
+    SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest, SyncMode,
 };
 use crate::traits;
 use async_trait::async_trait;
@@ -181,6 +181,7 @@ impl CommandHandlerClient {
         self.handle_command(CommandRequest {
             command: Some(command),
             sync_mode: SyncMode::Async as i32,
+            cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast as i32,
         })
         .await
     }
@@ -244,9 +245,30 @@ impl DomainClient {
         }
     }
 
-    /// Execute a command (delegates to command handler client).
+    /// Execute a command asynchronously (fire-and-forget).
+    ///
+    /// Use `execute_with_mode()` to specify a different sync mode.
     pub async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
         self.command_handler.handle(command).await
+    }
+
+    /// Execute a command with the specified sync mode.
+    ///
+    /// Use `SyncMode::Async` for fire-and-forget (default).
+    /// Use `SyncMode::Simple` to wait for sync projectors.
+    /// Use `SyncMode::Cascade` for full sync including saga cascade.
+    pub async fn execute_with_mode(
+        &self,
+        command: CommandBook,
+        sync_mode: SyncMode,
+    ) -> Result<CommandResponse> {
+        self.command_handler
+            .handle_command(CommandRequest {
+                command: Some(command),
+                sync_mode: sync_mode as i32,
+                cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast as i32,
+            })
+            .await
     }
 
     /// Query events (delegates to query client).

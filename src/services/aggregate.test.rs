@@ -24,9 +24,9 @@ use crate::bus::MockEventBus;
 use crate::discovery::StaticServiceDiscovery;
 use crate::orchestration::aggregate::{ClientLogic, FactContext};
 use crate::proto::{
-    business_response, command_page, event_page, page_header, CommandBook, CommandPage,
-    ContextualCommand, Cover, EventBook, EventPage, MergeStrategy, PageHeader, SyncMode,
-    Uuid as ProtoUuid,
+    business_response, command_page, event_page, page_header, CascadeErrorMode, CommandBook,
+    CommandPage, ContextualCommand, Cover, EventBook, EventPage, MergeStrategy, PageHeader,
+    SyncMode, Uuid as ProtoUuid,
 };
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use prost_types::Any;
@@ -241,6 +241,7 @@ async fn test_handle_command_invokes_business_logic() {
     let request = Request::new(CommandRequest {
         command: Some(command_book),
         sync_mode: SyncMode::Async as i32,
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     });
 
     let response = service.handle_command(request).await;
@@ -259,6 +260,7 @@ async fn test_handle_command_missing_command_returns_error() {
     let request = Request::new(CommandRequest {
         command: None,
         sync_mode: SyncMode::Async as i32,
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     });
 
     let response = service.handle_command(request).await;
@@ -280,6 +282,7 @@ async fn test_handle_command_with_sync_mode_creates_sync_context() {
     let request = Request::new(CommandRequest {
         command: Some(command_book),
         sync_mode: SyncMode::Simple as i32,
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     });
 
     let response = service.handle_command(request).await;
@@ -339,6 +342,7 @@ async fn test_handle_compensation_missing_command_returns_error() {
     let request = Request::new(CommandRequest {
         command: None,
         sync_mode: SyncMode::Async as i32,
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     });
 
     let response = service.handle_compensation(request).await;
@@ -363,6 +367,7 @@ async fn test_handle_compensation_returns_business_response() {
     let request = Request::new(CommandRequest {
         command: Some(command_book),
         sync_mode: SyncMode::Async as i32,
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     });
 
     let response = service.handle_compensation(request).await;
@@ -384,6 +389,7 @@ async fn test_handle_compensation_with_empty_response() {
     let request = Request::new(CommandRequest {
         command: Some(command_book),
         sync_mode: SyncMode::Async as i32,
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     });
 
     let response = service.handle_compensation(request).await;

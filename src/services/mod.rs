@@ -3,7 +3,9 @@
 pub mod aggregate;
 pub mod event_query;
 pub mod gap_fill;
+pub mod pm_coord;
 pub mod projector_coord;
+pub mod saga_coord;
 pub mod snapshot_handler;
 pub mod upcaster;
 
@@ -49,5 +51,7 @@ pub use event_query::EventQueryService;
 pub use gap_fill::{
     GapFiller, LocalEventSource, NoOpPositionStore, PositionStoreAdapter, RemoteEventSource,
 };
+pub use pm_coord::PmCoord;
 pub use projector_coord::ProjectorCoord;
+pub use saga_coord::SagaCoord;
 pub use upcaster::{Upcaster, UpcasterConfig};

@@ -30,7 +30,7 @@ use crate::utils::retry::saga_backoff;
 use super::client::CommandClient;
 use super::dispatcher::CommandDispatcher;
 use super::grpc_handlers::{CommandHandlerAdapter, ProcessManagerHandlerAdapter};
-use super::router::{CommandRouter, DomainStorage, SyncProjectorEntry};
+use super::router::{CommandRouter, DomainStorage, SyncPMEntry, SyncProjectorEntry, SyncSagaEntry};
 use super::server::ServerInfo;
 use super::speculative::SpeculativeExecutor;
 use super::traits::{
@@ -374,16 +374,36 @@ impl Runtime {
             })
             .collect();
 
-        // Create command router with in-process sync projectors (legacy).
-        // TODO: Wire up sync_sagas and sync_pms from RuntimeBuilder when registration is added
+        // Extract sync saga entries for CASCADE mode
+        let sync_saga_entries: Vec<SyncSagaEntry> = sagas
+            .iter()
+            .map(|(name, (handler, config))| SyncSagaEntry {
+                name: name.clone(),
+                handler: handler.clone(),
+                source_domain: config.input_domain.clone(),
+            })
+            .collect();
+
+        // Extract sync PM entries for CASCADE mode
+        let sync_pm_entries: Vec<SyncPMEntry> = process_managers
+            .iter()
+            .map(|(name, (handler, config))| SyncPMEntry {
+                name: name.clone(),
+                handler: handler.clone(),
+                pm_domain: config.domain.clone(),
+                subscriptions: config.subscriptions.clone(),
+            })
+            .collect();
+
+        // Create command router with in-process sync projectors, sagas, and PMs.
         let router = Arc::new(CommandRouter::new(
             business.clone(),
             domain_stores.clone(),
             discovery.clone(),
             event_bus.clone(),
             sync_projector_entries.clone(),
-            vec![], // sync_sagas - will be populated when CASCADE mode is needed
-            vec![], // sync_pms - will be populated when PM registration is added
+            sync_saga_entries,
+            sync_pm_entries,
             None,
             position_store,
         ));

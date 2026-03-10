@@ -49,7 +49,7 @@ class TestCommandBuilder:
         assert book.cover.domain == "orders"
         assert proto_to_uuid(book.cover.root) == root
         assert len(book.pages) == 1
-        assert book.pages[0].sequence == 0
+        assert book.pages[0].header.sequence == 0
         # Auto-generated correlation ID
         assert book.cover.correlation_id != ""
 
@@ -91,7 +91,7 @@ class TestCommandBuilder:
         )
         book = builder.build()
 
-        assert book.pages[0].sequence == 5
+        assert book.pages[0].header.sequence == 5
 
     def test_build_without_type_url_raises(self) -> None:
         """Build without type_url raises InvalidArgumentError."""
@@ -121,19 +121,19 @@ class TestCommandBuilder:
         with pytest.raises(ValueError):
             builder.build()
 
-    def test_execute_calls_handle(self) -> None:
-        """Execute builds and calls client.handle."""
+    def test_execute_calls_handle_command(self) -> None:
+        """Execute builds and calls client.handle_command."""
         client = self._mock_aggregate_client()
         expected_response = CommandResponse()
         # CommandResponse contains events field, not correlation_id
         expected_response.events.next_sequence = 5
-        client.handle.return_value = expected_response
+        client.handle_command.return_value = expected_response
 
         msg = StringValue(value="test")
         builder = CommandBuilder(client, "orders").with_command("type/Cmd", msg)
         response = builder.execute()
 
-        client.handle.assert_called_once()
+        client.handle_command.assert_called_once()
         assert response.events.next_sequence == 5
 
     def test_fluent_chaining(self) -> None:
@@ -299,18 +299,22 @@ class TestQueryBuilder:
 
     def test_get_pages(self) -> None:
         """get_pages extracts pages from book."""
+        from angzarr_client.proto.angzarr import PageHeader
+
         client = self._mock_query_client()
         book = EventBook()
-        book.pages.add(sequence=1)
-        book.pages.add(sequence=2)
+        page1 = book.pages.add()
+        page1.header.CopyFrom(PageHeader(sequence=1))
+        page2 = book.pages.add()
+        page2.header.CopyFrom(PageHeader(sequence=2))
         client.get_event_book.return_value = book
 
         builder = QueryBuilder(client, "orders")
         result = builder.get_pages()
 
         assert len(result) == 2
-        assert result[0].sequence == 1
-        assert result[1].sequence == 2
+        assert result[0].header.sequence == 1
+        assert result[1].header.sequence == 2
 
     def test_fluent_chaining(self) -> None:
         """Methods return self for chaining."""

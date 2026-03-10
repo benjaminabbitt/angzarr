@@ -111,13 +111,29 @@ public sealed class DomainClient : IDisposable
     public QueryClient Query => _query;
 
     /// <summary>
-    /// Execute a command (convenience method delegating to command handler).
+    /// Execute a command asynchronously (fire-and-forget).
+    /// Use Execute(command, syncMode) to specify a different sync mode.
     /// </summary>
     /// <param name="command">The command to execute</param>
     /// <returns>The command response</returns>
     public Angzarr.CommandResponse Execute(Angzarr.CommandBook command)
     {
         return _commandHandler.Handle(command);
+    }
+
+    /// <summary>
+    /// Execute a command with the specified sync mode.
+    ///
+    /// <para>Use SyncMode.Async for fire-and-forget (default).
+    /// Use SyncMode.Simple to wait for sync projectors.
+    /// Use SyncMode.Cascade for full sync including saga cascade.</para>
+    /// </summary>
+    /// <param name="command">The command to execute</param>
+    /// <param name="syncMode">The synchronization mode</param>
+    /// <returns>The command response</returns>
+    public Angzarr.CommandResponse Execute(Angzarr.CommandBook command, Angzarr.SyncMode syncMode)
+    {
+        return _commandHandler.Handle(command, syncMode);
     }
 
     /// <summary>

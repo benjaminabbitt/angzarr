@@ -5,7 +5,10 @@ use angzarr::proto::command_handler_coordinator_service_client::CommandHandlerCo
 use angzarr::proto::command_handler_coordinator_service_server::{
     CommandHandlerCoordinatorService, CommandHandlerCoordinatorServiceServer,
 };
-use angzarr::proto::{command_page, event_page, CommandRequest, CommandResponse, EventRequest};
+use angzarr::proto::{
+    command_page, event_page, CascadeErrorMode, CommandRequest, CommandResponse, EventRequest,
+    SyncMode,
+};
 use angzarr::transport::{connect_to_address, prepare_uds_socket};
 use tokio::net::UnixListener;
 use tokio_stream::wrappers::UnixListenerStream;
@@ -59,6 +62,7 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
         Ok(Response::new(CommandResponse {
             events: Some(events),
             projections: Vec::new(),
+            cascade_errors: vec![],
         }))
     }
 
@@ -103,7 +107,8 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
         let cmd = speculate.command.unwrap_or_default();
         self.handle_command(Request::new(CommandRequest {
             command: Some(cmd),
-            sync_mode: 0,
+            sync_mode: SyncMode::Async.into(),
+            cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
         }))
         .await
     }
@@ -175,7 +180,8 @@ async fn test_grpc_server_and_client_over_uds() {
     let command = create_test_command("orders", Uuid::new_v4(), b"test-data", 0);
     let sync_command = CommandRequest {
         command: Some(command),
-        sync_mode: 0,
+        sync_mode: SyncMode::Async.into(),
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     };
     let response = client
         .handle_command(sync_command)
@@ -231,7 +237,8 @@ async fn test_multiple_concurrent_uds_requests() {
             );
             let sync_command = CommandRequest {
                 command: Some(command),
-                sync_mode: 0,
+                sync_mode: SyncMode::Async.into(),
+                cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
             };
             client
                 .handle_command(sync_command)
@@ -298,7 +305,8 @@ async fn test_uds_socket_cleanup_on_server_restart() {
     let command = create_test_command("orders", Uuid::new_v4(), b"after-restart", 0);
     let sync_command = CommandRequest {
         command: Some(command),
-        sync_mode: 0,
+        sync_mode: SyncMode::Async.into(),
+        cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
     };
     let response = client
         .handle_command(sync_command)

@@ -26,18 +26,26 @@
 //!                  [Event Bus] -> [Client]
 //! ```
 //!
+//! ## Dual Mode Operation
+//! The saga sidecar operates in two modes simultaneously:
+//! - **ASYNC mode**: Subscribes to event bus, processes events asynchronously
+//! - **CASCADE mode**: Serves gRPC coordinator for synchronous saga execution
+//!
 //! ## Configuration
 //! - TARGET_ADDRESS: Saga gRPC address (e.g., "localhost:50051")
 //! - TARGET_COMMAND: Optional command to spawn saga (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing (format: "domain=address,...")
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
+//! - ANGZARR_COORDINATOR_PORT: Port for CASCADE mode coordinator (default: 1350)
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use backon::Retryable;
 use tokio::sync::Mutex;
+use tonic::transport::Server;
+use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
@@ -45,13 +53,21 @@ use angzarr::config::{SagaCompensationConfig, STATIC_ENDPOINTS_ENV_VAR};
 use angzarr::descriptor::{parse_subscriptions, Target};
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
+use angzarr::proto::saga_coordinator_service_server::SagaCoordinatorServiceServer;
 use angzarr::proto::saga_service_client::SagaServiceClient;
-use angzarr::transport::connect_to_address;
+use angzarr::services::SagaCoord;
+use angzarr::transport::{connect_to_address, grpc_trace_layer, max_grpc_message_size};
 use angzarr::utils::retry::connection_backoff;
-use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
+use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints};
 
 /// Environment variable for subscription configuration.
 const SUBSCRIPTIONS_ENV_VAR: &str = "ANGZARR_SUBSCRIPTIONS";
+
+/// Environment variable for coordinator port (CASCADE mode).
+const COORDINATOR_PORT_ENV_VAR: &str = "ANGZARR_COORDINATOR_PORT";
+
+/// Default coordinator port for CASCADE mode.
+const DEFAULT_COORDINATOR_PORT: u16 = 1350;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -125,16 +141,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     info!("Using static endpoint configuration for two-phase saga routing");
-    let (executor, fetcher) = connect_endpoints(&endpoints_str).await?;
-    let factory = Arc::new(GrpcSagaContextFactory::new(
+    let (executor, _fetcher) = connect_endpoints(&endpoints_str).await?;
+    let factory: Arc<GrpcSagaContextFactory> = Arc::new(GrpcSagaContextFactory::new(
         Arc::new(Mutex::new(saga_client)),
         publisher,
         SagaCompensationConfig::default(),
         None,
         bootstrap.domain.clone(),
     ));
-    let handler = SagaEventHandler::from_factory(factory, executor, Some(fetcher));
+    let handler = SagaEventHandler::from_factory(factory.clone(), executor.clone(), None);
 
+    // =========================================================================
+    // Start bus subscriber (ASYNC mode)
+    // =========================================================================
     let queue_name = format!("saga-{}", bootstrap.domain);
-    run_subscriber(messaging, queue_name, Box::new(handler)).await
+    let subscriber_mode = EventBusMode::SubscriberAll {
+        queue: queue_name.clone(),
+    };
+    let subscriber = init_event_bus(messaging, subscriber_mode)
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { e })?;
+
+    subscriber
+        .subscribe(Box::new(handler))
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+    subscriber
+        .start_consuming()
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+    info!(queue = %queue_name, "Bus subscriber started (ASYNC mode)");
+
+    // =========================================================================
+    // Start gRPC coordinator server (CASCADE mode)
+    // =========================================================================
+    let coordinator_port: u16 = std::env::var(COORDINATOR_PORT_ENV_VAR)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_COORDINATOR_PORT);
+
+    let coordinator_addr = format!("0.0.0.0:{}", coordinator_port);
+
+    // Create saga coordinator service for CASCADE mode
+    let saga_coord = SagaCoord::new(factory, executor);
+
+    // Health reporter for the coordinator
+    let (mut health_reporter, health_service) = health_reporter();
+    health_reporter
+        .set_service_status("", tonic_health::ServingStatus::Serving)
+        .await;
+
+    let msg_size = max_grpc_message_size();
+    let coordinator_server = Server::builder()
+        .layer(grpc_trace_layer())
+        .add_service(health_service)
+        .add_service(
+            SagaCoordinatorServiceServer::new(saga_coord)
+                .max_decoding_message_size(msg_size)
+                .max_encoding_message_size(msg_size),
+        );
+
+    let addr: std::net::SocketAddr = coordinator_addr.parse()?;
+    info!(
+        address = %addr,
+        saga = %bootstrap.domain,
+        "Saga coordinator server starting (CASCADE mode)"
+    );
+
+    // Run both subscriber and coordinator server until shutdown
+    coordinator_server
+        .serve_with_shutdown(addr, async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("Failed to install CTRL+C handler");
+            info!("Shutdown signal received");
+        })
+        .await?;
+
+    Ok(())
 }

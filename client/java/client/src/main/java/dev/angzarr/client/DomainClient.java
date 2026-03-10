@@ -123,13 +123,29 @@ public class DomainClient implements AutoCloseable {
     }
 
     /**
-     * Execute a command (convenience method delegating to command handler).
+     * Execute a command asynchronously (fire-and-forget).
+     * Use execute(command, syncMode) to specify a different sync mode.
      *
      * @param command The command to execute
      * @return The command response
      */
     public CommandResponse execute(CommandBook command) {
         return commandHandler.handle(command);
+    }
+
+    /**
+     * Execute a command with the specified sync mode.
+     *
+     * <p>Use SyncMode.SYNC_MODE_ASYNC for fire-and-forget (default).
+     * Use SyncMode.SYNC_MODE_SIMPLE to wait for sync projectors.
+     * Use SyncMode.SYNC_MODE_CASCADE for full sync including saga cascade.
+     *
+     * @param command The command to execute
+     * @param syncMode The synchronization mode
+     * @return The command response
+     */
+    public CommandResponse execute(CommandBook command, dev.angzarr.SyncMode syncMode) {
+        return commandHandler.handle(command, syncMode);
     }
 
     /**

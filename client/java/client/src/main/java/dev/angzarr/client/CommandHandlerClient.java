@@ -101,9 +101,26 @@ public class CommandHandlerClient implements AutoCloseable {
      * @throws Errors.GrpcError if the gRPC call fails
      */
     public CommandResponse handle(CommandBook command) {
+        return handle(command, dev.angzarr.SyncMode.SYNC_MODE_ASYNC);
+    }
+
+    /**
+     * Execute a command with the specified sync mode.
+     *
+     * <p>Use SyncMode.SYNC_MODE_ASYNC for fire-and-forget (default).
+     * Use SyncMode.SYNC_MODE_SIMPLE to wait for sync projectors.
+     * Use SyncMode.SYNC_MODE_CASCADE for full sync including saga cascade.
+     *
+     * @param command The command to execute
+     * @param syncMode The synchronization mode
+     * @return The command response
+     * @throws Errors.GrpcError if the gRPC call fails
+     */
+    public CommandResponse handle(CommandBook command, dev.angzarr.SyncMode syncMode) {
         try {
             CommandRequest request = CommandRequest.newBuilder()
                 .setCommand(command)
+                .setSyncMode(syncMode)
                 .build();
             return stub.handleCommand(request);
         } catch (StatusRuntimeException e) {

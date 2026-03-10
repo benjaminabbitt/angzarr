@@ -36,6 +36,15 @@ service ProcessManagerService {
 
 // ProcessManagerCoordinatorService: orchestrates PM execution
 service ProcessManagerCoordinatorService {
+  // Full orchestration with sync mode.
+  // Used by CASCADE mode to call PMs synchronously.
+  rpc Handle (ProcessManagerCoordinatorRequest) returns (ProcessManagerHandleResponse) {
+    option (google.api.http) = {
+      post: "/v1/pm/handle"
+      body: "*"
+    };
+  }
+
   // Speculative execution - returns commands and events without persisting
   rpc HandleSpeculative (SpeculatePmRequest) returns (ProcessManagerHandleResponse) {
     option (google.api.http) = {
@@ -43,6 +52,14 @@ service ProcessManagerCoordinatorService {
       body: "*"
     };
   }
+}
+
+// Request for PM coordinator orchestration.
+// Used by CASCADE mode to invoke PM synchronously.
+message ProcessManagerCoordinatorRequest {
+  EventBook trigger = 1;              // Triggering events
+  SyncMode sync_mode = 2;             // Propagate for CASCADE recursion
+  CascadeErrorMode cascade_error_mode = 3;  // How to handle errors in CASCADE mode
 }
 
 // Request for speculative PM execution.
