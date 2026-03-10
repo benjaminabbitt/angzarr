@@ -129,9 +129,9 @@ RUN --mount=type=cache,id=nuget-cache,target=/root/.nuget/packages,sharing=locke
     dotnet publish PrjOutput/PrjOutput.csproj -c Release -o /out --no-restore
 
 # ============================================================================
-# Runtime base - slim Debian .NET runtime (minimal, secure)
+# Runtime base - ASP.NET Core runtime (required for gRPC)
 # ============================================================================
-FROM mcr.microsoft.com/dotnet/runtime:${DOTNET_VERSION}-bookworm-slim AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION}-bookworm-slim AS runtime
 WORKDIR /app
 RUN adduser --disabled-password --gecos "" --uid 1000 angzarr
 USER angzarr

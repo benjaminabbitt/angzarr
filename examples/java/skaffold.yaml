@@ -50,16 +50,16 @@ deploy:
           applications.business[0].image.repository: ghcr.io/angzarr-io/poker-java-player
           applications.business[0].image.tag: latest
           applications.business[0].domain: player
-          applications.business[0].port: 50401
+          applications.business[0].port: 50601
           # Table aggregate
           applications.business[1].name: poker-table
           applications.business[1].image.repository: ghcr.io/angzarr-io/poker-java-table
           applications.business[1].image.tag: latest
           applications.business[1].domain: table
-          applications.business[1].port: 50402
+          applications.business[1].port: 50602
           # Hand aggregate
           applications.business[2].name: poker-hand
           applications.business[2].image.repository: ghcr.io/angzarr-io/poker-java-hand
           applications.business[2].image.tag: latest
           applications.business[2].domain: hand
-          applications.business[2].port: 50403
+          applications.business[2].port: 50603

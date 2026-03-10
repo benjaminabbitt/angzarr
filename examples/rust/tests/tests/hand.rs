@@ -10,7 +10,7 @@ use angzarr_client::proto::examples::{
     PlayerStackSnapshot, PostBlind, PotAwarded, PotAward, RequestDraw, RevealCards,
     ShowdownStarted, AwardPot,
 };
-use angzarr_client::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
+use angzarr_client::proto::{event_page, page_header, CommandBook, Cover, EventBook, EventPage, Uuid};
 use angzarr_client::{pack_event, try_unpack, type_name_from_url, CommandRejectedError, UnpackAny};
 use cucumber::{given, then, when, World, WriterExt};
 use prost::Message;
@@ -142,7 +142,7 @@ impl HandWorld {
                 .iter()
                 .enumerate()
                 .map(|(i, e)| EventPage {
-                    sequence_type: Some(event_page::SequenceType::Sequence(i as u32)),
+                    sequence_type: Some(page_header::SequenceType::Sequence(i as u32)),
                     payload: Some(event_page::Payload::Event(e.clone())),
                     created_at: None,
                 })
