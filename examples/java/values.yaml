@@ -27,7 +27,7 @@ applications:
   business:
     - name: poker-player
       domain: player
-      port: 50401
+      port: 50601
       image:
         repository: ghcr.io/angzarr-io/poker-java-player
         tag: latest
@@ -35,7 +35,7 @@ applications:
 
     - name: poker-table
       domain: table
-      port: 50402
+      port: 50602
       image:
         repository: ghcr.io/angzarr-io/poker-java-table
         tag: latest
@@ -43,7 +43,7 @@ applications:
 
     - name: poker-hand
       domain: hand
-      port: 50403
+      port: 50603
       image:
         repository: ghcr.io/angzarr-io/poker-java-hand
         tag: latest

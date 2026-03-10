@@ -131,7 +131,7 @@ RUN --mount=type=cache,id=nuget-cache,target=/root/.nuget/packages,sharing=locke
 # ============================================================================
 # Runtime base - slim Debian .NET runtime (minimal, secure)
 # ============================================================================
-FROM mcr.microsoft.com/dotnet/runtime-deps:${DOTNET_VERSION}-bookworm-slim AS runtime
+FROM mcr.microsoft.com/dotnet/runtime:${DOTNET_VERSION}-bookworm-slim AS runtime
 WORKDIR /app
 RUN adduser --disabled-password --gecos "" --uid 1000 angzarr
 USER angzarr
@@ -141,23 +141,23 @@ USER angzarr
 # ============================================================================
 FROM runtime AS agg-player
 COPY --from=build-player --chown=angzarr:angzarr /out ./
-ENV PORT=50401 \
+ENV PORT=50501 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50401
+EXPOSE 50501
 ENTRYPOINT ["./Player.Agg"]
 
 FROM runtime AS agg-table
 COPY --from=build-table --chown=angzarr:angzarr /out ./
-ENV PORT=50402 \
+ENV PORT=50502 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50402
+EXPOSE 50502
 ENTRYPOINT ["./Table.Agg"]
 
 FROM runtime AS agg-hand
 COPY --from=build-hand --chown=angzarr:angzarr /out ./
-ENV PORT=50403 \
+ENV PORT=50503 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50403
+EXPOSE 50503
 ENTRYPOINT ["./Hand.Agg"]
 
 # ============================================================================
@@ -165,30 +165,30 @@ ENTRYPOINT ["./Hand.Agg"]
 # ============================================================================
 FROM runtime AS saga-table-hand
 COPY --from=build-saga-table-hand --chown=angzarr:angzarr /out ./
-ENV PORT=50411 \
+ENV PORT=50511 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50411
+EXPOSE 50511
 ENTRYPOINT ["./Table.SagaHand"]
 
 FROM runtime AS saga-table-player
 COPY --from=build-saga-table-player --chown=angzarr:angzarr /out ./
-ENV PORT=50412 \
+ENV PORT=50512 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50412
+EXPOSE 50512
 ENTRYPOINT ["./Table.SagaPlayer"]
 
 FROM runtime AS saga-hand-table
 COPY --from=build-saga-hand-table --chown=angzarr:angzarr /out ./
-ENV PORT=50413 \
+ENV PORT=50513 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50413
+EXPOSE 50513
 ENTRYPOINT ["./Hand.SagaTable"]
 
 FROM runtime AS saga-hand-player
 COPY --from=build-saga-hand-player --chown=angzarr:angzarr /out ./
-ENV PORT=50414 \
+ENV PORT=50514 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50414
+EXPOSE 50514
 ENTRYPOINT ["./Hand.SagaPlayer"]
 
 # ============================================================================
@@ -196,9 +196,9 @@ ENTRYPOINT ["./Hand.SagaPlayer"]
 # ============================================================================
 FROM runtime AS pmg-hand-flow
 COPY --from=build-pmg-hand-flow --chown=angzarr:angzarr /out ./
-ENV PORT=50491 \
+ENV PORT=50591 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50491
+EXPOSE 50591
 ENTRYPOINT ["./HandFlow"]
 
 # ============================================================================
@@ -206,7 +206,7 @@ ENTRYPOINT ["./HandFlow"]
 # ============================================================================
 FROM runtime AS prj-output
 COPY --from=build-prj-output --chown=angzarr:angzarr /out ./
-ENV PORT=50490 \
+ENV PORT=50590 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-EXPOSE 50490
+EXPOSE 50590
 ENTRYPOINT ["./PrjOutput"]
