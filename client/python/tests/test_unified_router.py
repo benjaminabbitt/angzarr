@@ -570,9 +570,7 @@ class TestRouterIntegration:
 
         prior = types.EventBook(
             cover=types.Cover(domain="player"),
-            pages=[
-                types.EventPage(header=types.PageHeader(sequence=0), event=reg_any)
-            ],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=reg_any)],
         )
 
         # Rebuild state

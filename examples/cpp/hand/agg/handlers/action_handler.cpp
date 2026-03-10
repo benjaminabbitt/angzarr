@@ -43,7 +43,7 @@ examples::ActionTaken handle_action(const examples::PlayerAction& cmd, const Han
         amount = 0;
     } else if (action == examples::CHECK) {
         if (call_amount > 0) {
-            throw angzarr::CommandRejectedError::precondition_failed(
+            throw angzarr::CommandRejectedError::invalid_argument(
                 "Cannot check when there is a bet to call");
         }
         amount = 0;
@@ -76,16 +76,18 @@ examples::ActionTaken handle_action(const examples::PlayerAction& cmd, const Han
             throw angzarr::CommandRejectedError::precondition_failed(
                 "Cannot raise when there is no bet");
         }
-        int64_t total_bet = player->bet_this_round + amount;
-        int64_t raise_amount = total_bet - state.current_bet;
-        if (raise_amount < state.min_raise && amount < player->stack) {
+        // For RAISE, amount is the total bet (raise TO), not additional chips
+        int64_t raise_to = amount;
+        int64_t raise_amount = raise_to - state.current_bet;
+        int64_t chips_needed = raise_to - player->bet_this_round;
+        if (raise_amount < state.min_raise && chips_needed < player->stack) {
             throw angzarr::CommandRejectedError::invalid_argument("Raise must be at least " +
                                                                   std::to_string(state.min_raise));
         }
-        if (amount > player->stack) {
+        if (chips_needed > player->stack) {
             throw angzarr::CommandRejectedError::invalid_argument("Raise exceeds stack");
         }
-        if (player->stack - amount == 0) {
+        if (player->stack - chips_needed == 0) {
             action = examples::ALL_IN;
         }
     } else if (action == examples::ALL_IN) {
@@ -94,9 +96,15 @@ examples::ActionTaken handle_action(const examples::PlayerAction& cmd, const Han
         throw angzarr::CommandRejectedError::invalid_argument("Invalid action");
     }
 
-    int64_t new_stack = player->stack - amount;
-    int64_t new_pot_total = state.get_pot_total() + amount;
-    int64_t new_bet = player->bet_this_round + amount;
+    // For RAISE, use chips_needed for stack/pot calculations
+    int64_t chips_used = amount;
+    if (cmd.action() == examples::RAISE) {
+        chips_used = amount - player->bet_this_round;  // raise_to - bet_this_round
+    }
+
+    int64_t new_stack = player->stack - chips_used;
+    int64_t new_pot_total = state.get_pot_total() + chips_used;
+    int64_t new_bet = player->bet_this_round + chips_used;
     int64_t amount_to_call = std::max(state.current_bet, new_bet) - player->bet_this_round;
 
     auto now = std::chrono::system_clock::now();

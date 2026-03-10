@@ -14,7 +14,7 @@
       ]
     },
     "scm": {
-      "command": "./.scm/bin/scm",
+      "command": "/home/babbitt/go/bin/scm",
       "args": [
         "mcp"
       ],

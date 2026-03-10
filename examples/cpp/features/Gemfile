@@ -1,7 +1,7 @@
 # Gemfile for cucumber-cpp wire protocol testing
-# Pin versions that are known to work with cucumber-cpp 0.7.x
+# Versions must match cucumber-cpp expectations (see cucumber-cpp/Gemfile)
 
 source 'https://rubygems.org'
 
-gem 'cucumber', '~> 3.1.2'
-gem 'cucumber-wire', '~> 0.0.1'
+gem 'cucumber', '~> 7.1.0'
+gem 'cucumber-wire', '~> 6.2.1'

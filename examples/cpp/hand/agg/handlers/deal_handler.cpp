@@ -88,6 +88,13 @@ examples::CardsDealt handle_deal(const examples::DealCards& cmd, const HandState
         }
     }
 
+    // Add remaining deck to event
+    for (size_t i = deck_idx; i < deck.size(); ++i) {
+        auto* card = event.add_remaining_deck();
+        card->set_suit(deck[i].suit);
+        card->set_rank(static_cast<examples::Rank>(deck[i].rank));
+    }
+
     return event;
 }
 

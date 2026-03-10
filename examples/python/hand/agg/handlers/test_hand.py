@@ -1195,13 +1195,17 @@ class TestReveal:
 
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # ShowdownStarted event
         showdown_any = Any()
         showdown = hand.ShowdownStarted()
         showdown_any.Pack(showdown, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any)
+        )
 
         h = Hand(event_book)
         return h, players
@@ -1445,7 +1449,9 @@ class TestEventHandlers:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # BlindPosted
         blind = hand.BlindPosted(
@@ -1457,7 +1463,9 @@ class TestEventHandlers:
         )
         blind_any = Any()
         blind_any.Pack(blind, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=blind_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=blind_any)
+        )
 
         # PotAwarded
         pot = hand.PotAwarded()
@@ -1470,7 +1478,9 @@ class TestEventHandlers:
         )
         pot_any = Any()
         pot_any.Pack(pot, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=pot_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=pot_any)
+        )
 
         h = Hand(event_book)
         player = h.get_player(players[0].player_root)
@@ -1496,7 +1506,9 @@ class TestEventHandlers:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # HandComplete
         complete = hand.HandComplete(
@@ -1505,7 +1517,9 @@ class TestEventHandlers:
         )
         complete_any = Any()
         complete_any.Pack(complete, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=complete_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=complete_any)
+        )
 
         h = Hand(event_book)
         assert h.status == "complete"
@@ -1581,13 +1595,17 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # HandComplete
         complete = hand.HandComplete(table_root=b"\xaa", hand_number=1)
         complete_any = Any()
         complete_any.Pack(complete, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=complete_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=complete_any)
+        )
 
         h = Hand(event_book)
         with pytest.raises(CommandRejectedError, match="complete"):
@@ -1618,7 +1636,9 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # ActionTaken (fold)
         action = hand.ActionTaken(
@@ -1630,7 +1650,9 @@ class TestMoreEdgeCases:
         )
         action_any = Any()
         action_any.Pack(action, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=action_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=action_any)
+        )
 
         h = Hand(event_book)
         with pytest.raises(CommandRejectedError, match="folded"):
@@ -1661,13 +1683,17 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # ShowdownStarted
         showdown = hand.ShowdownStarted()
         showdown_any = Any()
         showdown_any.Pack(showdown, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any)
+        )
 
         h = Hand(event_book)
         with pytest.raises(CommandRejectedError, match="Not in betting"):
@@ -1796,13 +1822,17 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # HandComplete
         complete = hand.HandComplete(table_root=b"\xaa", hand_number=1)
         complete_any = Any()
         complete_any.Pack(complete, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=complete_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=complete_any)
+        )
 
         h = Hand(event_book)
         with pytest.raises(CommandRejectedError, match="complete"):
@@ -1827,7 +1857,9 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # ActionTaken (fold)
         action = hand.ActionTaken(
@@ -1839,13 +1871,17 @@ class TestMoreEdgeCases:
         )
         action_any = Any()
         action_any.Pack(action, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=action_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=action_any)
+        )
 
         # ShowdownStarted
         showdown = hand.ShowdownStarted()
         showdown_any = Any()
         showdown_any.Pack(showdown, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any)
+        )
 
         h = Hand(event_book)
         with pytest.raises(CommandRejectedError, match="folded"):
@@ -1935,13 +1971,17 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         # ShowdownStarted event - puts us in showdown phase
         showdown = hand.ShowdownStarted()
         showdown_any = Any()
         showdown_any.Pack(showdown, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=showdown_any)
+        )
 
         h = Hand(event_book)
         # Current phase is showdown, get_next_phase returns None
@@ -1971,7 +2011,9 @@ class TestMoreEdgeCases:
         dealt.players.extend(players)
         dealt_any = Any()
         dealt_any.Pack(dealt, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any))
+        event_book.pages.append(
+            types.EventPage(header=types.PageHeader(sequence=0), event=dealt_any)
+        )
 
         h = Hand(event_book)
         # Manually set remaining_deck to be too small

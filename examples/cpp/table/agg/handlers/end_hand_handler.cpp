@@ -3,8 +3,6 @@
 #include <google/protobuf/util/time_util.h>
 
 #include <chrono>
-#include <iomanip>
-#include <sstream>
 
 #include "angzarr/errors.hpp"
 
@@ -26,17 +24,13 @@ examples::HandEnded handle_end_hand(const examples::EndHand& cmd, const TableSta
     // Compute stack changes from results
     std::map<std::string, int64_t> stack_changes;
     for (const auto& result : cmd.results()) {
-        // Convert winner_root bytes to hex string
-        std::stringstream ss;
-        for (unsigned char c : result.winner_root()) {
-            ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
-        }
-        std::string player_hex = ss.str();
+        // Use winner_root directly as the key (it's a string-type player identifier)
+        const std::string& player_root = result.winner_root();
 
-        if (stack_changes.find(player_hex) == stack_changes.end()) {
-            stack_changes[player_hex] = 0;
+        if (stack_changes.find(player_root) == stack_changes.end()) {
+            stack_changes[player_root] = 0;
         }
-        stack_changes[player_hex] += result.amount();
+        stack_changes[player_root] += result.amount();
     }
 
     auto now = std::chrono::system_clock::now();

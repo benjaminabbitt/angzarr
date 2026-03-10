@@ -53,7 +53,7 @@ examples::CommunityCardsDealt handle_deal_community(const examples::DealCommunit
     }
 
     if (state.game_variant == examples::FIVE_CARD_DRAW) {
-        throw angzarr::CommandRejectedError::precondition_failed(
+        throw angzarr::CommandRejectedError::invalid_argument(
             "Five card draw doesn't have community cards");
     }
 

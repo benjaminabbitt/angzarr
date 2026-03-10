@@ -7,4 +7,7 @@
 #include "player_steps.cpp"
 #include "table_steps.cpp"
 #include "hand_steps.cpp"
+#include "saga_steps.cpp"
+#include "process_manager_steps.cpp"
+#include "projector_steps.cpp"
 #include "common_steps.cpp"

@@ -4,6 +4,7 @@ import dev.angzarr.*;
 import dev.angzarr.client.Saga;
 import dev.angzarr.client.router.SagaHandlerResponse;
 import io.grpc.stub.StreamObserver;
+import java.util.List;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -29,18 +30,9 @@ public class Main {
     private final TableHandSaga saga = new TableHandSaga();
 
     @Override
-    public void prepare(
-        SagaPrepareRequest request, StreamObserver<SagaPrepareResponse> responseObserver) {
-      var destinations = saga.prepareDestinations(request.getSource());
-      responseObserver.onNext(
-          SagaPrepareResponse.newBuilder().addAllDestinations(destinations).build());
-      responseObserver.onCompleted();
-    }
-
-    @Override
-    public void execute(SagaExecuteRequest request, StreamObserver<SagaResponse> responseObserver) {
-      SagaHandlerResponse response =
-          saga.dispatch(request.getSource(), request.getDestinationsList());
+    public void handle(SagaHandleRequest request, StreamObserver<SagaResponse> responseObserver) {
+      // Dispatch using the annotation-based saga pattern
+      SagaHandlerResponse response = saga.dispatch(request.getSource(), List.of());
 
       SagaResponse.Builder builder =
           SagaResponse.newBuilder().addAllCommands(response.getCommands());

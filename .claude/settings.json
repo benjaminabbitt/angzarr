@@ -16,9 +16,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./.scm/bin/scm hook inject-context d91ae77c92fa775a",
+            "command": "/home/babbitt/go/bin/scm hook inject-context d91ae77c92fa775a",
             "timeout": 60,
-            "_scm": "e8c0ba2f888cfa0d"
+            "_scm": "2cf2dc2e17de68a6"
           }
         ]
       }

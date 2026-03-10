@@ -2356,9 +2356,7 @@ def step_router_dispatches_a_notification(context):
         event_book = types.EventBook(
             cover=types.Cover(domain="source"),
             pages=[
-                types.EventPage(
-                    header=types.PageHeader(sequence=0), event=notif_any
-                )
+                types.EventPage(header=types.PageHeader(sequence=0), event=notif_any)
             ],
         )
         # SingleFluentRouter.dispatch_rejection() handles notifications
@@ -2589,9 +2587,7 @@ def step_notification_arrives_target(context):
         event_book = types.EventBook(
             cover=types.Cover(domain="source"),
             pages=[
-                types.EventPage(
-                    header=types.PageHeader(sequence=0), event=notif_any
-                )
+                types.EventPage(header=types.PageHeader(sequence=0), event=notif_any)
             ],
         )
         commands = context.router.dispatch_rejection(event_book, [])

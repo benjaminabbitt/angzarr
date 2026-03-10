@@ -8,6 +8,7 @@ import com.google.protobuf.Message;
 import dev.angzarr.Cover;
 import dev.angzarr.EventBook;
 import dev.angzarr.EventPage;
+import dev.angzarr.PageHeader;
 import dev.angzarr.client.Errors;
 import dev.angzarr.examples.Currency;
 import dev.angzarr.examples.DepositFunds;

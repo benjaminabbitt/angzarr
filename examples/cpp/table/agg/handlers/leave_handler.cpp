@@ -22,7 +22,7 @@ examples::PlayerLeft handle_leave(const examples::LeaveTable& cmd, const TableSt
 
     const SeatState* seat = state.find_player_seat(cmd.player_root());
     if (!seat) {
-        throw angzarr::CommandRejectedError::not_found("Player is not seated at table");
+        throw angzarr::CommandRejectedError::precondition_failed("Player is not seated at table");
     }
     if (state.status == "in_hand") {
         throw angzarr::CommandRejectedError::precondition_failed(

@@ -245,7 +245,9 @@ def step_player_with_funds_reserved(context):
         type_url="type.googleapis.com/test.FundsReserved",
         value=b"",
     )
-    event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=event_any))
+    event_book.pages.append(
+        types.EventPage(header=types.PageHeader(sequence=0), event=event_any)
+    )
     context.aggregate = TestPlayerWithRejectionHandler(event_book)
 
 
@@ -303,7 +305,9 @@ def step_order_with_created(context):
         type_url="type.googleapis.com/test.OrderCreated",
         value=b"",
     )
-    event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=event_any))
+    event_book.pages.append(
+        types.EventPage(header=types.PageHeader(sequence=0), event=event_any)
+    )
     context.source_event_book = event_book
 
 

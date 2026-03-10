@@ -70,7 +70,9 @@ HandState HandState::from_event_book(const angzarr::EventBook& event_book) {
 void HandState::apply_event(HandState& state, const google::protobuf::Any& event_any) {
     const std::string& type_url = event_any.type_url();
 
-    if (type_url.find("CardsDealt") != std::string::npos) {
+    // Use .TypeName suffix to avoid "CardsDealt" matching "CommunityCardsDealt"
+    if (type_url.find(".CardsDealt") != std::string::npos &&
+        type_url.find("CommunityCardsDealt") == std::string::npos) {
         examples::CardsDealt event;
         if (event_any.UnpackTo(&event)) {
             // Build hand_id from table_root hex + hand_number

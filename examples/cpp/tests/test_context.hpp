@@ -56,7 +56,7 @@ struct ScenarioContext {
     template <typename EventT>
     void add_event(const EventT& event) {
         angzarr::EventPage page;
-        page.set_sequence(next_sequence++);
+        page.mutable_header()->set_sequence(next_sequence++);
         page.mutable_event()->PackFrom(event);
         event_pages.push_back(std::move(page));
     }

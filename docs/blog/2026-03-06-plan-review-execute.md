@@ -3,7 +3,7 @@ slug: plan-review-execute
 title: "Plan, Review, Execute: Getting Better Results from LLMs"
 authors: [angzarr]
 tags: [llm, workflow, patterns, collaboration]
-keywords: [llm, ai, planning, code review, workflow, collaboration, claude, gpt]
+keywords: [llm, ai, planning, code review, workflow, collaboration, claude, gpt, illuminated code walkthrough]
 ---
 
 The most effective LLM workflows share one trait: they force a pause between planning and execution. You wouldn't let a contractor start demolition before approving blueprints. The same applies to AI assistants.
@@ -32,25 +32,21 @@ Plans expose assumptions. An LLM might assume you want bcrypt when you're using 
 
 More importantly, plans surface questions the LLM should ask but often doesn't. "Should this be configurable?" and "What happens on failure?" are questions better asked before implementation than discovered during code review.
 
-## The Walkthrough Pattern
+## The Illuminated Code Walkthrough
 
-For existing code, planning becomes reviewing. The walkthrough pattern structures this:
+For existing code, planning becomes reviewing. The **illuminated code walkthrough** applies the same checkpoint principle: AI narrates execution flow one step at a time while you read along, controlling the pace.
 
-**1. One chunk at a time.** Present a single function, not an entire file. Small enough to reason about. Large enough to be meaningful.
+The interaction:
 
-**2. Explain non-obvious aspects.** What dependencies exist? What side effects occur? What assumptions are baked in?
-
-**3. Question unusual patterns.** If something looks odd, say so. Don't just describe; interrogate. "This defaults to MergeCommutative but merge strategy seems like it should be configurable."
-
-**4. Wait for approval.** Don't proceed until the human says to. Make changes before moving to the next chunk.
-
-The interaction is simple:
-
-1. AI presents a function with explanation
+1. AI presents a function or handler with explanation
 2. AI flags potential issues
 3. AI asks: "Changes, or continue?"
 4. Human responds
 5. Repeat
+
+This works especially well when tracing integration tests or application flows—you follow complete paths from entry point through all possible endings.
+
+For a deeper treatment of illuminated walkthroughs and how they fit with test-driven development, see [Building Deterministic Systems with Non-Deterministic Tools](/blog/deterministic-systems-non-deterministic-tools).
 
 ## Status Tracking for Multi-Session Work
 
@@ -65,7 +61,7 @@ Keep this gitignored. It's session state, not documentation.
 
 ## When to Use This
 
-**Codebase onboarding.** Walk through key files with an expert (human or AI) asking questions at each stop.
+**Codebase onboarding.** Illuminate key flows with the AI narrating as you read.
 
 **Code review with approval gates.** When every change needs sign-off before the next.
 
@@ -75,6 +71,6 @@ Keep this gitignored. It's session state, not documentation.
 
 ## The Core Insight
 
-LLMs work best with feedback loops, not fire-and-forget prompts. Plan mode creates one checkpoint. Walkthrough creates many. Both share the same principle: you can't review what you haven't seen.
+LLMs work best with feedback loops, not fire-and-forget prompts. Plan mode creates one checkpoint. Illuminated walkthroughs create many. Both share the same principle: you can't review what you haven't seen.
 
 Build the pause into your workflow. The LLM will produce better work, and you'll catch problems before they become expensive.

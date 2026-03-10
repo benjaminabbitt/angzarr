@@ -33,7 +33,7 @@ test-acceptance:
     ./{{BUILD_DIR}}/tests/acceptance_tests -p 3902 &
     WIRE_PID=$$!; \
     sleep 1; \
-    cd features && bundle exec cucumber --format progress . || { kill $$WIRE_PID 2>/dev/null; exit 1; }; \
+    cd features && CUCUMBER_PUBLISH_QUIET=true bundle exec cucumber --require step_definitions --format progress . || { kill $$WIRE_PID 2>/dev/null; exit 1; }; \
     kill $$WIRE_PID 2>/dev/null || true
 
 # Run all tests

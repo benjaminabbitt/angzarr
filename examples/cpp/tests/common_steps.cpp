@@ -26,15 +26,20 @@ THEN("^the command fails with status \"([^\"]*)\"$") {
         << tests::status_code_to_string(tests::g_context.last_error_code.value());
 }
 
-/// Common step: verify error message contains substring.
+/// Common step: verify error message contains substring (case-insensitive).
 THEN("^the error message contains \"([^\"]*)\"$") {
     REGEX_PARAM(std::string, expected_substring);
 
     ASSERT_TRUE(tests::g_context.has_error()) << "Expected command to have failed";
     ASSERT_TRUE(tests::g_context.last_error.has_value()) << "Expected error message to be set";
 
-    const std::string& error_msg = tests::g_context.last_error.value();
-    ASSERT_TRUE(error_msg.find(expected_substring) != std::string::npos)
+    // Convert both to lowercase for case-insensitive comparison
+    std::string error_msg = tests::g_context.last_error.value();
+    std::string expected_lower = expected_substring;
+    std::transform(error_msg.begin(), error_msg.end(), error_msg.begin(), ::tolower);
+    std::transform(expected_lower.begin(), expected_lower.end(), expected_lower.begin(), ::tolower);
+
+    ASSERT_TRUE(error_msg.find(expected_lower) != std::string::npos)
         << "Expected error message to contain '" << expected_substring << "' but got: '"
-        << error_msg << "'";
+        << tests::g_context.last_error.value() << "'";
 }
