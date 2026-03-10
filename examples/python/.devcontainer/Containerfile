@@ -2,7 +2,11 @@
 # Uses custom base image from ghcr.io/angzarr
 
 ARG PYTHON_IMAGE=ghcr.io/angzarr-io/angzarr-python:latest
+ARG UV_VERSION=0.10.3
 FROM ${PYTHON_IMAGE}
+
+# Update uv to ensure compatibility with current lock file format
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true
