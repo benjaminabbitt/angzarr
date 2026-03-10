@@ -27,6 +27,14 @@ The public `handle_*` function is thin orchestration: unpack protobuf, call guar
 
 ---
 
+## Querying External Systems
+
+Aggregates may query external systems when deciding how to handle a command—checking inventory with a warehouse API, validating payment details with a processor, or fetching exchange rates. This is an integration point where your event-sourced domain connects with non-DDD systems, legacy applications, or third-party services.
+
+However, aggregates should only **read** from external systems, never **write**. Side effects to external systems belong in projectors, which react to committed events. This separation ensures that failed commands don't leave partial writes in external systems.
+
+---
+
 ## Example: Deposit Handler
 
 ### Guard

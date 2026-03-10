@@ -17,15 +17,19 @@ use crate::orchestration::aggregate::{
     ClientLogic, PipelineMode,
 };
 use crate::orchestration::correlation;
+use crate::orchestration::destination::local::LocalDestinationFetcher;
+use crate::orchestration::destination::DestinationFetcher;
+use crate::orchestration::shared::fetch_destinations;
 use crate::orchestration::{FactExecutor, FactInjectionError};
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, CommandResponse, ContextualCommand,
 };
-use crate::proto_ext::CoverExt;
-use crate::storage::{EventStore, SnapshotStore};
+use crate::proto_ext::{CoverExt, EventBookExt, EventPageExt};
+use crate::services::gap_fill::{GapFiller, LocalEventSource, PositionStoreAdapter};
+use crate::storage::{EventStore, PositionStore, SnapshotStore};
 use crate::utils::retry::saga_backoff;
 
-use super::traits::{ProjectorHandler, SagaHandler};
+use super::traits::{ProcessManagerHandler, ProjectorHandler, SagaHandler};
 
 /// Per-domain storage.
 #[derive(Clone)]
@@ -72,6 +76,23 @@ pub struct SyncSagaEntry {
     pub source_domain: String,
 }
 
+/// In-process sync process manager entry for standalone mode.
+///
+/// Sync PMs are called during CASCADE mode to ensure cross-domain
+/// workflows complete before the original request returns.
+/// Unlike sagas, PMs subscribe to multiple domains and maintain state.
+#[derive(Clone)]
+pub struct SyncPMEntry {
+    /// PM name for logging and checkpoint tracking.
+    pub name: String,
+    /// Handler to call synchronously during CASCADE mode.
+    pub handler: Arc<dyn ProcessManagerHandler>,
+    /// PM's own aggregate domain (for PM state storage).
+    pub pm_domain: String,
+    /// Subscriptions: which domains/event types this PM listens to.
+    pub subscriptions: Vec<crate::descriptor::Target>,
+}
+
 /// Command router for standalone runtime.
 ///
 /// Routes commands to registered aggregate client logic.
@@ -90,12 +111,17 @@ pub struct CommandRouter {
     sync_projectors: Arc<Vec<SyncProjectorEntry>>,
     /// In-process sync sagas (called during CASCADE mode).
     sync_sagas: Arc<Vec<SyncSagaEntry>>,
+    /// In-process sync process managers (called during CASCADE mode).
+    sync_pms: Arc<Vec<SyncPMEntry>>,
     /// The name of the edition this router is operating within, if any.
     edition_name: Option<String>,
+    /// Position store for handler checkpoint tracking.
+    position_store: Arc<dyn PositionStore>,
 }
 
 impl CommandRouter {
     /// Create a new command router.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         business: HashMap<String, Arc<dyn ClientLogic>>,
         stores: HashMap<String, DomainStorage>,
@@ -103,13 +129,16 @@ impl CommandRouter {
         event_bus: Arc<dyn EventBus>,
         sync_projectors: Vec<SyncProjectorEntry>,
         sync_sagas: Vec<SyncSagaEntry>,
+        sync_pms: Vec<SyncPMEntry>,
         edition_name: Option<String>,
+        position_store: Arc<dyn PositionStore>,
     ) -> Self {
         let domains: Vec<_> = business.keys().cloned().collect();
         info!(
             domains = ?domains,
             sync_projectors = sync_projectors.len(),
             sync_sagas = sync_sagas.len(),
+            sync_pms = sync_pms.len(),
             edition = ?edition_name,
             "Command router initialized"
         );
@@ -121,7 +150,9 @@ impl CommandRouter {
             event_bus,
             sync_projectors: Arc::new(sync_projectors),
             sync_sagas: Arc::new(sync_sagas),
+            sync_pms: Arc::new(sync_pms),
             edition_name,
+            position_store,
         }
     }
 
@@ -240,6 +271,10 @@ impl CommandRouter {
     /// Executes sagas that subscribe to the source domain, fetches destinations,
     /// and recursively executes the resulting commands with CASCADE mode.
     ///
+    /// Before calling each saga, fills any gaps in the EventBook relative to
+    /// the saga's checkpoint. This ensures sagas receive complete history.
+    /// After successful handling, updates the saga's checkpoint.
+    ///
     /// Returns a BoxFuture to support async recursion (sagas trigger commands
     /// which trigger more sagas).
     fn call_sync_sagas<'a>(
@@ -251,8 +286,6 @@ impl CommandRouter {
         let span = tracing::info_span!("router.sync_sagas", %source_domain);
 
         async move {
-            use crate::proto_ext::CoverExt;
-
             let source_domain = events.domain();
 
             // Skip infrastructure domains
@@ -273,11 +306,56 @@ impl CommandRouter {
 
             let edition = events.edition().to_string();
 
+            // Get storage for the source domain to fill gaps
+            let storage = match self.stores.get(source_domain) {
+                Some(s) => s,
+                None => {
+                    warn!(domain = %source_domain, "No storage for source domain, skipping saga gap-fill");
+                    return Ok(());
+                }
+            };
+
+            let repo = Arc::new(storage.event_book_repo());
+            let event_source = LocalEventSource::new(repo);
+
+            // Extract root for checkpoint tracking
+            let root = match events.cover.as_ref().and_then(|c| c.root.as_ref()) {
+                Some(r) => r.value.clone(),
+                None => {
+                    warn!("EventBook missing root, skipping saga gap-fill");
+                    return Ok(());
+                }
+            };
+
             for entry in matching_sagas {
+                // Create per-saga position store adapter with handler/domain/edition baked in
+                let position_store = PositionStoreAdapter::new(
+                    self.position_store.clone(),
+                    &entry.name,
+                    source_domain,
+                    &edition,
+                );
+
+                // Create gap filler for this saga
+                let gap_filler = GapFiller::new(position_store, event_source.clone());
+
+                // Fill gaps in EventBook relative to this saga's checkpoint
+                let filled_events = match gap_filler.fill_if_needed(events.clone()).await {
+                    Ok(filled) => filled,
+                    Err(e) => {
+                        warn!(
+                            saga = %entry.name,
+                            error = %e,
+                            "Failed to fill EventBook gaps for saga"
+                        );
+                        continue;
+                    }
+                };
+
                 // Sagas are pure translators — just call handle with source events.
                 // No destination fetching needed. Commands have angzarr_deferred,
                 // framework stamps explicit sequences on delivery.
-                let mut response = match entry.handler.handle(events).await {
+                let mut response = match entry.handler.handle(&filled_events).await {
                     Ok(r) => r,
                     Err(e) => {
                         warn!(
@@ -289,6 +367,19 @@ impl CommandRouter {
                     }
                 };
 
+                // Update checkpoint after successful handling (only if we had events)
+                if let Some(last_page) = filled_events.last_page() {
+                    let max_seq = last_page.sequence_num();
+                    if let Err(e) = gap_filler.update_checkpoint(&root, max_seq).await {
+                        warn!(
+                            saga = %entry.name,
+                            sequence = max_seq,
+                            error = %e,
+                            "Failed to update saga checkpoint"
+                        );
+                    }
+                }
+
                 // Stamp edition on commands
                 for cmd in &mut response.commands {
                     if let Some(c) = &mut cmd.cover {
@@ -299,6 +390,7 @@ impl CommandRouter {
                 debug!(
                     saga = %entry.name,
                     commands = response.commands.len(),
+                    checkpoint = ?filled_events.last_page().map(|p| p.sequence_num()),
                     "Sync saga produced commands"
                 );
 
@@ -323,7 +415,246 @@ impl CommandRouter {
         .boxed()
     }
 
-    /// Execute a command with CASCADE mode (sync projectors + sync sagas).
+    /// Call in-process sync process managers for CASCADE mode.
+    ///
+    /// PMs subscribe to multiple domains. For each PM:
+    /// 1. Check if trigger domain matches any subscription
+    /// 2. Extract correlation_id (required for PMs)
+    /// 3. Gap-fill trigger EventBook for this PM
+    /// 4. Fetch PM state by correlation_id (sync fetch, no gap-fill needed)
+    /// 5. Call prepare() to get additional destinations
+    /// 6. Fetch destinations (sync fetch, no gap-fill needed)
+    /// 7. Call handle() to get commands + PM events + facts
+    /// 8. Persist PM events (via PM domain storage)
+    /// 9. Execute commands with CASCADE mode
+    /// 10. Inject facts
+    /// 11. Update trigger checkpoint
+    fn call_sync_pms<'a>(
+        &'a self,
+        events: &'a crate::proto::EventBook,
+    ) -> futures::future::BoxFuture<'a, Result<(), Status>> {
+        use futures::FutureExt;
+        let trigger_domain = events.domain().to_string();
+        let span = tracing::info_span!("router.sync_pms", %trigger_domain);
+
+        async move {
+            let trigger_domain = events.domain();
+
+            // Skip infrastructure domains
+            if trigger_domain.starts_with('_') {
+                return Ok(());
+            }
+
+            // PMs require correlation_id
+            let correlation_id = match events.correlation_id() {
+                id if !id.is_empty() => id.to_string(),
+                _ => {
+                    debug!("EventBook missing correlation_id, skipping PM processing");
+                    return Ok(());
+                }
+            };
+
+            // Find PMs subscribed to this domain
+            let matching_pms: Vec<_> = self
+                .sync_pms
+                .iter()
+                .filter(|pm| {
+                    pm.subscriptions.iter().any(|sub| sub.domain == trigger_domain)
+                })
+                .collect();
+
+            if matching_pms.is_empty() {
+                return Ok(());
+            }
+
+            let edition = events.edition().to_string();
+
+            // Get storage for the trigger domain to fill gaps
+            let trigger_storage = match self.stores.get(trigger_domain) {
+                Some(s) => s,
+                None => {
+                    warn!(domain = %trigger_domain, "No storage for trigger domain, skipping PM gap-fill");
+                    return Ok(());
+                }
+            };
+
+            let repo = Arc::new(trigger_storage.event_book_repo());
+            let event_source = LocalEventSource::new(repo);
+
+            // Extract root for checkpoint tracking
+            let trigger_root = match events.cover.as_ref().and_then(|c| c.root.as_ref()) {
+                Some(r) => r.value.clone(),
+                None => {
+                    warn!("EventBook missing root, skipping PM gap-fill");
+                    return Ok(());
+                }
+            };
+
+            // Create fetcher for PM state and destinations
+            // Clone the inner HashMap from Arc for LocalDestinationFetcher
+            let fetcher = LocalDestinationFetcher::new((*self.stores).clone());
+
+            for entry in matching_pms {
+                // Create per-PM position store adapter for trigger gap-filling
+                let position_store = PositionStoreAdapter::new(
+                    self.position_store.clone(),
+                    &entry.name,
+                    trigger_domain,
+                    &edition,
+                );
+
+                // Create gap filler for trigger events
+                let gap_filler = GapFiller::new(position_store, event_source.clone());
+
+                // Gap-fill trigger EventBook relative to this PM's checkpoint
+                let filled_trigger = match gap_filler.fill_if_needed(events.clone()).await {
+                    Ok(filled) => filled,
+                    Err(e) => {
+                        warn!(
+                            pm = %entry.name,
+                            error = %e,
+                            "Failed to fill EventBook gaps for PM"
+                        );
+                        continue;
+                    }
+                };
+
+                // Fetch PM state by correlation_id (sync fetch, no gap-fill needed)
+                let pm_state = fetcher.fetch_by_correlation(&entry.pm_domain, &correlation_id).await;
+
+                // Phase 1: Prepare — PM declares additional destinations
+                let destination_covers = entry.handler.prepare(&filled_trigger, pm_state.as_ref());
+
+                // Stamp edition on destination covers
+                let destination_covers: Vec<_> = destination_covers
+                    .into_iter()
+                    .map(|mut cover| {
+                        cover.stamp_edition_if_empty(&edition);
+                        cover
+                    })
+                    .collect();
+
+                // Fetch destinations (sync fetch, no gap-fill needed)
+                let destinations = fetch_destinations(&fetcher, &destination_covers, &correlation_id).await;
+
+                // Phase 2: Handle — produce commands + PM events + facts
+                let result = entry.handler.handle(&filled_trigger, pm_state.as_ref(), &destinations);
+
+                debug!(
+                    pm = %entry.name,
+                    commands = result.commands.len(),
+                    has_process_events = result.process_events.is_some(),
+                    facts = result.facts.len(),
+                    "Sync PM produced output"
+                );
+
+                // Persist PM events before executing commands (crash recovery invariant)
+                if let Some(ref process_events) = result.process_events {
+                    if !process_events.pages.is_empty() {
+                        let pm_storage = match self.stores.get(&entry.pm_domain) {
+                            Some(s) => s,
+                            None => {
+                                warn!(pm_domain = %entry.pm_domain, "No storage for PM domain");
+                                continue;
+                            }
+                        };
+
+                        // PM root = correlation_id as UUID
+                        let pm_root = uuid::Uuid::parse_str(&correlation_id)
+                            .unwrap_or_else(|_| uuid::Uuid::nil());
+
+                        if let Err(e) = pm_storage
+                            .event_store
+                            .add(
+                                &entry.pm_domain,
+                                &edition,
+                                pm_root,
+                                process_events.pages.clone(),
+                                &correlation_id,
+                                None, // No idempotency key
+                                None, // No source tracking
+                            )
+                            .await
+                        {
+                            warn!(
+                                pm = %entry.name,
+                                error = %e,
+                                "Failed to persist PM events"
+                            );
+                            continue;
+                        }
+
+                        info!(
+                            pm = %entry.name,
+                            events = process_events.pages.len(),
+                            "PM events persisted"
+                        );
+                    }
+                }
+
+                // Execute commands with CASCADE mode
+                let mut commands = result.commands;
+                for cmd in &mut commands {
+                    if let Some(c) = &mut cmd.cover {
+                        c.stamp_edition_if_empty(&edition);
+                    }
+                }
+
+                for command in commands {
+                    match self.execute_with_cascade(command).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            warn!(
+                                pm = %entry.name,
+                                error = %e,
+                                "Sync PM command execution failed"
+                            );
+                        }
+                    }
+                }
+
+                // Inject facts
+                for fact in result.facts {
+                    let fact_domain = fact
+                        .cover
+                        .as_ref()
+                        .map(|c| c.domain.as_str())
+                        .unwrap_or("unknown");
+                    debug!(pm = %entry.name, domain = %fact_domain, "Injecting fact from PM");
+
+                    match self.inject_fact(fact, true).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            warn!(
+                                pm = %entry.name,
+                                error = %e,
+                                "PM fact injection failed"
+                            );
+                        }
+                    }
+                }
+
+                // Update trigger checkpoint after successful handling
+                if let Some(last_page) = filled_trigger.last_page() {
+                    let max_seq = last_page.sequence_num();
+                    if let Err(e) = gap_filler.update_checkpoint(&trigger_root, max_seq).await {
+                        warn!(
+                            pm = %entry.name,
+                            sequence = max_seq,
+                            error = %e,
+                            "Failed to update PM trigger checkpoint"
+                        );
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        .instrument(span)
+        .boxed()
+    }
+
+    /// Execute a command with CASCADE mode (sync projectors + sync sagas + sync PMs).
     ///
     /// Used by sync sagas to recursively execute their output commands.
     /// Also used by `LocalCommandExecutor` when receiving a CASCADE command.
@@ -353,6 +684,13 @@ impl CommandRouter {
         if !self.sync_sagas.is_empty() {
             if let Some(ref events) = response.events {
                 self.call_sync_sagas(events).await?;
+            }
+        }
+
+        // CASCADE: call sync process managers
+        if !self.sync_pms.is_empty() {
+            if let Some(ref events) = response.events {
+                self.call_sync_pms(events).await?;
             }
         }
 

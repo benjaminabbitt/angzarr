@@ -78,11 +78,13 @@ This approach isn't free. It adds architectural complexity.
 | Benefit | Cost |
 |---------|------|
 | Complete audit trail | More storage (events accumulate) |
-| Time-travel queries | Eventual consistency (not instant reads) |
+| Time-travel queries | Eventual consistency by default |
 | Debugging via replay | Learning curve for the team |
 | Independent read scaling | More infrastructure to manage |
 
-**Eventual consistency** is the key trade-off. After a write, read models update asynchronously. For most domains, this latency (milliseconds to seconds) is acceptable. For domains requiring synchronous, strongly-consistent responses, traditional approaches may be simpler.
+**Eventual consistency** is the default—and encouraged—pattern. After a write, read models update asynchronously. For most domains, this latency (milliseconds to seconds) is acceptable and enables horizontal scaling.
+
+When specific operations *must* be synchronous, Angzarr supports synchronous flows, including cascaded synchronous flows across sagas. These are more expensive and discouraged for routine operations, but available when business requirements demand immediate consistency. If *most* of your operations require synchronous responses, a traditional CRUD architecture may be a better fit.
 
 ---
 

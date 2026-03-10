@@ -173,7 +173,7 @@ mod router_construction {
     use crate::discovery::StaticServiceDiscovery;
     use crate::orchestration::aggregate::ClientLogic;
     use crate::proto::{BusinessResponse, ContextualCommand};
-    use crate::storage::mock::{MockEventStore, MockSnapshotStore};
+    use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
 
     fn make_router_empty() -> CommandRouter {
         let business = HashMap::new();
@@ -189,7 +189,9 @@ mod router_construction {
             event_bus,
             sync_projectors,
             vec![],
+            vec![],
             None,
+            Arc::new(MockPositionStore::new()),
         )
     }
 
@@ -228,7 +230,9 @@ mod router_construction {
             event_bus,
             sync_projectors,
             vec![],
+            vec![],
             None,
+            Arc::new(MockPositionStore::new()),
         )
     }
 
@@ -365,7 +369,9 @@ mod router_construction {
             event_bus,
             sync_projectors,
             vec![],
+            vec![],
             Some("test-edition".to_string()),
+            Arc::new(MockPositionStore::new()),
         );
 
         assert!(router.domains().is_empty());
@@ -384,5 +390,296 @@ mod sync_projector_tests {
     fn test_sync_projector_entry_name() {
         fn assert_sync<T: Send>() {}
         assert_sync::<SyncProjectorEntry>();
+    }
+}
+
+// ============================================================================
+// SyncPMEntry Tests
+// ============================================================================
+
+mod sync_pm_tests {
+    use super::*;
+    use crate::bus::MockEventBus;
+    use crate::descriptor::Target;
+    use crate::discovery::StaticServiceDiscovery;
+    use crate::orchestration::aggregate::ClientLogic;
+    use crate::proto::{BusinessResponse, ContextualCommand, Edition, EventBook, EventPage};
+    use crate::proto_ext::CoverExt;
+    use crate::standalone::traits::{ProcessManagerHandleResult, ProcessManagerHandler};
+    use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// SyncPMEntry must be Send for async execution.
+    ///
+    /// Why: Sync PMs are called from async context in execute_with_cascade().
+    /// Must be Send to cross await boundaries.
+    #[test]
+    fn test_sync_pm_entry_is_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<SyncPMEntry>();
+    }
+
+    /// SyncPMEntry must be Clone for router construction.
+    ///
+    /// Why: Router stores Vec<SyncPMEntry>, needs to clone for iteration.
+    #[test]
+    fn test_sync_pm_entry_is_clone() {
+        fn assert_clone<T: Clone>() {}
+        assert_clone::<SyncPMEntry>();
+    }
+
+    // ========================================================================
+    // Mock PM Handler
+    // ========================================================================
+
+    /// Mock PM handler that tracks whether methods were called.
+    #[derive(Default)]
+    struct MockPMHandler {
+        prepare_called: AtomicBool,
+        handle_called: AtomicBool,
+    }
+
+    impl MockPMHandler {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn was_prepare_called(&self) -> bool {
+            self.prepare_called.load(Ordering::SeqCst)
+        }
+
+        fn was_handle_called(&self) -> bool {
+            self.handle_called.load(Ordering::SeqCst)
+        }
+    }
+
+    impl ProcessManagerHandler for MockPMHandler {
+        fn prepare(&self, _trigger: &EventBook, _process_state: Option<&EventBook>) -> Vec<Cover> {
+            self.prepare_called.store(true, Ordering::SeqCst);
+            vec![] // No additional destinations
+        }
+
+        fn handle(
+            &self,
+            _trigger: &EventBook,
+            _process_state: Option<&EventBook>,
+            _destinations: &[EventBook],
+        ) -> ProcessManagerHandleResult {
+            self.handle_called.store(true, Ordering::SeqCst);
+            ProcessManagerHandleResult {
+                commands: vec![],
+                process_events: None,
+                facts: vec![],
+            }
+        }
+    }
+
+    // ========================================================================
+    // Test Helpers
+    // ========================================================================
+
+    fn make_router_with_pm(pm_entry: SyncPMEntry, domains: &[&str]) -> CommandRouter {
+        struct DummyLogic;
+
+        #[async_trait]
+        impl ClientLogic for DummyLogic {
+            async fn invoke(&self, _cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+                Ok(BusinessResponse::default())
+            }
+        }
+
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
+        let mut stores: HashMap<String, DomainStorage> = HashMap::new();
+
+        for domain in domains {
+            business.insert(domain.to_string(), Arc::new(DummyLogic));
+            stores.insert(
+                domain.to_string(),
+                DomainStorage {
+                    event_store: Arc::new(MockEventStore::new()),
+                    snapshot_store: Arc::new(MockSnapshotStore::new()),
+                },
+            );
+        }
+
+        let discovery = Arc::new(StaticServiceDiscovery::new());
+        let event_bus = Arc::new(MockEventBus::new());
+
+        CommandRouter::new(
+            business,
+            stores,
+            discovery,
+            event_bus,
+            vec![], // sync_projectors
+            vec![], // sync_sagas
+            vec![pm_entry],
+            None,
+            Arc::new(MockPositionStore::new()),
+        )
+    }
+
+    fn make_event_book(domain: &str, root: Uuid, correlation_id: &str) -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(crate::proto::Uuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: correlation_id.to_string(),
+                edition: Some(Edition {
+                    name: String::new(),
+                    divergences: vec![],
+                }),
+            }),
+            pages: vec![EventPage {
+                header: Some(crate::proto::PageHeader {
+                    sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+                }),
+                created_at: None,
+                payload: None,
+            }],
+            snapshot: None,
+            next_sequence: 1,
+        }
+    }
+
+    // ========================================================================
+    // Correlation ID Requirement Tests
+    // ========================================================================
+
+    /// PMs are skipped when EventBook has no correlation_id.
+    ///
+    /// Why: PMs correlate events across domains via correlation_id. Without it,
+    /// the PM cannot track the cross-domain workflow. Events without correlation_id
+    /// are valid (single-domain flows) but PMs should not process them.
+    #[tokio::test]
+    async fn test_pm_skipped_without_correlation_id() {
+        let handler = Arc::new(MockPMHandler::new());
+        let pm_entry = SyncPMEntry {
+            name: "test-pm".to_string(),
+            handler: handler.clone(),
+            pm_domain: "pm-state".to_string(),
+            subscriptions: vec![Target {
+                domain: "orders".to_string(),
+                types: vec![],
+            }],
+        };
+
+        let router = make_router_with_pm(pm_entry, &["orders", "pm-state"]);
+
+        // Event with empty correlation_id
+        let events = make_event_book("orders", Uuid::new_v4(), "");
+
+        // call_sync_pms should skip PM due to missing correlation_id
+        router.call_sync_pms(&events).await.unwrap();
+
+        assert!(
+            !handler.was_prepare_called(),
+            "PM prepare() should not be called without correlation_id"
+        );
+        assert!(
+            !handler.was_handle_called(),
+            "PM handle() should not be called without correlation_id"
+        );
+    }
+
+    // ========================================================================
+    // Subscription Matching Tests
+    // ========================================================================
+
+    /// PMs are only called when subscription domain matches trigger domain.
+    ///
+    /// Why: A PM subscribing to "orders" should not be called when "inventory"
+    /// events arrive. Subscription filtering ensures PMs only see relevant events.
+    #[tokio::test]
+    async fn test_pm_skipped_for_non_matching_subscription() {
+        let handler = Arc::new(MockPMHandler::new());
+        let pm_entry = SyncPMEntry {
+            name: "test-pm".to_string(),
+            handler: handler.clone(),
+            pm_domain: "pm-state".to_string(),
+            subscriptions: vec![Target {
+                domain: "orders".to_string(), // Subscribed to orders
+                types: vec![],
+            }],
+        };
+
+        let router = make_router_with_pm(pm_entry, &["orders", "inventory", "pm-state"]);
+
+        // Event from inventory domain (PM not subscribed)
+        let events = make_event_book("inventory", Uuid::new_v4(), "corr-123");
+
+        router.call_sync_pms(&events).await.unwrap();
+
+        assert!(
+            !handler.was_prepare_called(),
+            "PM should not be called for non-matching domain"
+        );
+    }
+
+    /// PMs are called when subscription domain matches trigger domain.
+    ///
+    /// Why: Basic happy path - PM subscribed to "orders" receives order events.
+    #[tokio::test]
+    async fn test_pm_called_for_matching_subscription() {
+        let handler = Arc::new(MockPMHandler::new());
+        let pm_entry = SyncPMEntry {
+            name: "test-pm".to_string(),
+            handler: handler.clone(),
+            pm_domain: "pm-state".to_string(),
+            subscriptions: vec![Target {
+                domain: "orders".to_string(),
+                types: vec![],
+            }],
+        };
+
+        let router = make_router_with_pm(pm_entry, &["orders", "pm-state"]);
+
+        // Event from orders domain (PM subscribed)
+        let events = make_event_book("orders", Uuid::new_v4(), "corr-123");
+
+        router.call_sync_pms(&events).await.unwrap();
+
+        assert!(
+            handler.was_prepare_called(),
+            "PM prepare() should be called for matching domain"
+        );
+        assert!(
+            handler.was_handle_called(),
+            "PM handle() should be called for matching domain"
+        );
+    }
+
+    // ========================================================================
+    // Infrastructure Domain Skipping Tests
+    // ========================================================================
+
+    /// PMs skip events from infrastructure domains (prefixed with _).
+    ///
+    /// Why: Infrastructure domains like _topology or _metrics contain
+    /// system-level events that shouldn't trigger business PMs.
+    #[tokio::test]
+    async fn test_pm_skipped_for_infrastructure_domain() {
+        let handler = Arc::new(MockPMHandler::new());
+        let pm_entry = SyncPMEntry {
+            name: "test-pm".to_string(),
+            handler: handler.clone(),
+            pm_domain: "pm-state".to_string(),
+            subscriptions: vec![Target {
+                domain: "_infrastructure".to_string(),
+                types: vec![],
+            }],
+        };
+
+        let router = make_router_with_pm(pm_entry, &["_infrastructure", "pm-state"]);
+
+        let events = make_event_book("_infrastructure", Uuid::new_v4(), "corr-123");
+
+        router.call_sync_pms(&events).await.unwrap();
+
+        assert!(
+            !handler.was_prepare_called(),
+            "PM should skip infrastructure domains"
+        );
     }
 }

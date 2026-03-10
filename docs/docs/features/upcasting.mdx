@@ -89,12 +89,12 @@ message PlayerRegistered { ... }
 package myapp.v2;
 message PlayerRegistered { ... }
 
-// proto/myapp/player.proto (current)
-package myapp;
+// proto/myapp/v3/player.proto (current)
+package myapp.v3;
 message PlayerRegistered { ... }
 ```
 
-Type URLs: `myapp.v1.PlayerRegistered` → `myapp.v2.PlayerRegistered` → `myapp.PlayerRegistered`
+Type URLs: `myapp.v1.PlayerRegistered` → `myapp.v2.PlayerRegistered` → `myapp.v3.PlayerRegistered`
 
 ### Type Name Suffixes
 
@@ -103,7 +103,7 @@ Simpler for small schemas, but clutters the namespace:
 ```protobuf title="illustrative - type name suffixes"
 message PlayerRegisteredV1 { ... }
 message PlayerRegisteredV2 { ... }
-message PlayerRegistered { ... }  // current
+message PlayerRegisteredV3 { ... }  // current
 ```
 
 ---

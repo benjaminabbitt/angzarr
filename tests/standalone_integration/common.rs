@@ -15,7 +15,8 @@ pub use angzarr::bus::{EventBus, EventHandler};
 pub use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 pub use angzarr::proto::{
     command_page, event_page, page_header, CommandBook, CommandPage, ContextualCommand, Cover,
-    EventBook, EventPage, MergeStrategy, PageHeader, Projection, SagaResponse, Uuid as ProtoUuid,
+    Edition, EventBook, EventPage, MergeStrategy, PageHeader, Projection, SagaResponse,
+    Uuid as ProtoUuid,
 };
 pub use angzarr::proto_ext::EventPageExt;
 pub use angzarr::standalone::{

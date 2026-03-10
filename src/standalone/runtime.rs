@@ -251,6 +251,9 @@ impl Runtime {
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         event_bus: Arc<dyn EventBus>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Initialize position store for handler checkpoint tracking
+        let position_store = crate::storage::init_position_store(&default_storage_config).await?;
+
         // Initialize per-domain storage
         let mut domain_stores = HashMap::new();
 
@@ -372,7 +375,7 @@ impl Runtime {
             .collect();
 
         // Create command router with in-process sync projectors (legacy).
-        // TODO: Wire up sync_sagas from RuntimeBuilder when saga registration is added
+        // TODO: Wire up sync_sagas and sync_pms from RuntimeBuilder when registration is added
         let router = Arc::new(CommandRouter::new(
             business.clone(),
             domain_stores.clone(),
@@ -380,7 +383,9 @@ impl Runtime {
             event_bus.clone(),
             sync_projector_entries.clone(),
             vec![], // sync_sagas - will be populated when CASCADE mode is needed
+            vec![], // sync_pms - will be populated when PM registration is added
             None,
+            position_store,
         ));
 
         // Create per-domain handlers using factory pattern (new architecture).

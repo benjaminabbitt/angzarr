@@ -61,11 +61,12 @@ The framework persists the snapshot automatically when the handler provides stat
 
 ### On Command Arrival
 
-The coordinator:
-1. Loads the most recent snapshot (if any)
-2. Replays events after that sequence
-3. Applies the command to reconstructed state
-4. Persists the snapshot if the handler included state
+On command arrival:
+
+1. **Coordinator** loads the most recent snapshot (if any) and events after that sequence
+2. **Aggregate** receives snapshot and events, reconstructs state by replaying events
+3. **Aggregate** receives command, applies business logic to reconstructed state, returns events
+4. **Coordinator** persists events and snapshot (if the handler included state)
 
 ---
 

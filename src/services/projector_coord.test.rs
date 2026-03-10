@@ -24,12 +24,16 @@ use tokio::net::TcpListener;
 use tonic::transport::Server;
 
 fn make_event_book() -> EventBook {
+    use crate::proto::Edition;
     EventBook {
         cover: Some(Cover {
             domain: "orders".to_string(),
             root: Some(ProtoUuid { value: vec![1; 16] }),
             correlation_id: String::new(),
-            edition: None,
+            edition: Some(Edition {
+                name: String::new(),
+                divergences: vec![],
+            }),
         }),
         pages: vec![],
         snapshot: None,

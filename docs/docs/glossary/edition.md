@@ -40,6 +40,12 @@ Edition {
 3. **Historical branches:** Point-in-time forks for analysis
 4. **Testing:** Isolated test scenarios
 
+## No Merge
+
+Edition events cannot be merged back into the main timeline. Events build upon each other—inserting branch events would corrupt the main timeline's causal chain. The event stream is immutable by design.
+
+If an edition reveals the correct outcome, inject corrective facts into the main timeline. The original events remain for audit; the facts record the adjustment.
+
 ## Angzarr-Specific
 
 Editions are an Angzarr-specific concept not found in standard event sourcing. They extend temporal queries with branching capability.

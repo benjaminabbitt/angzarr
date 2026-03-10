@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
@@ -19,7 +19,7 @@ use crate::proto::{
     SpeculateProjectorRequest,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
-use crate::services::event_book_repair::EventBookRepairer;
+use crate::services::gap_fill::{GapFiller, NoOpPositionStore, RemoteEventSource};
 
 /// Connected projector client.
 struct ProjectorConnection {
@@ -34,30 +34,32 @@ struct ProjectorConnection {
 /// the EventQuery service if needed.
 pub struct ProjectorCoord {
     projectors: Arc<RwLock<Vec<ProjectorConnection>>>,
-    repairer: Arc<Mutex<EventBookRepairer>>,
+    gap_filler: Arc<GapFiller<NoOpPositionStore, RemoteEventSource>>,
 }
 
 impl ProjectorCoord {
     /// Create a new projector coordinator.
-    pub fn new(repairer: EventBookRepairer) -> Self {
+    pub fn new(gap_filler: GapFiller<NoOpPositionStore, RemoteEventSource>) -> Self {
         Self {
             projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: Arc::new(Mutex::new(repairer)),
+            gap_filler: Arc::new(gap_filler),
         }
     }
 
     /// Create a new projector coordinator, connecting to EventQuery service.
     pub async fn connect(event_query_address: &str) -> Result<Self, String> {
-        let repairer = EventBookRepairer::connect(event_query_address)
+        let event_source = RemoteEventSource::connect(event_query_address)
             .await
             .map_err(|e| format!("Failed to connect to EventQuery service: {}", e))?;
 
+        let gap_filler = GapFiller::new(NoOpPositionStore, event_source);
+
         info!(
             address = %event_query_address,
-            "Connected to EventQuery service for EventBook repair"
+            "Connected to EventQuery service for gap filling"
         );
 
-        Ok(Self::new(repairer))
+        Ok(Self::new(gap_filler))
     }
 
     /// Register a projector endpoint.
@@ -92,15 +94,13 @@ impl ProjectorCoordinatorService for ProjectorCoord {
             .events
             .ok_or_else(|| Status::invalid_argument(super::errmsg::EVENT_REQUEST_MISSING_EVENTS))?;
 
-        // Repair EventBook if incomplete
+        // Fill gaps in EventBook if incomplete
         let event_book = self
-            .repairer
-            .lock()
-            .await
-            .repair(event_book)
+            .gap_filler
+            .fill_if_needed(event_book)
             .await
             .map_err(|e| {
-                error!(error = %e, "Failed to repair EventBook");
+                error!(error = %e, "Failed to fill EventBook gaps");
                 Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
             })?;
 
@@ -148,15 +148,13 @@ impl ProjectorCoordinatorService for ProjectorCoord {
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         let event_book = request.into_inner();
 
-        // Repair EventBook if incomplete
+        // Fill gaps in EventBook if incomplete
         let event_book = self
-            .repairer
-            .lock()
-            .await
-            .repair(event_book)
+            .gap_filler
+            .fill_if_needed(event_book)
             .await
             .map_err(|e| {
-                error!(error = %e, "Failed to repair EventBook");
+                error!(error = %e, "Failed to fill EventBook gaps");
                 Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
             })?;
 
@@ -195,15 +193,13 @@ impl ProjectorCoordinatorService for ProjectorCoord {
             Status::invalid_argument(super::errmsg::SPECULATE_PROJ_MISSING_EVENTS)
         })?;
 
-        // Repair EventBook if incomplete
+        // Fill gaps in EventBook if incomplete
         let event_book = self
-            .repairer
-            .lock()
-            .await
-            .repair(event_book)
+            .gap_filler
+            .fill_if_needed(event_book)
             .await
             .map_err(|e| {
-                error!(error = %e, "Failed to repair EventBook");
+                error!(error = %e, "Failed to fill EventBook gaps");
                 Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
             })?;
 

@@ -694,7 +694,7 @@ Accepts events across multiple domains, joins them together via the correlation 
 ### Event Design
 Sagas and projectors operate only on the events they receive—no querying. If they lack information, enrich the event at the source aggregate.
 
-Aggregates may query projections (read models) when processing commands to gather information for decision-making and building events.
+Aggregates may query external systems when processing commands to gather information for decision-making—projections, third-party APIs, legacy systems. However, aggregates should only *read* from external systems, never *write*. Side effects to external systems belong in projectors, which react to committed events.
 
 Keep events lean. Use IDs to reference immutable objects rather than embedding full data—if the object won't change, the ID suffices.
 

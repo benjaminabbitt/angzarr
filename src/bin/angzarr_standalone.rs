@@ -390,7 +390,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Service discovery (static — no K8s in standalone)
     let discovery: Arc<dyn ServiceDiscovery> = Arc::new(StaticServiceDiscovery::new());
 
-    // Create command router (no in-process sync projectors/sagas in binary mode)
+    // Initialize position store for handler checkpoint tracking
+    let position_store = angzarr::storage::init_position_store(&config.storage).await?;
+
+    // Create command router (no in-process sync projectors/sagas/PMs in binary mode)
     let router = Arc::new(CommandRouter::new(
         client_logic,
         domain_stores.clone(),
@@ -398,7 +401,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_bus.clone(),
         vec![], // sync_projectors
         vec![], // sync_sagas
-        None,   // topology_sender
+        vec![], // sync_pms
+        None,   // edition_name
+        position_store,
     ));
 
     // Create local command executor and destination fetcher

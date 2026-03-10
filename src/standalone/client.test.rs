@@ -27,6 +27,7 @@ use crate::proto::command_page;
 use crate::proto::temporal_query::PointInTime;
 use crate::proto::TemporalQuery;
 use crate::standalone::CommandRouter;
+use crate::storage::MockPositionStore;
 
 // ============================================================================
 // Test Helpers
@@ -44,7 +45,9 @@ impl CommandBuilder {
             Arc::new(ChannelEventBus::new(ChannelConfig::publisher())),
             vec![],
             vec![],
+            vec![],
             None,
+            Arc::new(MockPositionStore::new()),
         ));
         Self::new(router, domain, root)
     }

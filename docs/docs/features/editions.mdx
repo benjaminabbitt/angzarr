@@ -12,7 +12,9 @@ sidebar_position: 4
 
 An **edition** is a branch of history. The main timeline (empty edition name) continues undisturbed while you explore an alternate path—a simulation, a what-if analysis, a training scenario.
 
-When you're done, delete the branch. Editions are for exploration, not migration—there's no merge operation that folds branch events into the main timeline.
+When you're done, delete the branch. Editions are for exploration, not migration—there is no merge operation. Events build upon each other; merging branch events into the main timeline would corrupt that timeline by inserting events that reference different prior state. The event stream is immutable by design.
+
+If an edition reveals the "correct" outcome (e.g., after dispute resolution), inject facts into the main timeline that adjust state accordingly. The original events remain (providing audit trail), and the corrective facts record the external determination. See [Commands vs Facts](../components/commands-vs-facts) for fact injection patterns.
 
 ---
 

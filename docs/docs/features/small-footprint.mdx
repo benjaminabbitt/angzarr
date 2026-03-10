@@ -31,7 +31,11 @@ Angzarr draws a surgical line between your code and framework code:
 | | Schema evolution |
 | | Cross-domain routing |
 
-Your aggregate is a pure function: given state and command, produce events. No database connections. No message bus configuration. No infrastructure concerns.
+Your aggregate focuses on one job: given state and command, decide the outcome and produce events. No message bus configuration. No retry logic. No infrastructure concerns leaking into business decisions.
+
+Aggregates *may* query external systems when they need additional context to decide on a command—checking inventory availability, validating with a payment provider, or fetching current exchange rates. This is one of the integration points where your DDD/CQRS-ES system connects with non-DDD systems, legacy applications, or third-party services. But the core responsibility remains: your aggregate decides the disposition of commands within its domain.
+
+Note that aggregates should *query* external systems, not *mutate* them. Side effects to external systems belong in projectors, which react to committed events.
 
 ---
 

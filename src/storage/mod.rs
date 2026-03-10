@@ -58,7 +58,7 @@ pub use bigtable::{
 pub use dynamo::{DynamoConfig, DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
 #[cfg(feature = "immudb")]
 pub use immudb::ImmudbEventStore;
-pub use mock::{MockEventStore, MockSnapshotStore};
+pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
 #[cfg(feature = "nats")]
 pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
 #[cfg(feature = "postgres")]

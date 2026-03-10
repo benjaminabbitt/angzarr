@@ -132,6 +132,8 @@ Command → Aggregate → Events
 
 - Contains business logic and validation rules
 - Enforces invariants (e.g., "can't withdraw more than available balance")
+- May query external systems (APIs, projections, legacy systems) for decision-making
+- Should never write to external systems—leave that to projectors
 - Emits events as immutable facts
 - One aggregate type per bounded context
 

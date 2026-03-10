@@ -1,8 +1,8 @@
 //! gRPC service implementations.
 
 pub mod aggregate;
-pub mod event_book_repair;
 pub mod event_query;
+pub mod gap_fill;
 pub mod projector_coord;
 pub mod snapshot_handler;
 pub mod upcaster;
@@ -32,8 +32,8 @@ pub mod errmsg {
     /// Temporal query missing point in time.
     pub const TEMPORAL_QUERY_MISSING_POINT: &str =
         "TemporalQuery must specify as_of_time or as_of_sequence";
-    /// EventBook repair failure prefix.
-    pub const REPAIR_EVENTBOOK_FAILED: &str = "Failed to repair EventBook: ";
+    /// EventBook gap-fill failure prefix.
+    pub const REPAIR_EVENTBOOK_FAILED: &str = "Failed to fill EventBook gaps: ";
     /// Projector failure suffix (appears after projector name).
     pub const PROJECTOR_FAILED: &str = " failed: ";
 }
@@ -45,7 +45,9 @@ pub use crate::utils::saga_compensation::{
     EscalationHandler, NoopEscalationHandler,
 };
 pub use aggregate::AggregateService;
-pub use event_book_repair::{EventBookRepairer, RepairError};
 pub use event_query::EventQueryService;
+pub use gap_fill::{
+    GapFiller, LocalEventSource, NoOpPositionStore, PositionStoreAdapter, RemoteEventSource,
+};
 pub use projector_coord::ProjectorCoord;
 pub use upcaster::{Upcaster, UpcasterConfig};

@@ -89,17 +89,19 @@ your domain's specific events and rejection reasons.
 :::
 
 ```python title="illustrative - RevocationResponse options"
-@rejected("player", "ReserveFunds")
-def handle_reserve_failed(state, notification):
-    if notification.rejection_reason == "insufficient_balance":
-        return RevocationResponse(
-            events=[PlayerSatOut(reason="insufficient_funds")],
-            emit_system_revocation=False,
-        )
+@rejected(domain="player", command="ReserveFunds")
+def handle_reserve_failed(self, notification: Notification):
+    rejection = RejectionNotification()
+    notification.payload.Unpack(rejection)
+
+    if rejection.rejection_reason == "insufficient_balance":
+        # Return event directly—framework auto-applies it
+        return PlayerSatOut(reason="insufficient_funds")
     else:
-        return RevocationResponse(
-            events=[JoinTableFailed(reason=notification.rejection_reason)],
-            send_to_dead_letter_queue=True,
+        # Delegate to framework for DLQ/escalation
+        return delegate_to_framework(
+            reason=rejection.rejection_reason,
+            send_to_dead_letter=True,
             escalate=True,  # Alert floor manager
         )
 ```
@@ -124,15 +126,15 @@ will define domain-specific events for each compensating action.
 
 ```python title="illustrative - multi-step compensation"
 # Player tried to join table but verification failed
-@rejected("verification", "VerifyPlayer")
-def handle_verification_failed(state: TableState, notification):
+@rejected(domain="verification", command="VerifyPlayer")
+def handle_verification_failed(self, notification: Notification):
     # Already reserved their seat and took their buy-in
-    # Need to undo both
-    return [
-        SeatReleased(seat=state.pending_seat),
-        BuyInRefunded(player_id=state.pending_player, amount=state.pending_buyin),
-        JoinRejected(player_id=state.pending_player, reason="verification_failed"),
-    ]
+    # Need to undo both—return multiple events as a tuple
+    return (
+        SeatReleased(seat=self.state.pending_seat),
+        BuyInRefunded(player_id=self.state.pending_player, amount=self.state.pending_buyin),
+        JoinRejected(player_id=self.state.pending_player, reason="verification_failed"),
+    )
 ```
 
 Each compensation event is recorded. The audit trail shows the full sequence: attempt, failure, recovery.

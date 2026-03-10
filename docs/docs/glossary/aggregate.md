@@ -13,5 +13,8 @@ Domain logic component. Accepts commands, emits events. Single domain. The sourc
 Aggregates are the core building blocks in Angzarr. They:
 - Receive commands from clients or other components
 - Validate business rules against current state
+- May query external systems (APIs, projections) for decision-making
 - Emit events that represent state changes
 - Are identified by a root ID within their domain
+
+Aggregates should only *read* from external systems, never write. Side effects to external systems belong in projectors.

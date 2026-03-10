@@ -27,7 +27,7 @@ Any language with gRPC support works. These six have thin client libraries that 
 
 ## Proto as Contract
 
-The secret is [Protocol Buffers](https://protobuf.dev/). Your data model—commands, events, state—lives in `.proto` files:
+The magic is [Protocol Buffers](https://protobuf.dev/). Your data model—commands, events, state—lives in `.proto` files:
 
 ```protobuf title="illustrative - shared proto contract"
 // Shared across all languages
@@ -48,6 +48,8 @@ enum ActionType {
 ```
 
 Generate bindings for each language. The types are the contract.
+
+The architecture could use alternative serialization and RPC technologies, but Protocol Buffers and gRPC are fast, well-supported across languages, and already in use in enterprises today.
 
 ---
 
@@ -87,7 +89,7 @@ flowchart TB
     events --> java
 ```
 
-- **Rust**: Hand aggregate handles the hot path—player actions during live play. Microsecond latency matters.
+- **Rust**: Hand aggregate handles player actions during live play. Maintainability and security with high performance.
 - **Python**: ML projector consumes events for model training and real-time predictions. PyTorch integration is natural.
 - **Java**: Payment gateway integration speaks to legacy banking APIs. The team already knows the ecosystem.
 
