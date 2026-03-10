@@ -4,6 +4,7 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "angzarr-client"
+version = "0.1.4"
 source = { editable = "../../client/python" }
 dependencies = [
     { name = "googleapis-common-protos" },
