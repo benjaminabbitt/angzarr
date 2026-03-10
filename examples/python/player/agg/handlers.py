@@ -10,12 +10,12 @@ Handler signature (decorated):
 The decorator auto-unpacks the command and packs the returned event.
 """
 
+from state import PlayerState
+
 from angzarr_client import command_handler, now
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-
-from .state import PlayerState
 
 
 @command_handler(player.RegisterPlayer)
