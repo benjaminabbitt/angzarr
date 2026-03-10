@@ -3,9 +3,13 @@ plugins {
 }
 
 dependencies {
-    // Project dependencies - need testImplementation for test code to use
-    testImplementation("dev.angzarr:client")
-    testImplementation("dev.angzarr:proto")
+    // Composite build dependencies - use implementation to ensure dependency
+    // substitution works correctly (testImplementation alone can fail in CI
+    // when the module has no main sources)
+    implementation("dev.angzarr:client")
+    implementation("dev.angzarr:proto")
+
+    // Project dependencies
     testImplementation(project(":player-agg"))
     testImplementation(project(":table-agg"))
     testImplementation(project(":hand-agg"))
