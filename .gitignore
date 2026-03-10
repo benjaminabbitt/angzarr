@@ -17,6 +17,10 @@ examples/*/data/
 examples/*/*/data/
 examples/*/*.txt
 examples/*/*/*.txt
+# But keep CMakeLists.txt files
+!examples/*/CMakeLists.txt
+!examples/*/*/CMakeLists.txt
+!examples/*/*/*/CMakeLists.txt
 examples/*/tmp/
 examples/*/*/tmp/
 .plan/
