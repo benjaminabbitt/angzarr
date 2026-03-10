@@ -57,7 +57,6 @@ public class Main {
               .setActionOnPosition(state.getActionOnPosition())
               .setCurrentBet(state.getCurrentBet())
               .setMinRaise(state.getMinRaise())
-              .setPotTotal(state.getPotTotal())
               .setDealerPosition(state.getDealerPosition())
               .setSmallBlindPosition(state.getSmallBlindPosition())
               .setBigBlindPosition(state.getBigBlindPosition())
