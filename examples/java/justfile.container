@@ -19,7 +19,7 @@ test-unit:
     ./gradlew test --tests "*Test"
 
 test-acceptance:
-    ./gradlew test --tests "*IT" --tests "*AcceptanceTest"
+    ./gradlew :tests:test
 
 test:
     ./gradlew test
