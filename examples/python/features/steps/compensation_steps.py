@@ -324,7 +324,9 @@ def step_player_with_funds_reserved(context):
         type_url="type.googleapis.com/test.FundsReserved",
         value=b"",
     )
-    event_book.pages.append(types.EventPage(event=event_any))
+    event_book.pages.append(
+        types.EventPage(header=types.PageHeader(sequence=0), event=event_any)
+    )
     context.aggregate = TestPlayerWithRejectionHandler(event_book)
 
 
@@ -385,7 +387,9 @@ def step_order_with_created(context):
         type_url="type.googleapis.com/test.OrderCreated",
         value=b"",
     )
-    event_book.pages.append(types.EventPage(event=event_any))
+    event_book.pages.append(
+        types.EventPage(header=types.PageHeader(sequence=0), event=event_any)
+    )
     context.source_event_book = event_book
 
 
@@ -2351,7 +2355,11 @@ def step_router_dispatches_a_notification(context):
         notif_any.Pack(context.notification, type_url_prefix="type.googleapis.com/")
         event_book = types.EventBook(
             cover=types.Cover(domain="source"),
-            pages=[types.EventPage(event=notif_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(sequence=0), event=notif_any
+                )
+            ],
         )
         # SingleFluentRouter.dispatch_rejection() handles notifications
         commands = context.router.dispatch_rejection(event_book, [])
@@ -2580,7 +2588,11 @@ def step_notification_arrives_target(context):
         notif_any.Pack(context.notification, type_url_prefix="type.googleapis.com/")
         event_book = types.EventBook(
             cover=types.Cover(domain="source"),
-            pages=[types.EventPage(event=notif_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(sequence=0), event=notif_any
+                )
+            ],
         )
         commands = context.router.dispatch_rejection(event_book, [])
         context.response = commands
@@ -2607,7 +2619,11 @@ def step_router_dispatches(context):
             notif_any.Pack(context.notification, type_url_prefix="type.googleapis.com/")
             event_book = types.EventBook(
                 cover=types.Cover(domain="source"),
-                pages=[types.EventPage(event=notif_any)],
+                pages=[
+                    types.EventPage(
+                        header=types.PageHeader(sequence=0), event=notif_any
+                    )
+                ],
             )
             commands = context.router.dispatch_rejection(event_book, [])
             context.response = commands

@@ -89,7 +89,7 @@ class PlayerTableSaga(Saga):
 
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         self.emit_event(fact_book)

@@ -38,7 +38,7 @@ def make_event_page(event_msg, time_str: str = None) -> types.EventPage:
         created_at = make_timestamp()
 
     return types.EventPage(
-        sequence=0,
+        header=types.PageHeader(sequence=0),
         event=event_any,
         created_at=created_at,
     )
@@ -503,7 +503,7 @@ def step_given_event_book_with_two_events(context):
 def step_given_unknown_event(context, type_url):
     """Create an unknown event type."""
     context.event_page_override = types.EventPage(
-        sequence=0,
+        header=types.PageHeader(sequence=0),
         event=ProtoAny(type_url=type_url),
         created_at=make_timestamp(),
     )

@@ -44,7 +44,7 @@ def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
     event_any = ProtoAny()
     event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
-        sequence=seq,
+        header=types.PageHeader(sequence=seq),
         event=event_any,
         created_at=make_timestamp(),
     )
@@ -180,7 +180,7 @@ def _execute_handler(context, method_name: str, cmd):
         event_any = ProtoAny()
         event_any.Pack(result_event, type_url_prefix="type.googleapis.com/")
         result_page = types.EventPage(
-            sequence=seq,
+            header=types.PageHeader(sequence=seq),
             event=event_any,
             created_at=make_timestamp(),
         )

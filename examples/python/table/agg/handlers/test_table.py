@@ -467,7 +467,7 @@ class TestStateAccessors:
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=created_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=created_any))
 
         # Two players joined
         for i, root in enumerate([b"\x01", b"\x02"]):
@@ -478,13 +478,13 @@ class TestStateAccessors:
             )
             joined_any = Any()
             joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
-            event_book.pages.append(types.EventPage(event=joined_any))
+            event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=joined_any))
 
         # Player 1 sat out
         sat_out = table.PlayerSatOut(player_root=b"\x01")
         sat_out_any = Any()
         sat_out_any.Pack(sat_out, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=sat_out_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=sat_out_any))
 
         t = Table(event_book)
         assert t.player_count == 2
@@ -513,7 +513,7 @@ class TestEventHandlers:
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=created_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=created_any))
 
         # Player joined
         joined = table.PlayerJoined(
@@ -523,19 +523,19 @@ class TestEventHandlers:
         )
         joined_any = Any()
         joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=joined_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=joined_any))
 
         # Player sat out
         sat_out = table.PlayerSatOut(player_root=b"\x01")
         sat_out_any = Any()
         sat_out_any.Pack(sat_out, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=sat_out_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=sat_out_any))
 
         # Player sat back in
         sat_in = table.PlayerSatIn(player_root=b"\x01")
         sat_in_any = Any()
         sat_in_any.Pack(sat_in, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=sat_in_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=sat_in_any))
 
         t = Table(event_book)
         seat = t.find_player_seat(b"\x01")
@@ -561,7 +561,7 @@ class TestEventHandlers:
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=created_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=created_any))
 
         # Player joined with 500
         joined = table.PlayerJoined(
@@ -571,13 +571,13 @@ class TestEventHandlers:
         )
         joined_any = Any()
         joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=joined_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=joined_any))
 
         # Chips added (re-buy)
         chips_added = table.ChipsAdded(player_root=b"\x01", new_stack=800)
         chips_any = Any()
         chips_any.Pack(chips_added, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=chips_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=chips_any))
 
         t = Table(event_book)
         seat = t.find_player_seat(b"\x01")
@@ -602,7 +602,7 @@ class TestEventHandlers:
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=created_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=created_any))
 
         # Two players joined
         for i, root in enumerate([b"\x01", b"\x02"]):
@@ -613,7 +613,7 @@ class TestEventHandlers:
             )
             joined_any = Any()
             joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
-            event_book.pages.append(types.EventPage(event=joined_any))
+            event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=joined_any))
 
         # HandStarted
         started = table.HandStarted(
@@ -623,7 +623,7 @@ class TestEventHandlers:
         )
         started_any = Any()
         started_any.Pack(started, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=started_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=started_any))
 
         # HandEnded with stack changes
         player1_hex = b"\x01".hex()
@@ -634,7 +634,7 @@ class TestEventHandlers:
         )
         ended_any = Any()
         ended_any.Pack(ended, type_url_prefix="type.googleapis.com/")
-        event_book.pages.append(types.EventPage(event=ended_any))
+        event_book.pages.append(types.EventPage(header=types.PageHeader(sequence=0), event=ended_any))
 
         t = Table(event_book)
         assert t.find_player_seat(b"\x01").stack == 600

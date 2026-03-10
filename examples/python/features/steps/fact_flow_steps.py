@@ -113,7 +113,7 @@ class HandPlayerFactSaga(Saga):
         # Build EventBook with fact
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         # Emit fact using emit_event (facts are events that bypass validation)
@@ -159,7 +159,7 @@ class TablePlayerFactSaga(Saga):
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         self.emit_event(fact_book)
@@ -188,7 +188,7 @@ class TablePlayerFactSaga(Saga):
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         self.emit_event(fact_book)
@@ -245,7 +245,7 @@ class PlayerTableFactSaga(Saga):
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         self.emit_event(fact_book)
@@ -274,7 +274,7 @@ class PlayerTableFactSaga(Saga):
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         self.emit_event(fact_book)
@@ -311,7 +311,7 @@ class FailingFactSaga(Saga):
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(event=fact_any)],
+            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
         )
 
         self.emit_event(fact_book)
