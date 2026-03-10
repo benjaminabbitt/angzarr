@@ -100,20 +100,26 @@ class HandPlayerFactSaga(Saga):
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
 
         # Build Cover with required metadata for fact injection
-        correlation_id = str(uuid.uuid4())
         external_id = f"action-{player_root.hex()}-round-{event.completed_phase}"
 
         cover = types.Cover(
             domain="player",
             root=types.UUID(value=player_root),
-            correlation_id=correlation_id,
-            external_id=external_id,
         )
 
-        # Build EventBook with fact
+        # Build EventBook with fact - use ExternalDeferredSequence for external_id
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id=external_id
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         # Emit fact using emit_event (facts are events that bypass validation)
@@ -143,7 +149,6 @@ class TablePlayerFactSaga(Saga):
         cover = types.Cover(
             domain="player",
             root=types.UUID(value=event.player_root),
-            external_id=external_id,
         )
 
         # Emit a player-domain event as fact
@@ -154,12 +159,21 @@ class TablePlayerFactSaga(Saga):
             deadline=make_timestamp(),
         )
 
-        # Pack into EventBook
+        # Pack into EventBook with ExternalDeferredSequence for external_id
         fact_any = ProtoAny()
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id=external_id
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         self.emit_event(fact_book)
@@ -174,7 +188,6 @@ class TablePlayerFactSaga(Saga):
         cover = types.Cover(
             domain="player",
             root=types.UUID(value=event.player_root),
-            external_id=external_id,
         )
 
         fact = player.ActionRequested(
@@ -183,12 +196,21 @@ class TablePlayerFactSaga(Saga):
             deadline=make_timestamp(),
         )
 
-        # Pack into EventBook
+        # Pack into EventBook with ExternalDeferredSequence for external_id
         fact_any = ProtoAny()
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id=external_id
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         self.emit_event(fact_book)
@@ -216,11 +238,10 @@ class PlayerTableFactSaga(Saga):
         event_any,
         root: bytes = None,
         correlation_id: str = "",
-        destinations: list[types.EventBook] = None,
     ) -> list[types.CommandBook]:
         """Override to store source root for handler access."""
         self._current_root = root or b""
-        return super().dispatch(event_any, root, correlation_id, destinations)
+        return super().dispatch(event_any, root, correlation_id)
 
     @handles(player.PlayerSittingOut)
     def handle_sitting_out(
@@ -238,14 +259,22 @@ class PlayerTableFactSaga(Saga):
         cover = types.Cover(
             domain="table",
             root=types.UUID(value=event.table_root),
-            external_id=external_id,
         )
 
         fact_any = ProtoAny()
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id=external_id
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         self.emit_event(fact_book)
@@ -267,14 +296,22 @@ class PlayerTableFactSaga(Saga):
         cover = types.Cover(
             domain="table",
             root=types.UUID(value=event.table_root),
-            external_id=external_id,
         )
 
         fact_any = ProtoAny()
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id=external_id
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         self.emit_event(fact_book)
@@ -303,15 +340,23 @@ class FailingFactSaga(Saga):
         cover = types.Cover(
             domain="nonexistent",
             root=types.UUID(value=b"player-test"),
-            external_id="will-fail",
         )
 
-        # Pack into EventBook
+        # Pack into EventBook with ExternalDeferredSequence for external_id
         fact_any = ProtoAny()
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id="will-fail"
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         self.emit_event(fact_book)
@@ -493,8 +538,10 @@ def step_given_fact_with_external_id(context, external_id):
     context.fact_cover = types.Cover(
         domain="player",
         root=types.UUID(value=context.player_root),
-        external_id=external_id,
-        correlation_id=str(uuid.uuid4()),
+    )
+    # external_id is now in PageHeader.external_deferred
+    context.fact_page_header = types.PageHeader(
+        external_deferred=types.ExternalDeferredSequence(external_id=external_id)
     )
 
     # Track injection count
@@ -781,12 +828,17 @@ def step_then_cover_has_root(context):
 
 @then(r"the fact Cover has external_id set for idempotency")
 def step_then_cover_has_external_id(context):
-    """Verify fact Cover has external_id for idempotency."""
+    """Verify fact has external_id for idempotency (now in PageHeader)."""
     assert context.saga_response is not None, "No saga response"
 
     for event_book in context.saga_response.events:
         assert event_book.cover is not None, "No cover"
-        assert event_book.cover.external_id, "No external_id set"
+        # external_id is now in PageHeader.external_deferred
+        for page in event_book.pages:
+            if page.header.HasField("external_deferred"):
+                assert page.header.external_deferred.external_id, "No external_id set"
+                return
+    raise AssertionError("No page with external_deferred found")
 
 
 @then(r"the fact Cover has correlation_id for traceability")

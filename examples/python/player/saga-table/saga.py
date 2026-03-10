@@ -38,11 +38,10 @@ class PlayerTableSaga(Saga):
         event_any,
         root: bytes = None,
         correlation_id: str = "",
-        destinations: list[types.EventBook] = None,
     ) -> list[types.CommandBook]:
         """Override to store source root for handler access."""
         self._current_root = root or b""
-        return super().dispatch(event_any, root, correlation_id, destinations)
+        return super().dispatch(event_any, root, correlation_id)
 
     @handles(player.PlayerSittingOut)
     def handle_sitting_out(
@@ -81,15 +80,24 @@ class PlayerTableSaga(Saga):
         cover = types.Cover(
             domain="table",
             root=types.UUID(value=table_root),
-            external_id=external_id,
         )
 
         fact_any = ProtoAny()
         fact_any.Pack(fact, type_url_prefix="type.googleapis.com/")
 
+        # Use ExternalDeferredSequence for external_id (idempotency)
         fact_book = types.EventBook(
             cover=cover,
-            pages=[types.EventPage(header=types.PageHeader(sequence=0), event=fact_any)],
+            pages=[
+                types.EventPage(
+                    header=types.PageHeader(
+                        external_deferred=types.ExternalDeferredSequence(
+                            external_id=external_id
+                        )
+                    ),
+                    event=fact_any,
+                )
+            ],
         )
 
         self.emit_event(fact_book)
