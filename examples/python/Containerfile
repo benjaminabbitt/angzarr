@@ -7,7 +7,7 @@
 # All targets use uv for fast dependency management
 
 ARG PYTHON_VERSION=3.11
-ARG UV_VERSION=0.5.14
+ARG UV_VERSION=0.10.3
 
 # ============================================================================
 # Base builder - Python with uv
