@@ -158,20 +158,20 @@ USER angzarr
 # ============================================================================
 FROM runtime AS agg-player
 COPY --from=build-player --chown=angzarr:angzarr /app/examples/cpp/build/player/agg/agg-player ./server
-ENV PORT=50501
-EXPOSE 50501
+ENV PORT=50601
+EXPOSE 50601
 ENTRYPOINT ["./server"]
 
 FROM runtime AS agg-table
 COPY --from=build-table --chown=angzarr:angzarr /app/examples/cpp/build/table/agg/agg-table ./server
-ENV PORT=50502
-EXPOSE 50502
+ENV PORT=50602
+EXPOSE 50602
 ENTRYPOINT ["./server"]
 
 FROM runtime AS agg-hand
 COPY --from=build-hand --chown=angzarr:angzarr /app/examples/cpp/build/hand/agg/agg-hand ./server
-ENV PORT=50503
-EXPOSE 50503
+ENV PORT=50603
+EXPOSE 50603
 ENTRYPOINT ["./server"]
 
 # ============================================================================
@@ -179,26 +179,26 @@ ENTRYPOINT ["./server"]
 # ============================================================================
 FROM runtime AS saga-table-hand
 COPY --from=build-saga-table-hand --chown=angzarr:angzarr /app/examples/cpp/build/table/saga-hand/saga-table-hand ./server
-ENV PORT=50511
-EXPOSE 50511
+ENV PORT=50611
+EXPOSE 50611
 ENTRYPOINT ["./server"]
 
 FROM runtime AS saga-table-player
 COPY --from=build-saga-table-player --chown=angzarr:angzarr /app/examples/cpp/build/table/saga-player/saga-table-player ./server
-ENV PORT=50512
-EXPOSE 50512
+ENV PORT=50612
+EXPOSE 50612
 ENTRYPOINT ["./server"]
 
 FROM runtime AS saga-hand-table
 COPY --from=build-saga-hand-table --chown=angzarr:angzarr /app/examples/cpp/build/hand/saga-table/saga-hand-table ./server
-ENV PORT=50513
-EXPOSE 50513
+ENV PORT=50613
+EXPOSE 50613
 ENTRYPOINT ["./server"]
 
 FROM runtime AS saga-hand-player
 COPY --from=build-saga-hand-player --chown=angzarr:angzarr /app/examples/cpp/build/hand/saga-player/saga-hand-player ./server
-ENV PORT=50514
-EXPOSE 50514
+ENV PORT=50614
+EXPOSE 50614
 ENTRYPOINT ["./server"]
 
 # ============================================================================
@@ -206,8 +206,8 @@ ENTRYPOINT ["./server"]
 # ============================================================================
 FROM runtime AS pmg-hand-flow
 COPY --from=build-pmg-hand-flow --chown=angzarr:angzarr /app/examples/cpp/build/hand-flow/pmg-hand-flow ./server
-ENV PORT=50591
-EXPOSE 50591
+ENV PORT=50691
+EXPOSE 50691
 ENTRYPOINT ["./server"]
 
 # ============================================================================
@@ -215,6 +215,6 @@ ENTRYPOINT ["./server"]
 # ============================================================================
 FROM runtime AS prj-output
 COPY --from=build-prj-output --chown=angzarr:angzarr /app/examples/cpp/build/prj-output/prj-output ./server
-ENV PORT=50590
-EXPOSE 50590
+ENV PORT=50690
+EXPOSE 50690
 ENTRYPOINT ["./server"]

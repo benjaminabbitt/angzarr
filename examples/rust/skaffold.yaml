@@ -13,7 +13,7 @@ build:
       prefix: "dev-"
       variant: AbbrevCommitSha
   local:
-    push: true
+    push: false
     useBuildkit: true
     concurrency: 1
   artifacts:

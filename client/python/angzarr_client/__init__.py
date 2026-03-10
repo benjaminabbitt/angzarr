@@ -113,7 +113,7 @@ from .router import (
 )
 from .saga import Saga
 from .saga_context import SagaContext
-from .saga_handler import ExecuteFunc, PrepareFunc, SagaHandler, run_saga_server
+from .saga_handler import HandleFunc, SagaHandler, run_saga_server
 from .server import (
     cleanup_socket,
     configure_logging,
@@ -213,8 +213,7 @@ __all__ = [
     "run_command_handler_server",
     "SagaHandler",
     "run_saga_server",
-    "PrepareFunc",
-    "ExecuteFunc",
+    "HandleFunc",
     "ProcessManagerHandler",
     "run_process_manager_server",
     "PMPrepareFunc",

@@ -24,6 +24,16 @@ public class Table extends CommandHandler<TableState> {
 
   public static final String DOMAIN = "table";
 
+  /** Default constructor. */
+  public Table() {
+    super();
+  }
+
+  /** Constructor with prior events for state rehydration. */
+  public Table(dev.angzarr.EventBook eventBook) {
+    super(eventBook);
+  }
+
   @Override
   public String getDomain() {
     return DOMAIN;

@@ -144,7 +144,7 @@ func (c *AggregateContext) anAggregateWithExistingEvents() error {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		c.eventBook.Pages = append(c.eventBook.Pages, &pb.EventPage{
 			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	return nil
@@ -166,7 +166,7 @@ func (c *AggregateContext) anAggregateAtSequence(seq int) error {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		c.eventBook.Pages = append(c.eventBook.Pages, &pb.EventPage{
 			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	return nil
@@ -660,7 +660,7 @@ func (c *AggregateClientContext) anAggregateWithRootAtSequence(domain, root stri
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
 			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book
@@ -1011,7 +1011,7 @@ func (c *AggregateClientContext) aHandlerEmitsEvents(count int) error {
 		evt, _ := anypb.New(&emptypb.Empty{})
 		pages[i] = &pb.EventPage{
 			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Payload: &pb.EventPage_Event{Event: evt},
 		}
 	}
 	c.lastResult = &pb.EventBook{Pages: pages}
@@ -1099,7 +1099,7 @@ func (c *AggregateClientContext) anAggregateWithRootHasASnapshotAtSequenceAndEve
 		evt, _ := anypb.New(&emptypb.Empty{})
 		book.Pages = append(book.Pages, &pb.EventPage{
 			Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: uint32(i)}},
-			Payload:      &pb.EventPage_Event{Event: evt},
+			Payload: &pb.EventPage_Event{Event: evt},
 		})
 	}
 	c.eventBooks[c.key(domain, root)] = book

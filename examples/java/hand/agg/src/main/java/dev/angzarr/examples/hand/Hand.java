@@ -20,6 +20,16 @@ public class Hand extends CommandHandler<HandState> {
 
   public static final String DOMAIN = "hand";
 
+  /** Default constructor. */
+  public Hand() {
+    super();
+  }
+
+  /** Constructor with prior events for state rehydration. */
+  public Hand(dev.angzarr.EventBook eventBook) {
+    super(eventBook);
+  }
+
   @Override
   public String getDomain() {
     return DOMAIN;
