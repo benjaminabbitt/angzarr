@@ -127,10 +127,10 @@ Angzarr uses consistent port numbering across all deployment modes.
 - **Topology REST API**: 9099 - topology visualization
 
 ### Business Logic Ports by Language
-Each language gets a 100-port block for business logic:
-- **Rust**: 500xx (order: 50035, inventory: 50025, fulfillment: 50055)
-- **Go**: 502xx (order: 50203, inventory: 50204, fulfillment: 50205)
-- **Python**: 503xx (order: 50303, inventory: 50304, fulfillment: 50305)
+Each language gets a 100-port block for business logic (defined in example repos):
+- **Rust**: 500xx (see angzarr-examples-rust)
+
+NOTE: Go, Python, Java, C#, C++ examples are in separate repos (angzarr-examples-{lang}).
 
 ### K8s Testing
 For acceptance tests against a deployed cluster:
@@ -413,37 +413,16 @@ Test **business behavior** through the full stack. Written in Gherkin, describin
 
 #### Client Libraries: Unified Rust gRPC Harness
 
-Client libraries (`client/{lang}/`) are tested with a **single Rust Gherkin harness** via gRPC:
-- One source of truth for SDK contract testing
-- Same tests validate all language implementations
-- Tests exercise actual gRPC protocol
+NOTE: Client libraries and examples have been extracted to separate repositories:
+- **angzarr-client-{lang}** - Client library repos with their own test harnesses
+- **angzarr-examples-{lang}** - Example implementation repos with per-language Gherkin harnesses
 
-```bash
-just test-client python    # Test Python client via Rust harness
-just test-client go        # Test Go client via Rust harness
-just test-clients          # Test all clients
-```
-
-#### Examples: Per-Language Gherkin Harnesses
-
-Example implementations (`examples/{lang}/`) use **per-language test harnesses**:
-- Demonstrative for non-polyglot developers
-- Developers see Gherkin + step definitions in their language
-- Educational code they can learn from
-
-```bash
-just examples python test  # behave (Python)
-just examples go test      # godog (Go)
-just examples rust test    # cucumber-rs (Rust)
-just examples java test    # cucumber-junit5 (Java)
-just examples csharp test  # SpecFlow (C#)
-just examples cpp test     # cucumber-cpp (C++)
-```
+See each repo's README for testing instructions.
 
 #### Location
-- **Shared feature files**: `examples/features/unit/*.feature` (canonical)
-- **Client harness**: `tests/client/` (Rust gRPC harness)
-- **Example step definitions**: `examples/{lang}/features/steps/` (per-language)
+- **Shared feature files**: `features/` (canonical, in this repo - synced to client/example repos)
+- **Client test harness**: In each angzarr-client-{lang} repo
+- **Example step definitions**: In each angzarr-examples-{lang} repo
 
 #### Execution Modes
 - **Standalone** (default): in-process `RuntimeBuilder` with SQLite + channel bus

@@ -47,25 +47,16 @@ jobs:
           echo "base-tag=$BASE_TAG" >> $GITHUB_OUTPUT
           echo "base-hash=$BASE_HASH" >> $GITHUB_OUTPUT
 
-  # Language images - run in parallel via matrix
-  build-lang:
-    name: Build ${{ matrix.lang }} Image
+  # Build Rust image (other language images are built in their respective repos)
+  build-rust:
+    name: Build Rust Image
     runs-on: ubuntu-latest
     needs: build-base
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        lang: [rust, go, python, csharp, cpp, java]
     outputs:
       rust-tag: ${{ steps.output.outputs.rust-tag }}
-      go-tag: ${{ steps.output.outputs.go-tag }}
-      python-tag: ${{ steps.output.outputs.python-tag }}
-      csharp-tag: ${{ steps.output.outputs.csharp-tag }}
-      cpp-tag: ${{ steps.output.outputs.cpp-tag }}
-      java-tag: ${{ steps.output.outputs.java-tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,64 +70,40 @@ jobs:
       - name: Calculate content hash
         id: hash
         run: |
-          CONTENT_HASH=$(sha256sum build/images/${{ matrix.lang }}/Containerfile | cut -c1-12)
+          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
           TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Check if image exists
         id: check
         run: |
-          if docker manifest inspect ${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:${{ steps.hash.outputs.tag }} > /dev/null 2>&1; then
+          if docker manifest inspect ${{ env.IMAGE_PREFIX }}/angzarr-rust:${{ steps.hash.outputs.tag }} > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push ${{ matrix.lang }} image
+      - name: Build and push rust image
         id: build
         run: |
           TAG="${{ steps.hash.outputs.tag }}"
-          IMAGE="${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:$TAG"
+          IMAGE="${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG"
           if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
             echo "Image already exists, skipping build"
           else
             docker build \
               --build-arg BASE_IMAGE=${{ needs.build-base.outputs.base-tag }} \
               -t "$IMAGE" \
-              -f build/images/${{ matrix.lang }}/Containerfile \
-              build/images/${{ matrix.lang }}
+              -f build/images/rust/Containerfile \
+              build/images/rust
             docker push "$IMAGE"
           fi
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
-      - name: Set output for ${{ matrix.lang }}
+      - name: Set output
         id: output
         run: |
-          echo "${{ matrix.lang }}-tag=${{ steps.build.outputs.image }}" >> $GITHUB_OUTPUT
-
-  # Collect all language image tags into a single output
-  collect-tags:
-    name: Collect Image Tags
-    runs-on: ubuntu-latest
-    needs: build-lang
-    outputs:
-      rust-tag: ${{ steps.tags.outputs.rust-tag }}
-      go-tag: ${{ steps.tags.outputs.go-tag }}
-      python-tag: ${{ steps.tags.outputs.python-tag }}
-      csharp-tag: ${{ steps.tags.outputs.csharp-tag }}
-      cpp-tag: ${{ steps.tags.outputs.cpp-tag }}
-      java-tag: ${{ steps.tags.outputs.java-tag }}
-    steps:
-      - name: Aggregate tags
-        id: tags
-        run: |
-          # Matrix outputs don't propagate directly, so we reconstruct from build-lang
-          echo "rust-tag=${{ needs.build-lang.outputs.rust-tag }}" >> $GITHUB_OUTPUT
-          echo "go-tag=${{ needs.build-lang.outputs.go-tag }}" >> $GITHUB_OUTPUT
-          echo "python-tag=${{ needs.build-lang.outputs.python-tag }}" >> $GITHUB_OUTPUT
-          echo "csharp-tag=${{ needs.build-lang.outputs.csharp-tag }}" >> $GITHUB_OUTPUT
-          echo "cpp-tag=${{ needs.build-lang.outputs.cpp-tag }}" >> $GITHUB_OUTPUT
-          echo "java-tag=${{ needs.build-lang.outputs.java-tag }}" >> $GITHUB_OUTPUT
+          echo "rust-tag=${{ steps.build.outputs.image }}" >> $GITHUB_OUTPUT
 
   # Downstream jobs use the built images
   lint:
@@ -175,7 +142,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [build-base, build-lang]
+    needs: [build-base, build-rust]
     steps:
       - uses: actions/checkout@v4
 
@@ -207,7 +174,7 @@ jobs:
   gateway:
     name: Build gRPC Gateway
     runs-on: ubuntu-latest
-    needs: [build-base, build-lang]
+    needs: build-base
     steps:
       - uses: actions/checkout@v4
 
@@ -259,7 +226,7 @@ jobs:
   build-runtime:
     name: Build Runtime Images
     runs-on: ubuntu-latest
-    needs: [build-base, build-lang]
+    needs: [build-base, build-rust]
     permissions:
       contents: read
       packages: write
@@ -301,309 +268,14 @@ jobs:
           echo "Built images:"
           jq -r '.builds[].tag' runtime-build.json
 
-  # Build client libraries using matrix
-  build-client:
-    name: Build ${{ matrix.lang }} Client
-    runs-on: ubuntu-latest
-    needs: [build-base, build-lang]
-    strategy:
-      fail-fast: false
-      matrix:
-        lang: [rust, python, go, csharp, java, cpp]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Calculate ${{ matrix.lang }} image tag
-        id: image
-        run: |
-          CONTENT_HASH=$(sha256sum build/images/${{ matrix.lang }}/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-${{ matrix.lang }}:$TAG" >> $GITHUB_OUTPUT
-
-      - name: Pull ${{ matrix.lang }} image
-        run: docker pull ${{ steps.image.outputs.tag }}
-
-      - name: Build ${{ matrix.lang }} client
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -v "${{ github.workspace }}/client/${{ matrix.lang }}/justfile.container:/workspace/client/${{ matrix.lang }}/justfile:ro" \
-            -w /workspace/client/${{ matrix.lang }} \
-            -e DEVCONTAINER=true \
-            ${{ steps.image.outputs.tag }} \
-            bash -c "git config --global --add safe.directory /workspace && just build"
-
-  # Build example business logic images using matrix
-  # All languages with Containerfiles: rust, go, python, csharp, cpp, java
-  build-example:
-    name: Build ${{ matrix.lang }}-${{ matrix.target }} Example
-    runs-on: ubuntu-latest
-    needs: [build-base, build-lang, build-client]
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # ============ Rust examples (dev targets for faster CI) ============
-          # Aggregates
-          - lang: rust
-            target: agg-player-dev
-            image_name: poker-rust-player
-          - lang: rust
-            target: agg-table-dev
-            image_name: poker-rust-table
-          - lang: rust
-            target: agg-hand-dev
-            image_name: poker-rust-hand
-          # Sagas
-          - lang: rust
-            target: saga-table-hand-dev
-            image_name: poker-rust-saga-table-hand
-          - lang: rust
-            target: saga-table-player-dev
-            image_name: poker-rust-saga-table-player
-          - lang: rust
-            target: saga-hand-table-dev
-            image_name: poker-rust-saga-hand-table
-          - lang: rust
-            target: saga-hand-player-dev
-            image_name: poker-rust-saga-hand-player
-          # Process Manager
-          - lang: rust
-            target: pmg-hand-flow-dev
-            image_name: poker-rust-pmg-hand-flow
-          # Projector
-          - lang: rust
-            target: prj-output-dev
-            image_name: poker-rust-prj-output
-
-          # ============ Go examples ============
-          # Aggregates
-          - lang: go
-            target: agg-player
-            image_name: poker-go-player
-          - lang: go
-            target: agg-table
-            image_name: poker-go-table
-          - lang: go
-            target: agg-hand
-            image_name: poker-go-hand
-          # Sagas
-          - lang: go
-            target: saga-table-hand
-            image_name: poker-go-saga-table-hand
-          - lang: go
-            target: saga-table-player
-            image_name: poker-go-saga-table-player
-          - lang: go
-            target: saga-hand-table
-            image_name: poker-go-saga-hand-table
-          - lang: go
-            target: saga-hand-player
-            image_name: poker-go-saga-hand-player
-          # Process Manager
-          - lang: go
-            target: pmg-hand-flow
-            image_name: poker-go-pmg-hand-flow
-          # Projector
-          - lang: go
-            target: prj-output
-            image_name: poker-go-prj-output
-
-          # ============ Python examples ============
-          # Aggregates
-          - lang: python
-            target: agg-player
-            image_name: poker-python-player
-          - lang: python
-            target: agg-table
-            image_name: poker-python-table
-          - lang: python
-            target: agg-hand
-            image_name: poker-python-hand
-          # Sagas
-          - lang: python
-            target: saga-table-hand
-            image_name: poker-python-saga-table-hand
-          - lang: python
-            target: saga-table-player
-            image_name: poker-python-saga-table-player
-          - lang: python
-            target: saga-hand-table
-            image_name: poker-python-saga-hand-table
-          - lang: python
-            target: saga-hand-player
-            image_name: poker-python-saga-hand-player
-          # Process Manager
-          - lang: python
-            target: pmg-hand-flow
-            image_name: poker-python-pmg-hand-flow
-          # Projector
-          - lang: python
-            target: prj-output
-            image_name: poker-python-prj-output
-
-          # ============ C# examples ============
-          # Aggregates
-          - lang: csharp
-            target: agg-player
-            image_name: poker-csharp-player
-          - lang: csharp
-            target: agg-table
-            image_name: poker-csharp-table
-          - lang: csharp
-            target: agg-hand
-            image_name: poker-csharp-hand
-          # Sagas
-          - lang: csharp
-            target: saga-table-hand
-            image_name: poker-csharp-saga-table-hand
-          - lang: csharp
-            target: saga-table-player
-            image_name: poker-csharp-saga-table-player
-          - lang: csharp
-            target: saga-hand-table
-            image_name: poker-csharp-saga-hand-table
-          - lang: csharp
-            target: saga-hand-player
-            image_name: poker-csharp-saga-hand-player
-          # Process Manager
-          - lang: csharp
-            target: pmg-hand-flow
-            image_name: poker-csharp-pmg-hand-flow
-          # Projector
-          - lang: csharp
-            target: prj-output
-            image_name: poker-csharp-prj-output
-
-          # ============ C++ examples ============
-          # Aggregates
-          - lang: cpp
-            target: agg-player
-            image_name: poker-cpp-player
-          - lang: cpp
-            target: agg-table
-            image_name: poker-cpp-table
-          - lang: cpp
-            target: agg-hand
-            image_name: poker-cpp-hand
-          # Sagas
-          - lang: cpp
-            target: saga-table-hand
-            image_name: poker-cpp-saga-table-hand
-          - lang: cpp
-            target: saga-table-player
-            image_name: poker-cpp-saga-table-player
-          - lang: cpp
-            target: saga-hand-table
-            image_name: poker-cpp-saga-hand-table
-          - lang: cpp
-            target: saga-hand-player
-            image_name: poker-cpp-saga-hand-player
-          # Process Manager
-          - lang: cpp
-            target: pmg-hand-flow
-            image_name: poker-cpp-pmg-hand-flow
-          # Projector
-          - lang: cpp
-            target: prj-output
-            image_name: poker-cpp-prj-output
-
-          # ============ Java examples ============
-          # Aggregates
-          - lang: java
-            target: agg-player
-            image_name: poker-java-player
-          - lang: java
-            target: agg-table
-            image_name: poker-java-table
-          - lang: java
-            target: agg-hand
-            image_name: poker-java-hand
-          # Sagas
-          - lang: java
-            target: saga-table-hand
-            image_name: poker-java-saga-table-hand
-          - lang: java
-            target: saga-table-player
-            image_name: poker-java-saga-table-player
-          - lang: java
-            target: saga-hand-table
-            image_name: poker-java-saga-hand-table
-          - lang: java
-            target: saga-hand-player
-            image_name: poker-java-saga-hand-player
-          # Process Manager
-          - lang: java
-            target: pmg-hand-flow
-            image_name: poker-java-pmg-hand-flow
-          # Projector
-          - lang: java
-            target: prj-output
-            image_name: poker-java-prj-output
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Calculate rust image tag
-        if: matrix.lang == 'rust'
-        id: rust-image
-        run: |
-          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG" >> $GITHUB_OUTPUT
-
-      - name: Calculate content hash
-        id: hash
-        run: |
-          # Hash includes the example Containerfile and relevant source
-          CONTENT_HASH=$(sha256sum examples/${{ matrix.lang }}/Containerfile | cut -c1-12)
-          echo "hash=$CONTENT_HASH" >> $GITHUB_OUTPUT
-
-      - name: Build example image
-        run: |
-          TAG="${{ steps.hash.outputs.hash }}"
-          IMAGE="${{ env.IMAGE_PREFIX }}/${{ matrix.image_name }}:$TAG"
-
-          BUILD_ARGS=""
-          if [ "${{ matrix.lang }}" = "rust" ]; then
-            BUILD_ARGS="--build-arg RUST_IMAGE=${{ steps.rust-image.outputs.tag }}"
-          fi
-
-          docker build \
-            $BUILD_ARGS \
-            --target ${{ matrix.target }} \
-            -t "$IMAGE" \
-            -f examples/${{ matrix.lang }}/Containerfile \
-            .
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Push example image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          TAG="${{ steps.hash.outputs.hash }}"
-          IMAGE="${{ env.IMAGE_PREFIX }}/${{ matrix.image_name }}:$TAG"
-          docker push "$IMAGE"
+  # NOTE: Client library and example builds have been moved to their respective repos:
+  # - angzarr-client-{rust,python,go,java,csharp,cpp}
+  # - angzarr-examples-{rust,python,go,java,csharp,cpp}
 
   push-gateway:
     name: Push Gateway Image
     runs-on: ubuntu-latest
-    needs: [build-base, build-lang, lint, test, gateway]
+    needs: [build-base, build-rust, lint, test, gateway]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read

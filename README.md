@@ -14,12 +14,12 @@ Client libraries are provided for the top TIOBE languages:
 
 | Language | Client | Examples |
 |----------|--------|----------|
-| C++ | [client/cpp](client/cpp/) | [examples/cpp](examples/cpp/) |
-| C# | [client/csharp](client/csharp/) | [examples/csharp](examples/csharp/) |
-| Go | [client/go](client/go/) | [examples/go](examples/go/) |
-| Java | [client/java](client/java/) | [examples/java](examples/java/) |
-| Python | [client/python](client/python/) | [examples/python](examples/python/) |
-| Rust | [client/rust](client/rust/) | [examples/rust](examples/rust/) |
+| C++ | [angzarr-client-cpp](https://github.com/angzarr-io/angzarr-client-cpp) | [angzarr-examples-cpp](https://github.com/angzarr-io/angzarr-examples-cpp) |
+| C# | [angzarr-client-csharp](https://github.com/angzarr-io/angzarr-client-csharp) | [angzarr-examples-csharp](https://github.com/angzarr-io/angzarr-examples-csharp) |
+| Go | [angzarr-client-go](https://github.com/angzarr-io/angzarr-client-go) | [angzarr-examples-go](https://github.com/angzarr-io/angzarr-examples-go) |
+| Java | [angzarr-client-java](https://github.com/angzarr-io/angzarr-client-java) | [angzarr-examples-java](https://github.com/angzarr-io/angzarr-examples-java) |
+| Python | [angzarr-client-python](https://github.com/angzarr-io/angzarr-client-python) | [angzarr-examples-python](https://github.com/angzarr-io/angzarr-examples-python) |
+| Rust | [angzarr-client-rust](https://github.com/angzarr-io/angzarr-client-rust) | [angzarr-examples-rust](https://github.com/angzarr-io/angzarr-examples-rust) |
 
 **Client libraries are optional.** Any language with gRPC support can integrate directly using the [proto definitions](proto/)—the libraries just reduce boilerplate.
 

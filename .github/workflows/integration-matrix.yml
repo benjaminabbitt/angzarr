@@ -1,4 +1,4 @@
-name: Integration Tests (Matrix)
+name: Integration Tests
 
 on:
   push:
@@ -7,19 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      language:
-        description: 'Language to test (or "all")'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - rust
-          - go
-          - python
-          - java
-          - csharp
-          - cpp
       run_mutation_tests:
         description: 'Run mutation tests'
         required: false
@@ -147,25 +134,14 @@ jobs:
           retention-days: 7
 
   # =============================================================================
-  # Integration Tests (per language)
+  # Core Framework Integration Tests
   # =============================================================================
+  # NOTE: Per-language example integration tests have been moved to their repos:
+  # - angzarr-examples-{rust,python,go,java,csharp,cpp}
   integration-test:
-    name: Integration (${{ matrix.language }})
+    name: Integration (Core)
     needs: build-framework
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [rust, go, python, java, csharp, cpp]
-        exclude:
-          # Only exclude languages when workflow_dispatch with specific language selected
-          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
-          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
-          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'python' && 'python' || '' }}
-          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'java' && 'java' || '' }}
-          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'csharp' && 'csharp' || '' }}
-          - language: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.language != 'all' && github.event.inputs.language != 'cpp' && 'cpp' || '' }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -178,137 +154,25 @@ jobs:
       - name: Make binary executable
         run: chmod +x target/release/angzarr-standalone
 
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
-          chmod +x ./kubectl
-          sudo mv ./kubectl /usr/local/bin/kubectl
-
-      - name: Install Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: v3.13.0
-
-      - name: Install Skaffold
-        run: |
-          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
-          chmod +x skaffold
-          sudo mv skaffold /usr/local/bin/
-
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Language-specific setup (needs Docker access, can't use container)
       - name: Set up Rust
-        if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install mold linker (Rust)
-        if: matrix.language == 'rust'
+      - name: Install mold linker
         run: |
           sudo apt-get update
           sudo apt-get install -y mold
 
-      - name: Set up Go
-        if: matrix.language == 'go'
-        uses: actions/setup-go@v5
+      - name: Cache cargo registry
+        uses: actions/cache@v4
         with:
-          go-version: '1.21'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Set up Python
-        if: matrix.language == 'python'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install uv (Python)
-        if: matrix.language == 'python'
-        uses: astral-sh/setup-uv@v5
-
-      - name: Set up Java
-        if: matrix.language == 'java'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Set up .NET
-        if: matrix.language == 'csharp'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0'
-
-      - name: Install C++ build tools
-        if: matrix.language == 'cpp'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libgrpc++-dev protobuf-compiler-grpc
-
-      # Create Kind cluster
-      - name: Create Kind cluster
-        run: |
-          kind create cluster --config kind-config.yaml --name angzarr
-          kubectl cluster-info
-
-      # Build and load images for the specific language
-      - name: Build ${{ matrix.language }} images
-        run: just images build ${{ matrix.language }}
-
-      - name: Load images into Kind
-        run: just images load ${{ matrix.language }}
-
-      # Deploy infrastructure
-      - name: Deploy infrastructure
-        run: just infra-ci
-
-      # Deploy language-specific services via skaffold
-      - name: Deploy ${{ matrix.language }} services
-        env:
-          DOCKER_BUILDKIT: "1"
-        run: |
-          cd examples/${{ matrix.language }}
-          skaffold run --cache-artifacts=false
-          kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
-
-      # Run acceptance tests
-      - name: Run acceptance tests
-        run: just examples ${{ matrix.language }} test-acceptance
-        env:
-          ANGZARR_TEST_MODE: container
-
-      # Collect logs on failure
-      - name: Collect logs on failure
-        if: failure()
-        run: |
-          echo "=== Pod Status ==="
-          kubectl get pods -n angzarr -o wide || true
-          echo ""
-          echo "=== Pod Descriptions ==="
-          kubectl describe pods -n angzarr || true
-          echo ""
-          echo "=== Pod Logs ==="
-          kubectl logs -n angzarr -l app=angzarr --tail=100 || true
-
-      # Cleanup
-      - name: Delete Kind cluster
-        if: always()
-        run: kind delete cluster --name angzarr || true
+      - name: Run core integration tests
+        run: cargo test --test standalone_integration --features "sqlite test-utils"
 
   # =============================================================================
   # Results
