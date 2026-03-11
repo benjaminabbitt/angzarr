@@ -421,6 +421,10 @@ test-full: test-local
 clean:
     just _container clean
 
+# Thorough clean - all artifacts, caches, stale directories, container images
+clean-all:
+    just _container clean-all
+
 # === Coverage ===
 # Uses cargo-llvm-cov for accurate line/branch coverage.
 # Local tests (cov-*) run without docker socket.

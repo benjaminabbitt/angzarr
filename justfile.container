@@ -193,8 +193,29 @@ clean-containers:
 test-contract: _storage-all _bus-all
     @echo "All contract tests passed"
 
+# Basic clean - just cargo target
 clean:
     cargo clean
+
+# Thorough clean - remove all build artifacts, caches, and stale directories
+clean-all:
+    @echo "=== Cleaning cargo target ==="
+    cargo clean
+    @echo "=== Cleaning container cargo cache ==="
+    rm -rf .cargo-container/registry .cargo-container/git
+    @echo "=== Cleaning Python venvs ==="
+    rm -rf .venv client/*/.venv
+    @echo "=== Cleaning stale extracted directories ==="
+    rm -rf client/ examples/
+    @echo "=== Cleaning docs build ==="
+    rm -rf docs/build docs/.docusaurus
+    rm -f docs/static/container-overlay.tar.gz
+    @echo "=== Cleaning mutation output ==="
+    rm -rf mutants.out
+    @echo "=== Cleaning container images ==="
+    podman image prune -f || docker image prune -f || true
+    podman container prune -f || docker container prune -f || true
+    @echo "=== Clean complete ==="
 
 # === Coverage ===
 # Uses cargo-llvm-cov for accurate line/branch coverage.
