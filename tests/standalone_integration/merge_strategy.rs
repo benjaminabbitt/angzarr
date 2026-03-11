@@ -3,7 +3,7 @@
 //! Tests the aggregate coordinator's handling of sequence conflicts based on
 //! the MergeStrategy field in CommandPage.
 //!
-//! See also: examples/features/unit/merge_strategy.feature for Gherkin specs.
+//! See also: features/client/merge_strategy.feature for Gherkin specs.
 
 use crate::common::*;
 use angzarr::proto::{command_page, event_page, EventPage, MergeStrategy};

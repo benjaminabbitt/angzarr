@@ -2,13 +2,13 @@
 
 ## In Progress
 
+- [ ] Phase 1.1: Move feature files to features/ directory in core
 
 ## To Do
 
 
 ## Backlog
 
-- [ ] Phase 1.1: Move feature files to features/ directory in core
 - [ ] Phase 1.2: Add buf-publish.yml workflow and update proto/buf.yaml
 - [ ] Phase 2.2: Extract Python client to angzarr-client-python repo
 - [ ] Phase 3.2: Extract Python examples to angzarr-examples-python repo

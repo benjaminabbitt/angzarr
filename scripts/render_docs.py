@@ -137,8 +137,8 @@ def count_scenarios(feature_path: Path) -> int:
 
 
 def get_feature_files(repo_root: Path) -> list[dict]:
-    """Get all canonical feature files from examples/features/."""
-    features_dir = repo_root / "examples" / "features"
+    """Get all canonical feature files from features/examples/."""
+    features_dir = repo_root / "features" / "examples"
     if not features_dir.exists():
         return []
 
@@ -151,7 +151,7 @@ def get_feature_files(repo_root: Path) -> list[dict]:
                 "domain": domain,
                 "name": f.name,
                 "scenarios": scenarios,
-                "link": f"../examples/features/{f.name}",
+                "link": f"../features/examples/{f.name}",
             }
         )
 
