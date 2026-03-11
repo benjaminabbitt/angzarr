@@ -24,8 +24,11 @@ REGISTRY := "ghcr.io/angzarr-io"
 # (empty is fine when running inside a container where we don't need nested containers)
 CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null || echo ""`
 
-mod client "client/justfile"
-mod examples "examples/justfile"
+# NOTE: Client libraries and examples have been extracted to separate repos:
+#   - angzarr-client-{lang}: Client libraries (pip install angzarr-client, etc.)
+#   - angzarr-examples-{lang}: Example implementations (poker domain)
+# See: https://github.com/angzarr-io/
+
 mod images "build/images/justfile"
 mod kind "deploy/kind/justfile"
 mod tofu "deploy/tofu/justfile"
@@ -128,46 +131,18 @@ hooks-install:
     @which lefthook > /dev/null || go install github.com/evilmartians/lefthook@latest
     lefthook install
 
-# Format all code (runs in language-specific containers)
-fmt-all: fmt fmt-python fmt-go fmt-csharp fmt-java fmt-cpp
-
-# Format Python code (runs in angzarr-python container)
+# Format Python scripts (core repo only - client/examples now in separate repos)
 fmt-python:
-    just _lang-container python black examples/python client/python scripts/
-    just _lang-container python ruff check --fix --select I examples/python client/python scripts/
-
-# Format Go code (runs in angzarr-go container)
-fmt-go:
-    just _lang-container go goimports -w examples/go client/go
-
-# Format C# code (runs in angzarr-csharp container)
-fmt-csharp:
-    just _lang-container csharp csharpier format examples/csharp client/csharp
-
-# Format Java code (runs in angzarr-java container)
-fmt-java:
-    just _lang-container java ./examples/java/gradlew -p examples/java spotlessApply
-
-# Format C++ code (runs in angzarr-base container - has clang-format)
-fmt-cpp:
-    #!/usr/bin/env bash
-    if [ "${DEVCONTAINER:-}" = "true" ]; then
-        find examples/cpp client/cpp \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' \) -exec clang-format -i {} +
-    else
-        {{CONTAINER_CMD}} run --rm --network=host \
-            -v "$(git rev-parse --show-toplevel):/workspace:Z" \
-            -w /workspace \
-            {{REGISTRY}}/angzarr-base:latest \
-            find examples/cpp client/cpp \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' \) -exec clang-format -i {} +
-    fi
+    just _lang-container python black scripts/
+    just _lang-container python ruff check --fix --select I scripts/
 
 # === Proto Generation ===
 
-# Generate all proto code (gateway + all clients)
+# Generate gateway proto code
+# NOTE: Client library protos are now generated in their respective repos using buf registry
 proto: gateway-gen
-    just client proto-all
-    @echo ""
-    @echo "All protos generated successfully"
+    @echo "Gateway protos generated successfully"
+    @echo "Client protos: run 'just proto' in each angzarr-client-{lang} repo"
 
 # === Buf Schema Registry ===
 
@@ -385,7 +360,11 @@ test-contract:
 # Run all local tests (no running K8s cluster required)
 # =============================================================================
 # Fast validation suite using in-memory backends (no containers needed).
-# Includes: unit tests, storage (SQLite), bus (channel), clients, examples.
+# Includes: unit tests, storage (SQLite), bus (channel).
+#
+# NOTE: Client and example tests are now in their respective repos:
+#   - angzarr-client-{lang}: just test
+#   - angzarr-examples-{lang}: just test
 #
 # WHY: Quick feedback loop during development. Run this before committing.
 # =============================================================================
@@ -404,16 +383,6 @@ test-local:
     @echo "=== Bus Contract Tests (Channel) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just bus channel test
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Client Library Tests ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    just client test-all
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Examples Unit Tests ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    just examples test-unit
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== All Local Tests Complete ==="
@@ -441,53 +410,12 @@ test-full: test-local
     @echo "═══════════════════════════════════════════════════════════════════"
 
 # === Cross-Language Client Tests ===
-# Unified Rust Gherkin harness tests client libraries via gRPC.
-# One source of truth for SDK contract testing across all languages.
-
-# Test a specific language's client library via Rust gRPC harness
-# Usage: just test-client python [--tags=@aggregate]
-test-client LANG *ARGS:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "═══════════════════════════════════════════════════════════════════"
-    echo "=== Testing {{LANG}} client via Rust gRPC harness ==="
-    echo "═══════════════════════════════════════════════════════════════════"
-
-    # Start the language client gRPC server in background
-    just client {{LANG}} serve &
-    SERVER_PID=$!
-    trap "kill $SERVER_PID 2>/dev/null || true" EXIT
-
-    # Wait for server to be ready
-    sleep 2
-
-    # Run Rust Gherkin harness against the client
-    ANGZARR_CLIENT_LANG={{LANG}} cargo test --test client {{ARGS}}
-
-    echo ""
-    echo "=== {{LANG}} client tests complete ==="
-
-# Test all client libraries via Rust gRPC harness
-test-clients:
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Cross-Language Client Tests (All Languages) ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo ""
-    just test-client rust || true
-    @echo ""
-    just test-client python || true
-    @echo ""
-    just test-client go || true
-    @echo ""
-    just test-client java || true
-    @echo ""
-    just test-client csharp || true
-    @echo ""
-    just test-client cpp || true
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== All Cross-Language Client Tests Complete ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
+# NOTE: Client libraries have been extracted to separate repos.
+# Test them in their respective repos: angzarr-client-{lang}
+#
+# Example:
+#   cd ../angzarr-client-python && just test
+#   cd ../angzarr-client-go && just test
 
 # Clean build artifacts
 clean:
@@ -730,45 +658,18 @@ framework-dev: _cluster-ready
     skaffold dev
 
 # === Deploy (Orchestration) ===
+# NOTE: Examples have been extracted to angzarr-examples-{lang} repos.
+# Deploy from those repos directly:
+#   cd ../angzarr-examples-rust && skaffold run
 
-# Full deployment: create cluster, build, deploy
+# Deploy framework images only (no examples)
 deploy: _cluster-ready
-    cd "{{TOP}}/examples/rust" && skaffold run
-    @echo "Waiting for gateway..."
-    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
-        localhost:9084 || true
-    @kubectl get pods -n angzarr
+    skaffold run
+    @echo "Framework deployed. Deploy examples from angzarr-examples-{lang} repos."
 
-# Watch and redeploy examples on change
+# Watch and rebuild framework on change
 dev: _cluster-ready
-    cd "{{TOP}}/examples/rust" && skaffold dev
-
-# Nuke deploy: tear down existing deployment, bust all caches, rebuild and redeploy from scratch
-nuke-deploy: _cluster-ready
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "=== Tearing down existing deployment ==="
-    cd "{{TOP}}/examples/rust" && skaffold delete || true
-    cd "{{TOP}}" && skaffold delete || true
-
-    echo "=== Busting caches ==="
-    rm -f ~/.skaffold/cache
-
-    echo "=== Building and deploying (no cache) ==="
-    cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold run --cache-artifacts=false --force
-
-    echo "=== Waiting for services ==="
-    uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
-        localhost:9084 || true
-    kubectl get pods -n angzarr
-
-# Run integration tests
-integration: _cluster-ready
-    cd "{{TOP}}/examples/rust" && just integration
-
-# Run acceptance tests
-acceptance: _cluster-ready
-    cd "{{TOP}}/examples/rust" && just test-acceptance
+    skaffold dev
 
 # === Vector Search ===
 

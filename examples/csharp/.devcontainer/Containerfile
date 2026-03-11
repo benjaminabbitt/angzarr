@@ -1,8 +1,0 @@
-# C# examples devcontainer
-# Uses custom base image from ghcr.io/angzarr
-
-ARG CSHARP_IMAGE=ghcr.io/angzarr-io/angzarr-csharp:latest
-FROM ${CSHARP_IMAGE}
-
-# Mark as devcontainer for justfile detection
-ENV DEVCONTAINER=true

@@ -1,7 +1,6 @@
 [workspace]
 members = [
     ".",
-    "client/rust",
     "crates/trivial-delegation",
     "xtask",
 ]
@@ -79,7 +78,8 @@ full-musl = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis",
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)
-angzarr-client = { path = "client/rust" }
+# NOTE: Extracted to separate repo - using git dependency until crates.io publish
+angzarr-client = { git = "https://github.com/angzarr-io/angzarr-client-rust.git" }
 
 # gRPC
 tonic = "0.12"

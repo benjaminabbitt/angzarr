@@ -1,1 +1,0 @@
-../../../../tests/acceptance/features/compensation_handle.feature

@@ -1,8 +1,0 @@
-# Java examples devcontainer
-# Uses custom base image from ghcr.io/angzarr
-
-ARG JAVA_IMAGE=ghcr.io/angzarr-io/angzarr-java:latest
-FROM ${JAVA_IMAGE}
-
-# Mark as devcontainer for justfile detection
-ENV DEVCONTAINER=true

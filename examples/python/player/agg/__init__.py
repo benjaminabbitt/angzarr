@@ -1,1 +1,0 @@
-"""Player aggregate - functional pattern."""

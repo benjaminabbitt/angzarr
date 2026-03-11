@@ -1,7 +1,0 @@
-# Gemfile for cucumber-cpp wire protocol testing
-# Versions must match cucumber-cpp expectations (see cucumber-cpp/Gemfile)
-
-source 'https://rubygems.org'
-
-gem 'cucumber', '~> 7.1.0'
-gem 'cucumber-wire', '~> 6.2.1'
