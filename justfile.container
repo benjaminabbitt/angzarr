@@ -193,14 +193,17 @@ clean-containers:
 test-contract: _storage-all _bus-all
     @echo "All contract tests passed"
 
-# Basic clean - just cargo target
+# Basic clean - cargo target and generated proto code
 clean:
     cargo clean
+    rm -rf generated/
 
 # Thorough clean - remove all build artifacts, caches, and stale directories
 clean-all:
     @echo "=== Cleaning cargo target ==="
     cargo clean
+    @echo "=== Cleaning generated proto code ==="
+    rm -rf generated/
     @echo "=== Cleaning container cargo cache ==="
     rm -rf .cargo-container/registry .cargo-container/git
     @echo "=== Cleaning Python venvs ==="
@@ -212,8 +215,10 @@ clean-all:
     rm -f docs/static/container-overlay.tar.gz
     @echo "=== Cleaning OpenTofu provider caches ==="
     find deploy/tofu -name ".terraform" -type d -exec rm -rf {} + 2>/dev/null || true
-    @echo "=== Cleaning vector search data ==="
-    rm -rf .vectors/qdrant-data
+    @echo "=== Cleaning vector search ==="
+    rm -rf .vectors/
+    @echo "=== Cleaning linter caches ==="
+    rm -rf .ruff_cache .pytest_cache
     @echo "=== Cleaning mutation output ==="
     rm -rf mutants.out mutants.out.old
     @echo "=== Cleaning container images ==="
