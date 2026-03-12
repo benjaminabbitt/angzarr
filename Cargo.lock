@@ -180,11 +180,11 @@ dependencies = [
 [[package]]
 name = "angzarr-client"
 version = "0.1.1"
+source = "git+https://github.com/angzarr-io/angzarr-client-rust.git#cf12704abb036614ea80b63b8ad106ea8ecdc2f3"
 dependencies = [
  "async-trait",
  "backon",
  "chrono",
- "cucumber",
  "hex",
  "hyper-util",
  "prost 0.13.5",
