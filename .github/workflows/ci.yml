@@ -10,17 +10,22 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/angzarr-io
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  # Build base image first - language images depend on this
-  build-base:
-    name: Build Base Image
+  # =============================================================================
+  # STAGE 1: BUILD TOOLING IMAGES
+  # =============================================================================
+
+  build-images:
+    name: Build Base & Language Images
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     outputs:
-      base-tag: ${{ steps.build.outputs.base-tag }}
-      base-hash: ${{ steps.build.outputs.base-hash }}
+      rust-tag: ${{ steps.tags.outputs.rust-tag }}
+      go-tag: ${{ steps.tags.outputs.go-tag }}
+      base-tag: ${{ steps.tags.outputs.base-tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,26 +42,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push base image
-        id: build
+      - name: Build and push base/language images
         run: |
           cd build/images
-          skaffold build -f skaffold-base.yaml --push --file-output=base-build.json
-          BASE_TAG=$(jq -r '.builds[0].tag' base-build.json)
-          BASE_HASH=$(echo "$BASE_TAG" | sed 's/.*://')
+          skaffold build --push --file-output=build.json
+
+      - name: Extract image tags
+        id: tags
+        run: |
+          cd build/images
+          BASE_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-base")) | .tag' build.json)
+          RUST_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-rust")) | .tag' build.json)
+          GO_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-go")) | .tag' build.json)
           echo "base-tag=$BASE_TAG" >> $GITHUB_OUTPUT
-          echo "base-hash=$BASE_HASH" >> $GITHUB_OUTPUT
+          echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
+          echo "go-tag=$GO_TAG" >> $GITHUB_OUTPUT
+          echo "Built images:"
+          echo "  Base: $BASE_TAG"
+          echo "  Rust: $RUST_TAG"
+          echo "  Go: $GO_TAG"
 
-  # Build Rust image (other language images are built in their respective repos)
-  build-rust:
-    name: Build Rust Image
+  # =============================================================================
+  # STAGE 2: TESTS (parallel)
+  # =============================================================================
+
+  format:
+    name: Format
     runs-on: ubuntu-latest
-    needs: build-base
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      rust-tag: ${{ steps.output.outputs.rust-tag }}
+    needs: build-images
     steps:
       - uses: actions/checkout@v4
 
@@ -67,114 +80,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Calculate content hash
-        id: hash
-        run: |
-          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-
-      - name: Check if image exists
-        id: check
-        run: |
-          if docker manifest inspect ${{ env.IMAGE_PREFIX }}/angzarr-rust:${{ steps.hash.outputs.tag }} > /dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push rust image
-        id: build
-        run: |
-          TAG="${{ steps.hash.outputs.tag }}"
-          IMAGE="${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG"
-          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
-            echo "Image already exists, skipping build"
-          else
-            docker build \
-              --build-arg BASE_IMAGE=${{ needs.build-base.outputs.base-tag }} \
-              -t "$IMAGE" \
-              -f build/images/rust/Containerfile \
-              build/images/rust
-            docker push "$IMAGE"
-          fi
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Set output
-        id: output
-        run: |
-          echo "rust-tag=${{ steps.build.outputs.image }}" >> $GITHUB_OUTPUT
-
-  # Downstream jobs use the built images
-  lint:
-    name: Lint & Format
-    runs-on: ubuntu-latest
-    needs: build-base
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull base image
-        run: docker pull ${{ needs.build-base.outputs.base-tag }}
-
-      - name: Buf lint
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace:ro" \
-            -w /workspace/proto \
-            ${{ needs.build-base.outputs.base-tag }} \
-            buf lint
-
-      - name: Buf build
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace:ro" \
-            -w /workspace/proto \
-            ${{ needs.build-base.outputs.base-tag }} \
-            buf build
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    needs: [build-base, build-rust]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Calculate rust tag
-        id: rust
-        run: |
-          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG" >> $GITHUB_OUTPUT
-
-      - name: Pull rust image
-        run: docker pull ${{ steps.rust.outputs.tag }}
-
-      - name: Run tests
+      - name: Check Rust formatting
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
-            ${{ steps.rust.outputs.tag }} \
-            cargo test --lib
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo fmt --check
 
-  gateway:
-    name: Build gRPC Gateway
+      - name: Check Proto formatting
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace/proto \
+            ${{ needs.build-images.outputs.base-tag }} \
+            buf format --diff --exit-code
+
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    needs: build-base
+    needs: build-images
     steps:
       - uses: actions/checkout@v4
 
@@ -185,51 +110,169 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Calculate go tag
-        id: go
-        run: |
-          CONTENT_HASH=$(sha256sum build/images/go/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-go:$TAG" >> $GITHUB_OUTPUT
-
-      - name: Pull go image
-        run: docker pull ${{ steps.go.outputs.tag }}
-
-      - name: Generate gateway code
+      - name: Clippy
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/gateway \
-            ${{ steps.go.outputs.tag }} \
-            buf generate
+            -w /workspace \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo clippy --all-targets --features "sqlite test-utils" -- -D warnings
 
-      - name: Build gateway binary
+      - name: Buf lint
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/gateway \
-            ${{ steps.go.outputs.tag }} \
-            go build -buildvcs=false -o /tmp/angzarr-grpc-gateway .
+            -w /workspace/proto \
+            ${{ needs.build-images.outputs.base-tag }} \
+            buf lint
 
-      - name: Generate OpenAPI spec
+      - name: Buf breaking changes
+        if: github.event_name == 'pull_request'
         run: |
-          mkdir -p docs/static
-          cp gateway/api/angzarr.swagger.json docs/static/openapi.json
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace/proto \
+            ${{ needs.build-images.outputs.base-tag }} \
+            buf breaking --against 'https://github.com/${{ github.repository }}.git#branch=main'
+        continue-on-error: true
 
-      - name: Upload OpenAPI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: openapi-spec
-          path: docs/static/openapi.json
-
-  # Build runtime images (angzarr binaries) using skaffold
-  build-runtime:
-    name: Build Runtime Images
+  test:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    needs: [build-base, build-rust]
-    permissions:
-      contents: read
-      packages: write
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run unit tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo test --lib --features "sqlite test-utils"
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build standalone binary
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            -e DEVCONTAINER=true \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo build --release --bin angzarr-standalone --features "standalone sqlite"
+
+      - name: Run integration tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo test --test standalone_integration --features "sqlite test-utils"
+
+  mutation:
+    name: Mutation Tests (Changed Code)
+    runs-on: ubuntu-latest
+    needs: [build-images, test]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate diff
+        run: |
+          git diff origin/${{ github.base_ref }}..HEAD > git.diff
+          echo "Diff stats:"
+          wc -l git.diff
+
+      - name: Run mutation tests
+        run: |
+          if [ -s git.diff ]; then
+            docker run --rm \
+              -v "${{ github.workspace }}:/workspace" \
+              -w /workspace \
+              ${{ needs.build-images.outputs.rust-tag }} \
+              sh -c "cargo install cargo-mutants --locked && cargo mutants --in-place --in-diff git.diff --no-shuffle -vV"
+          else
+            echo "No changes to test"
+          fi
+        continue-on-error: true
+
+      - name: Upload mutation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-results
+          path: mutants.out/
+          retention-days: 7
+
+  # =============================================================================
+  # TEST GATE
+  # =============================================================================
+
+  test-gate:
+    name: Test Gate
+    runs-on: ubuntu-latest
+    needs: [format, lint, test, integration]
+    if: always()
+    outputs:
+      passed: ${{ steps.check.outputs.passed }}
+    steps:
+      - name: Check test results
+        id: check
+        run: |
+          echo "Format: ${{ needs.format.result }}"
+          echo "Lint: ${{ needs.lint.result }}"
+          echo "Test: ${{ needs.test.result }}"
+          echo "Integration: ${{ needs.integration.result }}"
+
+          if [ "${{ needs.format.result }}" != "success" ] || \
+             [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.integration.result }}" != "success" ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "::error::One or more tests failed"
+            exit 1
+          fi
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "All tests passed"
+
+  # =============================================================================
+  # STAGE 3: BUILD & PUSH COORDINATOR IMAGES
+  # =============================================================================
+
+  build-push-images:
+    name: Build & Push Coordinator Images
+    runs-on: ubuntu-latest
+    needs: [test-gate, build-images]
+    if: needs.test-gate.outputs.passed == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -246,76 +289,67 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Calculate rust image tag
-        id: rust
+      - name: Calculate image tag
+        id: tag
         run: |
-          CONTENT_HASH=$(sha256sum build/images/rust/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-rust:$TAG" >> $GITHUB_OUTPUT
-
-      - name: Pull rust image
-        run: docker pull ${{ steps.rust.outputs.tag }}
-
-      - name: Build runtime images with skaffold
-        env:
-          RUST_IMAGE: ${{ steps.rust.outputs.tag }}
-        run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            skaffold build --push --file-output=runtime-build.json
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            TAG="pr-${{ github.event.pull_request.number }}-${SHORT_SHA}"
           else
-            skaffold build --push=false --file-output=runtime-build.json
+            TAG="${SHORT_SHA}"
           fi
-          echo "Built images:"
-          jq -r '.builds[].tag' runtime-build.json
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Image tag: $TAG"
 
-  # NOTE: Client library and example builds have been moved to their respective repos:
-  # - angzarr-client-{rust,python,go,java,csharp,cpp}
-  # - angzarr-examples-{rust,python,go,java,csharp,cpp}
+      - name: Build coordinator images with skaffold
+        run: |
+          skaffold build --push --file-output=build.json
 
-  push-gateway:
-    name: Push Gateway Image
+      - name: Tag images with PR/main tag
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          IMAGES=$(jq -r '.builds[].tag' build.json)
+
+          for FULL_TAG in $IMAGES; do
+            IMAGE_NAME=$(echo "$FULL_TAG" | cut -d: -f1)
+            echo "Tagging $IMAGE_NAME:$TAG"
+            docker pull "$FULL_TAG"
+            docker tag "$FULL_TAG" "$IMAGE_NAME:$TAG"
+            docker push "$IMAGE_NAME:$TAG"
+
+            # Also tag as latest on main
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              docker tag "$FULL_TAG" "$IMAGE_NAME:latest"
+              docker push "$IMAGE_NAME:latest"
+            fi
+          done
+
+      - name: Output built images
+        run: |
+          echo "## Built Images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
+          TAG="${{ steps.tag.outputs.tag }}"
+          jq -r '.builds[].imageName' build.json | while read IMAGE; do
+            echo "| $IMAGE | $TAG |" >> $GITHUB_STEP_SUMMARY
+          done
+
+  # =============================================================================
+  # SUMMARY
+  # =============================================================================
+
+  summary:
+    name: CI Summary
     runs-on: ubuntu-latest
-    needs: [build-base, build-rust, lint, test, gateway]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      packages: write
+    needs: [build-push-images, mutation]
+    if: always()
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Calculate go tag
-        id: go
+      - name: Summary
         run: |
-          CONTENT_HASH=$(sha256sum build/images/go/Containerfile | cut -c1-12)
-          TAG="${CONTENT_HASH}-${{ needs.build-base.outputs.base-hash }}"
-          echo "tag=${{ env.IMAGE_PREFIX }}/angzarr-go:$TAG" >> $GITHUB_OUTPUT
-
-      - name: Pull go image
-        run: docker pull ${{ steps.go.outputs.tag }}
-
-      - name: Generate gateway code
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/gateway \
-            ${{ steps.go.outputs.tag }} \
-            buf generate
-
-      - name: Build gateway image
-        run: |
-          docker build \
-            -t ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }} \
-            -t ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:latest \
-            -f gateway/Containerfile .
-
-      - name: Push gateway image
-        run: |
-          docker push ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${{ github.sha }}
-          docker push ${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:latest
+          echo "## CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Push Images | ${{ needs.build-push-images.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mutation Tests | ${{ needs.mutation.result }} |" >> $GITHUB_STEP_SUMMARY
