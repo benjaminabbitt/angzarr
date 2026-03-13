@@ -4,6 +4,7 @@ modules:
     name: buf.build/angzarr/angzarr
     excludes:
       - health
+      - examples
 lint:
   use:
     - STANDARD
