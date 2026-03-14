@@ -51,6 +51,9 @@ RUN mkdir -p src/bin && \
     done && \
     mkdir -p migrations && touch migrations/.keep
 
+# Ensure git dependencies are fresh (avoid stale cargo cache)
+RUN cargo update -p angzarr-client
+
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
 RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
     --bin angzarr-aggregate \
@@ -120,6 +123,9 @@ RUN mkdir -p src/bin && \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
     mkdir -p migrations && touch migrations/.keep
+
+# Ensure git dependencies are fresh (avoid stale cargo cache)
+RUN cargo update -p angzarr-client
 
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
 # Using full-musl feature which excludes kafka (requires native OpenSSL)
