@@ -371,8 +371,6 @@ jobs:
       # Use latest example images (or matching branch if exists)
       example-images: '{}'
       examples-ref: ${{ github.head_ref || 'main' }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # =============================================================================
   # SUMMARY
