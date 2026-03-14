@@ -94,7 +94,8 @@ jobs:
 
       - name: Build and push coordinator images
         run: |
-          skaffold build --push --file-output=build.json
+          # Force no cache to avoid stale layers
+          skaffold build --push --file-output=build.json --cache-artifacts=false
 
       - name: Tag images with semver versions
         run: |
