@@ -116,14 +116,20 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
+      - name: Update Chart.yaml version and appVersion
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          sed -i "s/^version: .*/version: $VERSION/" deploy/k8s/helm/angzarr/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" deploy/k8s/helm/angzarr/Chart.yaml
+
       - name: Update image tags in values.yaml
         run: |
           VERSION=${{ needs.validate.outputs.version }}
-          sed -i "s/tag: \"latest\"/tag: \"$VERSION\"/" deploy/helm/angzarr/values.yaml
+          sed -i "s/tag: \"latest\"/tag: \"$VERSION\"/" deploy/k8s/helm/angzarr/values.yaml
 
       - name: Package Helm chart
         run: |
-          helm package deploy/helm/angzarr
+          helm package deploy/k8s/helm/angzarr
 
       - name: Push Helm chart to OCI registry
         run: |
