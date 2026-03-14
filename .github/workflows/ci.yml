@@ -367,7 +367,7 @@ jobs:
     uses: angzarr-io/angzarr-examples-rust/.github/workflows/acceptance-callable.yml@main
     with:
       # Use just-built coordinator images
-      coordinator-images: ${{ needs.build-push-images.outputs.images-json }}
+      coordinator-version: ${{ needs.build-push-images.outputs.tag }}
       # Use latest example images (or matching branch if exists)
       example-images: '{}'
       examples-ref: ${{ github.head_ref || 'main' }}
