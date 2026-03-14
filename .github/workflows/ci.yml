@@ -20,11 +20,10 @@ jobs:
   # =============================================================================
 
   build-images:
-    name: Build Base & Language Images
+    name: Build Base & Rust Images
     runs-on: ubuntu-latest
     outputs:
       rust-tag: ${{ steps.tags.outputs.rust-tag }}
-      go-tag: ${{ steps.tags.outputs.go-tag }}
       base-tag: ${{ steps.tags.outputs.base-tag }}
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +41,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push base/language images
+      - name: Build and push base/rust images
         run: |
           cd build/images
           skaffold build --push --file-output=build.json
@@ -53,14 +52,11 @@ jobs:
           cd build/images
           BASE_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-base")) | .tag' build.json)
           RUST_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-rust")) | .tag' build.json)
-          GO_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-go")) | .tag' build.json)
           echo "base-tag=$BASE_TAG" >> $GITHUB_OUTPUT
           echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
-          echo "go-tag=$GO_TAG" >> $GITHUB_OUTPUT
           echo "Built images:"
           echo "  Base: $BASE_TAG"
           echo "  Rust: $RUST_TAG"
-          echo "  Go: $GO_TAG"
 
       - name: Tag base images as latest
         if: github.ref == 'refs/heads/main'

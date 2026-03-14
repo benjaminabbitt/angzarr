@@ -3,7 +3,8 @@ kind: Config
 metadata:
   name: angzarr-images
 
-# All build images with content-addressable tags
+# Base and Rust images with content-addressable tags
+# Other language images are built in their respective client repos
 # Usage: skaffold build -f build/images/skaffold.yaml [--profile dev]
 
 build:
@@ -23,7 +24,7 @@ build:
       docker:
         dockerfile: Containerfile
 
-    # Language-specific images
+    # Rust image - built here, other languages in client repos
     - image: ghcr.io/angzarr-io/angzarr-rust
       context: rust
       docker:
@@ -32,52 +33,11 @@ build:
         - image: ghcr.io/angzarr-io/angzarr-base
           alias: BASE_IMAGE
 
-    - image: ghcr.io/angzarr-io/angzarr-go
-      context: go
-      docker:
-        dockerfile: Containerfile
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-base
-          alias: BASE_IMAGE
-
-    - image: ghcr.io/angzarr-io/angzarr-python
-      context: python
-      docker:
-        dockerfile: Containerfile
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-base
-          alias: BASE_IMAGE
-
-    - image: ghcr.io/angzarr-io/angzarr-csharp
-      context: csharp
-      docker:
-        dockerfile: Containerfile
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-base
-          alias: BASE_IMAGE
-
-    - image: ghcr.io/angzarr-io/angzarr-cpp
-      context: cpp
-      docker:
-        dockerfile: Containerfile
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-base
-          alias: BASE_IMAGE
-
-    - image: ghcr.io/angzarr-io/angzarr-java
-      context: java
-      docker:
-        dockerfile: Containerfile
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-base
-          alias: BASE_IMAGE
-
 profiles:
-  # Dev profile - adds dev containers with extra tooling
+  # Dev profile - adds dev container with extra tooling
   - name: dev
     build:
       artifacts:
-        # Dev containers extend language images with dev tooling
         - image: ghcr.io/angzarr-io/angzarr-dev-rust
           context: ../../.devcontainer
           docker:
@@ -85,27 +45,3 @@ profiles:
           requires:
             - image: ghcr.io/angzarr-io/angzarr-rust
               alias: RUST_IMAGE
-
-        - image: ghcr.io/angzarr-io/angzarr-dev-python
-          context: dev/python
-          docker:
-            dockerfile: Containerfile
-          requires:
-            - image: ghcr.io/angzarr-io/angzarr-python
-              alias: PYTHON_IMAGE
-
-        - image: ghcr.io/angzarr-io/angzarr-dev-csharp
-          context: dev/csharp
-          docker:
-            dockerfile: Containerfile
-          requires:
-            - image: ghcr.io/angzarr-io/angzarr-csharp
-              alias: CSHARP_IMAGE
-
-        - image: ghcr.io/angzarr-io/angzarr-dev-cpp
-          context: dev/cpp
-          docker:
-            dockerfile: Containerfile
-          requires:
-            - image: ghcr.io/angzarr-io/angzarr-cpp
-              alias: CPP_IMAGE
