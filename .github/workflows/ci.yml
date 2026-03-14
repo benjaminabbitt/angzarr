@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust-tag: ${{ steps.tags.outputs.rust-tag }}
+      base-tag: ${{ steps.tags.outputs.base-tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,13 +46,15 @@ jobs:
           cd build/images
           skaffold build --push --file-output=build.json
 
-      - name: Extract image tag
+      - name: Extract image tags
         id: tags
         run: |
           cd build/images
+          BASE_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-base")) | .tag' build.json)
           RUST_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-rust")) | .tag' build.json)
+          echo "base-tag=$BASE_TAG" >> $GITHUB_OUTPUT
           echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
-          echo "Built: $RUST_TAG"
+          echo "Built: base=$BASE_TAG rust=$RUST_TAG"
 
       - name: Tag images as latest
         if: github.ref == 'refs/heads/main'
