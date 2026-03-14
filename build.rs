@@ -14,11 +14,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/meta.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/cloudevents.proto");
     println!("cargo:rerun-if-changed=proto/io/cloudevents/v1/cloudevents.proto");
-    println!("cargo:rerun-if-changed=proto/examples/poker_types.proto");
-    println!("cargo:rerun-if-changed=proto/examples/player.proto");
-    println!("cargo:rerun-if-changed=proto/examples/table.proto");
-    println!("cargo:rerun-if-changed=proto/examples/hand.proto");
-    println!("cargo:rerun-if-changed=proto/examples/ai_sidecar.proto");
 
     // Generate descriptor.bin for proto reflection (used by COMMUTATIVE merge)
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
@@ -50,11 +45,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/meta.proto",
                 "proto/angzarr/cloudevents.proto",
                 "proto/io/cloudevents/v1/cloudevents.proto",
-                "proto/examples/poker_types.proto",
-                "proto/examples/player.proto",
-                "proto/examples/table.proto",
-                "proto/examples/hand.proto",
-                "proto/examples/ai_sidecar.proto",
             ],
             &["proto"],
         )?;
