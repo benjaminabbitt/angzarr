@@ -27,19 +27,16 @@ WORKDIR /app
 # Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
-COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 COPY crates/ ./crates/
 COPY xtask/ ./xtask/
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin client/rust/src client/rust/tests && \
+RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
-    echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    echo "fn main() {}" > client/rust/tests/features.rs && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
@@ -70,7 +67,6 @@ FROM builder-dev-deps AS builder-dev
 
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
-COPY client/ ./client/
 COPY migrations/ ./migrations/
 
 # Rebuild with real source (deps already compiled in previous stage)
@@ -82,13 +78,6 @@ RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
     --bin angzarr-log \
     --bin angzarr-stream && \
     cp target/container-dev/angzarr-* /tmp/
-
-# Generate protobuf FileDescriptorSet for runtime event decoding
-RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
-    -I proto \
-    proto/examples/player.proto \
-    proto/examples/table.proto \
-    proto/examples/hand.proto
 
 # =============================================================================
 # Release builder - musl static, multi-arch (small images, all features)
@@ -108,19 +97,16 @@ WORKDIR /app
 # Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
-COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 COPY crates/ ./crates/
 COPY xtask/ ./xtask/
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin client/rust/src client/rust/tests && \
+RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
-    echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    echo "fn main() {}" > client/rust/tests/features.rs && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
@@ -159,7 +145,6 @@ ARG TARGETARCH
 
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
-COPY client/ ./client/
 COPY migrations/ ./migrations/
 
 # Rebuild with real source (deps already compiled in previous stage)
@@ -177,13 +162,6 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     --bin angzarr-log \
     --bin angzarr-stream && \
     cp target/$TARGET/production/angzarr-* /tmp/
-
-# Generate protobuf FileDescriptorSet for runtime event decoding
-RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
-    -I proto \
-    proto/examples/player.proto \
-    proto/examples/table.proto \
-    proto/examples/hand.proto
 
 # =============================================================================
 # Runtime bases
@@ -226,8 +204,6 @@ ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS angzarr-log-dev
 COPY --from=builder-dev /tmp/angzarr-log ./server
-COPY --from=builder-dev /tmp/descriptors.pb ./descriptors.pb
-ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
 ENTRYPOINT ["./server"]
 
@@ -260,8 +236,6 @@ ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS angzarr-log
 COPY --from=builder-release /tmp/angzarr-log ./server
-COPY --from=builder-release /tmp/descriptors.pb ./descriptors.pb
-ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
 ENTRYPOINT ["./server"]
 
