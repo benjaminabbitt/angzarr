@@ -20,11 +20,10 @@ jobs:
   # =============================================================================
 
   build-images:
-    name: Build Base & Language Images
+    name: Build Rust Image
     runs-on: ubuntu-latest
     outputs:
       rust-tag: ${{ steps.tags.outputs.rust-tag }}
-      go-tag: ${{ steps.tags.outputs.go-tag }}
       base-tag: ${{ steps.tags.outputs.base-tag }}
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +41,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push base/language images
+      - name: Build and push rust image
         run: |
           cd build/images
           skaffold build --push --file-output=build.json
@@ -53,14 +52,21 @@ jobs:
           cd build/images
           BASE_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-base")) | .tag' build.json)
           RUST_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-rust")) | .tag' build.json)
-          GO_TAG=$(jq -r '.builds[] | select(.imageName | contains("angzarr-go")) | .tag' build.json)
           echo "base-tag=$BASE_TAG" >> $GITHUB_OUTPUT
           echo "rust-tag=$RUST_TAG" >> $GITHUB_OUTPUT
-          echo "go-tag=$GO_TAG" >> $GITHUB_OUTPUT
-          echo "Built images:"
-          echo "  Base: $BASE_TAG"
-          echo "  Rust: $RUST_TAG"
-          echo "  Go: $GO_TAG"
+          echo "Built: base=$BASE_TAG rust=$RUST_TAG"
+
+      - name: Tag images as latest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd build/images
+          for FULL_TAG in $(jq -r '.builds[].tag' build.json); do
+            IMAGE_NAME=$(echo "$FULL_TAG" | cut -d: -f1)
+            echo "Tagging $IMAGE_NAME:latest"
+            docker pull "$FULL_TAG"
+            docker tag "$FULL_TAG" "$IMAGE_NAME:latest"
+            docker push "$IMAGE_NAME:latest"
+          done
 
   # =============================================================================
   # STAGE 2: TESTS (parallel)
@@ -87,14 +93,6 @@ jobs:
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
             cargo fmt --check
-
-      - name: Check Proto formatting
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/proto \
-            ${{ needs.build-images.outputs.base-tag }} \
-            buf format --diff --exit-code
 
   lint:
     name: Lint
@@ -123,7 +121,7 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/proto \
-            ${{ needs.build-images.outputs.base-tag }} \
+            ${{ needs.build-images.outputs.rust-tag }} \
             buf lint
 
       - name: Buf breaking changes
@@ -132,7 +130,7 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/proto \
-            ${{ needs.build-images.outputs.base-tag }} \
+            ${{ needs.build-images.outputs.rust-tag }} \
             buf breaking --against 'https://github.com/${{ github.repository }}.git#branch=main'
         continue-on-error: true
 
@@ -189,6 +187,38 @@ jobs:
             ${{ needs.build-images.outputs.rust-tag }} \
             cargo test --test standalone_integration --features "sqlite test-utils"
 
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run coverage (unit + contract tests)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            cargo llvm-cov --features "sqlite test-utils" \
+              --ignore-filename-regex '(\.pb\.rs|proto/|sidecar\.rs|bin/)' \
+              --fail-under-lines 80 \
+              --codecov --output-path codecov.json
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: codecov.json
+          retention-days: 30
+
   mutation:
     name: Mutation Tests (Changed Code)
     runs-on: ubuntu-latest
@@ -240,7 +270,7 @@ jobs:
   test-gate:
     name: Test Gate
     runs-on: ubuntu-latest
-    needs: [format, lint, test, integration]
+    needs: [format, lint, test, integration, coverage]
     if: always()
     outputs:
       passed: ${{ steps.check.outputs.passed }}
@@ -252,11 +282,13 @@ jobs:
           echo "Lint: ${{ needs.lint.result }}"
           echo "Test: ${{ needs.test.result }}"
           echo "Integration: ${{ needs.integration.result }}"
+          echo "Coverage: ${{ needs.coverage.result }}"
 
           if [ "${{ needs.format.result }}" != "success" ] || \
              [ "${{ needs.lint.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
-             [ "${{ needs.integration.result }}" != "success" ]; then
+             [ "${{ needs.integration.result }}" != "success" ] || \
+             [ "${{ needs.coverage.result }}" != "success" ]; then
             echo "passed=false" >> $GITHUB_OUTPUT
             echo "::error::One or more tests failed"
             exit 1

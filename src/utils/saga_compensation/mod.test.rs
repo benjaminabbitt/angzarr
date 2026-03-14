@@ -193,6 +193,7 @@ fn test_build_notification_command_book_missing_source() {
 /// Two distinct failure modes:
 /// 1. Original rejection: why the target rejected the command
 /// 2. Compensation failure: why compensation itself failed
+///
 /// Both are recorded for debugging and audit.
 #[test]
 fn test_build_compensation_failed_event() {

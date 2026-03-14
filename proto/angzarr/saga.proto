@@ -1,35 +1,36 @@
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
-import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 // SagaService: stateless translation from source events to commands.
 // Sagas receive only source events — framework handles sequence stamping and delivery.
 service SagaService {
   // Translate source events into commands for target domains.
   // Commands use angzarr_deferred — framework stamps explicit sequences on delivery.
-  rpc Handle (SagaHandleRequest) returns (SagaResponse);
+  rpc Handle(SagaHandleRequest) returns (SagaResponse);
 }
 
 // SagaCoordinatorService: orchestrates saga execution.
 // Framework handles sequence stamping and delivery retry.
 service SagaCoordinatorService {
   // Execute saga: translate source events → commands, deliver to targets
-  rpc Execute (SagaHandleRequest) returns (SagaResponse) {
+  rpc Execute(SagaHandleRequest) returns (SagaResponse) {
     option (google.api.http) = {
       post: "/v1/saga/execute"
       body: "*"
     };
   }
   // Speculative execution - returns commands without side effects
-  rpc ExecuteSpeculative (SpeculateSagaRequest) returns (SagaResponse) {
+  rpc ExecuteSpeculative(SpeculateSagaRequest) returns (SagaResponse) {
     option (google.api.http) = {
       post: "/v1/saga/execute/speculative"
       body: "*"
@@ -40,9 +41,9 @@ service SagaCoordinatorService {
 // Request for saga execution - source events only.
 // Sagas are pure translators: source events → commands with angzarr_deferred.
 message SagaHandleRequest {
-  EventBook source = 1;         // Source events that triggered the saga
-  SyncMode sync_mode = 2;       // Propagate for CASCADE recursion
-  CascadeErrorMode cascade_error_mode = 3;  // How to handle errors in CASCADE mode
+  EventBook source = 1; // Source events that triggered the saga
+  SyncMode sync_mode = 2; // Propagate for CASCADE recursion
+  CascadeErrorMode cascade_error_mode = 3; // How to handle errors in CASCADE mode
 }
 
 // Request for speculative saga execution.
@@ -52,8 +53,8 @@ message SpeculateSagaRequest {
 
 // Response from saga - commands for other aggregates
 message SagaResponse {
-  repeated CommandBook commands = 1;  // Commands to execute on other aggregates (with angzarr_deferred)
-  repeated EventBook events = 2;      // Events (facts) to inject directly
+  repeated CommandBook commands = 1; // Commands to execute on other aggregates (with angzarr_deferred)
+  repeated EventBook events = 2; // Events (facts) to inject directly
 }
 
 // System event when compensation fails/requested
@@ -66,4 +67,3 @@ message SagaCompensationFailed {
   CommandBook rejected_command = 6;
   google.protobuf.Timestamp occurred_at = 7;
 }
-

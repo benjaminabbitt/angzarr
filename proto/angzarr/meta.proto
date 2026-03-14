@@ -1,12 +1,13 @@
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 // ============================================================================
 // Meta Domain (_angzarr) - Infrastructure commands/events
@@ -15,8 +16,8 @@ import "angzarr/types.proto";
 // Delete all events for an edition+domain combination.
 // Main timeline ('angzarr' or empty edition name) cannot be deleted.
 message DeleteEditionEvents {
-  string edition = 1;   // Edition name to delete from
-  string domain = 2;    // Domain to delete from
+  string edition = 1; // Edition name to delete from
+  string domain = 2; // Domain to delete from
 }
 
 // Response from edition event deletion.

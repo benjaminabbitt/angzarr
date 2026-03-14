@@ -72,7 +72,7 @@ fn test_inject_with_no_span_no_traceparent() {
     // This is expected behavior - the function is a no-op without context
     assert!(
         !headers.contains_key("traceparent")
-            || headers.get("traceparent").map_or(true, |v| v.is_empty()),
+            || headers.get("traceparent").is_none_or(|v| v.is_empty()),
         "Without active span, traceparent should not be present or should be empty"
     );
 }

@@ -13,7 +13,7 @@ use crate::proto_ext::EventPageExt;
 
 use super::traits::ClientLogic;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 #[path = "merge_test_support.rs"]
 pub(crate) mod test_support;
 
@@ -182,7 +182,7 @@ pub(crate) fn diff_state_fields(
     }
 
     // Test state handler for test.StatefulState type
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     if before.type_url == "test.StatefulState" {
         return test_support::diff_test_state_fields(&before.value, &after.value);
     }

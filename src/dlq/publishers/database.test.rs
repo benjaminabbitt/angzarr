@@ -20,8 +20,10 @@
 #[test]
 fn test_domain_from_cover() {
     // This mirrors the logic: dead_letter.domain().unwrap_or("unknown")
-    let domain = Some("orders");
-    let extracted = domain.unwrap_or("unknown");
+    fn get_domain() -> Option<&'static str> {
+        Some("orders")
+    }
+    let extracted = get_domain().unwrap_or("unknown");
 
     assert_eq!(extracted, "orders");
 }
@@ -31,8 +33,10 @@ fn test_domain_from_cover() {
 /// When the dead letter has no cover, "unknown" is used.
 #[test]
 fn test_domain_fallback_unknown() {
-    let domain: Option<&str> = None;
-    let extracted = domain.unwrap_or("unknown");
+    fn get_domain() -> Option<&'static str> {
+        None
+    }
+    let extracted = get_domain().unwrap_or("unknown");
 
     assert_eq!(extracted, "unknown");
 }

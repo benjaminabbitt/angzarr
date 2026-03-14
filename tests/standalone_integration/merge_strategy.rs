@@ -667,10 +667,26 @@ async fn test_manual_is_not_retryable() {
 // 5. If field changes are disjoint → allow (commutative)
 // 6. If field changes overlap → return FAILED_PRECONDITION (retry)
 
-use angzarr::proto::examples::PlayerState;
-use prost::Message;
+/// Test-only state struct for field-level merge testing.
+/// Uses JSON-like encoding that merge.rs test_support can parse.
+#[derive(Clone, Default)]
+struct TestPlayerState {
+    display_name: String,
+    status: String,
+}
 
-/// Test aggregate that tracks state using real examples.PlayerState proto type.
+impl TestPlayerState {
+    /// Encode to JSON-like format for test.StatefulState type.
+    fn to_json_bytes(&self) -> Vec<u8> {
+        format!(
+            r#"{{"display_name":"{}","status":"{}"}}"#,
+            self.display_name, self.status
+        )
+        .into_bytes()
+    }
+}
+
+/// Test aggregate that tracks state using TestPlayerState proto type.
 ///
 /// Uses actual proto encoding so proto_reflect can properly diff fields.
 /// Commands:
@@ -686,9 +702,9 @@ impl StatefulAggregate {
         Self
     }
 
-    /// Rebuild state from events into PlayerState.
-    fn rebuild_state(events: &EventBook) -> PlayerState {
-        let mut state = PlayerState::default();
+    /// Rebuild state from events into TestPlayerState.
+    fn rebuild_state(events: &EventBook) -> TestPlayerState {
+        let mut state = TestPlayerState::default();
 
         for page in &events.pages {
             if let Some(event_page::Payload::Event(event)) = &page.payload {
@@ -704,16 +720,12 @@ impl StatefulAggregate {
         state
     }
 
-    /// Pack PlayerState as Any for Replay RPC.
-    /// Uses proper proto encoding via prost::Message.
-    fn pack_state(state: &PlayerState) -> prost_types::Any {
-        let mut buf = Vec::new();
-        state
-            .encode(&mut buf)
-            .expect("Failed to encode PlayerState");
+    /// Pack TestPlayerState as Any for Replay RPC.
+    /// Uses JSON-like encoding for test.StatefulState type.
+    fn pack_state(state: &TestPlayerState) -> prost_types::Any {
         prost_types::Any {
-            type_url: "type.googleapis.com/examples.PlayerState".to_string(),
-            value: buf,
+            type_url: "test.StatefulState".to_string(),
+            value: state.to_json_bytes(),
         }
     }
 }

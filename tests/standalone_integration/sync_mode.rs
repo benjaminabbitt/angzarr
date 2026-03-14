@@ -432,7 +432,6 @@ async fn test_cascade_end_to_end_saga_command_chain() {
                                     .unwrap_or(0),
                             },
                         )),
-                        ..Default::default()
                     }),
                     payload: Some(command_page::Payload::Command(Any {
                         type_url: "test.TargetCommand".to_string(),

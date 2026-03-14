@@ -404,7 +404,6 @@ mod sync_pm_tests {
     use crate::discovery::StaticServiceDiscovery;
     use crate::orchestration::aggregate::ClientLogic;
     use crate::proto::{BusinessResponse, ContextualCommand, Edition, EventBook, EventPage};
-    use crate::proto_ext::CoverExt;
     use crate::standalone::traits::{ProcessManagerHandleResult, ProcessManagerHandler};
     use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
     use std::sync::atomic::{AtomicBool, Ordering};

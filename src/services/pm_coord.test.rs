@@ -20,8 +20,8 @@ use crate::orchestration::command::CommandOutcome;
 use crate::proto::{
     process_manager_coordinator_service_server::ProcessManagerCoordinatorService as PMCoordinatorServiceTrait,
     CascadeErrorMode, CommandBook, CommandResponse, Cover, Edition, EventBook, EventPage,
-    ProcessManagerCoordinatorRequest, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
-    SpeculatePmRequest, SyncMode, Uuid as ProtoUuid,
+    ProcessManagerCoordinatorRequest, ProcessManagerHandleRequest, SpeculatePmRequest, SyncMode,
+    Uuid as ProtoUuid,
 };
 
 // ============================================================================

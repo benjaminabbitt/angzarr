@@ -957,7 +957,7 @@ pub async fn test_timestamp_preservation<S: EventStore>(store: &S) {
         header: Some(PageHeader {
             sequence_type: Some(SequenceType::Sequence(0)),
         }),
-        created_at: Some(timestamp.clone()),
+        created_at: Some(timestamp),
         payload: Some(event_page::Payload::Event(Any {
             type_url: "type.example/TimestampTest".to_string(),
             value: vec![1, 2, 3],

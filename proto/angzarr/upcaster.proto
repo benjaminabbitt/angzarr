@@ -1,12 +1,13 @@
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 // UpcasterService: transforms old event versions to current versions
 // Implemented by the client alongside AggregateService on the same gRPC server.
@@ -14,7 +15,7 @@ import "angzarr/types.proto";
 service UpcasterService {
   // Transform events to current version
   // Returns events in same order, transformed where applicable
-  rpc Upcast (UpcastRequest) returns (UpcastResponse);
+  rpc Upcast(UpcastRequest) returns (UpcastResponse);
 }
 
 message UpcastRequest {
