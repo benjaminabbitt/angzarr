@@ -1,12 +1,13 @@
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "google/protobuf/any.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 // docs:start:cloud_event
 // CloudEvent represents a single event for external consumption.
@@ -34,8 +35,8 @@ message CloudEvent {
   map<string, string> extensions = 3;
 
   // Optional overrides. Framework uses Cover/EventPage values if not set.
-  optional string id = 4;      // Default: {domain}:{root_id}:{sequence}
-  optional string source = 5;  // Default: angzarr/{domain}
+  optional string id = 4; // Default: {domain}:{root_id}:{sequence}
+  optional string source = 5; // Default: angzarr/{domain}
   optional string subject = 6; // Default: aggregate root ID
 }
 

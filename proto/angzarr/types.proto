@@ -4,14 +4,15 @@
 
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 message UUID {
   bytes value = 1;
@@ -21,8 +22,8 @@ message UUID {
 message Cover {
   string domain = 2;
   UUID root = 1;
-  string correlation_id = 3;  // Workflow correlation - flows through all commands/events
-  Edition edition = 4;        // Edition for diverged timelines; empty name = main timeline
+  string correlation_id = 3; // Workflow correlation - flows through all commands/events
+  Edition edition = 4; // Edition for diverged timelines; empty name = main timeline
   // Field 5 removed: external_id moved to ExternalDeferredSequence in PageHeader
 }
 // docs:end:cover
@@ -35,24 +36,24 @@ message Cover {
 // - Explicit (divergences populated): Per-domain divergence points for historical branching,
 //  saga coordination, or speculative execution
 message Edition {
-  string name = 1;                              // Edition name, e.g., "v2"; empty = main timeline
-  repeated DomainDivergence divergences = 2;   // Optional: explicit per-domain divergence points
+  string name = 1; // Edition name, e.g., "v2"; empty = main timeline
+  repeated DomainDivergence divergences = 2; // Optional: explicit per-domain divergence points
 }
 
 // Explicit divergence point for a specific domain.
 // Used when creating historical branches or coordinating saga writes across domains.
 message DomainDivergence {
-  string domain = 1;    // Domain name
-  uint32 sequence = 2;  // Divergence sequence number
+  string domain = 1; // Domain name
+  uint32 sequence = 2; // Divergence sequence number
 }
 // docs:end:edition
 
 // docs:start:sync_mode
 // Controls synchronous processing behavior
 enum SyncMode {
-  SYNC_MODE_ASYNC = 0;  // Async: fire and forget (default)
-  SYNC_MODE_SIMPLE = 1;       // Sync projectors only, no saga cascade
-  SYNC_MODE_CASCADE = 2;      // Full sync: projectors + saga cascade (expensive)
+  SYNC_MODE_ASYNC = 0; // Async: fire and forget (default)
+  SYNC_MODE_SIMPLE = 1; // Sync projectors only, no saga cascade
+  SYNC_MODE_CASCADE = 2; // Full sync: projectors + saga cascade (expensive)
 }
 // docs:end:sync_mode
 
@@ -60,9 +61,9 @@ enum SyncMode {
 // Controls how CASCADE mode handles errors from sagas/PMs.
 // Only relevant when sync_mode = CASCADE.
 enum CascadeErrorMode {
-  CASCADE_ERROR_FAIL_FAST = 0;   // Stop on first error, fail request (default)
-  CASCADE_ERROR_CONTINUE = 1;    // Continue through all, return successes + errors
-  CASCADE_ERROR_COMPENSATE = 2;  // On first error, compensate executed commands, fail request
+  CASCADE_ERROR_FAIL_FAST = 0; // Stop on first error, fail request (default)
+  CASCADE_ERROR_CONTINUE = 1; // Continue through all, return successes + errors
+  CASCADE_ERROR_COMPENSATE = 2; // On first error, compensate executed commands, fail request
   CASCADE_ERROR_DEAD_LETTER = 3; // On error, send to DLQ and continue with remaining
 }
 // docs:end:cascade_error_mode
@@ -70,18 +71,18 @@ enum CascadeErrorMode {
 // docs:start:merge_strategy
 // Controls how concurrent commands to the same aggregate are handled
 enum MergeStrategy {
-  MERGE_COMMUTATIVE = 0;       // Default: allow if state field mutations don't overlap
-  MERGE_STRICT = 1;            // Reject if sequence mismatch (optimistic concurrency)
+  MERGE_COMMUTATIVE = 0; // Default: allow if state field mutations don't overlap
+  MERGE_STRICT = 1; // Reject if sequence mismatch (optimistic concurrency)
   MERGE_AGGREGATE_HANDLES = 2; // Aggregate handles its own concurrency
-  MERGE_MANUAL = 3;            // Send to DLQ for manual review on mismatch
+  MERGE_MANUAL = 3; // Send to DLQ for manual review on mismatch
 }
 // docs:end:merge_strategy
 
 // docs:start:snapshot_retention
 // Controls snapshot retention during cleanup
 enum SnapshotRetention {
-  RETENTION_DEFAULT = 0;   // Persist every 16 events, treated as TRANSIENT otherwise
-  RETENTION_PERSIST = 1;   // Keep indefinitely (business milestone)
+  RETENTION_DEFAULT = 0; // Persist every 16 events, treated as TRANSIENT otherwise
+  RETENTION_PERSIST = 1; // Keep indefinitely (business milestone)
   RETENTION_TRANSIENT = 2; // Delete when newer snapshot written
 }
 // docs:end:snapshot_retention
@@ -118,35 +119,35 @@ message PayloadReference {
 // Encodes sequence type and provenance for framework processing.
 message PageHeader {
   oneof sequence_type {
-    uint32 sequence = 1;                              // Explicit sequence (aggregate handlers, legacy)
-    ExternalDeferredSequence external_deferred = 2;   // External fact (Stripe, FedEx, etc.)
-    AngzarrDeferredSequence angzarr_deferred = 3;     // Saga-produced command/fact
+    uint32 sequence = 1; // Explicit sequence (aggregate handlers, legacy)
+    ExternalDeferredSequence external_deferred = 2; // External fact (Stripe, FedEx, etc.)
+    AngzarrDeferredSequence angzarr_deferred = 3; // Saga-produced command/fact
   }
 }
 
 // For facts from external systems (webhooks, integrations).
 // Framework stamps sequence on delivery; idempotency via external_id.
 message ExternalDeferredSequence {
-  string external_id = 1;    // Idempotency key from external system (e.g., "pi_1234" from Stripe)
-  string description = 2;    // Human-readable origin (e.g., "Stripe webhook")
+  string external_id = 1; // Idempotency key from external system (e.g., "pi_1234" from Stripe)
+  string description = 2; // Human-readable origin (e.g., "Stripe webhook")
 }
 
 // For saga-produced commands and facts.
 // Framework stamps sequence on delivery; idempotency derived from source info.
 // Rejections route back to source aggregate.
 message AngzarrDeferredSequence {
-  Cover source = 1;        // Full source aggregate (domain + root + edition) - rejection routes here
-  uint32 source_seq = 2;   // Sequence of the triggering event
+  Cover source = 1; // Full source aggregate (domain + root + edition) - rejection routes here
+  uint32 source_seq = 2; // Sequence of the triggering event
 }
 // docs:end:page_header
 
 // docs:start:event_page
 message EventPage {
-  PageHeader header = 1;      // Sequence type and provenance
+  PageHeader header = 1; // Sequence type and provenance
   google.protobuf.Timestamp created_at = 2;
   oneof payload {
     google.protobuf.Any event = 3;
-    PayloadReference external = 4;  // Claim check: payload stored externally
+    PayloadReference external = 4; // Claim check: payload stored externally
   }
   // Field 5 removed: FactSequence replaced by PageHeader.external_deferred
 }
@@ -165,11 +166,11 @@ message Snapshot {
 // docs:start:event_book
 message EventBook {
   Cover cover = 1;
-  Snapshot snapshot = 2;                    // Snapshot state; sequence computed by framework on persist
+  Snapshot snapshot = 2; // Snapshot state; sequence computed by framework on persist
   repeated EventPage pages = 3;
   // Field 4 removed: correlation_id moved to Cover
   // Field 5 removed: snapshot_state unified into snapshot field
-  uint32 next_sequence = 6;                 // Computed on load, never stored: (last page seq OR snapshot seq if no pages) + 1
+  uint32 next_sequence = 6; // Computed on load, never stored: (last page seq OR snapshot seq if no pages) + 1
 }
 // docs:end:event_book
 
@@ -193,11 +194,11 @@ message Projection {
 }
 
 message CommandPage {
-  PageHeader header = 1;      // Sequence type and provenance
+  PageHeader header = 1; // Sequence type and provenance
   MergeStrategy merge_strategy = 2;
   oneof payload {
     google.protobuf.Any command = 3;
-    PayloadReference external = 4;  // Claim check: payload stored externally
+    PayloadReference external = 4; // Claim check: payload stored externally
   }
 }
 
@@ -214,7 +215,7 @@ message CommandBook {
 message CommandRequest {
   CommandBook command = 1;
   SyncMode sync_mode = 2;
-  CascadeErrorMode cascade_error_mode = 3;  // How to handle saga/PM errors in CASCADE mode
+  CascadeErrorMode cascade_error_mode = 3; // How to handle saga/PM errors in CASCADE mode
 }
 
 message ContextualCommand {
@@ -233,7 +234,7 @@ message ContextualCommandRequest {
 // Query types
 message SequenceRange {
   uint32 lower = 1;
-  optional uint32 upper = 2;  // If not set, query to latest
+  optional uint32 upper = 2; // If not set, query to latest
 }
 
 message SequenceSet {
@@ -244,8 +245,8 @@ message SequenceSet {
 // Replays events from sequence 0 (no snapshots) to the specified point.
 message TemporalQuery {
   oneof point_in_time {
-    google.protobuf.Timestamp as_of_time = 1;     // Events with created_at <= this
-    uint32 as_of_sequence = 2;                     // Events with sequence <= this
+    google.protobuf.Timestamp as_of_time = 1; // Events with created_at <= this
+    uint32 as_of_sequence = 2; // Events with sequence <= this
   }
 }
 
@@ -297,10 +298,10 @@ message EventStreamFilter {
 // Contains routing info via Cover but no persistence semantics.
 // Type discrimination via payload.type_url (standard Any behavior).
 message Notification {
-  Cover cover = 1;                          // Routing: domain, root, correlation_id
-  google.protobuf.Any payload = 2;          // Type-specific content (RejectionNotification, etc.)
-  google.protobuf.Timestamp sent_at = 3;    // When notification was created
-  map<string, string> metadata = 4;         // Optional key-value metadata
+  Cover cover = 1; // Routing: domain, root, correlation_id
+  google.protobuf.Any payload = 2; // Type-specific content (RejectionNotification, etc.)
+  google.protobuf.Timestamp sent_at = 3; // When notification was created
+  map<string, string> metadata = 4; // Optional key-value metadata
 }
 // docs:end:notification
 
@@ -312,8 +313,8 @@ message Notification {
 // - source.domain, source.root, source.edition → where to route rejection
 // - source_seq → which event triggered the command
 message RejectionNotification {
-  CommandBook rejected_command = 1;         // The command that was rejected (full context)
-  string rejection_reason = 2;              // Why: "insufficient_funds", "out_of_stock", etc.
+  CommandBook rejected_command = 1; // The command that was rejected (full context)
+  string rejection_reason = 2; // Why: "insufficient_funds", "out_of_stock", etc.
   // Fields 3-6 removed: source info now in rejected_command.pages[].header.angzarr_deferred
 }
 // docs:end:rejection_notification
@@ -326,27 +327,27 @@ message RejectionNotification {
 // Sequence mismatch details for DLQ entries.
 // Contains expected vs actual sequence for debugging and replay.
 message SequenceMismatchDetails {
-  uint32 expected_sequence = 1;         // What the command expected
-  uint32 actual_sequence = 2;           // What the aggregate was at
-  MergeStrategy merge_strategy = 3;     // Strategy that triggered DLQ routing
+  uint32 expected_sequence = 1; // What the command expected
+  uint32 actual_sequence = 2; // What the aggregate was at
+  MergeStrategy merge_strategy = 3; // Strategy that triggered DLQ routing
 }
 
 // Event processing failure details for DLQ entries.
 // Contains information about why a saga/projector failed to process events.
 message EventProcessingFailedDetails {
-  string error = 1;                     // Error message from the handler
-  uint32 retry_count = 2;               // Number of retry attempts before DLQ routing
-  bool is_transient = 3;                // Whether the failure is considered transient
+  string error = 1; // Error message from the handler
+  uint32 retry_count = 2; // Number of retry attempts before DLQ routing
+  bool is_transient = 3; // Whether the failure is considered transient
 }
 
 // Payload retrieval failure details for DLQ entries.
 // Contains information about why an externally stored payload couldn't be retrieved.
 message PayloadRetrievalFailedDetails {
-  PayloadStorageType storage_type = 1;  // Storage backend type
-  string uri = 2;                       // URI of the payload that couldn't be retrieved
-  bytes content_hash = 3;               // Content hash for identification
-  uint64 original_size = 4;             // Original payload size in bytes
-  string error = 5;                     // Error message from the retrieval attempt
+  PayloadStorageType storage_type = 1; // Storage backend type
+  string uri = 2; // URI of the payload that couldn't be retrieved
+  bytes content_hash = 3; // Content hash for identification
+  uint64 original_size = 4; // Original payload size in bytes
+  string error = 5; // Error message from the retrieval attempt
 }
 // docs:end:dlq_details
 
@@ -354,21 +355,21 @@ message PayloadRetrievalFailedDetails {
 // Dead letter queue entry for failed messages requiring manual intervention.
 // Per-domain topics: angzarr.dlq.{domain}
 message AngzarrDeadLetter {
-  Cover cover = 1;                      // Routing: domain, root, correlation_id
+  Cover cover = 1; // Routing: domain, root, correlation_id
   oneof payload {
-    CommandBook rejected_command = 2;   // Command that failed
-    EventBook rejected_events = 9;      // Events that failed (saga/projector failures)
+    CommandBook rejected_command = 2; // Command that failed
+    EventBook rejected_events = 9; // Events that failed (saga/projector failures)
   }
-  string rejection_reason = 3;          // Human-readable reason
+  string rejection_reason = 3; // Human-readable reason
   oneof rejection_details {
-    SequenceMismatchDetails sequence_mismatch = 12;          // Sequence conflict details
+    SequenceMismatchDetails sequence_mismatch = 12; // Sequence conflict details
     EventProcessingFailedDetails event_processing_failed = 13; // Handler failure details
     PayloadRetrievalFailedDetails payload_retrieval_failed = 14; // Payload store failure details
   }
   google.protobuf.Timestamp occurred_at = 7;
-  map<string, string> metadata = 8;     // Additional context
-  string source_component = 10;         // Which component sent to DLQ
-  string source_component_type = 11;    // "aggregate" | "saga" | "projector" | "process_manager"
+  map<string, string> metadata = 8; // Additional context
+  string source_component = 10; // Which component sent to DLQ
+  string source_component_type = 11; // "aggregate" | "saga" | "projector" | "process_manager"
 }
 // docs:end:dead_letter
 
@@ -386,7 +387,7 @@ message Target {
 message ComponentDescriptor {
   string name = 1;
   string component_type = 2;
-  repeated Target inputs = 3;   // Domains I subscribe to (event types I consume)
+  repeated Target inputs = 3; // Domains I subscribe to (event types I consume)
 }
 
 // Request for GetDescriptor RPC.
