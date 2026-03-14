@@ -273,6 +273,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-gate, build-images]
     if: needs.test-gate.outputs.passed == 'true'
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      images-json: ${{ steps.images-json.outputs.json }}
     steps:
       - uses: actions/checkout@v4
 
@@ -324,6 +327,24 @@ jobs:
             fi
           done
 
+      - name: Generate images JSON for acceptance tests
+        id: images-json
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          JSON=$(cat <<EOF
+          {
+            "aggregate": "${{ env.IMAGE_PREFIX }}/angzarr-aggregate:${TAG}",
+            "saga": "${{ env.IMAGE_PREFIX }}/angzarr-saga:${TAG}",
+            "projector": "${{ env.IMAGE_PREFIX }}/angzarr-projector:${TAG}",
+            "process-manager": "${{ env.IMAGE_PREFIX }}/angzarr-process-manager:${TAG}",
+            "stream": "${{ env.IMAGE_PREFIX }}/angzarr-stream:${TAG}",
+            "gateway": "${{ env.IMAGE_PREFIX }}/angzarr-grpc-gateway:${TAG}",
+            "log": "${{ env.IMAGE_PREFIX }}/angzarr-log:${TAG}"
+          }
+          EOF
+          )
+          echo "json=$(echo "$JSON" | jq -c '.')" >> $GITHUB_OUTPUT
+
       - name: Output built images
         run: |
           echo "## Built Images" >> $GITHUB_STEP_SUMMARY
@@ -336,13 +357,31 @@ jobs:
           done
 
   # =============================================================================
+  # STAGE 4: ACCEPTANCE TESTS (via examples repo)
+  # =============================================================================
+
+  acceptance:
+    name: Acceptance Tests
+    needs: [build-push-images]
+    if: needs.build-push-images.result == 'success'
+    uses: angzarr-io/angzarr-examples-rust/.github/workflows/acceptance-callable.yml@main
+    with:
+      # Use just-built coordinator images
+      coordinator-images: ${{ needs.build-push-images.outputs.images-json }}
+      # Use latest example images (or matching branch if exists)
+      example-images: '{}'
+      examples-ref: ${{ github.head_ref || 'main' }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # =============================================================================
   # SUMMARY
   # =============================================================================
 
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [build-push-images, mutation]
+    needs: [build-push-images, mutation, acceptance]
     if: always()
     steps:
       - name: Summary
@@ -353,3 +392,4 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Push Images | ${{ needs.build-push-images.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Mutation Tests | ${{ needs.mutation.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Acceptance Tests | ${{ needs.acceptance.result }} |" >> $GITHUB_STEP_SUMMARY
