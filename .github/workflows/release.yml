@@ -47,27 +47,18 @@ jobs:
             exit 1
           fi
 
-  # Build and push container images
-  build-containers:
+  # Build and push base/language images first
+  build-base-images:
     needs: validate
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        image:
-          - aggregate
-          - projector
-          - saga
-          - stream
-          - gateway
-          - log
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install Skaffold
+        run: |
+          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+          chmod +x skaffold
+          sudo mv skaffold /usr/local/bin/
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -76,30 +67,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+      - name: Build and push base/language images
+        run: |
+          cd build/images
+          skaffold build --push
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
+  # Build and push coordinator images
+  build-containers:
+    needs: [validate, build-base-images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Skaffold
+        run: |
+          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+          chmod +x skaffold
+          sudo mv skaffold /usr/local/bin/
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: ./Containerfile
-          target: angzarr-${{ matrix.image }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            RUST_IMAGE=ghcr.io/angzarr-io/angzarr-rust:${{ github.sha }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push coordinator images
+        run: |
+          skaffold build --push --file-output=build.json
+
+      - name: Tag images with semver versions
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f1-2)
+
+          IMAGES=$(jq -r '.builds[].tag' build.json)
+          for FULL_TAG in $IMAGES; do
+            IMAGE_NAME=$(echo "$FULL_TAG" | cut -d: -f1)
+            echo "Tagging $IMAGE_NAME with semver versions"
+            docker pull "$FULL_TAG"
+            docker tag "$FULL_TAG" "$IMAGE_NAME:$VERSION"
+            docker tag "$FULL_TAG" "$IMAGE_NAME:$MINOR"
+            docker tag "$FULL_TAG" "$IMAGE_NAME:$MAJOR"
+            docker push "$IMAGE_NAME:$VERSION"
+            docker push "$IMAGE_NAME:$MINOR"
+            docker push "$IMAGE_NAME:$MAJOR"
+          done
 
   # Package and publish Helm chart
   publish-helm:
@@ -163,8 +177,8 @@ jobs:
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate:$VERSION
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector:$VERSION
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga:$VERSION
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager:$VERSION
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream:$VERSION
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:$VERSION
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log:$VERSION
           ```
 
@@ -190,8 +204,8 @@ jobs:
           | aggregate | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate:$VERSION` |
           | projector | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector:$VERSION` |
           | saga | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga:$VERSION` |
+          | process-manager | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager:$VERSION` |
           | stream | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream:$VERSION` |
-          | gateway | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:$VERSION` |
           | log | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log:$VERSION` |
           EOF
 
