@@ -200,8 +200,7 @@ fn test_max_message_size_constant() {
     // Verify the 10MB limit constant
     const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
     assert_eq!(MAX_MESSAGE_SIZE, 10_485_760);
-    assert!(MAX_MESSAGE_SIZE > 1024 * 1024); // More than 1MB
-    assert!(MAX_MESSAGE_SIZE < 100 * 1024 * 1024); // Less than 100MB
+    // Static assertions for reasonable bounds (values verified by assert_eq above)
 }
 
 /// Messages over 10MB would be rejected.

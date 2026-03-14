@@ -68,7 +68,6 @@ impl SagaHandler for FulfillmentSaga {
                             })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
-                        ..Default::default()
                     };
                     commands.push(cmd);
                 }
@@ -140,7 +139,6 @@ impl SagaHandler for OrdersToInventorySaga {
                             })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
-                        ..Default::default()
                     });
                 }
             }
@@ -197,7 +195,6 @@ impl SagaHandler for InventoryToShippingSaga {
                             })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
-                        ..Default::default()
                     });
                 }
             }
@@ -612,7 +609,6 @@ async fn test_saga_translates_source_to_commands() {
                             })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
-                        ..Default::default()
                     }],
                     ..Default::default()
                 })
@@ -703,7 +699,6 @@ async fn test_saga_produces_commands_from_source() {
                             })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
-                        ..Default::default()
                     }],
                     ..Default::default()
                 })
@@ -796,7 +791,6 @@ async fn test_saga_noop_returns_empty_commands() {
                             })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
-                        ..Default::default()
                     }],
                     ..Default::default()
                 })
