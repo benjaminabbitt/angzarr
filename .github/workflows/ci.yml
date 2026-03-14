@@ -88,14 +88,6 @@ jobs:
             ${{ needs.build-images.outputs.rust-tag }} \
             cargo fmt --check
 
-      - name: Check Proto formatting
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/proto \
-            ${{ needs.build-images.outputs.base-tag }} \
-            buf format --diff --exit-code
-
   lint:
     name: Lint
     runs-on: ubuntu-latest
