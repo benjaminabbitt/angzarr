@@ -15,29 +15,25 @@
 ARG RUST_IMAGE
 
 # =============================================================================
-# Dev builder - native glibc (fast compilation)
-# Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
+# Proto generation stage - runs build.rs to generate proto code
+# This stage is cached unless proto files or build.rs change
 # =============================================================================
-FROM ${RUST_IMAGE} AS builder-dev-deps
-
-# protoc and libs already in base image
+FROM ${RUST_IMAGE} AS proto-gen
 
 WORKDIR /app
 
-# Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
+# Copy only what's needed for proto generation
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY crates/ ./crates/
-COPY xtask/ ./xtask/
 
-# Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin && \
+# Create minimal stubs - just enough for cargo to run build.rs
+RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
-    mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
              storage_immudb storage_nats \
@@ -46,38 +42,85 @@ RUN mkdir -p src/bin && \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
     echo "fn main() {}" > tests/interfaces/main.rs && \
-    for f in query_test; do \
-      echo "fn main() {}" > tests/integration/$f.rs; \
-    done && \
-    mkdir -p migrations && touch migrations/.keep
+    echo "fn main() {}" > tests/integration/query_test.rs && \
+    touch migrations/.keep
 
-# Ensure git dependencies are fresh (avoid stale cargo cache)
+# Run cargo build to execute build.rs and generate proto code
+# The build will fail on actual compilation but build.rs runs first
+RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp 2>&1 || true
+
+# Extract generated proto files to a known location
+RUN mkdir -p /proto-out && \
+    cp -r target/container-dev/build/angzarr-*/out/* /proto-out/ 2>/dev/null || true
+
+# =============================================================================
+# Dev builder - deps stage (cached until Cargo.toml/Cargo.lock change)
+# =============================================================================
+FROM ${RUST_IMAGE} AS builder-dev-deps
+
+WORKDIR /app
+
+# Copy dependency manifests
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY crates/ ./crates/
+COPY xtask/ ./xtask/
+
+# Copy pre-generated proto files from proto-gen stage
+COPY --from=proto-gen /proto-out/ /proto-cache/
+
+# Create stubs for dependency compilation
+RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "pub fn stub() {}" > src/lib.rs && \
+    for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
+      echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
+    done && \
+    for f in acceptance container_integration mongodb_debug \
+             storage_mongodb storage_redis storage_sqlite storage_postgres \
+             storage_immudb storage_nats \
+             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
+             standalone_integration; do \
+      echo "fn main() {}" > tests/$f.rs; \
+    done && \
+    echo "fn main() {}" > tests/interfaces/main.rs && \
+    echo "fn main() {}" > tests/integration/query_test.rs && \
+    touch migrations/.keep
+
+# Ensure git dependencies are fresh
 RUN cargo update -p angzarr-client
 
-# Build dependencies only (cached until Cargo.toml/Cargo.lock change)
-# Stub build - errors expected, will rebuild with real source
+# Build dependencies (will fail on angzarr crate, but deps compile)
 RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
-    --bin angzarr-aggregate \
-    --bin angzarr-projector \
-    --bin angzarr-saga \
-    --bin angzarr-process-manager \
-    --bin angzarr-log \
-    --bin angzarr-stream; exit 0
+    --bin angzarr-aggregate 2>&1 || true
 
 # =============================================================================
 # Dev builder - source build (invalidates when src/ changes)
 # =============================================================================
 FROM builder-dev-deps AS builder-dev
 
-# Copy real source (invalidates layer when source changes)
+# Remove stub source to avoid conflicts
+RUN rm -rf src/ tests/ migrations/
+
+# Copy real source
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+COPY tests/ ./tests/
 
-# Remove stub binaries AND angzarr crate artifacts to force rebuild with real source
-RUN rm -rf target/container-dev/angzarr-* target/container-dev/.fingerprint/angzarr-* \
-    target/container-dev/deps/libangzarr* target/container-dev/deps/angzarr-*
+# Inject pre-generated proto files into cargo's expected location
+# This makes build.rs a no-op (files already exist)
+RUN BUILD_DIR=$(ls -d target/container-dev/build/angzarr-*/out 2>/dev/null | head -1) && \
+    if [ -n "$BUILD_DIR" ]; then \
+        cp -r /proto-cache/* "$BUILD_DIR/" 2>/dev/null || true; \
+    fi
 
-# Rebuild with real source (deps already compiled in previous stage)
+# Clean angzarr artifacts to force rebuild with real source
+RUN rm -rf target/container-dev/.fingerprint/angzarr-* \
+    target/container-dev/deps/libangzarr* \
+    target/container-dev/deps/angzarr-* \
+    target/container-dev/angzarr-*
+
+# Build with real source
 RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
@@ -88,34 +131,32 @@ RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
     cp target/container-dev/angzarr-* /tmp/
 
 # =============================================================================
-# Release builder - musl static, multi-arch (small images, all features)
-# Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
-# Uses our angzarr-rust image with musl-tools for cross-compilation
+# Release builder - deps stage
 # =============================================================================
 FROM ${RUST_IMAGE} AS builder-release-deps
 
-# Build argument for target architecture (set by buildx/podman)
 ARG TARGETARCH
 
-# Note: Using full-musl feature which excludes kafka (requires OpenSSL/native libs)
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 
 WORKDIR /app
 
-# Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
+# Copy dependency manifests
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY crates/ ./crates/
 COPY xtask/ ./xtask/
 
-# Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin && \
+# Copy pre-generated proto files
+COPY --from=proto-gen /proto-out/ /proto-cache/
+
+# Create stubs
+RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
-    mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
              storage_immudb storage_nats \
@@ -124,51 +165,59 @@ RUN mkdir -p src/bin && \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
     echo "fn main() {}" > tests/interfaces/main.rs && \
-    for f in query_test; do \
-      echo "fn main() {}" > tests/integration/$f.rs; \
-    done && \
-    mkdir -p migrations && touch migrations/.keep
+    echo "fn main() {}" > tests/integration/query_test.rs && \
+    touch migrations/.keep
 
-# Ensure git dependencies are fresh (avoid stale cargo cache)
+# Ensure git dependencies are fresh
 RUN cargo update -p angzarr-client
 
-# Build dependencies only (cached until Cargo.toml/Cargo.lock change)
-# Using full-musl feature which excludes kafka (requires native OpenSSL)
+# Build dependencies
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
         TARGET="aarch64-unknown-linux-musl"; \
     else \
         TARGET="x86_64-unknown-linux-musl"; \
     fi && \
     cargo build --profile production --target $TARGET --features full-musl \
-    --bin angzarr-aggregate \
-    --bin angzarr-projector \
-    --bin angzarr-saga \
-    --bin angzarr-process-manager \
-    --bin angzarr-log \
-    --bin angzarr-stream; exit 0
+    --bin angzarr-aggregate 2>&1 || true
 
 # =============================================================================
-# Release builder - source build (invalidates when src/ changes)
+# Release builder - source build
 # =============================================================================
 FROM builder-release-deps AS builder-release
 
 ARG TARGETARCH
 
-# Copy real source (invalidates layer when source changes)
+# Remove stub source to avoid conflicts
+RUN rm -rf src/ tests/ migrations/
+
+# Copy real source
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+COPY tests/ ./tests/
 
-# Remove stub binaries AND angzarr crate artifacts to force rebuild with real source
-RUN rm -rf target/*/production/angzarr-* target/*/production/.fingerprint/angzarr-* \
-    target/*/production/deps/libangzarr* target/*/production/deps/angzarr-*
-
-# Rebuild with real source (deps already compiled in previous stage)
-# Using full-musl feature which excludes kafka (requires native OpenSSL)
+# Determine target
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        TARGET="aarch64-unknown-linux-musl"; \
+        echo "aarch64-unknown-linux-musl" > /tmp/target; \
     else \
-        TARGET="x86_64-unknown-linux-musl"; \
-    fi && \
+        echo "x86_64-unknown-linux-musl" > /tmp/target; \
+    fi
+
+# Inject pre-generated proto files
+RUN TARGET=$(cat /tmp/target) && \
+    BUILD_DIR=$(ls -d target/$TARGET/production/build/angzarr-*/out 2>/dev/null | head -1) && \
+    if [ -n "$BUILD_DIR" ]; then \
+        cp -r /proto-cache/* "$BUILD_DIR/" 2>/dev/null || true; \
+    fi
+
+# Clean angzarr artifacts
+RUN TARGET=$(cat /tmp/target) && \
+    rm -rf target/$TARGET/production/.fingerprint/angzarr-* \
+    target/$TARGET/production/deps/libangzarr* \
+    target/$TARGET/production/deps/angzarr-* \
+    target/$TARGET/production/angzarr-*
+
+# Build with real source
+RUN TARGET=$(cat /tmp/target) && \
     cargo build --profile production --target $TARGET --features full-musl \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
