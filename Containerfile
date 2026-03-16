@@ -55,13 +55,14 @@ RUN mkdir -p src/bin && \
 RUN cargo update -p angzarr-client
 
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
+# Stub build - errors expected, will rebuild with real source
 RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
     --bin angzarr-log \
-    --bin angzarr-stream || true
+    --bin angzarr-stream; exit 0
 
 # =============================================================================
 # Dev builder - source build (invalidates when src/ changes)
@@ -71,6 +72,10 @@ FROM builder-dev-deps AS builder-dev
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+
+# Remove stub binaries AND angzarr crate artifacts to force rebuild with real source
+RUN rm -rf target/container-dev/angzarr-* target/container-dev/.fingerprint/angzarr-* \
+    target/container-dev/deps/libangzarr* target/container-dev/deps/angzarr-*
 
 # Rebuild with real source (deps already compiled in previous stage)
 RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
@@ -140,7 +145,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
     --bin angzarr-log \
-    --bin angzarr-stream || true
+    --bin angzarr-stream; exit 0
 
 # =============================================================================
 # Release builder - source build (invalidates when src/ changes)
@@ -152,6 +157,10 @@ ARG TARGETARCH
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+
+# Remove stub binaries AND angzarr crate artifacts to force rebuild with real source
+RUN rm -rf target/*/production/angzarr-* target/*/production/.fingerprint/angzarr-* \
+    target/*/production/deps/libangzarr* target/*/production/deps/angzarr-*
 
 # Rebuild with real source (deps already compiled in previous stage)
 # Using full-musl feature which excludes kafka (requires native OpenSSL)
