@@ -8,6 +8,15 @@
 //! Why this matters: Binary startup errors should be clear and helpful.
 //! A user running a binary without proper config should get a useful
 //! error message, not a cryptic panic or silent failure.
+//!
+//! **Note:** These tests require binaries to be built first:
+//! ```bash
+//! cargo build --bins
+//! cargo test --test binary_integration
+//! ```
+//!
+//! Tests are ignored by default since CI doesn't build binaries for unit/coverage tests.
+//! Run with `--ignored` flag to include them.
 
 use std::fs;
 use std::process::Command;
@@ -34,6 +43,7 @@ fn run_binary(name: &str, args: &[&str]) -> std::process::Output {
 ///
 /// Clear error message helps users fix configuration issues.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_aggregate_fails_for_missing_config() {
     let output = run_binary("angzarr-aggregate", &["-c", "/nonexistent/config.yaml"]);
 
@@ -52,6 +62,7 @@ fn test_aggregate_fails_for_missing_config() {
 ///
 /// Aggregate sidecar requires a target domain to be configured.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_aggregate_fails_without_target() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("minimal.yaml");
@@ -82,6 +93,7 @@ storage:
 
 /// angzarr-projector fails when config file doesn't exist.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_projector_fails_for_missing_config() {
     let output = run_binary("angzarr-projector", &["-c", "/nonexistent/config.yaml"]);
 
@@ -98,6 +110,7 @@ fn test_projector_fails_for_missing_config() {
 
 /// angzarr-projector fails without target config.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_projector_fails_without_target() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("minimal.yaml");
@@ -127,6 +140,7 @@ storage:
 
 /// angzarr-saga fails when config file doesn't exist.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_saga_fails_for_missing_config() {
     let output = run_binary("angzarr-saga", &["-c", "/nonexistent/config.yaml"]);
 
@@ -143,6 +157,7 @@ fn test_saga_fails_for_missing_config() {
 
 /// angzarr-saga fails without target config.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_saga_fails_without_target() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("minimal.yaml");
@@ -172,6 +187,7 @@ storage:
 
 /// angzarr-process-manager fails when config file doesn't exist.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_process_manager_fails_for_missing_config() {
     let output = run_binary(
         "angzarr-process-manager",
@@ -191,6 +207,7 @@ fn test_process_manager_fails_for_missing_config() {
 
 /// angzarr-process-manager fails without target config.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_process_manager_fails_without_target() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("minimal.yaml");
@@ -223,6 +240,7 @@ storage:
 
 /// angzarr-stream fails when config file doesn't exist.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_stream_fails_for_missing_config() {
     let output = run_binary("angzarr-stream", &["-c", "/nonexistent/config.yaml"]);
 
@@ -243,6 +261,7 @@ fn test_stream_fails_for_missing_config() {
 
 /// angzarr-log fails when config file doesn't exist.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_log_fails_for_missing_config() {
     let output = run_binary("angzarr-log", &["-c", "/nonexistent/config.yaml"]);
 
@@ -263,6 +282,7 @@ fn test_log_fails_for_missing_config() {
 
 /// angzarr-upcaster fails when config file doesn't exist.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_upcaster_fails_for_missing_config() {
     let output = run_binary("angzarr-upcaster", &["-c", "/nonexistent/config.yaml"]);
 
@@ -283,6 +303,7 @@ fn test_upcaster_fails_for_missing_config() {
 
 /// All binaries fail gracefully with invalid YAML syntax.
 #[test]
+#[ignore = "requires pre-built binaries"]
 fn test_aggregate_fails_for_invalid_yaml() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("invalid.yaml");
