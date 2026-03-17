@@ -10,8 +10,8 @@ use super::*;
 use crate::bus::mock::MockEventBus;
 use crate::discovery::StaticServiceDiscovery;
 use crate::proto::{ContextualCommand, PageHeader};
-use crate::standalone::DomainStorage;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
+use crate::storage::DomainStorage;
 
 // ========================================================================
 // Mock ClientLogic for testing

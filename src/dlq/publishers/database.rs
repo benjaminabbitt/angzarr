@@ -42,7 +42,7 @@ inventory::submit! {
     }
 }
 
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled
 inventory::submit! {
     DlqBackend {
         try_create: |config| {
@@ -213,15 +213,13 @@ impl DeadLetterPublisher for PostgresDlqPublisher {
 }
 
 // ============================================================================
-// SQLite Implementation
+// SQLite Implementation (always compiled)
 // ============================================================================
 
-#[cfg(feature = "sqlite")]
 pub struct SqliteDlqPublisher {
     pool: sqlx::SqlitePool,
 }
 
-#[cfg(feature = "sqlite")]
 impl SqliteDlqPublisher {
     /// Create a new SQLite DLQ publisher with its own connection pool.
     pub async fn new(uri: &str) -> Result<Self, DlqError> {
@@ -277,7 +275,6 @@ impl SqliteDlqPublisher {
     }
 }
 
-#[cfg(feature = "sqlite")]
 #[async_trait]
 impl DeadLetterPublisher for SqliteDlqPublisher {
     async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {

@@ -10,27 +10,38 @@ use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
-use crate::proto::{CommandBook, EventBook, SagaResponse};
+use crate::proto::{BusinessResponse, CommandBook, EventBook, SagaResponse};
 use crate::proto_ext::CoverExt;
-use crate::standalone::CommandRouter;
-use crate::standalone::SagaHandler;
 use crate::utils::box_err;
 use crate::utils::saga_compensation::{
     build_notification_command_book, process_compensation_response, CompensationContext,
 };
 
-use super::{SagaContextFactory, SagaRetryContext};
+use super::{SagaContextFactory, SagaHandler, SagaRetryContext};
+
+/// Trait for executing compensation commands.
+///
+/// Abstracts the compensation execution so local saga context doesn't
+/// depend on standalone-specific types like CommandRouter.
+#[async_trait]
+pub trait CompensationExecutor: Send + Sync {
+    /// Execute a compensation command and return the business response.
+    async fn execute_compensation(
+        &self,
+        command: CommandBook,
+    ) -> Result<BusinessResponse, tonic::Status>;
+}
 
 /// In-process saga context.
 ///
 /// Saga prepare/execute calls go directly to the `SagaHandler` impl.
 /// Command execution and destination fetching are handled externally by the caller.
-/// Compensation flow uses the CommandRouter's execute_compensation method.
+/// Compensation flow uses the CompensationExecutor trait for abstraction.
 pub struct LocalSagaContext {
     saga_handler: Arc<dyn SagaHandler>,
     source: Arc<EventBook>,
-    /// Router for compensation commands (None = no compensation support)
-    router: Option<Arc<CommandRouter>>,
+    /// Executor for compensation commands (None = no compensation support)
+    compensation_executor: Option<Arc<dyn CompensationExecutor>>,
     /// Event bus for escalation handler
     event_bus: Option<Arc<dyn EventBus>>,
     /// Compensation configuration
@@ -43,7 +54,7 @@ impl LocalSagaContext {
         Self {
             saga_handler,
             source,
-            router: None,
+            compensation_executor: None,
             event_bus: None,
             compensation_config: SagaCompensationConfig::default(),
         }
@@ -53,14 +64,14 @@ impl LocalSagaContext {
     pub fn with_compensation(
         saga_handler: Arc<dyn SagaHandler>,
         source: Arc<EventBook>,
-        router: Arc<CommandRouter>,
+        compensation_executor: Arc<dyn CompensationExecutor>,
         event_bus: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
     ) -> Self {
         Self {
             saga_handler,
             source,
-            router: Some(router),
+            compensation_executor: Some(compensation_executor),
             event_bus: Some(event_bus),
             compensation_config,
         }
@@ -101,7 +112,7 @@ impl SagaRetryContext for LocalSagaContext {
     }
 
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str) {
-        let (Some(router), Some(event_bus)) = (&self.router, &self.event_bus) else {
+        let (Some(executor), Some(event_bus)) = (&self.compensation_executor, &self.event_bus) else {
             error!(reason = %reason, "Saga command permanently rejected (no compensation path)");
             return;
         };
@@ -152,8 +163,8 @@ impl SagaRetryContext for LocalSagaContext {
             "Sending rejection Notification to triggering aggregate via execute_compensation"
         );
 
-        // Use router's execute_compensation to get BusinessResponse
-        let response = router.execute_compensation(notification_command).await;
+        // Use executor's execute_compensation to get BusinessResponse
+        let response = executor.execute_compensation(notification_command).await;
 
         // Process the BusinessResponse through shared handler
         process_compensation_response(
@@ -175,8 +186,8 @@ impl SagaRetryContext for LocalSagaContext {
 pub struct LocalSagaContextFactory {
     saga_handler: Arc<dyn SagaHandler>,
     name: String,
-    /// Router for compensation commands (None = no compensation support)
-    router: Option<Arc<CommandRouter>>,
+    /// Executor for compensation commands (None = no compensation support)
+    compensation_executor: Option<Arc<dyn CompensationExecutor>>,
     /// Event bus for escalation handler
     event_bus: Option<Arc<dyn EventBus>>,
     /// Compensation configuration
@@ -189,7 +200,7 @@ impl LocalSagaContextFactory {
         Self {
             saga_handler,
             name,
-            router: None,
+            compensation_executor: None,
             event_bus: None,
             compensation_config: SagaCompensationConfig::default(),
         }
@@ -199,14 +210,14 @@ impl LocalSagaContextFactory {
     pub fn with_compensation(
         saga_handler: Arc<dyn SagaHandler>,
         name: String,
-        router: Arc<CommandRouter>,
+        compensation_executor: Arc<dyn CompensationExecutor>,
         event_bus: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
     ) -> Self {
         Self {
             saga_handler,
             name,
-            router: Some(router),
+            compensation_executor: Some(compensation_executor),
             event_bus: Some(event_bus),
             compensation_config,
         }
@@ -215,11 +226,11 @@ impl LocalSagaContextFactory {
 
 impl SagaContextFactory for LocalSagaContextFactory {
     fn create(&self, source: Arc<EventBook>) -> Box<dyn SagaRetryContext> {
-        match (&self.router, &self.event_bus) {
-            (Some(router), Some(event_bus)) => Box::new(LocalSagaContext::with_compensation(
+        match (&self.compensation_executor, &self.event_bus) {
+            (Some(executor), Some(event_bus)) => Box::new(LocalSagaContext::with_compensation(
                 self.saga_handler.clone(),
                 source,
-                router.clone(),
+                executor.clone(),
                 event_bus.clone(),
                 self.compensation_config.clone(),
             )),

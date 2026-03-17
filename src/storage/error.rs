@@ -44,7 +44,7 @@ pub enum StorageError {
     #[error("{}{}", errmsg::INVALID_UUID, .0)]
     InvalidUuid(#[from] uuid::Error),
 
-    #[cfg(any(feature = "postgres", feature = "sqlite", feature = "immudb"))]
+    // SQLite is always compiled; postgres and immudb are optional
     #[error("{}{}", errmsg::DATABASE_ERROR, .0)]
     Database(#[from] sqlx::Error),
 

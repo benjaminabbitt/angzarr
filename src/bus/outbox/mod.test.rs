@@ -97,8 +97,8 @@ fn test_recovery_interval_value_is_respected() {
 // ============================================================================
 //
 // These tests verify the full outbox flow against an in-memory SQLite database.
+// SQLite is always compiled.
 
-#[cfg(feature = "sqlite")]
 mod sqlite_tests {
     use super::*;
     use crate::bus::mock::MockEventBus;

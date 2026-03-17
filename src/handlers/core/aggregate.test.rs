@@ -265,9 +265,8 @@ fn test_extract_command_preserves_payload_data() {
 /// SyncProjectorEntry fields are accessible.
 #[test]
 fn test_sync_projector_entry_construction() {
-    use crate::orchestration::projector::ProjectionMode;
+    use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
     use crate::proto::Projection;
-    use crate::standalone::ProjectorHandler;
     use async_trait::async_trait;
     use std::sync::Arc;
 

@@ -4,7 +4,7 @@
 //! These implement the ProjectorCoordinator gRPC service.
 
 pub mod cloudevents;
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
+// Database event projector always available (sqlite always compiled)
 pub mod event;
 pub mod log;
 pub mod outbound;
@@ -17,7 +17,6 @@ pub use cloudevents::{
 };
 #[cfg(feature = "kafka")]
 pub use cloudevents::{KafkaSink, KafkaSinkConfig};
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub use event::{connect_pool, EventService, EventServiceHandle};
 pub use log::{LogService, LogServiceHandle};
 pub use outbound::{OutboundEventHandler, OutboundService};

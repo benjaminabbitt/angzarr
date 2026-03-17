@@ -6,7 +6,7 @@
 
 pub mod grpc;
 pub mod hybrid;
-#[cfg(feature = "sqlite")]
+// Local module always compiled (sqlite always on)
 pub mod local;
 
 use async_trait::async_trait;

@@ -10,7 +10,7 @@ use tracing::error;
 
 use crate::proto::{Cover, EventBook};
 use crate::proto_ext::CoverExt;
-use crate::standalone::DomainStorage;
+use crate::storage::DomainStorage;
 
 use super::DestinationFetcher;
 

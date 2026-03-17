@@ -1,27 +1,45 @@
 //! Local (in-process) command executor.
 //!
-//! Executes commands via the standalone `CommandRouter` (direct handler calls).
+//! Executes commands via a `CommandRouterExecutor` trait (direct handler calls).
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::proto::{CommandBook, SyncMode};
-use crate::standalone::CommandRouter;
+use crate::proto::{CommandBook, CommandResponse, SyncMode};
 use crate::utils::retry::is_retryable_status;
 use crate::utils::sequence_validator::extract_event_book_from_status;
 
 use super::CommandExecutor;
 use super::CommandOutcome;
 
-/// Executes commands via in-process `CommandRouter`.
+/// Trait for executing commands via a command router.
+///
+/// Abstracts the command router so local command executor doesn't
+/// depend on standalone-specific types like CommandRouter.
+#[async_trait]
+pub trait CommandRouterExecutor: Send + Sync {
+    /// Execute a command with standard mode (events published to bus).
+    async fn execute_command(
+        &self,
+        command: CommandBook,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Execute a command in cascade mode (sync chain, no bus publishing).
+    async fn execute_with_cascade(
+        &self,
+        command: CommandBook,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>>;
+}
+
+/// Executes commands via in-process command router.
 pub struct LocalCommandExecutor {
-    router: Arc<CommandRouter>,
+    router: Arc<dyn CommandRouterExecutor>,
 }
 
 impl LocalCommandExecutor {
-    /// Create with a reference to the standalone command router.
-    pub fn new(router: Arc<CommandRouter>) -> Self {
+    /// Create with a reference to a command router executor.
+    pub fn new(router: Arc<dyn CommandRouterExecutor>) -> Self {
         Self { router }
     }
 }
@@ -32,10 +50,7 @@ impl CommandExecutor for LocalCommandExecutor {
         let result = match sync_mode {
             SyncMode::Cascade => {
                 // CASCADE: use sync execution path with no bus publishing
-                self.router
-                    .execute_with_cascade(command)
-                    .await
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+                self.router.execute_with_cascade(command).await
             }
             _ => {
                 // UNSPECIFIED/SIMPLE: use standard execution path

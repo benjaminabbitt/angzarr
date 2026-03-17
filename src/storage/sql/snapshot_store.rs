@@ -36,9 +36,10 @@ impl<DB: SqlDatabase> SqlSnapshotStore<DB> {
 /// The `$supports_get_at_seq` parameter controls whether the backend
 /// supports historical snapshot queries (true for PostgreSQL, false for SQLite
 /// which stores only the latest snapshot per aggregate).
+///
+/// Note: Feature gating is applied at the macro invocation site, not inside the macro.
 macro_rules! impl_snapshot_store {
-    ($db_type:ty, $feature:literal, supports_get_at_seq: $supports_get_at_seq:literal) => {
-        #[cfg(feature = $feature)]
+    ($db_type:ty, supports_get_at_seq: $supports_get_at_seq:literal) => {
         #[async_trait::async_trait]
         impl crate::storage::SnapshotStore for SqlSnapshotStore<$db_type> {
             async fn get(
@@ -210,5 +211,7 @@ macro_rules! impl_snapshot_store {
 }
 
 // Generate implementations for each SQL backend
-impl_snapshot_store!(super::postgres::Postgres, "postgres", supports_get_at_seq: true);
-impl_snapshot_store!(super::sqlite::Sqlite, "sqlite", supports_get_at_seq: false);
+#[cfg(feature = "postgres")]
+impl_snapshot_store!(super::postgres::Postgres, supports_get_at_seq: true);
+// SQLite is always compiled
+impl_snapshot_store!(super::sqlite::Sqlite, supports_get_at_seq: false);

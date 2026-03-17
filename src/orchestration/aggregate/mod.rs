@@ -45,7 +45,7 @@
 
 // Submodule implementations
 pub mod grpc;
-#[cfg(feature = "sqlite")]
+// Local module always compiled (sqlite always on)
 pub mod local;
 
 // Internal modules
