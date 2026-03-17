@@ -71,6 +71,32 @@ fn test_dlq_config_logging_configured() {
     assert_eq!(config.targets[0].dlq_type, "logging");
 }
 
+/// Google Pub/Sub backend with project ID.
+#[test]
+fn test_dlq_config_pubsub_configured() {
+    let config = DlqConfig::pubsub("my-gcp-project");
+    assert!(config.is_configured());
+    assert_eq!(config.targets.len(), 1);
+    assert_eq!(config.targets[0].dlq_type, "pubsub");
+    assert_eq!(
+        config.targets[0].pubsub.as_ref().unwrap().project_id,
+        "my-gcp-project"
+    );
+}
+
+/// AWS SNS/SQS backend with region.
+#[test]
+fn test_dlq_config_sns_sqs_configured() {
+    let config = DlqConfig::sns_sqs("us-east-1");
+    assert!(config.is_configured());
+    assert_eq!(config.targets.len(), 1);
+    assert_eq!(config.targets[0].dlq_type, "sns-sqs");
+    assert_eq!(
+        config.targets[0].sns_sqs.as_ref().unwrap().region,
+        Some("us-east-1".to_string())
+    );
+}
+
 // ============================================================================
 // Backend Config Defaults Tests
 // ============================================================================
@@ -82,11 +108,56 @@ fn test_dlq_target_config_default() {
     assert!(target.dlq_type.is_empty());
     assert!(target.amqp.is_none());
     assert!(target.kafka.is_none());
+    assert!(target.nats.is_none());
+    assert!(target.pubsub.is_none());
+    assert!(target.sns_sqs.is_none());
     assert!(target.database.is_none());
     assert!(target.filesystem.is_none());
     assert!(target.offload_filesystem.is_none());
     assert!(target.offload_gcs.is_none());
     assert!(target.offload_s3.is_none());
+}
+
+/// AMQP config defaults to localhost.
+#[test]
+fn test_amqp_dlq_config_default() {
+    let config = AmqpDlqConfig::default();
+    assert_eq!(config.url, "amqp://localhost:5672");
+}
+
+/// Kafka config defaults to localhost with standard prefix.
+#[test]
+fn test_kafka_dlq_config_default() {
+    let config = KafkaDlqConfig::default();
+    assert_eq!(config.bootstrap_servers, "localhost:9092");
+    assert_eq!(config.topic_prefix, "angzarr.dlq");
+    assert!(config.sasl_username.is_none());
+    assert!(config.sasl_password.is_none());
+}
+
+/// NATS config defaults to localhost.
+#[test]
+fn test_nats_dlq_config_default() {
+    let config = NatsDlqConfig::default();
+    assert_eq!(config.url, "nats://localhost:4222");
+    assert_eq!(config.stream_prefix, "angzarr-dlq");
+}
+
+/// Pub/Sub config requires project_id (empty by default).
+#[test]
+fn test_pubsub_dlq_config_default() {
+    let config = PubSubDlqConfig::default();
+    assert!(config.project_id.is_empty());
+    assert_eq!(config.topic_prefix, "angzarr-dlq");
+}
+
+/// SNS/SQS config requires region (None by default).
+#[test]
+fn test_sns_sqs_dlq_config_default() {
+    let config = SnsSqsDlqConfig::default();
+    assert!(config.region.is_none());
+    assert!(config.endpoint_url.is_none());
+    assert_eq!(config.topic_prefix, "angzarr-dlq");
 }
 
 /// Database backend defaults to PostgreSQL.

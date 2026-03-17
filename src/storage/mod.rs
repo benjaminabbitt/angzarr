@@ -90,10 +90,7 @@ pub struct DomainStorage {
 
 impl DomainStorage {
     /// Create a new domain storage wrapper.
-    pub fn new(
-        event_store: Arc<dyn EventStore>,
-        snapshot_store: Arc<dyn SnapshotStore>,
-    ) -> Self {
+    pub fn new(event_store: Arc<dyn EventStore>, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
         Self {
             event_store,
             snapshot_store,
@@ -105,9 +102,10 @@ impl DomainStorage {
     /// Consolidates the repeated pattern of creating repositories from
     /// event_store and snapshot_store Arcs.
     pub fn event_book_repo(&self) -> EventBookRepository {
-        EventBookRepository::new(
-            self.event_store.clone(),
-            self.snapshot_store.clone(),
-        )
+        EventBookRepository::new(self.event_store.clone(), self.snapshot_store.clone())
     }
 }
+
+#[cfg(test)]
+#[path = "event_store.test.rs"]
+mod event_store_tests;

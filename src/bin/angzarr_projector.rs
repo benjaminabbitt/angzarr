@@ -47,6 +47,9 @@ const SUBSCRIPTIONS_ENV_VAR: &str = "ANGZARR_SUBSCRIPTIONS";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install rustls crypto provider before any TLS operations
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     init_tracing();
 
     let config_path = angzarr::utils::bootstrap::parse_config_path();

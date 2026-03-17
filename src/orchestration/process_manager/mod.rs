@@ -48,8 +48,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
 use crate::proto::{
-    page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook, Notification,
-    PageHeader, RevocationResponse, SyncMode, Uuid as ProtoUuid,
+    page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook,
+    Notification, PageHeader, RevocationResponse, SyncMode, Uuid as ProtoUuid,
 };
 
 use super::command::{CommandExecutor, CommandOutcome};

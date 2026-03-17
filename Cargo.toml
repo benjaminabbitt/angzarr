@@ -110,7 +110,9 @@ backon = "1"
 
 # HTTP client for external service calls
 # Using rustls-tls for musl static build compatibility (no OpenSSL dependency)
+# ring provides the crypto backend for rustls
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }

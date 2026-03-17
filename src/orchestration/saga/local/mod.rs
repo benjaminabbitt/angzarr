@@ -112,7 +112,8 @@ impl SagaRetryContext for LocalSagaContext {
     }
 
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str) {
-        let (Some(executor), Some(event_bus)) = (&self.compensation_executor, &self.event_bus) else {
+        let (Some(executor), Some(event_bus)) = (&self.compensation_executor, &self.event_bus)
+        else {
             error!(reason = %reason, "Saga command permanently rejected (no compensation path)");
             return;
         };
