@@ -45,7 +45,7 @@ pub mod postgres {
     pub type PostgresSnapshotStore = super::SqlSnapshotStore<Postgres>;
 }
 
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled
 pub mod sqlite {
     //! SQLite database backend.
 

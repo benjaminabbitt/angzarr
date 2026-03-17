@@ -94,7 +94,7 @@ pub use publishers::OffloadS3DlqPublisher;
 
 #[cfg(feature = "postgres")]
 pub use publishers::PostgresDlqPublisher;
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled
 pub use publishers::SqliteDlqPublisher;
 
 #[cfg(feature = "amqp")]

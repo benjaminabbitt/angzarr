@@ -23,10 +23,9 @@ use prost::Message;
 
 use crate::bus::{BusError, EventHandler};
 use crate::orchestration::aggregate::{execute_command_with_retry, AggregateContextFactory};
-use crate::orchestration::projector::ProjectionMode;
+use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 use crate::proto::{CommandBook, CommandResponse, EventBook};
 use crate::proto_ext::CoverExt;
-use crate::standalone::ProjectorHandler;
 use crate::utils::retry::saga_backoff;
 
 /// Type URL suffix for wrapped CommandBook in bus transport.

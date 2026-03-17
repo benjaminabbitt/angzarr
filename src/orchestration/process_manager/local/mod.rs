@@ -14,10 +14,12 @@ use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::{CommandBook, CommandResponse, EventBook};
 use crate::proto_ext::CoverExt;
-use crate::standalone::DomainStorage;
-use crate::standalone::ProcessManagerHandler;
+use crate::storage::DomainStorage;
 
-use super::{PMContextFactory, PmHandleResponse, PmPrepareResponse, ProcessManagerContext};
+use super::{
+    PMContextFactory, PmHandleResponse, PmPrepareResponse, ProcessManagerContext,
+    ProcessManagerHandler,
+};
 
 /// Local PM context that calls in-process handler and persists to event store.
 pub struct LocalPMContext {

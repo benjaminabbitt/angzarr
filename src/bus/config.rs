@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
+// Outbox is always available (sqlite always compiled)
 use super::outbox;
 use crate::dlq::config::DlqConfig;
 
@@ -32,7 +32,6 @@ pub struct MessagingConfig {
     /// AWS SNS/SQS-specific configuration.
     pub sns_sqs: SnsSqsBusConfig,
     /// Outbox pattern configuration for guaranteed delivery.
-    #[cfg(any(feature = "postgres", feature = "sqlite"))]
     pub outbox: outbox::OutboxConfig,
     /// Dead letter queue configuration.
     pub dlq: DlqConfig,
@@ -49,7 +48,6 @@ impl Default for MessagingConfig {
             nats: NatsBusConfig::default(),
             pubsub: PubSubBusConfig::default(),
             sns_sqs: SnsSqsBusConfig::default(),
-            #[cfg(any(feature = "postgres", feature = "sqlite"))]
             outbox: outbox::OutboxConfig::default(),
             dlq: DlqConfig::default(),
         }

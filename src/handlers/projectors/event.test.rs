@@ -111,7 +111,7 @@ fn test_event_record_escapes_special_characters() {
             "PostgreSQL should use backslash escape: {sql}"
         );
     }
-    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+    #[cfg(not(feature = "postgres"))]
     {
         assert!(
             sql.contains("''"),

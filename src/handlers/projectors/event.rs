@@ -20,17 +20,18 @@ use sea_query::PostgresQueryBuilder;
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+#[cfg(not(feature = "postgres"))]
 use sea_query::SqliteQueryBuilder;
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+// SQLite is always compiled; postgres takes priority if enabled
+#[cfg(not(feature = "postgres"))]
 use sqlx::SqlitePool;
 
 // Type aliases for database-agnostic code
-// Postgres takes priority if both features are enabled
+// Postgres takes priority if both are available
 #[cfg(feature = "postgres")]
 pub type Pool = PgPool;
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+#[cfg(not(feature = "postgres"))]
 pub type Pool = SqlitePool;
 
 /// Build schema SQL using the appropriate backend.
@@ -39,7 +40,7 @@ fn build_schema<T: sea_query::SchemaStatementBuilder>(stmt: T) -> String {
     stmt.to_string(PostgresQueryBuilder)
 }
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+#[cfg(not(feature = "postgres"))]
 fn build_schema<T: sea_query::SchemaStatementBuilder>(stmt: T) -> String {
     stmt.to_string(SqliteQueryBuilder)
 }
@@ -50,7 +51,7 @@ fn build_query<T: sea_query::QueryStatementWriter>(stmt: T) -> String {
     stmt.to_string(PostgresQueryBuilder)
 }
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+#[cfg(not(feature = "postgres"))]
 fn build_query<T: sea_query::QueryStatementWriter>(stmt: T) -> String {
     stmt.to_string(SqliteQueryBuilder)
 }
@@ -441,7 +442,7 @@ pub async fn connect_pool(database_url: &str) -> Result<Pool, sqlx::Error> {
     sqlx::postgres::PgPool::connect(database_url).await
 }
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+#[cfg(not(feature = "postgres"))]
 pub async fn connect_pool(database_url: &str) -> Result<Pool, sqlx::Error> {
     let options = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(database_url.trim_start_matches("sqlite:"))

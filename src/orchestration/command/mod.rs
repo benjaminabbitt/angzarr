@@ -5,7 +5,7 @@
 //! - `grpc/`: calls remote `AggregateCoordinatorServiceClient` via gRPC
 
 pub mod grpc;
-#[cfg(feature = "sqlite")]
+// Local module always compiled (sqlite always on)
 pub mod local;
 
 use async_trait::async_trait;

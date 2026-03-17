@@ -8,9 +8,10 @@ use std::time::Instant;
 use async_trait::async_trait;
 use tonic::Status;
 
+use crate::orchestration::process_manager::{ProcessManagerHandleResult, ProcessManagerHandler};
 use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
+use crate::orchestration::saga::SagaHandler;
 use crate::proto::{Cover, EventBook, Notification, Projection, RevocationResponse, SagaResponse};
-use crate::standalone::{ProcessManagerHandleResult, ProcessManagerHandler, SagaHandler};
 
 #[cfg(feature = "otel")]
 use super::metrics::{

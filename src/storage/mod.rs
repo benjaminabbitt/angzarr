@@ -4,8 +4,13 @@
 //! - `EventStore` trait: Event persistence
 //! - `SnapshotStore` trait: Snapshot optimization
 //! - `PositionStore` trait: Handler checkpoint tracking
+//! - `DomainStorage`: Per-domain storage wrapper
 //! - Storage configuration types
 //! - Implementations: PostgreSQL, SQLite, Redis, Bigtable, DynamoDB, NATS, ImmuDB
+
+use std::sync::Arc;
+
+use crate::repository::EventBookRepository;
 
 // Submodules
 pub mod config;
@@ -41,12 +46,11 @@ pub mod nats;
 pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
-#[cfg(any(feature = "postgres", feature = "sqlite", feature = "immudb"))]
+// Schema is always compiled (sqlite is always on, postgres/immudb add more)
 pub mod schema;
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled for local orchestration
 pub mod sqlite;
 // Unified SQL implementations (shared by postgres and sqlite)
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod sql;
 
 // Backend re-exports
@@ -65,5 +69,45 @@ pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
 pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
 #[cfg(feature = "redis")]
 pub use redis::RedisSnapshotStore;
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled
 pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
+
+// ============================================================================
+// Domain Storage
+// ============================================================================
+
+/// Per-domain event and snapshot storage.
+///
+/// Bundles the event store and snapshot store for a single domain.
+/// Used by standalone mode to route storage operations by domain.
+#[derive(Clone)]
+pub struct DomainStorage {
+    /// Event store for this domain.
+    pub event_store: Arc<dyn EventStore>,
+    /// Snapshot store for this domain.
+    pub snapshot_store: Arc<dyn SnapshotStore>,
+}
+
+impl DomainStorage {
+    /// Create a new domain storage wrapper.
+    pub fn new(
+        event_store: Arc<dyn EventStore>,
+        snapshot_store: Arc<dyn SnapshotStore>,
+    ) -> Self {
+        Self {
+            event_store,
+            snapshot_store,
+        }
+    }
+
+    /// Create an EventBookRepository for this domain's stores.
+    ///
+    /// Consolidates the repeated pattern of creating repositories from
+    /// event_store and snapshot_store Arcs.
+    pub fn event_book_repo(&self) -> EventBookRepository {
+        EventBookRepository::new(
+            self.event_store.clone(),
+            self.snapshot_store.clone(),
+        )
+    }
+}
