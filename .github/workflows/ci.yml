@@ -114,7 +114,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo clippy --all-targets --features "sqlite test-utils" -- -D warnings
+            cargo clippy --all-targets --features "test-utils" -- -D warnings
 
       - name: Buf lint
         run: |
@@ -154,7 +154,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo test --lib --features "sqlite test-utils"
+            cargo test --lib --features "test-utils"
 
   integration:
     name: Integration Tests
@@ -170,22 +170,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build standalone binary
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
-            -e DEVCONTAINER=true \
-            ${{ needs.build-images.outputs.rust-tag }} \
-            cargo build --release --bin angzarr-standalone --features "standalone sqlite"
-
-      - name: Run integration tests
+      # Note: Standalone integration tests moved to angzarr-standalone crate
+      - name: Run contract tests
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo test --test standalone_integration --features "sqlite test-utils"
+            cargo test --test '*' --features "test-utils"
 
   coverage:
     name: Coverage
@@ -207,7 +199,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo llvm-cov --features "sqlite test-utils" \
+            cargo llvm-cov --features "test-utils" \
               --ignore-filename-regex '(\.pb\.rs|proto/|sidecar\.rs|bin/)' \
               --fail-under-lines 80 \
               --codecov --output-path codecov.json
