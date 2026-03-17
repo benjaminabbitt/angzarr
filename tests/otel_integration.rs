@@ -102,6 +102,7 @@ async fn start_otel_collector() -> (testcontainers::ContainerAsync<GenericImage>
 /// Verifies that init_telemetry() can connect to a real collector endpoint.
 /// Requires container runtime with otel/opentelemetry-collector-contrib image.
 #[tokio::test]
+#[ignore = "requires container runtime"]
 async fn test_bootstrap_connects_to_collector() {
     let (_container, endpoint) = start_otel_collector().await;
 
@@ -157,6 +158,7 @@ async fn test_bootstrap_handles_unreachable_endpoint() {
 /// collector accepts connections.
 /// Requires container runtime with otel/opentelemetry-collector-contrib image.
 #[tokio::test]
+#[ignore = "requires container runtime"]
 async fn test_collector_accepts_otlp_connection() {
     let (_container, endpoint) = start_otel_collector().await;
 
