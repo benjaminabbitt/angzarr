@@ -31,14 +31,13 @@ COPY crates/ ./crates/
 RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
+    for bin in aggregate projector saga process_manager log stream upcaster event_projector; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
              storage_immudb storage_nats \
-             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
-             standalone_integration; do \
+             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
     echo "fn main() {}" > tests/interfaces/main.rs && \
@@ -47,7 +46,7 @@ RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
 
 # Run cargo build to execute build.rs and generate proto code
 # The build will fail on actual compilation but build.rs runs first
-RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp 2>&1 || true
+RUN cargo build --profile container-dev --features otel,postgres,amqp 2>&1 || true
 
 # Extract generated proto files to a known location
 RUN mkdir -p /proto-out && \
@@ -73,14 +72,13 @@ COPY --from=proto-gen /proto-out/ /proto-cache/
 RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
+    for bin in aggregate projector saga process_manager log stream upcaster event_projector; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
              storage_immudb storage_nats \
-             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
-             standalone_integration; do \
+             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
     echo "fn main() {}" > tests/interfaces/main.rs && \
@@ -91,7 +89,7 @@ RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
 RUN cargo update -p angzarr-client
 
 # Build dependencies (will fail on angzarr crate, but deps compile)
-RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
+RUN cargo build --profile container-dev --features otel,postgres,amqp \
     --bin angzarr-aggregate 2>&1 || true
 
 # =============================================================================
@@ -121,7 +119,7 @@ RUN rm -rf target/container-dev/.fingerprint/angzarr-* \
     target/container-dev/angzarr-*
 
 # Build with real source
-RUN cargo build --profile container-dev --features otel,sqlite,postgres,amqp \
+RUN cargo build --profile container-dev --features otel,postgres,amqp \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
@@ -154,14 +152,13 @@ COPY --from=proto-gen /proto-out/ /proto-cache/
 RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
+    for bin in aggregate projector saga process_manager log stream upcaster event_projector; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_sqlite storage_postgres \
              storage_immudb storage_nats \
-             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
-             standalone_integration; do \
+             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
     echo "fn main() {}" > tests/interfaces/main.rs && \
