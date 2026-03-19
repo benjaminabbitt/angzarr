@@ -154,9 +154,9 @@ infrastructure:
 
   # gRPC Gateway - REST proxy for aggregate coordinators
   gateway:
-    enabled: false
+    enabled: true
     replicas: 1
-    port: 8080
+    port: 9084
     image:
       repository: ghcr.io/angzarr-io/angzarr-grpc-gateway
       tag: latest
@@ -242,10 +242,10 @@ storage:
   type: postgres
   postgres:
     # Host and port for init container health checks
-    host: "angzarr-db-rw"
+    host: "postgres"
     port: 5432
     # Connection URI (credentials should be set via --set or secretRef)
-    uri: "postgres://angzarr:angzarr@angzarr-db-rw:5432/angzarr"
+    uri: "postgres://angzarr:angzarr@postgres:5432/angzarr"
     # Use existing secret for credentials
     existingSecret: ""
     secretKeys:
@@ -284,10 +284,10 @@ messaging:
 
   # AMQP (RabbitMQ) configuration
   amqp:
-    enabled: false
-    host: "angzarr-mq"
+    enabled: true
+    host: "rabbitmq"
     port: 5672
-    url: "amqp://rabbitmq:5672"
+    url: "amqp://guest:guest@rabbitmq:5672/%2F"
     # Use existing secret for URL
     existingSecret: ""
     secretKey: "amqp_url"

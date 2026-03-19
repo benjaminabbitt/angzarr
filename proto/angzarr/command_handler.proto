@@ -1,41 +1,42 @@
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
-import "google/protobuf/any.proto";
 import "google/api/annotations.proto";
+import "google/protobuf/any.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 // CommandHandlerService: client logic that processes commands and emits events
 // Business logic layer that implements command handling for a domain aggregate
 // client logic doesn't care about sync - coordinator decides
 service CommandHandlerService {
   // Process command and return business response (events or revocation request)
-  rpc Handle (ContextualCommand) returns (BusinessResponse);
+  rpc Handle(ContextualCommand) returns (BusinessResponse);
   // Replay events to compute state (for conflict detection)
   // Optional: only needed if aggregate supports MERGE_COMMUTATIVE
-  rpc Replay (ReplayRequest) returns (ReplayResponse);
+  rpc Replay(ReplayRequest) returns (ReplayResponse);
 }
 
 // Request to replay events and compute resulting state
 message ReplayRequest {
-  Snapshot base_snapshot = 1;     // Starting state (empty = initial state)
-  repeated EventPage events = 2;  // Events to apply in order
+  Snapshot base_snapshot = 1; // Starting state (empty = initial state)
+  repeated EventPage events = 2; // Events to apply in order
 }
 
 // Response with computed state after replay
 message ReplayResponse {
-  google.protobuf.Any state = 1;  // Resulting state
+  google.protobuf.Any state = 1; // Resulting state
 }
 
 // CommandHandlerCoordinatorService: orchestrates command processing for domain aggregates
 service CommandHandlerCoordinatorService {
   // Process command with optional sync mode (default: async fire-and-forget)
-  rpc HandleCommand (CommandRequest) returns (CommandResponse) {
+  rpc HandleCommand(CommandRequest) returns (CommandResponse) {
     option (google.api.http) = {
       post: "/v1/ch/{command.cover.domain}/commands"
       body: "*"
@@ -44,14 +45,14 @@ service CommandHandlerCoordinatorService {
   // Inject fact events - external realities that cannot be rejected.
   // Idempotent: subsequent requests with same external_id return original events.
   // Use EventRequest.route_to_handler to control command handler invocation.
-  rpc HandleEvent (EventRequest) returns (FactInjectionResponse) {
+  rpc HandleEvent(EventRequest) returns (FactInjectionResponse) {
     option (google.api.http) = {
       post: "/v1/ch/{events.cover.domain}/events"
       body: "*"
     };
   }
   // Speculative execution - execute against temporal state without persisting
-  rpc HandleSyncSpeculative (SpeculateCommandHandlerRequest) returns (CommandResponse) {
+  rpc HandleSyncSpeculative(SpeculateCommandHandlerRequest) returns (CommandResponse) {
     option (google.api.http) = {
       post: "/v1/ch/{command.cover.domain}/commands/speculative"
       body: "*"
@@ -59,7 +60,7 @@ service CommandHandlerCoordinatorService {
   }
   // Compensation flow - returns BusinessResponse for saga compensation handling.
   // If business returns events, persists them. Caller handles revocation flags.
-  rpc HandleCompensation (CommandRequest) returns (BusinessResponse) {
+  rpc HandleCompensation(CommandRequest) returns (BusinessResponse) {
     option (google.api.http) = {
       post: "/v1/ch/{command.cover.domain}/compensation"
       body: "*"
@@ -69,7 +70,7 @@ service CommandHandlerCoordinatorService {
 
 // Response from entity - aggregate events + sync projector results
 message CommandResponse {
-  EventBook events = 1;               // Events from the target aggregate
+  EventBook events = 1; // Events from the target aggregate
   repeated Projection projections = 2; // Synchronous projector results
   // CASCADE mode error reporting (populated when cascade_error_mode != FAIL_FAST)
   repeated CascadeError cascade_errors = 3;
@@ -78,27 +79,27 @@ message CommandResponse {
 // Error from saga/PM during CASCADE execution.
 // Populated in CommandResponse when cascade_error_mode allows continuation after errors.
 message CascadeError {
-  string component_name = 1;   // e.g., "saga-order-fulfillment"
-  string component_type = 2;   // "saga" or "process_manager"
+  string component_name = 1; // e.g., "saga-order-fulfillment"
+  string component_type = 2; // "saga" or "process_manager"
   string error_message = 3;
-  string source_domain = 4;    // Which domain's events triggered this
+  string source_domain = 4; // Which domain's events triggered this
 }
 
 // client logic requests framework to handle revocation
 message RevocationResponse {
-  bool emit_system_revocation = 1;      // Emit SagaCompensationFailed event
-  bool send_to_dead_letter_queue = 2;   // Send to DLQ
-  bool escalate = 3;                    // Flag for alerting/human intervention
-  bool abort = 4;                       // Stop saga chain, propagate error to caller
-  string reason = 5;                    // Context/reason
+  bool emit_system_revocation = 1; // Emit SagaCompensationFailed event
+  bool send_to_dead_letter_queue = 2; // Send to DLQ
+  bool escalate = 3; // Flag for alerting/human intervention
+  bool abort = 4; // Stop saga chain, propagate error to caller
+  string reason = 5; // Context/reason
 }
 
 // Wrapper response for BusinessLogic.Handle
 message BusinessResponse {
   oneof result {
-    EventBook events = 1;               // Business provides compensation events
-    RevocationResponse revocation = 2;  // Business requests framework action
-    Notification notification = 3;      // Forward rejection notification upstream
+    EventBook events = 1; // Business provides compensation events
+    RevocationResponse revocation = 2; // Business requests framework action
+    Notification notification = 3; // Forward rejection notification upstream
   }
 }
 
@@ -125,8 +126,8 @@ message SpeculateCommandHandlerRequest {
 // uses this to deduplicate fact injections - subsequent requests with the same external_id
 // return the original events without re-persisting.
 message FactInjectionResponse {
-  EventBook events = 1;                   // Persisted events with real sequence numbers
-  bool already_processed = 2;             // True if external_id was already seen (idempotent response)
-  repeated Projection projections = 3;    // Synchronous projector results (if any)
+  EventBook events = 1; // Persisted events with real sequence numbers
+  bool already_processed = 2; // True if external_id was already seen (idempotent response)
+  repeated Projection projections = 3; // Synchronous projector results (if any)
 }
 // docs:end:fact_injection

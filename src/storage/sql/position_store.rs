@@ -35,9 +35,10 @@ impl<DB: SqlDatabase> SqlPositionStore<DB> {
 ///
 /// This eliminates duplication between PostgreSQL and SQLite implementations
 /// while maintaining full type safety.
+///
+/// Note: Feature gating is applied at the macro invocation site, not inside the macro.
 macro_rules! impl_position_store {
-    ($db_type:ty, $feature:literal) => {
-        #[cfg(feature = $feature)]
+    ($db_type:ty) => {
         #[async_trait::async_trait]
         impl crate::storage::PositionStore for SqlPositionStore<$db_type> {
             async fn get(
@@ -127,5 +128,7 @@ macro_rules! impl_position_store {
 }
 
 // Generate implementations for each SQL backend
-impl_position_store!(super::postgres::Postgres, "postgres");
-impl_position_store!(super::sqlite::Sqlite, "sqlite");
+#[cfg(feature = "postgres")]
+impl_position_store!(super::postgres::Postgres);
+// SQLite is always compiled
+impl_position_store!(super::sqlite::Sqlite);

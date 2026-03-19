@@ -10,7 +10,7 @@
 //! - Metrics are exported to collector
 //! - Graceful shutdown flushes pending telemetry
 //!
-//! Note: These tests require Docker to be running.
+//! Note: These tests require a container runtime.
 
 #![cfg(feature = "otel")]
 
@@ -25,8 +25,7 @@ use testcontainers::{
 /// OTel Collector configuration for testing.
 ///
 /// This minimal config accepts OTLP gRPC on port 4317 and logs to stdout.
-const COLLECTOR_CONFIG: &str = r#"
-receivers:
+const COLLECTOR_CONFIG: &str = r#"receivers:
   otlp:
     protocols:
       grpc:
@@ -54,25 +53,36 @@ service:
 /// Start OTel Collector container.
 ///
 /// The collector accepts OTLP gRPC on port 4317 and exports to debug logs.
+/// Uses dynamic port assignment to avoid conflicts when tests run in parallel.
 async fn start_otel_collector() -> (testcontainers::ContainerAsync<GenericImage>, String) {
-    let host_port = 4317u16;
     let container_port = 4317u16;
 
     println!("Starting OTel Collector container...");
 
     // Use the official OTel Collector Contrib image
+    // Wait for the collector to be fully ready (logs go to stderr)
     let image = GenericImage::new("otel/opentelemetry-collector-contrib", "0.96.0")
-        .with_wait_for(WaitFor::message_on_stdout("Everything is ready"));
+        .with_wait_for(WaitFor::message_on_stderr("Everything is ready"));
 
     let container = image
-        .with_mapped_port(host_port, ContainerPort::Tcp(container_port))
-        // Mount the config as an environment variable (collector reads from stdin)
-        .with_env_var("OTEL_CONFIG", COLLECTOR_CONFIG)
-        .with_cmd(["--config", "env:OTEL_CONFIG"])
-        .with_startup_timeout(Duration::from_secs(60))
+        // Expose container port without specifying host port - testcontainers picks a free port
+        .with_exposed_port(ContainerPort::Tcp(container_port))
+        // Copy config file into container (target, source)
+        .with_copy_to(
+            "/etc/otel/config.yaml",
+            COLLECTOR_CONFIG.as_bytes().to_vec(),
+        )
+        .with_cmd(["--config", "/etc/otel/config.yaml"])
+        .with_startup_timeout(Duration::from_secs(120))
         .start()
         .await
         .expect("Failed to start OTel Collector container");
+
+    // Get the dynamically assigned host port
+    let host_port = container
+        .get_host_port_ipv4(container_port)
+        .await
+        .expect("Failed to get mapped port");
 
     // Wait for collector to be fully ready
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -90,7 +100,9 @@ async fn start_otel_collector() -> (testcontainers::ContainerAsync<GenericImage>
 /// Bootstrap initializes OTel exporters without panic.
 ///
 /// Verifies that init_telemetry() can connect to a real collector endpoint.
+/// Requires container runtime with otel/opentelemetry-collector-contrib image.
 #[tokio::test]
+#[ignore = "requires container runtime"]
 async fn test_bootstrap_connects_to_collector() {
     let (_container, endpoint) = start_otel_collector().await;
 
@@ -144,7 +156,9 @@ async fn test_bootstrap_handles_unreachable_endpoint() {
 /// This test would require setting up a full storage layer with instrumentation
 /// and verifying metrics appear in the collector. For now, we verify the
 /// collector accepts connections.
+/// Requires container runtime with otel/opentelemetry-collector-contrib image.
 #[tokio::test]
+#[ignore = "requires container runtime"]
 async fn test_collector_accepts_otlp_connection() {
     let (_container, endpoint) = start_otel_collector().await;
 

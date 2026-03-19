@@ -1,14 +1,12 @@
 //! SQLite storage contract tests.
 //!
-//! Run with: cargo test --test storage_sqlite --features "sqlite test-utils" -- --nocapture
+//! Run with: cargo test --test storage_sqlite --features "test-utils" -- --nocapture
 //!
 //! These tests verify that SQLite storage implementations correctly fulfill
 //! their trait contracts. Uses in-memory SQLite for fast, isolated tests.
 //!
 //! Note: SQLite stores only the latest snapshot per aggregate, so retention-based
 //! historical snapshot tests (test_retention_persist) are skipped.
-
-#![cfg(feature = "sqlite")]
 
 mod storage;
 

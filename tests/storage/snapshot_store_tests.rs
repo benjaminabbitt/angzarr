@@ -324,6 +324,7 @@ pub async fn test_retention_transient_cleanup<S: SnapshotStore>(store: &S) {
     assert_eq!(latest.sequence, 10, "latest should be at seq 10");
 }
 
+#[allow(dead_code)] // Used by run_snapshot_store_tests! macro, not directly by sqlite
 pub async fn test_retention_persist<S: SnapshotStore>(store: &S) {
     let domain = "test_snap_persist";
     let root = Uuid::new_v4();

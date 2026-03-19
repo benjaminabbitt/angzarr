@@ -23,8 +23,6 @@ pub mod proto_reflect;
 pub mod registration;
 pub mod repository;
 pub mod services;
-#[cfg(feature = "sqlite")]
-pub mod standalone;
 pub mod storage;
 pub mod transport;
 pub mod utils;

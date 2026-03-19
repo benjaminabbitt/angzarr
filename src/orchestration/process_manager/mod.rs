@@ -39,7 +39,7 @@
 //! - `grpc/`: remote gRPC PM client calls (distributed mode)
 
 pub mod grpc;
-#[cfg(feature = "sqlite")]
+// Local module always compiled (sqlite always on)
 pub mod local;
 
 use async_trait::async_trait;
@@ -48,13 +48,70 @@ use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
 use crate::proto::{
-    page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook, PageHeader,
-    SyncMode, Uuid as ProtoUuid,
+    page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook,
+    Notification, PageHeader, RevocationResponse, SyncMode, Uuid as ProtoUuid,
 };
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
 use super::FactExecutor;
+
+/// Result of process manager handle phase.
+///
+/// Contains commands, PM events, and facts to inject to other aggregates.
+#[derive(Debug, Clone, Default)]
+pub struct ProcessManagerHandleResult {
+    /// Commands to send to other aggregates.
+    pub commands: Vec<CommandBook>,
+    /// Events to persist to the PM's own domain.
+    pub process_events: Option<EventBook>,
+    /// Facts to inject to other aggregates.
+    pub facts: Vec<EventBook>,
+}
+
+/// Process manager handler for stateful cross-domain coordination.
+///
+/// Process managers ARE aggregates — they have their own domain, event-sourced state,
+/// and storage. The runtime triggers PM logic when matching events arrive on the bus,
+/// persists PM events to the PM's aggregate domain, and executes resulting commands.
+///
+/// # Two-Phase Protocol
+///
+/// Phase 1 (`prepare`): PM examines trigger event + its own state, declares
+/// additional destination aggregates it needs. Return empty if PM only uses its own state.
+///
+/// Phase 2 (`handle`): PM receives trigger + PM state + fetched destinations,
+/// returns commands to issue and PM events to persist.
+pub trait ProcessManagerHandler: Send + Sync + 'static {
+    /// Phase 1: Declare additional destinations needed beyond trigger + PM state.
+    ///
+    /// Returns destinations to fetch. Most PMs return empty (only need PM state).
+    fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover>;
+
+    /// Phase 2: Produce commands, PM events, and facts given trigger, PM state, and destinations.
+    ///
+    /// Returns commands to execute, optional PM events to persist, and facts to inject.
+    fn handle(
+        &self,
+        trigger: &EventBook,
+        process_state: Option<&EventBook>,
+        destinations: &[EventBook],
+    ) -> ProcessManagerHandleResult;
+
+    /// Handle a revocation notification for a rejected command.
+    ///
+    /// Called when a command produced by this PM was rejected by the target aggregate.
+    /// Returns optional PM events to persist and a revocation response.
+    ///
+    /// Default implementation does nothing and returns empty response.
+    fn handle_revocation(
+        &self,
+        _notification: &Notification,
+        _process_state: Option<&EventBook>,
+    ) -> (Option<EventBook>, RevocationResponse) {
+        (None, RevocationResponse::default())
+    }
+}
 
 /// Response from a process manager's prepare phase.
 pub struct PmPrepareResponse {

@@ -29,7 +29,7 @@
 //! - `grpc/`: remote gRPC saga client calls (distributed mode)
 
 pub mod grpc;
-#[cfg(feature = "sqlite")]
+// Local module always compiled (sqlite always on)
 pub mod local;
 
 use std::collections::HashSet;
@@ -54,6 +54,32 @@ use super::FactExecutor;
 
 /// Validator for saga output domain routing.
 pub type OutputDomainValidator = dyn Fn(&CommandBook) -> Result<(), String> + Send + Sync;
+
+/// Saga handler for stateless cross-domain translation.
+///
+/// Sagas are **pure translators**: they receive source events and produce commands
+/// for target domains. They do NOT receive destination state — the framework handles
+/// sequence stamping and delivery retries.
+///
+/// # Contract
+///
+/// - **Input**: Source EventBook (events from one domain)
+/// - **Output**: SagaResponse with commands (for target domains) and facts (for injection)
+/// - **Sequences**: Commands use `angzarr_deferred` (framework stamps explicit sequences on delivery)
+/// - **Stateless**: Each event is processed independently with no memory of previous events
+#[async_trait]
+pub trait SagaHandler: Send + Sync + 'static {
+    /// Translate source events into commands for target domains.
+    ///
+    /// Commands should have `cover` set to identify the target aggregate.
+    /// The framework will stamp `angzarr_deferred` with source info for:
+    /// - Provenance tracking (which event triggered this command)
+    /// - Compensation routing (where to send rejections)
+    /// - Idempotency (prevent duplicate processing on retry)
+    ///
+    /// Return empty commands vec if saga doesn't act on this event (no-op).
+    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, tonic::Status>;
+}
 
 /// Factory for creating per-invocation saga contexts.
 ///

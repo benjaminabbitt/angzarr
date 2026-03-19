@@ -71,6 +71,9 @@ const DEFAULT_COORDINATOR_PORT: u16 = 1350;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install rustls crypto provider before any TLS operations
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let bootstrap = bootstrap_sidecar("saga").await?;
 
     let messaging = bootstrap

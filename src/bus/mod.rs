@@ -21,7 +21,6 @@ pub mod traits;
 // Implementation modules
 #[cfg(feature = "amqp")]
 pub mod amqp;
-pub mod channel;
 pub mod dispatch;
 #[cfg(unix)]
 pub mod ipc;
@@ -31,7 +30,7 @@ pub mod mock;
 #[cfg(feature = "nats")]
 pub mod nats;
 pub mod offloading;
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
+// Outbox is always available (sqlite always compiled)
 pub mod outbox;
 #[cfg(feature = "pubsub")]
 pub mod pubsub;
@@ -57,7 +56,6 @@ pub use traits::{
 // Re-export implementation types
 #[cfg(feature = "amqp")]
 pub use amqp::{AmqpConfig, AmqpEventBus};
-pub use channel::{ChannelCommandBus, ChannelConfig, ChannelEventBus};
 #[cfg(unix)]
 pub use ipc::{
     IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus, SubscriberInfo, SUBSCRIBERS_ENV_VAR,

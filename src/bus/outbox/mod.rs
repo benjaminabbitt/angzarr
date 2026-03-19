@@ -66,7 +66,7 @@ use async_trait::async_trait;
 use prost::Message;
 #[cfg(feature = "postgres")]
 use sea_query::PostgresQueryBuilder;
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled
 use sea_query::SqliteQueryBuilder;
 use sea_query::{ColumnDef, Expr, Iden, Index, Query, Table};
 use serde::Deserialize;
@@ -382,18 +382,16 @@ impl EventBus for PostgresOutboxEventBus {
 }
 
 // ============================================================================
-// SQLite Implementation
+// SQLite Implementation (always compiled)
 // ============================================================================
 
 /// Outbox wrapper for SQLite.
-#[cfg(feature = "sqlite")]
 pub struct SqliteOutboxEventBus {
     inner: Arc<dyn EventBus>,
     pool: sqlx::SqlitePool,
     config: OutboxConfig,
 }
 
-#[cfg(feature = "sqlite")]
 impl SqliteOutboxEventBus {
     /// Create a new outbox-wrapped event bus.
     pub fn new(inner: Arc<dyn EventBus>, pool: sqlx::SqlitePool, config: OutboxConfig) -> Self {
@@ -542,7 +540,6 @@ impl SqliteOutboxEventBus {
     }
 }
 
-#[cfg(feature = "sqlite")]
 #[async_trait]
 impl EventBus for SqliteOutboxEventBus {
     #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
@@ -674,7 +671,6 @@ pub fn spawn_postgres_recovery_task(
 }
 
 /// Spawn a background task that periodically recovers orphaned events.
-#[cfg(feature = "sqlite")]
 pub fn spawn_sqlite_recovery_task(
     outbox: Arc<SqliteOutboxEventBus>,
     interval_secs: u64,

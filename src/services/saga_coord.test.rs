@@ -182,7 +182,7 @@ async fn test_execute_calls_saga_handler() {
 
     // Saga should return the commands (not yet delivered)
     assert!(
-        !saga_response.commands.is_empty() || executor.get_executed().await.len() > 0,
+        !saga_response.commands.is_empty() || !executor.get_executed().await.is_empty(),
         "Saga should produce commands or executor should have executed them"
     );
 }

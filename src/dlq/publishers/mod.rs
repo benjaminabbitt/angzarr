@@ -8,7 +8,7 @@ mod logging;
 mod noop;
 mod offload;
 
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
+// Database DLQ always available (sqlite always compiled)
 mod database;
 
 #[cfg(feature = "amqp")]
@@ -33,7 +33,7 @@ pub use offload::OffloadS3DlqPublisher;
 
 #[cfg(feature = "postgres")]
 pub use database::PostgresDlqPublisher;
-#[cfg(feature = "sqlite")]
+// SQLite is always compiled
 pub use database::SqliteDlqPublisher;
 
 #[cfg(feature = "amqp")]

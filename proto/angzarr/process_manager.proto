@@ -1,13 +1,14 @@
 syntax = "proto3";
 package angzarr;
-option go_package = "github.com/angzarr/angzarr/proto/angzarr";
-option java_package = "dev.angzarr";
-option java_multiple_files = true;
-option csharp_namespace = "Angzarr";
-option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
 import "google/api/annotations.proto";
+
+option csharp_namespace = "Angzarr";
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_multiple_files = true;
+option java_package = "dev.angzarr";
+option ruby_package = "Angzarr";
 
 // ProcessManagerService: stateful coordinator for long-running workflows across multiple aggregates.
 //
@@ -27,18 +28,18 @@ import "google/api/annotations.proto";
 service ProcessManagerService {
   // Phase 1: Declare which additional destinations are needed beyond the trigger.
   // PM automatically receives triggering event's domain state.
-  rpc Prepare (ProcessManagerPrepareRequest) returns (ProcessManagerPrepareResponse);
+  rpc Prepare(ProcessManagerPrepareRequest) returns (ProcessManagerPrepareResponse);
 
   // Phase 2: Handle with trigger + process state + fetched destinations.
   // Returns commands for other aggregates and events for the PM's own domain.
-  rpc Handle (ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
+  rpc Handle(ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
 }
 
 // ProcessManagerCoordinatorService: orchestrates PM execution
 service ProcessManagerCoordinatorService {
   // Full orchestration with sync mode.
   // Used by CASCADE mode to call PMs synchronously.
-  rpc Handle (ProcessManagerCoordinatorRequest) returns (ProcessManagerHandleResponse) {
+  rpc Handle(ProcessManagerCoordinatorRequest) returns (ProcessManagerHandleResponse) {
     option (google.api.http) = {
       post: "/v1/pm/handle"
       body: "*"
@@ -46,7 +47,7 @@ service ProcessManagerCoordinatorService {
   }
 
   // Speculative execution - returns commands and events without persisting
-  rpc HandleSpeculative (SpeculatePmRequest) returns (ProcessManagerHandleResponse) {
+  rpc HandleSpeculative(SpeculatePmRequest) returns (ProcessManagerHandleResponse) {
     option (google.api.http) = {
       post: "/v1/pm/speculative"
       body: "*"
@@ -57,9 +58,9 @@ service ProcessManagerCoordinatorService {
 // Request for PM coordinator orchestration.
 // Used by CASCADE mode to invoke PM synchronously.
 message ProcessManagerCoordinatorRequest {
-  EventBook trigger = 1;              // Triggering events
-  SyncMode sync_mode = 2;             // Propagate for CASCADE recursion
-  CascadeErrorMode cascade_error_mode = 3;  // How to handle errors in CASCADE mode
+  EventBook trigger = 1; // Triggering events
+  SyncMode sync_mode = 2; // Propagate for CASCADE recursion
+  CascadeErrorMode cascade_error_mode = 3; // How to handle errors in CASCADE mode
 }
 
 // Request for speculative PM execution.
@@ -104,4 +105,3 @@ message ProcessManagerHandleResponse {
   // Each EventBook targets a specific aggregate via its Cover.
   repeated EventBook facts = 3;
 }
-

@@ -15,14 +15,14 @@ description = "Schema-first CQRS/ES framework for polyglot client logic"
 license = "AGPL-3.0-only"
 
 [features]
-# Default: works out of box for local development
-default = ["standalone"]
+# Default: otel for observability
+default = ["otel"]
 
 # =============================================================================
 # Deployment Profiles (opinionated stacks)
 # =============================================================================
-# standalone: Local dev, no external deps (otel enabled for observability)
-standalone = ["sqlite", "channel", "otel"]
+# Note: standalone mode is now in the separate angzarr-standalone crate
+# Note: sqlite is always compiled (no feature gate) for local orchestration support
 # k8s: Generic Kubernetes with Postgres + RabbitMQ
 k8s = ["postgres", "amqp", "otel", "dep:kube", "dep:k8s-openapi"]
 # gcp-cloudrun: GCP serverless with Cloud SQL + Pub/Sub + GCS
@@ -40,15 +40,15 @@ kafka = ["dep:rdkafka"]
 nats = ["dep:async-nats"]
 pubsub = ["dep:gcloud-pubsub", "dep:gcloud-googleapis"]
 sns-sqs = ["dep:aws-sdk-sns", "dep:aws-sdk-sqs", "dep:aws-config"]
-channel = []  # In-memory event bus, no external deps
 
 # =============================================================================
 # Storage Backends
 # =============================================================================
-postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/postgres", "sqlx/migrate", "sqlx/uuid", "sea-query-binder/sqlx-postgres"]
-sqlite = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/sqlite", "sqlx/migrate", "sea-query-binder/sqlx-sqlite"]
+# Note: sqlx/sea-query are always compiled with sqlite; these features add additional backends
+postgres = ["sqlx/postgres", "sqlx/uuid", "sea-query-binder/sqlx-postgres"]
+# sqlite is always enabled (no feature gate) - required for local orchestration
 redis = ["dep:redis"]
-immudb = ["dep:sqlx", "dep:sea-query", "sqlx/postgres", "sqlx/uuid"]  # Uses pgsql wire protocol
+immudb = ["sqlx/postgres", "sqlx/uuid"]  # Uses pgsql wire protocol
 bigtable = ["dep:bigtable_rs"]
 dynamo = ["dep:aws-sdk-dynamodb", "dep:aws-config"]
 
@@ -71,10 +71,12 @@ coverage_nightly = []
 # =============================================================================
 # All Features (for CI/development)
 # =============================================================================
-full = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb", "lossy"]
+# Note: sqlite is always compiled, not listed here
+# Note: standalone mode moved to separate angzarr-standalone crate
+full = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb", "lossy"]
 # full-musl: For musl static builds - excludes kafka (requires librdkafka with OpenSSL)
 # GCP crates use rustls-tls feature for musl compatibility
-full-musl = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lossy"]
+full-musl = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lossy"]
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)
@@ -97,17 +99,20 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# Storage - Query builder approach (like jOOQ) - optional for postgres/sqlite
-sea-query = { version = "0.32", optional = true }
-sea-query-binder = { version = "0.7", optional = true }
-sqlx = { version = "0.8", features = ["runtime-tokio"], optional = true }
+# Storage - Query builder approach (like jOOQ)
+# SQLite is always compiled for local orchestration support
+sea-query = "0.32"
+sea-query-binder = { version = "0.7", features = ["sqlx-sqlite"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # Retry with backoff
 backon = "1"
 
 # HTTP client for external service calls
 # Using rustls-tls for musl static build compatibility (no OpenSSL dependency)
+# ring provides the crypto backend for rustls
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -226,11 +231,6 @@ name = "angzarr-stream"
 path = "src/bin/angzarr_stream.rs"
 
 [[bin]]
-name = "angzarr-standalone"
-path = "src/bin/angzarr_standalone.rs"
-required-features = ["standalone"]
-
-[[bin]]
 name = "angzarr-event-projector"
 path = "src/bin/angzarr_event_projector.rs"
 required-features = ["postgres"]
@@ -290,7 +290,7 @@ required-features = ["nats"]
 name = "storage_sqlite"
 # SQLite provides embedded storage for standalone mode. Testing ensures all three
 # stores (Event, Snapshot, Position) work correctly with in-memory SQLite.
-required-features = ["sqlite"]
+# Note: sqlite is always compiled, no required-features needed
 
 [[test]]
 name = "storage_postgres"

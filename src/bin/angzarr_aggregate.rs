@@ -75,6 +75,9 @@ use angzarr::transport::{grpc_trace_layer, max_grpc_message_size, serve_with_tra
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install rustls crypto provider before any TLS operations
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     angzarr::utils::bootstrap::init_tracing();
 
     let config_path = angzarr::utils::bootstrap::parse_config_path();

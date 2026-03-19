@@ -18,7 +18,7 @@ use crate::proto::{
     Snapshot, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventPageExt};
-use crate::standalone::DomainStorage;
+use crate::storage::DomainStorage;
 use crate::storage::StorageError;
 
 use super::{AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery};
