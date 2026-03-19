@@ -434,11 +434,13 @@ jobs:
       - name: Package and push charts
         run: |
           cd deploy/k8s/helm
-          for chart in angzarr postgres-simple rabbitmq-simple; do
-            echo "Packaging $chart..."
-            helm package $chart
-            echo "Pushing $chart to OCI registry..."
-            helm push ${chart}-*.tgz oci://ghcr.io/angzarr-io/charts
+          for dir in angzarr postgres-simple rabbitmq-simple; do
+            echo "Packaging $dir..."
+            # helm package outputs: "Successfully packaged chart and saved it to: /path/to/chart-x.y.z.tgz"
+            output=$(helm package "$dir")
+            tgz=$(echo "$output" | grep -oP '(?<=saved it to: ).*\.tgz')
+            echo "Pushing $tgz to OCI registry..."
+            helm push "$tgz" oci://ghcr.io/angzarr-io/charts
           done
 
       - name: Summary
@@ -447,8 +449,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Charts published to \`oci://ghcr.io/angzarr-io/charts/\`:" >> $GITHUB_STEP_SUMMARY
           echo "- angzarr" >> $GITHUB_STEP_SUMMARY
-          echo "- postgres-simple" >> $GITHUB_STEP_SUMMARY
-          echo "- rabbitmq-simple" >> $GITHUB_STEP_SUMMARY
+          echo "- angzarr-db-postgres-simple" >> $GITHUB_STEP_SUMMARY
+          echo "- angzarr-mq-rabbitmq-simple" >> $GITHUB_STEP_SUMMARY
 
   # =============================================================================
   # SUMMARY
