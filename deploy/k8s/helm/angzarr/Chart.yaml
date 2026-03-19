@@ -2,8 +2,8 @@ apiVersion: v2
 name: angzarr
 description: Schema-first CQRS/ES framework for polyglot client logic
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.2.1
+appVersion: "0.2.1"
 home: https://github.com/angzarr-io/angzarr
 sources:
   - https://github.com/angzarr-io/angzarr
@@ -44,6 +44,8 @@ annotations:
     - name: Source
       url: https://github.com/angzarr-io/angzarr
   artifacthub.io/changes: |
+    - kind: fixed
+      description: Fixed RabbitMQ default credentials to match rabbitmq-simple chart (angzarr:angzarr)
     - kind: changed
       description: Updated defaults - postgres host, rabbitmq enabled, gateway enabled
     - kind: added

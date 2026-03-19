@@ -287,7 +287,7 @@ messaging:
     enabled: true
     host: "rabbitmq"
     port: 5672
-    url: "amqp://guest:guest@rabbitmq:5672/%2F"
+    url: "amqp://angzarr:angzarr@rabbitmq:5672/%2F"
     # Use existing secret for URL
     existingSecret: ""
     secretKey: "amqp_url"
