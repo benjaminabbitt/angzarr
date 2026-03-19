@@ -2,11 +2,11 @@ apiVersion: v2
 name: angzarr
 description: Schema-first CQRS/ES framework for polyglot client logic
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
-home: https://github.com/benjaminabbitt/angzarr
+version: 0.2.0
+appVersion: "0.2.0"
+home: https://github.com/angzarr-io/angzarr
 sources:
-  - https://github.com/benjaminabbitt/angzarr
+  - https://github.com/angzarr-io/angzarr
 keywords:
   - cqrs
   - event-sourcing
@@ -25,22 +25,26 @@ annotations:
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/images: |
     - name: aggregate
-      image: ghcr.io/benjaminabbitt/angzarr-aggregate:0.1.0
+      image: ghcr.io/angzarr-io/angzarr-aggregate:latest
     - name: projector
-      image: ghcr.io/benjaminabbitt/angzarr-projector:0.1.0
+      image: ghcr.io/angzarr-io/angzarr-projector:latest
     - name: saga
-      image: ghcr.io/benjaminabbitt/angzarr-saga:0.1.0
+      image: ghcr.io/angzarr-io/angzarr-saga:latest
+    - name: process-manager
+      image: ghcr.io/angzarr-io/angzarr-process-manager:latest
     - name: stream
-      image: ghcr.io/benjaminabbitt/angzarr-stream:0.1.0
+      image: ghcr.io/angzarr-io/angzarr-stream:latest
     - name: gateway
-      image: ghcr.io/benjaminabbitt/angzarr-gateway:0.1.0
+      image: ghcr.io/angzarr-io/angzarr-grpc-gateway:latest
     - name: log
-      image: ghcr.io/benjaminabbitt/angzarr-log:0.1.0
+      image: ghcr.io/angzarr-io/angzarr-log:latest
   artifacthub.io/links: |
     - name: Documentation
-      url: https://github.com/benjaminabbitt/angzarr/blob/main/README.md
+      url: https://github.com/angzarr-io/angzarr/blob/main/README.md
     - name: Source
-      url: https://github.com/benjaminabbitt/angzarr
+      url: https://github.com/angzarr-io/angzarr
   artifacthub.io/changes: |
+    - kind: changed
+      description: Updated defaults - postgres host, rabbitmq enabled, gateway enabled
     - kind: added
-      description: Initial release
+      description: OCI registry publishing support
