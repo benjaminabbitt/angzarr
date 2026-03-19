@@ -24,10 +24,11 @@ to match what applications expect from CloudNativePG.
 {{- end }}
 
 {{/*
-Service name - matches CloudNativePG naming convention (angzarr-db-rw)
+Service name - just the release name for simple lookup
+Apps expect service at "postgres" when release is "postgres"
 */}}
 {{- define "postgres-simple.serviceName" -}}
-{{- printf "%s-rw" .Release.Name }}
+{{- .Release.Name }}
 {{- end }}
 
 {{/*

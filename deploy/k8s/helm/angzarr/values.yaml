@@ -156,7 +156,7 @@ infrastructure:
   gateway:
     enabled: true
     replicas: 1
-    port: 9084
+    port: 8080
     image:
       repository: ghcr.io/angzarr-io/angzarr-grpc-gateway
       tag: latest

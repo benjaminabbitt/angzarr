@@ -2,7 +2,7 @@ apiVersion: v2
 name: angzarr-db-postgres-simple
 description: Simple PostgreSQL deployment for CI (no operator required)
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "16"
 keywords:
   - postgresql
