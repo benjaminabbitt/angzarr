@@ -14,7 +14,7 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
-use crate::storage::{AddOutcome, EventStore, Result, SourceInfo};
+use crate::storage::{AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo};
 
 /// PostgreSQL implementation of EventStore.
 pub struct PostgresEventStore {
@@ -192,6 +192,10 @@ impl EventStore for PostgresEventStore {
             )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
 
+            // Extract cascade tracking fields from EventPage
+            let committed = event.committed;
+            let cascade_id = event.cascade_id.clone();
+
             if first_sequence.is_none() {
                 first_sequence = Some(sequence);
             }
@@ -212,6 +216,8 @@ impl EventStore for PostgresEventStore {
                     Events::SourceDomain,
                     Events::SourceRoot,
                     Events::SourceSeq,
+                    Events::Committed,
+                    Events::CascadeId,
                 ])
                 .values_panic([
                     edition.into(),
@@ -226,6 +232,8 @@ impl EventStore for PostgresEventStore {
                     source_domain.clone().into(),
                     source_root.clone().into(),
                     source_seq.into(),
+                    committed.into(),
+                    cascade_id.into(),
                 ])
                 .to_string(PostgresQueryBuilder);
 
@@ -519,5 +527,93 @@ impl EventStore for PostgresEventStore {
         }
 
         Ok(Some(events))
+    }
+
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
+        // Find cascade_ids with uncommitted events older than threshold.
+        // Exclude cascades that already have Confirmation/Revocation events
+        // (indicated by having ANY committed event with that cascade_id).
+        let query = format!(
+            r#"
+            SELECT DISTINCT cascade_id
+            FROM events
+            WHERE committed = false
+              AND cascade_id IS NOT NULL
+              AND created_at < '{}'
+              AND cascade_id NOT IN (
+                SELECT DISTINCT cascade_id
+                FROM events
+                WHERE committed = true
+                  AND cascade_id IS NOT NULL
+              )
+            "#,
+            threshold
+        );
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        let mut cascade_ids = Vec::with_capacity(rows.len());
+        for row in rows {
+            let cascade_id: String = row.get("cascade_id");
+            cascade_ids.push(cascade_id);
+        }
+
+        Ok(cascade_ids)
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        cascade_id: &str,
+    ) -> Result<Vec<CascadeParticipant>> {
+        use std::collections::HashMap;
+
+        // Query all uncommitted events for this cascade, grouped by aggregate
+        let query = Query::select()
+            .columns([
+                Events::Domain,
+                Events::Edition,
+                Events::Root,
+                Events::Sequence,
+            ])
+            .from(Events::Table)
+            .and_where(Expr::col(Events::CascadeId).eq(cascade_id))
+            .and_where(Expr::col(Events::Committed).eq(false))
+            .order_by(Events::Domain, Order::Asc)
+            .order_by(Events::Root, Order::Asc)
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(PostgresQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        // Group by (domain, edition, root)
+        let mut participants_map: HashMap<(String, String, Uuid), Vec<u32>> = HashMap::new();
+
+        for row in rows {
+            let domain: String = row.get("domain");
+            let edition: String = row.get("edition");
+            let root_str: String = row.get("root");
+            let sequence: i32 = row.get("sequence");
+
+            let root = Uuid::parse_str(&root_str)?;
+            let key = (domain, edition, root);
+
+            participants_map
+                .entry(key)
+                .or_default()
+                .push(sequence as u32);
+        }
+
+        // Convert to CascadeParticipant list
+        let participants: Vec<CascadeParticipant> = participants_map
+            .into_iter()
+            .map(|((domain, edition, root), sequences)| CascadeParticipant {
+                domain,
+                edition,
+                root,
+                sequences,
+            })
+            .collect();
+
+        Ok(participants)
     }
 }
