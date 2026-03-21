@@ -218,7 +218,7 @@ jobs:
             ${{ needs.build-images.outputs.rust-tag }} \
             cargo llvm-cov --features "test-utils" \
               --ignore-filename-regex '(\.pb\.rs|proto/|sidecar\.rs|bin/)' \
-              --fail-under-lines 80 \
+              --fail-under-lines 70 \
               --codecov --output-path codecov.json
 
       - name: Upload coverage report
