@@ -55,6 +55,8 @@ async fn test_upcaster_passthrough_when_disabled() {
         }),
         created_at: None,
         payload: None,
+        committed: true,
+        cascade_id: None,
     }];
 
     let result = upcaster.upcast("test", events.clone()).await.unwrap();

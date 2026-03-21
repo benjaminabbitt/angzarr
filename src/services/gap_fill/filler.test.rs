@@ -13,7 +13,9 @@ use uuid::Uuid;
 use crate::proto::{Cover, Edition, EventBook, EventPage, PageHeader, Snapshot, Uuid as ProtoUuid};
 use crate::proto_ext::EventPageExt;
 use crate::repository::EventBookRepository;
-use crate::storage::{AddOutcome, EventStore, Result as StorageResult, SnapshotStore, SourceInfo};
+use crate::storage::{
+    AddOutcome, CascadeParticipant, EventStore, Result as StorageResult, SnapshotStore, SourceInfo,
+};
 
 use super::*;
 
@@ -198,6 +200,17 @@ impl EventStore for MockEventStore {
     async fn delete_edition_events(&self, _domain: &str, _edition: &str) -> StorageResult<u32> {
         unimplemented!("Not needed for gap-fill tests")
     }
+
+    async fn query_stale_cascades(&self, _threshold: &str) -> StorageResult<Vec<String>> {
+        unimplemented!("Not needed for gap-fill tests")
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        _cascade_id: &str,
+    ) -> StorageResult<Vec<CascadeParticipant>> {
+        unimplemented!("Not needed for gap-fill tests")
+    }
 }
 
 /// Mock snapshot store (always returns None).
@@ -250,6 +263,8 @@ fn make_event_page(sequence: u32) -> EventPage {
         }),
         created_at: None,
         payload: None,
+        committed: true,
+        cascade_id: None,
     }
 }
 

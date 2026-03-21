@@ -6,6 +6,10 @@ tags: [testing, patterns, rust, java, architecture]
 keywords: [testing, test organization, rust, java, maven, cargo, colocation, documentation]
 ---
 
+import BlogHeader from '@site/src/components/BlogHeader';
+
+<BlogHeader />
+
 Tests should live next to the code they test—same directory, separate file. Not inline. Not in a parallel tree.
 
 <!-- truncate -->

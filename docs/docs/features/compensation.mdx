@@ -160,8 +160,75 @@ No silent failures. No unexplained state changes.
 
 ---
 
+## Revocation vs Compensate
+
+The framework provides two mechanisms for undoing events:
+
+| Mechanism | Original Event | Client Code | Use Case |
+|-----------|----------------|-------------|----------|
+| **Revocation** | Hidden (becomes NoOp) | None needed | Full undo, clean state |
+| **Compensate** | Visible | Handler implements inverse | Partial undo, business logic |
+
+### Revocation (Framework-Only)
+
+Revocation hides the original event at read time. No client code required.
+
+```text title="Revocation flow"
+1. Framework writes Revocation { sequences: [5, 6], reason: "timeout" }
+2. At read time, events 5 and 6 become NoOp
+3. Business logic never sees the original events
+```
+
+Use revocation when:
+- Full undo is needed, "never happened" semantics
+- No business logic required for the undo
+- Events came from a failed cascade or timeout
+
+### Compensate (Client-Implemented)
+
+Compensate keeps the original event visible and routes to a client handler. The handler emits inverse events.
+
+```text title="Compensate flow"
+1. Framework writes Compensate { sequences: [5], reason: "order_cancelled" }
+2. Framework routes to client's compensation handler
+3. Handler receives original event, emits inverse (e.g., InventoryReleased)
+4. Both original and compensation events visible in stream
+```
+
+Use compensate when:
+- Business logic must decide how to undo
+- Partial undo based on context
+- Explicit audit trail required (both events visible)
+- Third-party notifications or side effects need reversal
+
+### Example: Compensation Handler
+
+```python title="illustrative - compensation handler registration"
+@compensate("InventoryReserved")
+def compensate_reservation(self, original_event, reason):
+    # Original event remains visible
+    # Emit inverse event
+    return InventoryReleased(
+        sku=original_event.sku,
+        qty=original_event.qty,
+        reason=reason,
+    )
+```
+
+### Read-Time Behavior
+
+| Event Type | At Read Time |
+|------------|--------------|
+| Revocation marker | NoOp |
+| Revoked event | NoOp |
+| Compensate marker | NoOp |
+| Compensated event | **Visible** (key difference) |
+
+---
+
 ## See Also
 
+- [Cascade Execution](./cascade) — Atomic transactions and 2PC
 - [Error recovery operations](../operations/error-recovery) — DLQ, retries, and escalation
 - [Saga component](../components/saga) — Building sagas
 - [Why Poker](../examples/why-poker) — Full example with compensation flows

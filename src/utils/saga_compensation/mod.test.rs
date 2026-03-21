@@ -262,6 +262,8 @@ async fn test_handle_business_response_with_events() {
                     type_url: "test.Compensated".to_string(),
                     value: vec![],
                 })),
+                committed: true,
+                cascade_id: None,
             }],
             snapshot: None,
             ..Default::default()

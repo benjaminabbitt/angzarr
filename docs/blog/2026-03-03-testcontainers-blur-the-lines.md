@@ -6,6 +6,10 @@ tags: [testing, testcontainers, docker, rust, patterns, bit]
 keywords: [testcontainers, integration testing, unit testing, docker, behavioral interface test, BIT, rust, testing pyramid]
 ---
 
+import BlogHeader from '@site/src/components/BlogHeader';
+
+<BlogHeader />
+
 The old unit/integration distinction assumed "integration" meant "slow, fragile, needs environment setup." Testcontainers changed the economics.
 
 <!-- truncate -->

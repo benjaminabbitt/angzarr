@@ -204,3 +204,114 @@ pub(crate) fn diff_state_fields(
         HashSet::new()
     }
 }
+
+// ============================================================================
+// Two-Phase Commit Conflict Detection
+// ============================================================================
+
+/// Result of cascade conflict check.
+#[derive(Debug)]
+pub(crate) enum CascadeConflictResult {
+    /// No uncommitted events, or no field overlap - safe to proceed.
+    NoConflict,
+    /// Fields overlap with uncommitted events from other cascades.
+    Conflict {
+        cascade_ids: Vec<String>,
+        overlapping_fields: HashSet<String>,
+    },
+}
+
+/// Partition events by commit status.
+///
+/// Returns (committed_events, uncommitted_events).
+pub(crate) fn partition_by_commit_status(
+    events: &EventBook,
+) -> (EventBook, Vec<&crate::proto::EventPage>) {
+    let committed_pages: Vec<_> = events
+        .pages
+        .iter()
+        .filter(|p| p.committed)
+        .cloned()
+        .collect();
+
+    let uncommitted: Vec<_> = events.pages.iter().filter(|p| !p.committed).collect();
+
+    let committed_book = EventBook {
+        cover: events.cover.clone(),
+        pages: committed_pages,
+        snapshot: events.snapshot.clone(),
+        next_sequence: events.next_sequence,
+    };
+
+    (committed_book, uncommitted)
+}
+
+/// Check for cascade conflict with uncommitted events.
+///
+/// # Algorithm
+///
+/// 1. Partition prior events into committed and uncommitted
+/// 2. If no uncommitted events, no conflict possible
+/// 3. Compute "locked" fields: diff between committed-only state and all state
+/// 4. Compute command's fields: diff between current state and after-command state
+/// 5. Check for overlap between locked and command fields
+///
+/// This implements optimistic field-level locking: uncommitted events "lock"
+/// the fields they touched. New commands can proceed if they don't touch those fields.
+pub(crate) async fn check_cascade_conflict(
+    business: &dyn ClientLogic,
+    prior_events: &EventBook,
+    command_events: &EventBook,
+) -> Result<CascadeConflictResult, Status> {
+    let (committed, uncommitted) = partition_by_commit_status(prior_events);
+
+    // No uncommitted events = no conflict possible
+    if uncommitted.is_empty() {
+        return Ok(CascadeConflictResult::NoConflict);
+    }
+
+    // Compute locked fields: what uncommitted events changed
+    let state_committed = business.replay(&committed).await?;
+    let state_all = business.replay(prior_events).await?;
+    let locked_fields = diff_state_fields(&state_committed, &state_all);
+
+    // Compute fields this command would touch
+    let combined = build_combined_events(prior_events, command_events);
+    let state_after_cmd = business.replay(&combined).await?;
+    let command_fields = diff_state_fields(&state_all, &state_after_cmd);
+
+    // Wildcard means all fields - always conflicts
+    if locked_fields.contains("*") || command_fields.contains("*") {
+        let cascade_ids: Vec<_> = uncommitted
+            .iter()
+            .filter_map(|e| e.cascade_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        return Ok(CascadeConflictResult::Conflict {
+            cascade_ids,
+            overlapping_fields: command_fields,
+        });
+    }
+
+    // Check for field overlap
+    let overlap: HashSet<_> = locked_fields
+        .intersection(&command_fields)
+        .cloned()
+        .collect();
+
+    if !overlap.is_empty() {
+        let cascade_ids: Vec<_> = uncommitted
+            .iter()
+            .filter_map(|e| e.cascade_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        return Ok(CascadeConflictResult::Conflict {
+            cascade_ids,
+            overlapping_fields: overlap,
+        });
+    }
+
+    Ok(CascadeConflictResult::NoConflict)
+}

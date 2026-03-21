@@ -208,6 +208,8 @@ fn create_projection_event_book(
                 value: projection_bytes,
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }],
         ..Default::default()
     }

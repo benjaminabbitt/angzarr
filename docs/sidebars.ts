@@ -14,6 +14,7 @@ const sidebars: SidebarsConfig = {
         'features/small-footprint',
         'features/facts',
         'features/compensation',
+        'features/cascade',
         'features/editions',
         'features/ml-training',
         'features/upcasting',

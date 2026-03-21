@@ -475,6 +475,8 @@ pub async fn execute_fact_pipeline(
                 .created_at
                 .or_else(|| Some(prost_types::Timestamp::from(std::time::SystemTime::now()))),
             payload: page.payload,
+            committed: page.committed,
+            cascade_id: page.cascade_id,
         };
         final_pages.push(new_page);
         current_seq += 1;

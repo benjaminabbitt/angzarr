@@ -126,6 +126,8 @@ mod sequence_tests {
             sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(42)),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         };
         assert_eq!(BigtableEventStore::get_sequence(&event), 42);
     }
@@ -136,6 +138,8 @@ mod sequence_tests {
             sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         };
         assert_eq!(BigtableEventStore::get_sequence(&event), 0);
     }
@@ -208,6 +212,8 @@ mod mutation_tests {
                 seconds: 1705315800,
                 nanos: 0,
             }),
+            committed: true,
+            cascade_id: None,
         };
 
         let mutations = BigtableEventStore::build_event_mutations(&event, "corr-123");

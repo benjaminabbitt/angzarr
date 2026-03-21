@@ -29,19 +29,18 @@ CQRS-ES poker system. Player domain: functional aggregates. Others: object-orien
 **Run after every new test.** Tests must kill mutants to be meaningful.
 
 ```bash
-cargo mutants --in-place --timeout 120 -f <file> -- --features "sqlite test-utils"
+git worktree add --detach ../.mutants-worktree HEAD
+cargo mutants -d ../.mutants-worktree --in-place --timeout 120 -f <file> -- --lib --features "sqlite test-utils"
+git worktree remove ../.mutants-worktree --force
 ```
 
 **Workflow:** Write test → run mutants → verify kills → improve or delete if none killed.
 
+**Disk space:** Worktree shares .git (332MB), only copies source (~10MB). `--in-place` is safe since worktree is disposable. Much smaller than cargo-mutants' default full copy (466MB+).
+
 **Exclusions:** Skip `src/proto/`, `*.pb.rs`. DO test `src/proto_ext/` and hand-written proto code.
 
-**Target kill rates:**
-| Code Type | Target |
-|-----------|--------|
-| Pure utilities, trait contracts | 70%+ |
-| Validation/guard, orchestration | 60-70% |
-| gRPC handlers | 30-40% (integration territory) |
+**Target kill rate: 90%** for all unit-testable code.
 
 **Uncaught mutations:** Pure logic → add test. Needs mocking → check integration coverage. Side-effect only (logging) → accept. Framework glue → verify integration path.
 

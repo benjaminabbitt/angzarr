@@ -70,6 +70,8 @@ pub struct LocalAggregateContext {
     component_name: String,
     /// Sync mode for projector/saga invocation and bus publishing.
     sync_mode: Option<crate::proto::SyncMode>,
+    /// Cascade ID for 2PC: when set, events are written with committed=false.
+    cascade_id: Option<String>,
 }
 
 impl LocalAggregateContext {
@@ -87,6 +89,7 @@ impl LocalAggregateContext {
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
             sync_mode: None,
+            cascade_id: None,
         }
     }
 
@@ -100,6 +103,7 @@ impl LocalAggregateContext {
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
             sync_mode: None,
+            cascade_id: None,
         }
     }
 
@@ -124,6 +128,16 @@ impl LocalAggregateContext {
     /// Set the sync mode for projector/saga invocation and bus publishing.
     pub fn with_sync_mode(mut self, mode: crate::proto::SyncMode) -> Self {
         self.sync_mode = Some(mode);
+        self
+    }
+
+    /// Set the cascade ID for 2PC atomic execution.
+    ///
+    /// When cascade_id is set, events are written with `committed=false` and
+    /// the cascade_id stamped on each event. This enables atomic commit/rollback
+    /// across multiple aggregates.
+    pub fn with_cascade_id(mut self, cascade_id: impl Into<String>) -> Self {
+        self.cascade_id = Some(cascade_id.into());
         self
     }
 
@@ -308,13 +322,28 @@ impl AggregateContext for LocalAggregateContext {
                 )));
             }
 
+            // 2PC: If cascade_id is set, stamp events with committed=false
+            let pages_to_persist = if let Some(ref cascade_id) = self.cascade_id {
+                new_pages
+                    .iter()
+                    .map(|page| {
+                        let mut stamped = page.clone();
+                        stamped.committed = false;
+                        stamped.cascade_id = Some(cascade_id.clone());
+                        stamped
+                    })
+                    .collect()
+            } else {
+                new_pages.clone()
+            };
+
             self.storage
                 .event_store
                 .add(
                     domain,
                     edition,
                     root,
-                    new_pages.clone(),
+                    pages_to_persist,
                     correlation_id,
                     None,
                     None, // No source tracking for direct aggregate execution

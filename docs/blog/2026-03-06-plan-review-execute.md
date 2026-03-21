@@ -6,6 +6,10 @@ tags: [llm, workflow, patterns, collaboration]
 keywords: [llm, ai, planning, code review, workflow, collaboration, claude, gpt, illuminated code walkthrough]
 ---
 
+import BlogHeader from '@site/src/components/BlogHeader';
+
+<BlogHeader />
+
 The most effective LLM workflows share one trait: they force a pause between planning and execution. You wouldn't let a contractor start demolition before approving blueprints. The same applies to AI assistants.
 
 <!-- truncate -->

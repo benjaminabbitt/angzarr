@@ -64,6 +64,8 @@ pub fn make_event_page(seq: u32) -> EventPage {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }
 }
 
@@ -78,6 +80,24 @@ pub fn make_event_page_typed(seq: u32, type_url: &str) -> EventPage {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
+    }
+}
+
+/// Create an uncommitted `EventPage` for 2PC testing.
+pub fn make_uncommitted_event_page(seq: u32, cascade_id: &str) -> EventPage {
+    EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(seq)),
+        }),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: format!("test.Event{}", seq),
+            value: vec![],
+        })),
+        created_at: None,
+        committed: false,
+        cascade_id: Some(cascade_id.to_string()),
     }
 }
 

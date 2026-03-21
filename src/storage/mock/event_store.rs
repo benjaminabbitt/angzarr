@@ -10,7 +10,9 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{EventBook, EventPage};
 use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
-use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
+use crate::storage::{
+    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+};
 
 /// Stored event with correlation and idempotency tracking.
 struct StoredEvent {
@@ -320,5 +322,85 @@ impl EventStore for MockEventStore {
         }
 
         Ok(None)
+    }
+
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
+        use std::collections::HashSet;
+
+        let threshold_dt = chrono::DateTime::parse_from_rfc3339(threshold)
+            .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;
+
+        let store = self.events.read().await;
+
+        // Collect all cascade_ids that have uncommitted events
+        let mut uncommitted_cascades: HashSet<String> = HashSet::new();
+        let mut resolved_cascades: HashSet<String> = HashSet::new();
+
+        for events in store.values() {
+            for stored in events {
+                if let Some(ref cascade_id) = stored.page.cascade_id {
+                    if stored.page.committed {
+                        // This cascade has a committed event (Confirmation/Revocation marker)
+                        resolved_cascades.insert(cascade_id.clone());
+                    } else {
+                        // Check if created_at < threshold
+                        if let Some(ref ts) = stored.page.created_at {
+                            if let Some(dt) =
+                                chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+                            {
+                                if dt < threshold_dt {
+                                    uncommitted_cascades.insert(cascade_id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Return cascade_ids that are uncommitted and not yet resolved
+        let stale: Vec<String> = uncommitted_cascades
+            .difference(&resolved_cascades)
+            .cloned()
+            .collect();
+
+        Ok(stale)
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        cascade_id: &str,
+    ) -> Result<Vec<CascadeParticipant>> {
+        let store = self.events.read().await;
+
+        // Group by (domain, edition, root)
+        let mut participants_map: HashMap<(String, String, Uuid), Vec<u32>> = HashMap::new();
+
+        for ((domain, edition, root), events) in store.iter() {
+            for stored in events {
+                if let Some(ref cid) = stored.page.cascade_id {
+                    if cid == cascade_id && !stored.page.committed {
+                        let key = (domain.clone(), edition.clone(), *root);
+                        participants_map
+                            .entry(key)
+                            .or_default()
+                            .push(stored.page.sequence_num());
+                    }
+                }
+            }
+        }
+
+        // Convert to CascadeParticipant list
+        let participants: Vec<CascadeParticipant> = participants_map
+            .into_iter()
+            .map(|((domain, edition, root), sequences)| CascadeParticipant {
+                domain,
+                edition,
+                root,
+                sequences,
+            })
+            .collect();
+
+        Ok(participants)
     }
 }

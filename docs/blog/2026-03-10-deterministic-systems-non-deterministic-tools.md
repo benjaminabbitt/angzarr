@@ -6,6 +6,10 @@ tags: [llm, workflow, tdd, testing, collaboration]
 keywords: [llm, ai, tdd, test-driven development, code review, workflow, collaboration, claude, gpt, illuminated code walkthrough]
 ---
 
+import BlogHeader from '@site/src/components/BlogHeader';
+
+<BlogHeader />
+
 Large Language Models are probabilistic text generators. Their raw outputs cannot be trusted for correctness. So how do you build reliable software with unreliable assistants?
 
 You don't ask for answers. You ask for tools that produce answers.
