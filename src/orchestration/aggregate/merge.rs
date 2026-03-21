@@ -210,7 +210,9 @@ pub(crate) fn diff_state_fields(
 // ============================================================================
 
 /// Result of cascade conflict check.
+// TODO: Wire into pipeline when cascade mode goes live
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) enum CascadeConflictResult {
     /// No uncommitted events, or no field overlap - safe to proceed.
     NoConflict,
@@ -224,6 +226,7 @@ pub(crate) enum CascadeConflictResult {
 /// Partition events by commit status.
 ///
 /// Returns (committed_events, uncommitted_events).
+#[allow(dead_code)]
 pub(crate) fn partition_by_commit_status(
     events: &EventBook,
 ) -> (EventBook, Vec<&crate::proto::EventPage>) {
@@ -258,6 +261,7 @@ pub(crate) fn partition_by_commit_status(
 ///
 /// This implements optimistic field-level locking: uncommitted events "lock"
 /// the fields they touched. New commands can proceed if they don't touch those fields.
+#[allow(dead_code)]
 pub(crate) async fn check_cascade_conflict(
     business: &dyn ClientLogic,
     prior_events: &EventBook,
