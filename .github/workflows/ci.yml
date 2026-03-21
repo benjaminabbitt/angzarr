@@ -216,7 +216,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo llvm-cov --features "sqlite test-utils" \
+            cargo llvm-cov --features "test-utils" \
               --ignore-filename-regex '(\.pb\.rs|proto/|sidecar\.rs|bin/)' \
               --fail-under-lines 80 \
               --codecov --output-path codecov.json

@@ -262,9 +262,8 @@ async fn test_regular_committed_events_ignored() {
 fn test_reaper_builder_pattern() {
     let store = Arc::new(MockEventStore::new());
 
-    let reaper = CascadeReaper::new(Arc::clone(&store), Duration::from_secs(300))
+    let _reaper = CascadeReaper::new(Arc::clone(&store), Duration::from_secs(300))
         .with_interval(Duration::from_secs(60));
 
-    // Just verify it compiles and the pattern works
-    assert!(true);
+    // Verify builder pattern compiles - success if we reach this point
 }

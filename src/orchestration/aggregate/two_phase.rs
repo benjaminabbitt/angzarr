@@ -228,7 +228,7 @@ fn make_noop_with_cascade(page: &EventPage, cascade_id: &str, reason: &str) -> E
 
     EventPage {
         header: page.header.clone(),
-        created_at: page.created_at.clone(),
+        created_at: page.created_at,
         payload: Some(event_page::Payload::Event(prost_types::Any {
             type_url: type_url::NOOP.to_string(),
             value: noop.encode_to_vec(),
