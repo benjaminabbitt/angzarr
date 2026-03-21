@@ -769,6 +769,8 @@ impl CommandHandler for StatefulAggregate {
                             value: value.as_bytes().to_vec(),
                         })),
                         created_at: None,
+                        committed: true,
+                        cascade_id: None,
                     });
                 } else if cmd_value.starts_with("update_status:") {
                     let value = cmd_value.strip_prefix("update_status:").unwrap_or("active");
@@ -783,6 +785,8 @@ impl CommandHandler for StatefulAggregate {
                             value: value.as_bytes().to_vec(),
                         })),
                         created_at: None,
+                        committed: true,
+                        cascade_id: None,
                     });
                 } else if cmd_value.starts_with("update_both:") {
                     let parts: Vec<&str> = cmd_value
@@ -804,6 +808,8 @@ impl CommandHandler for StatefulAggregate {
                             value: name_val.as_bytes().to_vec(),
                         })),
                         created_at: None,
+                        committed: true,
+                        cascade_id: None,
                     });
                     event_pages.push(EventPage {
                         header: Some(PageHeader {
@@ -816,6 +822,8 @@ impl CommandHandler for StatefulAggregate {
                             value: status_val.as_bytes().to_vec(),
                         })),
                         created_at: None,
+                        committed: true,
+                        cascade_id: None,
                     });
                 } else {
                     // Default: echo as-is
@@ -832,6 +840,8 @@ impl CommandHandler for StatefulAggregate {
                         }),
                         payload: event.map(event_page::Payload::Event),
                         created_at: None,
+                        committed: true,
+                        cascade_id: None,
                     });
                 }
             }

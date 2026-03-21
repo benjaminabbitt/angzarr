@@ -54,6 +54,8 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
                 }),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             }],
             snapshot: None,
             ..Default::default()
@@ -137,6 +139,8 @@ impl CommandHandlerCoordinatorService for MockAggregateService {
                 }),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             }],
             snapshot: None,
             ..Default::default()

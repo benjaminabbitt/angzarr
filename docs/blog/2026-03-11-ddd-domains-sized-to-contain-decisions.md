@@ -6,6 +6,10 @@ tags: [ddd, architecture, bounded-context, event-sourcing]
 keywords: [domain-driven-design, bounded-context, aggregate, saga, event-sourcing, microservices, ddd-patterns]
 ---
 
+import BlogHeader from '@site/src/components/BlogHeader';
+
+<BlogHeader />
+
 **The uncomfortable truth: most DDD teams draw their bounded contexts too small.**
 
 Not too large—too *small*. They slice by CRUD entity, by database table, by team org chart. The result? Contexts that cannot make decisions autonomously. Every meaningful operation requires cross-context coordination. The architecture devolves into a distributed monolith with extra network hops.

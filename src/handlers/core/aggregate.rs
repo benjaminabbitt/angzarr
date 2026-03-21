@@ -205,6 +205,8 @@ pub fn wrap_command_for_bus(command: &CommandBook) -> EventBook {
             }),
             created_at: None,
             payload: Some(Payload::Event(any)),
+            committed: true,
+            cascade_id: None,
         }],
         ..Default::default()
     }

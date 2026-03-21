@@ -478,6 +478,8 @@ pub fn build_compensation_failed_event_book(
                 type_url: type_url::SAGA_COMPENSATION_FAILED.to_string(),
                 value: event.encode_to_vec(),
             })),
+            committed: true,
+            cascade_id: None,
         }],
         snapshot: None,
         ..Default::default()

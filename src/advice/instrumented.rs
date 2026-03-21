@@ -18,7 +18,9 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::proto::{EventBook, EventPage, Snapshot};
-use crate::storage::{AddOutcome, EventStore, PositionStore, Result, SnapshotStore, SourceInfo};
+use crate::storage::{
+    AddOutcome, CascadeParticipant, EventStore, PositionStore, Result, SnapshotStore, SourceInfo,
+};
 
 // Re-export constants for backwards compatibility
 #[allow(unused_imports)]
@@ -380,6 +382,19 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         self.inner
             .find_by_source(domain, edition, root, source_info)
             .await
+    }
+
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
+        // Delegate to inner - no separate metrics for cascade queries
+        self.inner.query_stale_cascades(threshold).await
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        cascade_id: &str,
+    ) -> Result<Vec<CascadeParticipant>> {
+        // Delegate to inner - no separate metrics for cascade queries
+        self.inner.query_cascade_participants(cascade_id).await
     }
 }
 

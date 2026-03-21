@@ -239,6 +239,18 @@ impl CommandRouter {
         storage: &DomainStorage,
         sync_mode: Option<crate::proto::SyncMode>,
     ) -> Arc<dyn AggregateContext> {
+        self.create_context_with_cascade(storage, sync_mode, None)
+    }
+
+    /// Create an aggregate context with optional cascade_id for 2PC.
+    ///
+    /// When cascade_id is set, events are written with committed=false.
+    fn create_context_with_cascade(
+        &self,
+        storage: &DomainStorage,
+        sync_mode: Option<crate::proto::SyncMode>,
+        cascade_id: Option<&str>,
+    ) -> Arc<dyn AggregateContext> {
         let ctx = match &self.edition_name {
             Some(_) => {
                 LocalAggregateContext::without_discovery(storage.clone(), self.event_bus.clone())
@@ -250,10 +262,17 @@ impl CommandRouter {
             ),
         };
 
-        Arc::new(match sync_mode {
+        let ctx = match sync_mode {
             Some(mode) => ctx.with_sync_mode(mode),
             None => ctx,
-        })
+        };
+
+        let ctx = match cascade_id {
+            Some(id) => ctx.with_cascade_id(id),
+            None => ctx,
+        };
+
+        Arc::new(ctx)
     }
 
     /// Execute a command and return the response.
@@ -1161,6 +1180,707 @@ impl CommandRouter {
     ) -> Result<CommandResponse, Status> {
         self.execute_with_cascade_internal(command_book, CascadeErrorMode::CascadeErrorFailFast)
             .await
+    }
+
+    /// Execute a command atomically with 2PC (two-phase commit).
+    ///
+    /// All events are written with `committed=false` and grouped by a shared cascade_id.
+    /// On success, writes Confirmation events to make them visible.
+    /// On failure, writes Revocation events to mark them as NoOp.
+    ///
+    /// This enables atomic commit/rollback across multiple aggregates when sagas
+    /// produce cross-domain commands.
+    #[tracing::instrument(name = "router.execute_atomic", skip_all, fields(domain = %command_book.domain()))]
+    pub async fn execute_atomic(
+        &self,
+        command_book: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        let cascade_id = uuid::Uuid::new_v4().to_string();
+        self.execute_atomic_with_cascade_id(command_book, &cascade_id)
+            .await
+    }
+
+    /// Execute atomically with a specific cascade_id.
+    ///
+    /// Internal method used by execute_atomic and for recursive saga calls.
+    #[tracing::instrument(name = "router.execute_atomic_internal", skip_all, fields(domain = %command_book.domain(), %cascade_id))]
+    async fn execute_atomic_with_cascade_id(
+        &self,
+        command_book: CommandBook,
+        cascade_id: &str,
+    ) -> Result<CommandResponse, Status> {
+        let (domain, root_uuid) = parse_command_cover(&command_book)?;
+        let (business, storage) = self.get_domain_resources(&domain)?;
+
+        // Create context with cascade_id - events will be written with committed=false
+        let ctx = self.create_context_with_cascade(
+            storage,
+            Some(crate::proto::SyncMode::Cascade),
+            Some(cascade_id),
+        );
+
+        // Execute command - events are persisted with committed=false
+        let response = match execute_command_with_retry(
+            &*ctx,
+            &**business,
+            command_book,
+            saga_backoff(),
+        )
+        .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                // Command failed - no events were persisted, no rollback needed
+                return Err(e);
+            }
+        };
+
+        // Track the sequences written by this command for commit/rollback
+        let sequences: Vec<u32> = response
+            .events
+            .as_ref()
+            .map(|eb| eb.pages.iter().map(|p| p.sequence_num()).collect())
+            .unwrap_or_default();
+
+        // CASCADE: call sync projectors (projectors see uncommitted events)
+        let mut response = response;
+        if !self.sync_projectors.is_empty() {
+            if let Some(ref events) = response.events {
+                let projections = self.call_sync_projectors(events).await;
+                response.projections.extend(projections);
+            }
+        }
+
+        // CASCADE: call sync sagas (recursive) with same cascade_id
+        // TODO: For full 2PC, sagas should also use atomic execution with same cascade_id
+        if !self.sync_sagas.is_empty() {
+            if let Some(ref events) = response.events {
+                match self
+                    .call_sync_sagas(events, CascadeErrorMode::CascadeErrorFailFast)
+                    .await
+                {
+                    Ok(saga_errors) => {
+                        if !saga_errors.is_empty() {
+                            // Saga produced errors - rollback
+                            self.write_revocation(
+                                &domain,
+                                root_uuid,
+                                cascade_id,
+                                &sequences,
+                                "saga_error",
+                            )
+                            .await;
+                            return Err(Status::aborted(format!(
+                                "Saga errors during atomic execution: {:?}",
+                                saga_errors
+                            )));
+                        }
+                    }
+                    Err(e) => {
+                        // Saga failed - rollback
+                        self.write_revocation(
+                            &domain,
+                            root_uuid,
+                            cascade_id,
+                            &sequences,
+                            "saga_failed",
+                        )
+                        .await;
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // CASCADE: call sync process managers
+        if !self.sync_pms.is_empty() {
+            if let Some(ref events) = response.events {
+                match self
+                    .call_sync_pms(events, CascadeErrorMode::CascadeErrorFailFast)
+                    .await
+                {
+                    Ok(pm_errors) => {
+                        if !pm_errors.is_empty() {
+                            // PM produced errors - rollback
+                            self.write_revocation(
+                                &domain, root_uuid, cascade_id, &sequences, "pm_error",
+                            )
+                            .await;
+                            return Err(Status::aborted(format!(
+                                "PM errors during atomic execution: {:?}",
+                                pm_errors
+                            )));
+                        }
+                    }
+                    Err(e) => {
+                        // PM failed - rollback
+                        self.write_revocation(
+                            &domain,
+                            root_uuid,
+                            cascade_id,
+                            &sequences,
+                            "pm_failed",
+                        )
+                        .await;
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // All succeeded - write Confirmation to commit events
+        if !sequences.is_empty() {
+            self.write_confirmation(&domain, root_uuid, cascade_id, &sequences)
+                .await;
+        }
+
+        Ok(response)
+    }
+
+    /// Write a Confirmation event to commit pending events.
+    async fn write_confirmation(
+        &self,
+        domain: &str,
+        root: uuid::Uuid,
+        cascade_id: &str,
+        sequences: &[u32],
+    ) {
+        use crate::proto::page_header::SequenceType;
+        use crate::proto::{
+            event_page, Confirmation, Cover, EventPage, PageHeader, Uuid as ProtoUuid,
+        };
+        use prost::Message;
+        use prost_types::Any;
+
+        let storage = match self.get_storage(domain) {
+            Ok(s) => s,
+            Err(e) => {
+                error!(error = %e, "Failed to get storage for confirmation");
+                return;
+            }
+        };
+
+        let edition = self.edition_name.as_deref().unwrap_or("");
+        let next_seq = match storage
+            .event_store
+            .get_next_sequence(domain, edition, root)
+            .await
+        {
+            Ok(seq) => seq,
+            Err(e) => {
+                error!(error = %e, "Failed to get next sequence for confirmation");
+                return;
+            }
+        };
+
+        let confirmation = Confirmation {
+            target: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            sequences: sequences.to_vec(),
+            cascade_id: cascade_id.to_string(),
+        };
+
+        let confirmation_page = EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(next_seq)),
+            }),
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/angzarr.Confirmation".to_string(),
+                value: confirmation.encode_to_vec(),
+            })),
+            committed: true, // Framework events are always committed
+            cascade_id: None,
+        };
+
+        if let Err(e) = storage
+            .event_store
+            .add(
+                domain,
+                edition,
+                root,
+                vec![confirmation_page],
+                "",
+                None,
+                None,
+            )
+            .await
+        {
+            error!(error = %e, "Failed to write confirmation event");
+        }
+    }
+
+    /// Write a Revocation event to rollback pending events.
+    async fn write_revocation(
+        &self,
+        domain: &str,
+        root: uuid::Uuid,
+        cascade_id: &str,
+        sequences: &[u32],
+        reason: &str,
+    ) {
+        use crate::proto::page_header::SequenceType;
+        use crate::proto::{
+            event_page, Cover, EventPage, PageHeader, Revocation, Uuid as ProtoUuid,
+        };
+        use prost::Message;
+        use prost_types::Any;
+
+        let storage = match self.get_storage(domain) {
+            Ok(s) => s,
+            Err(e) => {
+                error!(error = %e, "Failed to get storage for revocation");
+                return;
+            }
+        };
+
+        let edition = self.edition_name.as_deref().unwrap_or("");
+        let next_seq = match storage
+            .event_store
+            .get_next_sequence(domain, edition, root)
+            .await
+        {
+            Ok(seq) => seq,
+            Err(e) => {
+                error!(error = %e, "Failed to get next sequence for revocation");
+                return;
+            }
+        };
+
+        let revocation = Revocation {
+            target: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            sequences: sequences.to_vec(),
+            cascade_id: cascade_id.to_string(),
+            reason: reason.to_string(),
+        };
+
+        let revocation_page = EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(next_seq)),
+            }),
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/angzarr.Revocation".to_string(),
+                value: revocation.encode_to_vec(),
+            })),
+            committed: true, // Framework events are always committed
+            cascade_id: None,
+        };
+
+        if let Err(e) = storage
+            .event_store
+            .add(domain, edition, root, vec![revocation_page], "", None, None)
+            .await
+        {
+            error!(error = %e, "Failed to write revocation event");
+        }
+    }
+
+    /// Write a Compensate marker event for sequences that need compensation.
+    ///
+    /// Unlike Revocation, Compensate keeps original events visible and signals
+    /// to client handlers that they should emit inverse events.
+    async fn write_compensate(
+        &self,
+        domain: &str,
+        root: uuid::Uuid,
+        sequences: &[u32],
+        reason: &str,
+    ) {
+        use crate::proto::page_header::SequenceType;
+        use crate::proto::{
+            event_page, Compensate, Cover, EventPage, PageHeader, Uuid as ProtoUuid,
+        };
+        use prost::Message;
+        use prost_types::Any;
+
+        let storage = match self.get_storage(domain) {
+            Ok(s) => s,
+            Err(e) => {
+                error!(error = %e, "Failed to get storage for compensate");
+                return;
+            }
+        };
+
+        let edition = self.edition_name.as_deref().unwrap_or("");
+        let next_seq = match storage
+            .event_store
+            .get_next_sequence(domain, edition, root)
+            .await
+        {
+            Ok(seq) => seq,
+            Err(e) => {
+                error!(error = %e, "Failed to get next sequence for compensate");
+                return;
+            }
+        };
+
+        let compensate = Compensate {
+            target: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            sequences: sequences.to_vec(),
+            reason: reason.to_string(),
+        };
+
+        let compensate_page = EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(SequenceType::Sequence(next_seq)),
+            }),
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: crate::proto_ext::type_url::COMPENSATE.to_string(),
+                value: compensate.encode_to_vec(),
+            })),
+            committed: true, // Framework events are always committed
+            cascade_id: None,
+        };
+
+        if let Err(e) = storage
+            .event_store
+            .add(domain, edition, root, vec![compensate_page], "", None, None)
+            .await
+        {
+            error!(error = %e, "Failed to write compensate event");
+        }
+    }
+
+    // =========================================================================
+    // Cascade Coordination (Phase 6: PM 2PC)
+    // =========================================================================
+
+    /// Handle a CascadeCommit message from a Process Manager.
+    ///
+    /// Queries all participants in the cascade and writes Confirmation events
+    /// for each one, making their uncommitted events visible to business logic.
+    ///
+    /// This is used by Process Managers coordinating async 2PC workflows.
+    #[tracing::instrument(name = "router.handle_cascade_commit", skip_all, fields(%cascade_id))]
+    pub async fn handle_cascade_commit(&self, cascade_id: &str) -> Result<usize, Status> {
+        let mut confirmed_count = 0;
+
+        // Query all participants across all domains
+        for (domain, storage) in self.stores.iter() {
+            let participants = match storage
+                .event_store
+                .query_cascade_participants(cascade_id)
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!(
+                        domain = %domain,
+                        error = %e,
+                        "Failed to query cascade participants"
+                    );
+                    continue;
+                }
+            };
+
+            for participant in participants {
+                if !participant.sequences.is_empty() {
+                    self.write_confirmation(
+                        &participant.domain,
+                        participant.root,
+                        cascade_id,
+                        &participant.sequences,
+                    )
+                    .await;
+                    confirmed_count += 1;
+                    debug!(
+                        cascade_id = %cascade_id,
+                        domain = %participant.domain,
+                        root = ?participant.root,
+                        sequences = ?participant.sequences,
+                        "Confirmed cascade participant"
+                    );
+                }
+            }
+        }
+
+        info!(
+            cascade_id = %cascade_id,
+            participants = confirmed_count,
+            "Cascade committed"
+        );
+
+        Ok(confirmed_count)
+    }
+
+    /// Handle a CascadeRollback message from a Process Manager.
+    ///
+    /// Queries all participants in the cascade and writes Revocation events
+    /// for each one, marking their uncommitted events as NoOp.
+    ///
+    /// This is used by Process Managers to rollback async 2PC workflows
+    /// on failure or timeout.
+    #[tracing::instrument(name = "router.handle_cascade_rollback", skip_all, fields(%cascade_id, %reason))]
+    pub async fn handle_cascade_rollback(
+        &self,
+        cascade_id: &str,
+        reason: &str,
+    ) -> Result<usize, Status> {
+        let mut revoked_count = 0;
+
+        // Query all participants across all domains
+        for (domain, storage) in self.stores.iter() {
+            let participants = match storage
+                .event_store
+                .query_cascade_participants(cascade_id)
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!(
+                        domain = %domain,
+                        error = %e,
+                        "Failed to query cascade participants"
+                    );
+                    continue;
+                }
+            };
+
+            for participant in participants {
+                if !participant.sequences.is_empty() {
+                    self.write_revocation(
+                        &participant.domain,
+                        participant.root,
+                        cascade_id,
+                        &participant.sequences,
+                        reason,
+                    )
+                    .await;
+                    revoked_count += 1;
+                    debug!(
+                        cascade_id = %cascade_id,
+                        domain = %participant.domain,
+                        root = ?participant.root,
+                        sequences = ?participant.sequences,
+                        reason = %reason,
+                        "Revoked cascade participant"
+                    );
+                }
+            }
+        }
+
+        info!(
+            cascade_id = %cascade_id,
+            participants = revoked_count,
+            reason = %reason,
+            "Cascade rolled back"
+        );
+
+        Ok(revoked_count)
+    }
+
+    // =========================================================================
+    // Revocation API (Phase 7)
+    // =========================================================================
+
+    /// Revoke committed events for an aggregate.
+    ///
+    /// This is a direct API for revoking any committed events, not just cascade
+    /// participants. Revoked events become invisible to business logic (replaced
+    /// with NoOp during read-time transformation).
+    ///
+    /// # Arguments
+    /// * `domain` - Domain name of the aggregate
+    /// * `root` - Aggregate root UUID
+    /// * `sequences` - Event sequences to revoke (must be committed)
+    /// * `reason` - Why the events are being revoked
+    ///
+    /// # Errors
+    /// Returns error if:
+    /// - Domain not found
+    /// - Any sequence doesn't exist or isn't effectively committed
+    #[tracing::instrument(name = "router.revoke_events", skip_all, fields(%domain, ?root, ?sequences, %reason))]
+    pub async fn revoke_events(
+        &self,
+        domain: &str,
+        root: uuid::Uuid,
+        sequences: Vec<u32>,
+        reason: &str,
+    ) -> Result<(), Status> {
+        if sequences.is_empty() {
+            return Ok(());
+        }
+
+        let storage = self.get_storage(domain)?;
+        let edition = self.edition_name.as_deref().unwrap_or("");
+
+        // Load all events to validate sequences exist and are committed
+        let events = storage
+            .event_store
+            .get(domain, edition, root)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to load events: {}", e)))?;
+
+        // Build set of confirmed sequences (from Confirmation events)
+        let confirmed_sequences: std::collections::HashSet<u32> = events
+            .iter()
+            .filter_map(|e| {
+                if let Some(crate::proto::event_page::Payload::Event(any)) = &e.payload {
+                    if any.type_url.contains("Confirmation") {
+                        // Parse Confirmation to get sequences
+                        if let Ok(conf) =
+                            <crate::proto::Confirmation as prost::Message>::decode(&any.value[..])
+                        {
+                            return Some(conf.sequences);
+                        }
+                    }
+                }
+                None
+            })
+            .flatten()
+            .collect();
+
+        // Validate all requested sequences are effectively committed
+        for seq in &sequences {
+            let event = events
+                .iter()
+                .find(|e| e.sequence_num() == *seq)
+                .ok_or_else(|| {
+                    Status::not_found(format!("Sequence {} not found in aggregate", seq))
+                })?;
+
+            let is_effectively_committed = event.committed || confirmed_sequences.contains(seq);
+
+            if !is_effectively_committed {
+                return Err(Status::failed_precondition(format!(
+                    "Sequence {} is not committed and cannot be revoked. Use cascade rollback for uncommitted events.",
+                    seq
+                )));
+            }
+        }
+
+        // Write Revocation event (with empty cascade_id since this is direct revocation)
+        self.write_revocation(domain, root, "", &sequences, reason)
+            .await;
+
+        info!(
+            domain = %domain,
+            root = ?root,
+            sequences = ?sequences,
+            reason = %reason,
+            "Events revoked"
+        );
+
+        Ok(())
+    }
+
+    /// Trigger compensation for specific committed events.
+    ///
+    /// Unlike `revoke_events()`, this keeps the original events visible in the
+    /// event stream and writes a Compensate marker. Client handlers should
+    /// implement inverse logic when they receive the Compensate event.
+    ///
+    /// # Parameters
+    /// - `domain`: The domain of the aggregate
+    /// - `root`: The aggregate root ID
+    /// - `sequences`: The sequence numbers to compensate
+    /// - `reason`: Human-readable reason for compensation
+    ///
+    /// # Returns
+    /// - `Ok(())` if compensation marker was written
+    /// - `Err(Status)` if sequences don't exist or are uncommitted
+    ///
+    /// # Differences from Revocation
+    /// - **Revocation**: Original events become NoOp (hidden from business logic)
+    /// - **Compensate**: Original events remain visible, handler emits inverse events
+    #[tracing::instrument(
+        name = "router.compensate_events",
+        skip_all,
+        fields(domain = %domain, root = ?root, sequences = ?sequences)
+    )]
+    pub async fn compensate_events(
+        &self,
+        domain: &str,
+        root: uuid::Uuid,
+        sequences: Vec<u32>,
+        reason: &str,
+    ) -> Result<(), Status> {
+        if sequences.is_empty() {
+            return Ok(());
+        }
+
+        let storage = self.get_storage(domain)?;
+        let edition = self.edition_name.as_deref().unwrap_or("");
+
+        // Load all events to validate sequences exist and are committed
+        let events = storage
+            .event_store
+            .get(domain, edition, root)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to load events: {}", e)))?;
+
+        // Build set of confirmed sequences (from Confirmation events)
+        let confirmed_sequences: std::collections::HashSet<u32> = events
+            .iter()
+            .filter_map(|e| {
+                if let Some(crate::proto::event_page::Payload::Event(any)) = &e.payload {
+                    if any.type_url.contains("Confirmation") {
+                        if let Ok(conf) =
+                            <crate::proto::Confirmation as prost::Message>::decode(&any.value[..])
+                        {
+                            return Some(conf.sequences);
+                        }
+                    }
+                }
+                None
+            })
+            .flatten()
+            .collect();
+
+        // Validate all requested sequences are effectively committed
+        for seq in &sequences {
+            let event = events
+                .iter()
+                .find(|e| e.sequence_num() == *seq)
+                .ok_or_else(|| {
+                    Status::not_found(format!("Sequence {} not found in aggregate", seq))
+                })?;
+
+            let is_effectively_committed = event.committed || confirmed_sequences.contains(seq);
+
+            if !is_effectively_committed {
+                return Err(Status::failed_precondition(format!(
+                    "Sequence {} is not committed and cannot be compensated. Use cascade rollback for uncommitted events.",
+                    seq
+                )));
+            }
+        }
+
+        // Write Compensate marker event
+        self.write_compensate(domain, root, &sequences, reason)
+            .await;
+
+        info!(
+            domain = %domain,
+            root = ?root,
+            sequences = ?sequences,
+            reason = %reason,
+            "Compensation requested for events"
+        );
+
+        Ok(())
     }
 
     /// Execute a command with CASCADE mode with specified error handling mode.

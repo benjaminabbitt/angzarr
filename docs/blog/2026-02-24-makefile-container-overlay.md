@@ -6,6 +6,10 @@ tags: [patterns, docker, makefile, devops]
 keywords: [makefile, docker, container, build, pattern, overlay, mount, ci-cd]
 ---
 
+import BlogHeader from '@site/src/components/BlogHeader';
+
+<BlogHeader />
+
 How we eliminated conditionals from our Makefile while supporting both host and containerized builds with a single command interface.
 
 <!-- truncate -->

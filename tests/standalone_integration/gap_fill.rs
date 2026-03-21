@@ -46,6 +46,8 @@ fn test_event(sequence: u32, event_type: &str) -> EventPage {
             type_url: format!("type.googleapis.com/{}", event_type),
             value: vec![sequence as u8],
         })),
+        committed: true,
+        cascade_id: None,
     }
 }
 

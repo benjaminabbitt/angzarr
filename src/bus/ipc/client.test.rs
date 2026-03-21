@@ -296,6 +296,8 @@ fn test_max_page_sequence_single_page() {
             }),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }],
         snapshot: None,
         ..Default::default()
@@ -316,6 +318,8 @@ fn test_max_page_sequence_multiple_pages() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
             EventPage {
                 header: Some(PageHeader {
@@ -323,6 +327,8 @@ fn test_max_page_sequence_multiple_pages() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
             EventPage {
                 header: Some(PageHeader {
@@ -330,6 +336,8 @@ fn test_max_page_sequence_multiple_pages() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
         ],
         snapshot: None,

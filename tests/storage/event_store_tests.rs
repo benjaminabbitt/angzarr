@@ -21,6 +21,8 @@ pub fn make_event(seq: u32, event_type: &str) -> EventPage {
             type_url: format!("type.example/{}", event_type),
             value: vec![1, 2, 3, seq as u8],
         })),
+        committed: true,
+        cascade_id: None,
     }
 }
 
@@ -223,6 +225,8 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
             type_url: "type.example/TestEvent".to_string(),
             value: vec![10, 20, 30, 40, 50, 100, 200],
         })),
+        committed: true,
+        cascade_id: None,
     };
 
     store
@@ -893,6 +897,121 @@ pub async fn test_edition_sequences_independent<S: EventStore>(store: &S) {
     assert_eq!(v2_next, 5, "v2 edition should have next seq 5");
 }
 
+pub async fn test_edition_divergence_read<S: EventStore>(store: &S) {
+    let domain = "test_diverge_read";
+    let root = Uuid::new_v4();
+
+    // Add events to main edition (0, 1, 2)
+    store
+        .add(domain, "angzarr", root, make_events(0, 3), "", None, None)
+        .await
+        .expect("add to main should succeed");
+
+    // Add diverged events to branch starting at seq 1 (diverges from main)
+    // This should return main[0] + branch[1, 2] when read
+    store
+        .add(
+            domain,
+            "branch-div",
+            root,
+            make_events(1, 2),
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add to branch should succeed");
+
+    // Read from branch - should get main[0] + branch[1, 2]
+    let branch_events = store
+        .get(domain, "branch-div", root)
+        .await
+        .expect("get branch should succeed");
+
+    // The branch should have 3 events: main[0], branch[1], branch[2]
+    assert_eq!(
+        branch_events.len(),
+        3,
+        "diverged branch should have 3 events"
+    );
+    assert_eq!(branch_events[0].sequence_num(), 0, "first should be seq 0");
+    assert_eq!(branch_events[1].sequence_num(), 1, "second should be seq 1");
+    assert_eq!(branch_events[2].sequence_num(), 2, "third should be seq 2");
+}
+
+pub async fn test_edition_divergence_from_middle<S: EventStore>(store: &S) {
+    let domain = "test_diverge_mid";
+    let root = Uuid::new_v4();
+
+    // Add events to main edition (0, 1, 2, 3, 4)
+    store
+        .add(domain, "angzarr", root, make_events(0, 5), "", None, None)
+        .await
+        .expect("add to main should succeed");
+
+    // Branch diverges at seq 3
+    store
+        .add(
+            domain,
+            "mid-branch",
+            root,
+            make_events(3, 2),
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add to mid-branch should succeed");
+
+    // Read from branch - should get main[0..3] + branch[3, 4]
+    let branch_events = store
+        .get(domain, "mid-branch", root)
+        .await
+        .expect("get branch should succeed");
+
+    assert_eq!(branch_events.len(), 5, "branch should have 5 events");
+
+    // First 3 from main (0, 1, 2), then 2 from branch (3, 4)
+    for (i, e) in branch_events.iter().enumerate() {
+        assert_eq!(e.sequence_num(), i as u32, "seq {} should match", i);
+    }
+}
+
+pub async fn test_edition_divergence_get_from<S: EventStore>(store: &S) {
+    let domain = "test_diverge_from";
+    let root = Uuid::new_v4();
+
+    // Main has 0-4
+    store
+        .add(domain, "angzarr", root, make_events(0, 5), "", None, None)
+        .await
+        .expect("add to main should succeed");
+
+    // Branch diverges at 2
+    store
+        .add(
+            domain,
+            "from-branch",
+            root,
+            make_events(2, 3),
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add to branch should succeed");
+
+    // get_from(3) on branch should return branch[3, 4]
+    let from_events = store
+        .get_from(domain, "from-branch", root, 3)
+        .await
+        .expect("get_from should succeed");
+
+    assert_eq!(from_events.len(), 2, "should have events 3, 4");
+    assert_eq!(from_events[0].sequence_num(), 3);
+    assert_eq!(from_events[1].sequence_num(), 4);
+}
+
 pub async fn test_edition_filtered_roots<S: EventStore>(store: &S) {
     let domain = "test_edition_roots";
     let root_main = Uuid::new_v4();
@@ -939,8 +1058,211 @@ pub async fn test_edition_filtered_roots<S: EventStore>(store: &S) {
 }
 
 // =============================================================================
+// Idempotency tests (external_id)
+// =============================================================================
+
+pub async fn test_add_with_external_id_returns_duplicate<S: EventStore>(store: &S) {
+    let domain = "test_idem_dup";
+    let root = Uuid::new_v4();
+
+    // First add with external_id
+    let result1 = store
+        .add(
+            domain,
+            "test",
+            root,
+            make_events(0, 3),
+            "",
+            Some("ext-123"),
+            None,
+        )
+        .await
+        .expect("first add should succeed");
+
+    // Verify first add was Added
+    match result1 {
+        angzarr::storage::AddOutcome::Added {
+            first_sequence,
+            last_sequence,
+        } => {
+            assert_eq!(first_sequence, 0);
+            assert_eq!(last_sequence, 2);
+        }
+        _ => panic!("expected Added outcome"),
+    }
+
+    // Second add with same external_id should return Duplicate
+    let result2 = store
+        .add(
+            domain,
+            "test",
+            root,
+            make_events(3, 2), // Different events
+            "",
+            Some("ext-123"), // Same external_id
+            None,
+        )
+        .await
+        .expect("duplicate add should succeed");
+
+    match result2 {
+        angzarr::storage::AddOutcome::Duplicate {
+            first_sequence,
+            last_sequence,
+        } => {
+            assert_eq!(first_sequence, 0, "should return original first seq");
+            assert_eq!(last_sequence, 2, "should return original last seq");
+        }
+        _ => panic!("expected Duplicate outcome"),
+    }
+
+    // Verify no new events were added
+    let events = store.get(domain, "test", root).await.unwrap();
+    assert_eq!(events.len(), 3, "should only have original 3 events");
+}
+
+pub async fn test_add_different_external_ids_allowed<S: EventStore>(store: &S) {
+    let domain = "test_idem_diff";
+    let root = Uuid::new_v4();
+
+    store
+        .add(
+            domain,
+            "test",
+            root,
+            make_events(0, 2),
+            "",
+            Some("ext-aaa"),
+            None,
+        )
+        .await
+        .expect("first add should succeed");
+
+    store
+        .add(
+            domain,
+            "test",
+            root,
+            make_events(2, 2),
+            "",
+            Some("ext-bbb"),
+            None,
+        )
+        .await
+        .expect("second add with different external_id should succeed");
+
+    let events = store.get(domain, "test", root).await.unwrap();
+    assert_eq!(events.len(), 4, "should have all 4 events");
+}
+
+// =============================================================================
 // Timestamp tests
 // =============================================================================
+
+pub async fn test_get_until_timestamp_filters<S: EventStore>(store: &S) {
+    use prost_types::Timestamp;
+
+    let domain = "test_ts_filter";
+    let root = Uuid::new_v4();
+
+    // Create events at different timestamps
+    let ts_old = Timestamp {
+        seconds: 1700000000, // 2023-11-14
+        nanos: 0,
+    };
+    let ts_new = Timestamp {
+        seconds: 1710000000, // 2024-03-09
+        nanos: 0,
+    };
+
+    let event_old = EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(0)),
+        }),
+        created_at: Some(ts_old),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "type.example/Old".to_string(),
+            value: vec![1],
+        })),
+        committed: true,
+        cascade_id: None,
+    };
+
+    let event_new = EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(1)),
+        }),
+        created_at: Some(ts_new),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "type.example/New".to_string(),
+            value: vec![2],
+        })),
+        committed: true,
+        cascade_id: None,
+    };
+
+    store
+        .add(
+            domain,
+            "test",
+            root,
+            vec![event_old, event_new],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    // Query with timestamp between old and new
+    let until = "2024-01-01T00:00:00Z"; // After old, before new
+    let filtered = store
+        .get_until_timestamp(domain, "test", root, until)
+        .await
+        .expect("get_until_timestamp should succeed");
+
+    assert_eq!(filtered.len(), 1, "should only return old event");
+    assert_eq!(filtered[0].sequence_num(), 0);
+}
+
+pub async fn test_get_until_timestamp_returns_all_when_recent<S: EventStore>(store: &S) {
+    use prost_types::Timestamp;
+
+    let domain = "test_ts_all";
+    let root = Uuid::new_v4();
+
+    let ts = Timestamp {
+        seconds: 1700000000,
+        nanos: 0,
+    };
+
+    let event = EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(0)),
+        }),
+        created_at: Some(ts),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "type.example/E".to_string(),
+            value: vec![1],
+        })),
+        committed: true,
+        cascade_id: None,
+    };
+
+    store
+        .add(domain, "test", root, vec![event], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Query with timestamp far in the future
+    let until = "2030-01-01T00:00:00Z";
+    let all = store
+        .get_until_timestamp(domain, "test", root, until)
+        .await
+        .expect("get_until_timestamp should succeed");
+
+    assert_eq!(all.len(), 1, "should return all events");
+}
 
 pub async fn test_timestamp_preservation<S: EventStore>(store: &S) {
     use prost_types::Timestamp;
@@ -962,6 +1284,8 @@ pub async fn test_timestamp_preservation<S: EventStore>(store: &S) {
             type_url: "type.example/TimestampTest".to_string(),
             value: vec![1, 2, 3],
         })),
+        committed: true,
+        cascade_id: None,
     };
 
     store
@@ -1037,6 +1361,391 @@ pub async fn test_large_aggregate_10k<S: EventStore>(store: &S) {
     assert_eq!(partial.len(), 10, "partial range should return 10 events");
     assert_eq!(partial[0].sequence_num(), 5000);
     assert_eq!(partial[9].sequence_num(), 5009);
+}
+
+// =============================================================================
+// delete_edition_events tests
+// =============================================================================
+
+pub async fn test_delete_edition_events_removes_all<S: EventStore>(store: &S) {
+    let domain = "test_del_edition";
+    let root1 = Uuid::new_v4();
+    let root2 = Uuid::new_v4();
+
+    // Add events to two aggregates in the same edition
+    store
+        .add(domain, "branch-1", root1, make_events(0, 3), "", None, None)
+        .await
+        .expect("add should succeed");
+    store
+        .add(domain, "branch-1", root2, make_events(0, 2), "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Delete edition events
+    let count = store
+        .delete_edition_events(domain, "branch-1")
+        .await
+        .expect("delete should succeed");
+    assert_eq!(count, 5, "should delete 3 + 2 = 5 events");
+
+    // Verify events are gone
+    let events1 = store.get(domain, "branch-1", root1).await.unwrap();
+    let events2 = store.get(domain, "branch-1", root2).await.unwrap();
+    assert!(events1.is_empty(), "events should be deleted");
+    assert!(events2.is_empty(), "events should be deleted");
+}
+
+pub async fn test_delete_edition_events_scoped<S: EventStore>(store: &S) {
+    let domain = "test_del_scoped";
+    let root = Uuid::new_v4();
+
+    // Add to main edition
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(0, "Main")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    // Add to branch edition
+    store
+        .add(
+            domain,
+            "branch-1",
+            root,
+            vec![make_event(0, "Branch")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    // Delete only branch edition
+    let count = store
+        .delete_edition_events(domain, "branch-1")
+        .await
+        .expect("delete should succeed");
+    assert_eq!(count, 1, "should delete 1 event");
+
+    // Main edition should be unaffected
+    let main_events = store.get(domain, "angzarr", root).await.unwrap();
+    assert_eq!(main_events.len(), 1, "main edition should still have event");
+}
+
+// =============================================================================
+// find_by_source tests
+// =============================================================================
+
+pub async fn test_find_by_source_returns_match<S: EventStore>(store: &S) {
+    let domain = "test_find_src";
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    let source_info = angzarr::storage::SourceInfo {
+        domain: "orders".to_string(),
+        edition: "angzarr".to_string(),
+        root: source_root,
+        seq: 5,
+    };
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(0, "Derived")],
+            "",
+            None,
+            Some(&source_info),
+        )
+        .await
+        .expect("add should succeed");
+
+    let result = store
+        .find_by_source(domain, "angzarr", root, &source_info)
+        .await
+        .expect("find_by_source should succeed");
+
+    assert!(result.is_some(), "should find matching event");
+    assert_eq!(result.unwrap().len(), 1);
+}
+
+pub async fn test_find_by_source_no_match<S: EventStore>(store: &S) {
+    let domain = "test_find_no_match";
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    let source_info = angzarr::storage::SourceInfo {
+        domain: "orders".to_string(),
+        edition: "angzarr".to_string(),
+        root: source_root,
+        seq: 5,
+    };
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(0, "NoSource")],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    let result = store
+        .find_by_source(domain, "angzarr", root, &source_info)
+        .await
+        .expect("find_by_source should succeed");
+
+    assert!(result.is_none(), "should not find non-matching event");
+}
+
+// =============================================================================
+// query_stale_cascades tests
+// =============================================================================
+
+/// Create a test event with cascade tracking fields.
+pub fn make_cascade_event(
+    seq: u32,
+    committed: bool,
+    cascade_id: Option<&str>,
+    timestamp_secs: i64,
+) -> EventPage {
+    EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(SequenceType::Sequence(seq)),
+        }),
+        created_at: Some(prost_types::Timestamp {
+            seconds: timestamp_secs,
+            nanos: 0,
+        }),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: format!("type.example/CascadeEvent{}", seq),
+            value: vec![seq as u8],
+        })),
+        committed,
+        cascade_id: cascade_id.map(String::from),
+    }
+}
+
+pub async fn test_query_stale_cascades_finds_old_uncommitted<S: EventStore>(store: &S) {
+    let domain = "test_stale_cascade";
+    let root = Uuid::new_v4();
+
+    // Add uncommitted event from 2 hours ago
+    let old_time = chrono::Utc::now() - chrono::Duration::hours(2);
+    let event = make_cascade_event(0, false, Some("cascade-stale-1"), old_time.timestamp());
+
+    store
+        .add(domain, "angzarr", root, vec![event], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Query with 1-hour threshold
+    let threshold = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    let stale = store
+        .query_stale_cascades(&threshold)
+        .await
+        .expect("query should succeed");
+
+    assert!(
+        stale.contains(&"cascade-stale-1".to_string()),
+        "should find stale cascade"
+    );
+}
+
+pub async fn test_query_stale_cascades_ignores_resolved<S: EventStore>(store: &S) {
+    let domain = "test_resolved_cascade";
+    let root = Uuid::new_v4();
+
+    // Add uncommitted event from 2 hours ago
+    let old_time = chrono::Utc::now() - chrono::Duration::hours(2);
+    let uncommitted =
+        make_cascade_event(0, false, Some("cascade-resolved-1"), old_time.timestamp());
+
+    store
+        .add(domain, "angzarr", root, vec![uncommitted], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Add committed event with same cascade_id (resolves the cascade)
+    let committed = make_cascade_event(
+        1,
+        true,
+        Some("cascade-resolved-1"),
+        chrono::Utc::now().timestamp(),
+    );
+    store
+        .add(domain, "angzarr", root, vec![committed], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Query with 1-hour threshold
+    let threshold = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    let stale = store
+        .query_stale_cascades(&threshold)
+        .await
+        .expect("query should succeed");
+
+    assert!(
+        !stale.contains(&"cascade-resolved-1".to_string()),
+        "resolved cascade should not be stale"
+    );
+}
+
+pub async fn test_query_stale_cascades_ignores_fresh<S: EventStore>(store: &S) {
+    let domain = "test_fresh_cascade";
+    let root = Uuid::new_v4();
+
+    // Add uncommitted event from just now
+    let event = make_cascade_event(
+        0,
+        false,
+        Some("cascade-fresh-1"),
+        chrono::Utc::now().timestamp(),
+    );
+
+    store
+        .add(domain, "angzarr", root, vec![event], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    // Query with 1-hour threshold
+    let threshold = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    let stale = store
+        .query_stale_cascades(&threshold)
+        .await
+        .expect("query should succeed");
+
+    assert!(
+        !stale.contains(&"cascade-fresh-1".to_string()),
+        "fresh cascade should not be stale"
+    );
+}
+
+// =============================================================================
+// query_cascade_participants tests
+// =============================================================================
+
+pub async fn test_query_cascade_participants_finds_uncommitted<S: EventStore>(store: &S) {
+    let domain = "test_cascade_parts";
+    let root = Uuid::new_v4();
+
+    // Add uncommitted events with cascade_id
+    let event1 = make_cascade_event(
+        0,
+        false,
+        Some("cascade-parts-1"),
+        chrono::Utc::now().timestamp(),
+    );
+    let event2 = make_cascade_event(
+        1,
+        false,
+        Some("cascade-parts-1"),
+        chrono::Utc::now().timestamp(),
+    );
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![event1, event2],
+            "",
+            None,
+            None,
+        )
+        .await
+        .expect("add should succeed");
+
+    let participants = store
+        .query_cascade_participants("cascade-parts-1")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(participants.len(), 1, "should find one participant");
+    assert_eq!(participants[0].domain, domain);
+    assert_eq!(participants[0].root, root);
+    assert_eq!(
+        participants[0].sequences.len(),
+        2,
+        "should have 2 sequences"
+    );
+}
+
+pub async fn test_query_cascade_participants_ignores_committed<S: EventStore>(store: &S) {
+    let domain = "test_cascade_committed";
+    let root = Uuid::new_v4();
+
+    // Add committed event (should not be returned as participant)
+    let event = make_cascade_event(
+        0,
+        true,
+        Some("cascade-committed-1"),
+        chrono::Utc::now().timestamp(),
+    );
+
+    store
+        .add(domain, "angzarr", root, vec![event], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    let participants = store
+        .query_cascade_participants("cascade-committed-1")
+        .await
+        .expect("query should succeed");
+
+    assert!(
+        participants.is_empty(),
+        "committed events should not be participants"
+    );
+}
+
+pub async fn test_query_cascade_participants_multiple_aggregates<S: EventStore>(store: &S) {
+    let domain = "test_cascade_multi";
+    let root1 = Uuid::new_v4();
+    let root2 = Uuid::new_v4();
+
+    // Add uncommitted events to two aggregates with same cascade_id
+    let event1 = make_cascade_event(
+        0,
+        false,
+        Some("cascade-multi-1"),
+        chrono::Utc::now().timestamp(),
+    );
+    let event2 = make_cascade_event(
+        0,
+        false,
+        Some("cascade-multi-1"),
+        chrono::Utc::now().timestamp(),
+    );
+
+    store
+        .add(domain, "angzarr", root1, vec![event1], "", None, None)
+        .await
+        .expect("add should succeed");
+    store
+        .add(domain, "angzarr", root2, vec![event2], "", None, None)
+        .await
+        .expect("add should succeed");
+
+    let participants = store
+        .query_cascade_participants("cascade-multi-1")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(participants.len(), 2, "should find two participants");
 }
 
 // =============================================================================
@@ -1158,15 +1867,70 @@ macro_rules! run_event_store_tests {
         test_edition_sequences_independent($store).await;
         println!("  test_edition_sequences_independent: PASSED");
 
+        test_edition_divergence_read($store).await;
+        println!("  test_edition_divergence_read: PASSED");
+
+        test_edition_divergence_from_middle($store).await;
+        println!("  test_edition_divergence_from_middle: PASSED");
+
+        test_edition_divergence_get_from($store).await;
+        println!("  test_edition_divergence_get_from: PASSED");
+
         test_edition_filtered_roots($store).await;
         println!("  test_edition_filtered_roots: PASSED");
 
+        // idempotency tests
+        test_add_with_external_id_returns_duplicate($store).await;
+        println!("  test_add_with_external_id_returns_duplicate: PASSED");
+
+        test_add_different_external_ids_allowed($store).await;
+        println!("  test_add_different_external_ids_allowed: PASSED");
+
         // timestamp tests
+        test_get_until_timestamp_filters($store).await;
+        println!("  test_get_until_timestamp_filters: PASSED");
+
+        test_get_until_timestamp_returns_all_when_recent($store).await;
+        println!("  test_get_until_timestamp_returns_all_when_recent: PASSED");
+
         test_timestamp_preservation($store).await;
         println!("  test_timestamp_preservation: PASSED");
 
         // large scale tests
         test_large_aggregate_10k($store).await;
         println!("  test_large_aggregate_10k: PASSED");
+
+        // delete_edition_events tests
+        test_delete_edition_events_removes_all($store).await;
+        println!("  test_delete_edition_events_removes_all: PASSED");
+
+        test_delete_edition_events_scoped($store).await;
+        println!("  test_delete_edition_events_scoped: PASSED");
+
+        // find_by_source tests
+        test_find_by_source_returns_match($store).await;
+        println!("  test_find_by_source_returns_match: PASSED");
+
+        test_find_by_source_no_match($store).await;
+        println!("  test_find_by_source_no_match: PASSED");
+
+        // cascade tests
+        test_query_stale_cascades_finds_old_uncommitted($store).await;
+        println!("  test_query_stale_cascades_finds_old_uncommitted: PASSED");
+
+        test_query_stale_cascades_ignores_resolved($store).await;
+        println!("  test_query_stale_cascades_ignores_resolved: PASSED");
+
+        test_query_stale_cascades_ignores_fresh($store).await;
+        println!("  test_query_stale_cascades_ignores_fresh: PASSED");
+
+        test_query_cascade_participants_finds_uncommitted($store).await;
+        println!("  test_query_cascade_participants_finds_uncommitted: PASSED");
+
+        test_query_cascade_participants_ignores_committed($store).await;
+        println!("  test_query_cascade_participants_ignores_committed: PASSED");
+
+        test_query_cascade_participants_multiple_aggregates($store).await;
+        println!("  test_query_cascade_participants_multiple_aggregates: PASSED");
     };
 }

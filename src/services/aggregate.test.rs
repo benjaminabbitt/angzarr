@@ -138,6 +138,8 @@ fn make_event_page(seq: u32) -> EventPage {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }
 }
 
@@ -157,6 +159,8 @@ fn make_fact_page() -> EventPage {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }
 }
 

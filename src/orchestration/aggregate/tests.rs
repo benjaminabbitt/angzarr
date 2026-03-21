@@ -73,6 +73,8 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
                 value: vec![],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }]
     } else {
         vec![]
@@ -315,6 +317,8 @@ fn test_build_combined_events_merges_pages() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -322,6 +326,8 @@ fn test_build_combined_events_merges_pages() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
         ],
         snapshot: None,
@@ -336,6 +342,8 @@ fn test_build_combined_events_merges_pages() {
             }),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }],
         snapshot: None,
         next_sequence: 3,
@@ -423,6 +431,8 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -430,6 +440,8 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -437,6 +449,8 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -444,6 +458,8 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             },
         ],
         snapshot: None,
@@ -474,6 +490,8 @@ fn test_build_events_up_to_sequence_zero_returns_empty() {
             }),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }],
         snapshot: None,
         next_sequence: 1,

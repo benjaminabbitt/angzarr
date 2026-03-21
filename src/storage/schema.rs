@@ -34,6 +34,11 @@ pub enum Events {
     SourceRoot,
     #[iden = "source_seq"]
     SourceSeq,
+    // Cascade tracking for 2PC (Phase 5)
+    #[iden = "committed"]
+    Committed,
+    #[iden = "cascade_id"]
+    CascadeId,
 }
 
 /// Snapshots table schema.

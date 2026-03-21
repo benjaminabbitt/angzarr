@@ -92,6 +92,8 @@ impl MockClientLogic {
                         type_url: "test.Event".to_string(),
                         value: vec![1, 2, 3],
                     })),
+                    committed: true,
+                    cascade_id: None,
                 }],
                 ..Default::default()
             },

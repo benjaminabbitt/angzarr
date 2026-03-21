@@ -113,6 +113,8 @@ impl CommandHandler for SelectiveFailAggregate {
                 }),
                 payload: event.map(event_page::Payload::Event),
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             }],
             snapshot: None,
             ..Default::default()

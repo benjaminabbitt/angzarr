@@ -105,6 +105,8 @@ impl ProcessManagerHandler for StateTrackingPM {
                     type_url: "pm.Invoked".to_string(),
                     value: vec![next_seq as u8],
                 })),
+                committed: true,
+                cascade_id: None,
             }],
             snapshot: None,
             ..Default::default()

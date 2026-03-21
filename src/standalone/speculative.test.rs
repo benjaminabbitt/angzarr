@@ -159,6 +159,8 @@ fn test_build_event_book_with_pages() {
             value: vec![1, 2, 3],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     };
     let book = SpeculativeExecutor::build_event_book("order", root, vec![page]);
 
@@ -180,6 +182,8 @@ fn test_build_event_book_multiple_pages() {
                 value: vec![],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         })
         .collect();
 
@@ -279,6 +283,8 @@ fn test_build_event_book_preserves_page_order() {
             }),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         },
         EventPage {
             header: Some(PageHeader {
@@ -286,6 +292,8 @@ fn test_build_event_book_preserves_page_order() {
             }),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         },
         EventPage {
             header: Some(PageHeader {
@@ -293,6 +301,8 @@ fn test_build_event_book_preserves_page_order() {
             }),
             payload: None,
             created_at: None,
+            committed: true,
+            cascade_id: None,
         },
     ];
 

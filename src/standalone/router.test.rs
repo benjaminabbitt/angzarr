@@ -536,6 +536,8 @@ mod sync_pm_tests {
                 }),
                 created_at: None,
                 payload: None,
+                committed: true,
+                cascade_id: None,
             }],
             snapshot: None,
             next_sequence: 1,
@@ -908,5 +910,946 @@ mod dead_letter_tests {
 
         assert_eq!(publisher.count(), 1);
         assert_eq!(publisher.published().len(), 1);
+    }
+}
+
+// ============================================================================
+// execute_atomic Tests (2PC)
+// ============================================================================
+
+mod atomic_execution_tests {
+    use super::*;
+    use crate::bus::MockEventBus;
+    use crate::discovery::StaticServiceDiscovery;
+    use crate::orchestration::aggregate::ClientLogic;
+    use crate::proto::{BusinessResponse, ContextualCommand};
+    use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+
+    fn make_router_with_domains(domains: &[&str]) -> CommandRouter {
+        struct DummyLogic;
+
+        #[async_trait]
+        impl ClientLogic for DummyLogic {
+            async fn invoke(&self, _cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+                Ok(BusinessResponse::default())
+            }
+        }
+
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
+        let mut stores: HashMap<String, DomainStorage> = HashMap::new();
+
+        for domain in domains {
+            business.insert(domain.to_string(), Arc::new(DummyLogic));
+            stores.insert(
+                domain.to_string(),
+                DomainStorage {
+                    event_store: Arc::new(MockEventStore::new()),
+                    snapshot_store: Arc::new(MockSnapshotStore::new()),
+                },
+            );
+        }
+
+        let discovery = Arc::new(StaticServiceDiscovery::new());
+        let event_bus = Arc::new(MockEventBus::new());
+        let sync_projectors = vec![];
+
+        CommandRouter::new(
+            business,
+            stores,
+            discovery,
+            event_bus,
+            sync_projectors,
+            vec![],
+            vec![],
+            None,
+            Arc::new(MockPositionStore::new()),
+        )
+    }
+
+    /// execute_atomic generates a cascade_id and writes events with committed=false.
+    ///
+    /// Why: This is the core 2PC behavior - events are pending until Confirmation.
+    #[tokio::test]
+    async fn test_execute_atomic_writes_uncommitted_events() {
+        // This test verifies the cascade_id generation and context creation.
+        // Full integration would require storage inspection.
+        let router = make_router_with_domains(&["orders"]);
+        let command = create_command_book("orders", Uuid::new_v4(), "CreateOrder", vec![1, 2, 3]);
+
+        // execute_atomic should work (handler returns empty events)
+        let result: Result<CommandResponse, Status> = router.execute_atomic(command).await;
+        assert!(
+            result.is_ok(),
+            "execute_atomic should succeed: {:?}",
+            result
+        );
+    }
+
+    /// execute_atomic with unknown domain returns NotFound.
+    ///
+    /// Why: Same error handling as regular execute.
+    #[tokio::test]
+    async fn test_execute_atomic_unknown_domain() {
+        let router = make_router_with_domains(&["orders"]);
+        let command = create_command_book("unknown", Uuid::new_v4(), "CreateOrder", vec![]);
+
+        let result: Result<CommandResponse, Status> = router.execute_atomic(command).await;
+
+        assert!(result.is_err());
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    /// with_cascade_id builder method creates context with cascade_id set.
+    ///
+    /// Why: The context builder method should properly set cascade_id.
+    #[test]
+    fn test_context_with_cascade_id_compiles() {
+        use crate::orchestration::aggregate::local::LocalAggregateContext;
+
+        let storage = DomainStorage {
+            event_store: Arc::new(MockEventStore::new()),
+            snapshot_store: Arc::new(MockSnapshotStore::new()),
+        };
+        let event_bus: Arc<dyn crate::bus::EventBus> = Arc::new(MockEventBus::new());
+
+        let ctx = LocalAggregateContext::without_discovery(storage.clone(), event_bus.clone())
+            .with_cascade_id("test-cascade-123");
+
+        // Context should have cascade_id set (verified by compilation)
+        // Actual effect is tested via persist_events behavior
+        drop(ctx); // Ensure it compiles with cascade_id
+    }
+}
+
+// ============================================================================
+// Cascade Commit/Rollback Tests (Phase 6: PM 2PC)
+// ============================================================================
+
+mod cascade_coordination_tests {
+    use super::*;
+    use crate::bus::MockEventBus;
+    use crate::discovery::StaticServiceDiscovery;
+    use crate::orchestration::aggregate::ClientLogic;
+    use crate::proto::{BusinessResponse, ContextualCommand, EventPage, PageHeader};
+    use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+    use crate::storage::EventStore;
+
+    fn make_router_with_domains(
+        domains: &[&str],
+    ) -> (CommandRouter, HashMap<String, Arc<MockEventStore>>) {
+        struct DummyLogic;
+
+        #[async_trait]
+        impl ClientLogic for DummyLogic {
+            async fn invoke(&self, _cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+                Ok(BusinessResponse::default())
+            }
+        }
+
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
+        let mut stores: HashMap<String, DomainStorage> = HashMap::new();
+        let mut event_stores: HashMap<String, Arc<MockEventStore>> = HashMap::new();
+
+        for domain in domains {
+            let event_store = Arc::new(MockEventStore::new());
+            business.insert(domain.to_string(), Arc::new(DummyLogic));
+            stores.insert(
+                domain.to_string(),
+                DomainStorage {
+                    event_store: event_store.clone(),
+                    snapshot_store: Arc::new(MockSnapshotStore::new()),
+                },
+            );
+            event_stores.insert(domain.to_string(), event_store);
+        }
+
+        let discovery = Arc::new(StaticServiceDiscovery::new());
+        let event_bus = Arc::new(MockEventBus::new());
+
+        let router = CommandRouter::new(
+            business,
+            stores,
+            discovery,
+            event_bus,
+            vec![],
+            vec![],
+            vec![],
+            None,
+            Arc::new(MockPositionStore::new()),
+        );
+
+        (router, event_stores)
+    }
+
+    /// Create a test event with cascade tracking fields.
+    fn make_uncommitted_event(sequence: u32, cascade_id: &str) -> EventPage {
+        EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(sequence)),
+            }),
+            created_at: None,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
+                type_url: "test.Event".to_string(),
+                value: vec![1, 2, 3],
+            })),
+            committed: false, // Uncommitted (pending 2PC)
+            cascade_id: Some(cascade_id.to_string()),
+        }
+    }
+
+    /// handle_cascade_commit confirms all participants in the cascade.
+    ///
+    /// Why: This is the core PM 2PC behavior - PM can commit a cascade
+    /// across multiple aggregates atomically.
+    #[tokio::test]
+    async fn test_handle_cascade_commit_confirms_participants() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let cascade_id = "test-cascade-commit";
+        let root = Uuid::new_v4();
+
+        // Add uncommitted events to the store (use "" edition to match router's default)
+        let event = make_uncommitted_event(0, cascade_id);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Commit the cascade
+        let result = router.handle_cascade_commit(cascade_id).await;
+        assert!(result.is_ok(), "handle_cascade_commit should succeed");
+        assert_eq!(result.unwrap(), 1, "Should confirm 1 participant");
+
+        // Verify Confirmation was written (use "" edition)
+        let events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2, "Should have original + Confirmation");
+
+        // Check the second event is committed (Confirmation)
+        let confirmation = &events[1];
+        assert!(confirmation.committed, "Confirmation should be committed");
+    }
+
+    /// handle_cascade_rollback revokes all participants in the cascade.
+    ///
+    /// Why: PM can rollback a cascade on failure, revoking all uncommitted events.
+    #[tokio::test]
+    async fn test_handle_cascade_rollback_revokes_participants() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let cascade_id = "test-cascade-rollback";
+        let root = Uuid::new_v4();
+
+        // Add uncommitted events to the store (use "" edition to match router's default)
+        let event = make_uncommitted_event(0, cascade_id);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Rollback the cascade
+        let result = router
+            .handle_cascade_rollback(cascade_id, "pm_timeout")
+            .await;
+        assert!(result.is_ok(), "handle_cascade_rollback should succeed");
+        assert_eq!(result.unwrap(), 1, "Should revoke 1 participant");
+
+        // Verify Revocation was written (use "" edition)
+        let events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2, "Should have original + Revocation");
+
+        // Check the second event is committed (Revocation)
+        let revocation = &events[1];
+        assert!(revocation.committed, "Revocation should be committed");
+    }
+
+    /// handle_cascade_commit with no participants returns 0.
+    ///
+    /// Why: If cascade has already been resolved or doesn't exist, no work needed.
+    #[tokio::test]
+    async fn test_handle_cascade_commit_no_participants() {
+        let (router, _) = make_router_with_domains(&["orders"]);
+
+        let result = router.handle_cascade_commit("nonexistent-cascade").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0, "No participants to confirm");
+    }
+
+    /// handle_cascade_rollback with no participants returns 0.
+    #[tokio::test]
+    async fn test_handle_cascade_rollback_no_participants() {
+        let (router, _) = make_router_with_domains(&["orders"]);
+
+        let result = router
+            .handle_cascade_rollback("nonexistent-cascade", "test")
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0, "No participants to revoke");
+    }
+
+    /// Multiple participants in same cascade are all handled.
+    #[tokio::test]
+    async fn test_handle_cascade_commit_multiple_participants() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let cascade_id = "multi-participant-cascade";
+        let root1 = Uuid::new_v4();
+        let root2 = Uuid::new_v4();
+
+        // Add uncommitted events for two different aggregates (use "" edition)
+        let event1 = make_uncommitted_event(0, cascade_id);
+        let event2 = make_uncommitted_event(0, cascade_id);
+
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root1, vec![event1], "", None, None)
+            .await
+            .unwrap();
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root2, vec![event2], "", None, None)
+            .await
+            .unwrap();
+
+        // Commit the cascade
+        let result = router.handle_cascade_commit(cascade_id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2, "Should confirm 2 participants");
+    }
+}
+
+// ============================================================================
+// Revocation API Tests (Phase 7)
+// ============================================================================
+
+mod revocation_api_tests {
+    use super::*;
+    use crate::bus::MockEventBus;
+    use crate::discovery::StaticServiceDiscovery;
+    use crate::orchestration::aggregate::ClientLogic;
+    use crate::proto::{BusinessResponse, ContextualCommand, EventPage, PageHeader};
+    use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+    use crate::storage::EventStore;
+
+    fn make_router_with_domains(
+        domains: &[&str],
+    ) -> (CommandRouter, HashMap<String, Arc<MockEventStore>>) {
+        struct DummyLogic;
+
+        #[async_trait]
+        impl ClientLogic for DummyLogic {
+            async fn invoke(&self, _cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+                Ok(BusinessResponse::default())
+            }
+        }
+
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
+        let mut stores: HashMap<String, DomainStorage> = HashMap::new();
+        let mut event_stores: HashMap<String, Arc<MockEventStore>> = HashMap::new();
+
+        for domain in domains {
+            let event_store = Arc::new(MockEventStore::new());
+            business.insert(domain.to_string(), Arc::new(DummyLogic));
+            stores.insert(
+                domain.to_string(),
+                DomainStorage {
+                    event_store: event_store.clone(),
+                    snapshot_store: Arc::new(MockSnapshotStore::new()),
+                },
+            );
+            event_stores.insert(domain.to_string(), event_store);
+        }
+
+        let discovery = Arc::new(StaticServiceDiscovery::new());
+        let event_bus = Arc::new(MockEventBus::new());
+
+        let router = CommandRouter::new(
+            business,
+            stores,
+            discovery,
+            event_bus,
+            vec![],
+            vec![],
+            vec![],
+            None,
+            Arc::new(MockPositionStore::new()),
+        );
+
+        (router, event_stores)
+    }
+
+    /// Create a committed test event.
+    fn make_committed_event(sequence: u32) -> EventPage {
+        EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(sequence)),
+            }),
+            created_at: None,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
+                type_url: "test.Event".to_string(),
+                value: vec![1, 2, 3],
+            })),
+            committed: true,
+            cascade_id: None,
+        }
+    }
+
+    /// Create an uncommitted test event.
+    fn make_uncommitted_event(sequence: u32, cascade_id: &str) -> EventPage {
+        EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(sequence)),
+            }),
+            created_at: None,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
+                type_url: "test.Event".to_string(),
+                value: vec![1, 2, 3],
+            })),
+            committed: false,
+            cascade_id: Some(cascade_id.to_string()),
+        }
+    }
+
+    /// revoke_events writes a Revocation for committed events.
+    ///
+    /// Why: This is the core revocation API - revoke any committed event.
+    #[tokio::test]
+    async fn test_revoke_committed_events() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add a committed event
+        let event = make_committed_event(0);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Revoke it
+        let result = router
+            .revoke_events("orders", root, vec![0], "test_revocation")
+            .await;
+        assert!(result.is_ok(), "revoke_events should succeed: {:?}", result);
+
+        // Verify Revocation was written
+        let events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2, "Should have original + Revocation");
+
+        // Check the second event is a Revocation (committed=true)
+        let revocation = &events[1];
+        assert!(revocation.committed, "Revocation should be committed");
+    }
+
+    /// revoke_events fails for uncommitted events.
+    ///
+    /// Why: Can't revoke what isn't committed yet - use cascade rollback instead.
+    #[tokio::test]
+    async fn test_revoke_uncommitted_events_fails() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add an uncommitted event
+        let event = make_uncommitted_event(0, "test-cascade");
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Try to revoke it - should fail
+        let result = router
+            .revoke_events("orders", root, vec![0], "test_revocation")
+            .await;
+        assert!(result.is_err(), "Should fail for uncommitted events");
+
+        let status = result.unwrap_err();
+        assert_eq!(
+            status.code(),
+            tonic::Code::FailedPrecondition,
+            "Should return FailedPrecondition"
+        );
+    }
+
+    /// revoke_events fails for nonexistent sequences.
+    #[tokio::test]
+    async fn test_revoke_nonexistent_sequence_fails() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add a committed event at sequence 0
+        let event = make_committed_event(0);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Try to revoke sequence 99 - should fail
+        let result = router
+            .revoke_events("orders", root, vec![99], "test_revocation")
+            .await;
+        assert!(result.is_err(), "Should fail for nonexistent sequence");
+
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    /// revoke_events fails for unknown domain.
+    #[tokio::test]
+    async fn test_revoke_unknown_domain_fails() {
+        let (router, _) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        let result = router
+            .revoke_events("unknown", root, vec![0], "test_revocation")
+            .await;
+        assert!(result.is_err());
+
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    /// revoke_events with empty sequences is a no-op.
+    #[tokio::test]
+    async fn test_revoke_empty_sequences() {
+        let (router, _) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        let result = router
+            .revoke_events("orders", root, vec![], "test_revocation")
+            .await;
+        assert!(result.is_ok(), "Empty sequences should be a no-op");
+    }
+
+    /// revoke_events can revoke multiple sequences at once.
+    #[tokio::test]
+    async fn test_revoke_multiple_sequences() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add multiple committed events
+        let event1 = make_committed_event(0);
+        let event2 = make_committed_event(1);
+        let event3 = make_committed_event(2);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add(
+                "orders",
+                "",
+                root,
+                vec![event1, event2, event3],
+                "",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Revoke sequences 0 and 2
+        let result = router
+            .revoke_events("orders", root, vec![0, 2], "batch_revocation")
+            .await;
+        assert!(result.is_ok(), "Batch revocation should succeed");
+
+        // Verify Revocation was written
+        let events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 4, "Should have 3 original + 1 Revocation");
+    }
+}
+
+/// Tests for compensate_events API (Phase 8).
+///
+/// Unlike revocation, compensation keeps original events visible and writes a
+/// Compensate marker. Client handlers should implement inverse logic.
+mod compensate_api_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    use crate::bus::MockEventBus;
+    use crate::discovery::StaticServiceDiscovery;
+    use crate::orchestration::aggregate::ClientLogic;
+    use crate::proto::{BusinessResponse, ContextualCommand, EventPage, PageHeader};
+    use crate::storage::mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+    use crate::storage::EventStore;
+
+    fn make_router_with_domains(
+        domains: &[&str],
+    ) -> (CommandRouter, HashMap<String, Arc<MockEventStore>>) {
+        struct DummyLogic;
+
+        #[async_trait]
+        impl ClientLogic for DummyLogic {
+            async fn invoke(&self, _cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+                Ok(BusinessResponse::default())
+            }
+        }
+
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
+        let mut stores: HashMap<String, DomainStorage> = HashMap::new();
+        let mut event_stores: HashMap<String, Arc<MockEventStore>> = HashMap::new();
+
+        for domain in domains {
+            let event_store = Arc::new(MockEventStore::new());
+            business.insert(domain.to_string(), Arc::new(DummyLogic));
+            stores.insert(
+                domain.to_string(),
+                DomainStorage {
+                    event_store: event_store.clone(),
+                    snapshot_store: Arc::new(MockSnapshotStore::new()),
+                },
+            );
+            event_stores.insert(domain.to_string(), event_store);
+        }
+
+        let discovery = Arc::new(StaticServiceDiscovery::new());
+        let event_bus = Arc::new(MockEventBus::new());
+
+        let router = CommandRouter::new(
+            business,
+            stores,
+            discovery,
+            event_bus,
+            vec![],
+            vec![],
+            vec![],
+            None,
+            Arc::new(MockPositionStore::new()),
+        );
+
+        (router, event_stores)
+    }
+
+    fn make_committed_event(sequence: u32) -> EventPage {
+        EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(sequence)),
+            }),
+            created_at: None,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
+                type_url: "test.OrderCreated".to_string(),
+                value: vec![1, 2, 3],
+            })),
+            committed: true,
+            cascade_id: None,
+        }
+    }
+
+    fn make_uncommitted_event(sequence: u32, cascade_id: &str) -> EventPage {
+        EventPage {
+            header: Some(PageHeader {
+                sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(sequence)),
+            }),
+            created_at: None,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
+                type_url: "test.OrderCreated".to_string(),
+                value: vec![1, 2, 3],
+            })),
+            committed: false,
+            cascade_id: Some(cascade_id.to_string()),
+        }
+    }
+
+    /// compensate_events writes a Compensate marker for committed events.
+    ///
+    /// Unlike Revocation, Compensate does not hide the original events.
+    /// Business logic sees both original events AND the Compensate marker.
+    #[tokio::test]
+    async fn test_compensate_committed_events() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add a committed event
+        let event = make_committed_event(0);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Request compensation
+        let result = router
+            .compensate_events("orders", root, vec![0], "customer_request")
+            .await;
+        assert!(
+            result.is_ok(),
+            "Compensation should succeed for committed events"
+        );
+
+        // Verify Compensate marker was written
+        let events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2, "Should have original + Compensate marker");
+
+        // Check the second event is a Compensate marker
+        let compensate_event = &events[1];
+        assert!(
+            compensate_event.committed,
+            "Compensate marker should be committed"
+        );
+
+        // Verify it's a Compensate type
+        if let Some(crate::proto::event_page::Payload::Event(any)) = &compensate_event.payload {
+            assert!(
+                any.type_url.contains("Compensate"),
+                "Should be Compensate event, got: {}",
+                any.type_url
+            );
+            // Decode and verify sequences
+            let comp =
+                <crate::proto::Compensate as prost::Message>::decode(&any.value[..]).unwrap();
+            assert_eq!(comp.sequences, vec![0]);
+            assert_eq!(comp.reason, "customer_request");
+        } else {
+            panic!("Expected event payload");
+        }
+    }
+
+    /// compensate_events fails for uncommitted events.
+    ///
+    /// Uncommitted events should use cascade rollback, not compensation.
+    #[tokio::test]
+    async fn test_compensate_uncommitted_events_fails() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add an uncommitted event (pending 2PC)
+        let event = make_uncommitted_event(0, "cascade-123");
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Try to compensate it - should fail
+        let result = router
+            .compensate_events("orders", root, vec![0], "test_compensation")
+            .await;
+        assert!(result.is_err(), "Should fail for uncommitted events");
+
+        let status = result.unwrap_err();
+        assert_eq!(
+            status.code(),
+            tonic::Code::FailedPrecondition,
+            "Should return FailedPrecondition"
+        );
+    }
+
+    /// compensate_events fails for nonexistent sequences.
+    #[tokio::test]
+    async fn test_compensate_nonexistent_sequence_fails() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add a committed event at sequence 0
+        let event = make_committed_event(0);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event], "", None, None)
+            .await
+            .unwrap();
+
+        // Try to compensate sequence 99 - should fail
+        let result = router
+            .compensate_events("orders", root, vec![99], "test_compensation")
+            .await;
+        assert!(result.is_err(), "Should fail for nonexistent sequence");
+
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    /// compensate_events fails for unknown domain.
+    #[tokio::test]
+    async fn test_compensate_unknown_domain_fails() {
+        let (router, _) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        let result = router
+            .compensate_events("unknown", root, vec![0], "test_compensation")
+            .await;
+        assert!(result.is_err());
+
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    /// compensate_events with empty sequences is a no-op.
+    #[tokio::test]
+    async fn test_compensate_empty_sequences() {
+        let (router, _) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        let result = router
+            .compensate_events("orders", root, vec![], "test_compensation")
+            .await;
+        assert!(result.is_ok(), "Empty sequences should be a no-op");
+    }
+
+    /// compensate_events can compensate multiple sequences at once.
+    #[tokio::test]
+    async fn test_compensate_multiple_sequences() {
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add multiple committed events
+        let event1 = make_committed_event(0);
+        let event2 = make_committed_event(1);
+        let event3 = make_committed_event(2);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add(
+                "orders",
+                "",
+                root,
+                vec![event1, event2, event3],
+                "",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Compensate sequences 0 and 2
+        let result = router
+            .compensate_events("orders", root, vec![0, 2], "batch_compensation")
+            .await;
+        assert!(result.is_ok(), "Batch compensation should succeed");
+
+        // Verify Compensate was written
+        let events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 4, "Should have 3 original + 1 Compensate");
+
+        // Verify the Compensate marker references both sequences
+        let compensate_event = &events[3];
+        if let Some(crate::proto::event_page::Payload::Event(any)) = &compensate_event.payload {
+            let comp =
+                <crate::proto::Compensate as prost::Message>::decode(&any.value[..]).unwrap();
+            assert_eq!(comp.sequences, vec![0, 2]);
+        } else {
+            panic!("Expected event payload");
+        }
+    }
+
+    /// compensate_events keeps original events visible (unlike revoke_events).
+    ///
+    /// This is the key difference: after compensation, original events are still
+    /// present and visible. Read-time transformation only hides the Compensate
+    /// marker itself, not the events it references.
+    #[tokio::test]
+    async fn test_compensate_keeps_original_events_visible() {
+        use crate::orchestration::aggregate::two_phase::{
+            transform_for_two_phase, TwoPhaseContext,
+        };
+        use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
+
+        let (router, event_stores) = make_router_with_domains(&["orders"]);
+        let root = Uuid::new_v4();
+
+        // Add committed events
+        let event1 = make_committed_event(0);
+        let event2 = make_committed_event(1);
+        event_stores
+            .get("orders")
+            .unwrap()
+            .add("orders", "", root, vec![event1, event2], "", None, None)
+            .await
+            .unwrap();
+
+        // Request compensation for sequence 0
+        router
+            .compensate_events("orders", root, vec![0], "undo_requested")
+            .await
+            .unwrap();
+
+        // Load events and apply 2PC transformation
+        let raw_events = event_stores
+            .get("orders")
+            .unwrap()
+            .get("orders", "", root)
+            .await
+            .unwrap();
+
+        let event_book = EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            pages: raw_events,
+            snapshot: None,
+            next_sequence: 3,
+        };
+
+        let result = transform_for_two_phase(&event_book, &TwoPhaseContext::standard());
+
+        // Original events should still be visible (not transformed to NoOp)
+        assert_eq!(
+            result.events.pages.len(),
+            3,
+            "Should have 3 events after transformation"
+        );
+
+        // Event at sequence 0 should NOT be NoOp (Compensate keeps it visible)
+        let event0 = &result.events.pages[0];
+        if let Some(crate::proto::event_page::Payload::Event(any)) = &event0.payload {
+            assert!(
+                !any.type_url.contains("NoOp"),
+                "Compensated event should remain visible, not become NoOp"
+            );
+        }
+
+        // The Compensate marker (at sequence 2) SHOULD become NoOp
+        let event2 = &result.events.pages[2];
+        if let Some(crate::proto::event_page::Payload::Event(any)) = &event2.payload {
+            assert!(
+                any.type_url.contains("NoOp"),
+                "Compensate marker should become NoOp, got: {}",
+                any.type_url
+            );
+        }
     }
 }

@@ -272,11 +272,13 @@ impl SpeculativeClient {
     /// Returns the events that *would* be produced without persisting them.
     pub async fn speculative_command(
         &self,
-        _command: CommandBook,
-        _as_of_sequence: Option<u32>,
-        _as_of_timestamp: Option<&str>,
+        command: CommandBook,
+        as_of_sequence: Option<u32>,
+        as_of_timestamp: Option<&str>,
     ) -> Result<CommandResponse, Status> {
-        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+        self.router
+            .speculative(command, as_of_sequence, as_of_timestamp)
+            .await
     }
 
     /// Speculatively run a projector against events.

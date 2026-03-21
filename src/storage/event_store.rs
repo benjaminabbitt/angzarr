@@ -222,4 +222,41 @@ pub trait EventStore: Send + Sync {
     /// Main timeline ('angzarr' or empty edition) protection must be enforced
     /// by the caller.
     async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32>;
+
+    // =========================================================================
+    // Cascade (2PC) Query Methods - Phase 5
+    // =========================================================================
+
+    /// Query cascade IDs that have uncommitted events older than the threshold.
+    ///
+    /// Used by the CascadeReaper background job to find stale cascades that need
+    /// timeout-based revocation. Returns cascade_ids that:
+    /// - Have uncommitted events (committed=false)
+    /// - Have a created_at older than the threshold
+    /// - Do NOT already have a Confirmation or Revocation event
+    ///
+    /// # Arguments
+    /// * `threshold` - ISO 8601 timestamp string. Events older than this are considered stale.
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>>;
+
+    /// Query all participants (aggregates) in a cascade.
+    ///
+    /// Returns a list of (domain, edition, root, sequences) tuples for all aggregates
+    /// that have uncommitted events for the given cascade_id. Used to write
+    /// Revocation events for all participants when a cascade times out.
+    async fn query_cascade_participants(&self, cascade_id: &str)
+        -> Result<Vec<CascadeParticipant>>;
+}
+
+/// Information about an aggregate participating in a cascade.
+#[derive(Debug, Clone)]
+pub struct CascadeParticipant {
+    /// Domain name of the aggregate.
+    pub domain: String,
+    /// Edition (timeline) of the aggregate.
+    pub edition: String,
+    /// Root UUID of the aggregate.
+    pub root: Uuid,
+    /// Sequences of uncommitted events for this cascade.
+    pub sequences: Vec<u32>,
 }

@@ -94,6 +94,8 @@ async fn test_get_event_book_with_data() {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }];
     event_store
         .add("orders", DEFAULT_EDITION, root, events, "", None, None)
@@ -192,6 +194,8 @@ async fn test_get_event_book_with_range() {
                 value: vec![],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }];
         event_store
             .add("orders", DEFAULT_EDITION, root, events, "", None, None)
@@ -270,6 +274,8 @@ async fn test_get_events_with_data() {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }];
     event_store
         .add("orders", DEFAULT_EDITION, root, events, "", None, None)
@@ -377,6 +383,8 @@ async fn test_get_aggregate_roots_with_data() {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     };
     event_store
         .add(
@@ -426,6 +434,8 @@ async fn test_get_aggregate_roots_multiple_domains() {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     };
     event_store
         .add(
@@ -484,6 +494,8 @@ async fn test_get_event_book_by_correlation_id() {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }];
     event_store
         .add(
@@ -561,6 +573,8 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
                 value: vec![],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }];
         event_store
             .add(
@@ -621,6 +635,8 @@ async fn test_get_event_book_temporal_by_time() {
                 seconds: 1704067200, // 2024-01-01T00:00:00Z
                 nanos: 0,
             }),
+            committed: true,
+            cascade_id: None,
         },
         EventPage {
             header: Some(PageHeader {
@@ -634,6 +650,8 @@ async fn test_get_event_book_temporal_by_time() {
                 seconds: 1704153600, // 2024-01-02T00:00:00Z
                 nanos: 0,
             }),
+            committed: true,
+            cascade_id: None,
         },
         EventPage {
             header: Some(PageHeader {
@@ -647,6 +665,8 @@ async fn test_get_event_book_temporal_by_time() {
                 seconds: 1704240000, // 2024-01-03T00:00:00Z
                 nanos: 0,
             }),
+            committed: true,
+            cascade_id: None,
         },
     ];
     event_store
@@ -699,6 +719,8 @@ async fn test_get_event_book_temporal_by_sequence() {
                 value: vec![],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }];
         event_store
             .add("orders", DEFAULT_EDITION, root, events, "", None, None)
@@ -779,6 +801,8 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
             value: vec![],
         })),
         created_at: None,
+        committed: true,
+        cascade_id: None,
     }];
     event_store
         .add("customer", DEFAULT_EDITION, root, events, "", None, None)
@@ -851,6 +875,8 @@ async fn test_get_event_book_with_sequences() {
                 value: vec![],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }];
         event_store
             .add("orders", DEFAULT_EDITION, root, events, "", None, None)

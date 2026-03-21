@@ -51,6 +51,8 @@ pub fn create_fact_event_book(
                 value: vec![42, 43, 44],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }],
         snapshot: None,
         ..Default::default()

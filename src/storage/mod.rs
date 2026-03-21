@@ -17,7 +17,7 @@ mod event_store;
 mod position_store;
 mod snapshot_store;
 
-pub use event_store::{AddOutcome, EventStore, SourceInfo};
+pub use event_store::{AddOutcome, CascadeParticipant, EventStore, SourceInfo};
 pub use position_store::PositionStore;
 pub use snapshot_store::SnapshotStore;
 

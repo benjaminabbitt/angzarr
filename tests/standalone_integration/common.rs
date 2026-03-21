@@ -82,6 +82,8 @@ impl CommandHandler for EchoAggregate {
                     }),
                     payload: event.map(event_page::Payload::Event),
                     created_at: None,
+                    committed: true,
+                    cascade_id: None,
                 }
             })
             .collect();
@@ -143,6 +145,8 @@ impl CommandHandler for MultiEventAggregate {
                     value: vec![i as u8],
                 })),
                 created_at: None,
+                committed: true,
+                cascade_id: None,
             })
             .collect();
 
@@ -243,6 +247,8 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
                 value: vec![1, 2, 3],
             })),
             created_at: None,
+            committed: true,
+            cascade_id: None,
         }],
         snapshot: None,
         ..Default::default()

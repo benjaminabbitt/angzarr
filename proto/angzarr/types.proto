@@ -150,6 +150,10 @@ message EventPage {
     PayloadReference external = 4; // Claim check: payload stored externally
   }
   // Field 5 removed: FactSequence replaced by PageHeader.external_deferred
+
+  // Two-phase commit support (Phase 1: 2PC Storage Model)
+  bool committed = 6;            // false = pending 2PC, needs Confirmation; true = immediately committed
+  optional string cascade_id = 7; // Groups related pending events for atomic commit/rollback (null if not in cascade)
 }
 // docs:end:event_page
 
@@ -216,6 +220,7 @@ message CommandRequest {
   CommandBook command = 1;
   SyncMode sync_mode = 2;
   CascadeErrorMode cascade_error_mode = 3; // How to handle saga/PM errors in CASCADE mode
+  optional string cascade_id = 4;          // If set, enables 2PC: events written with committed=false
 }
 
 message ContextualCommand {
@@ -318,6 +323,82 @@ message RejectionNotification {
   // Fields 3-6 removed: source info now in rejected_command.pages[].header.angzarr_deferred
 }
 // docs:end:rejection_notification
+
+// ============================================================================
+// Two-Phase Commit Framework Events
+// ============================================================================
+//
+// These framework events control 2PC commit/rollback semantics.
+// They are persisted to the event stream but filtered to NoOp at read time.
+// Business logic never sees these directly - they affect event visibility.
+
+// docs:start:confirmation
+// Confirms pending events - makes them visible to business logic.
+// Written by framework when all sagas in a cascade succeed.
+message Confirmation {
+  Cover target = 1;               // Domain + root of aggregate being confirmed
+  repeated uint32 sequences = 2;  // Explicit list of sequences being confirmed
+  string cascade_id = 3;          // Set for cascade commits, empty for general confirmation
+}
+// docs:end:confirmation
+
+// docs:start:revocation
+// Revokes events - marks them as NoOp at read time.
+// Written by framework on cascade failure, timeout, or explicit revocation API.
+// Original events become invisible to business logic.
+message Revocation {
+  Cover target = 1;               // Domain + root of aggregate being revoked
+  repeated uint32 sequences = 2;  // Sequences being revoked
+  string cascade_id = 3;          // Set for cascade rollbacks, empty for general revocation
+  string reason = 4;              // "saga_failed", "timeout", "compensation", etc.
+}
+// docs:end:revocation
+
+// docs:start:compensate
+// Routes to client compensation handler - original events remain visible.
+// Unlike Revocation, this triggers client-implemented inverse logic.
+// The Compensate marker itself is filtered to NoOp; original events stay visible.
+message Compensate {
+  Cover target = 1;               // Domain + root of aggregate
+  repeated uint32 sequences = 2;  // Sequences to compensate
+  string reason = 3;              // Why compensation is needed
+}
+// docs:end:compensate
+
+// docs:start:noop
+// Placeholder returned by coordinator for uncommitted/framework events.
+// Never persisted - only returned at read time for filtered events.
+message NoOp {
+  uint32 original_sequence = 1;   // Sequence of the filtered event
+  string cascade_id = 2;          // Which cascade it belonged to (if pending)
+  string reason = 3;              // "uncommitted", "revoked", "framework_event"
+}
+// docs:end:noop
+
+// docs:start:cascade_commit
+// PM/coordinator emits to commit all uncommitted events for a cascade.
+// Framework distributes Confirmation to all participants.
+message CascadeCommit {
+  string cascade_id = 1;
+}
+// docs:end:cascade_commit
+
+// docs:start:cascade_rollback
+// PM/coordinator emits to rollback all uncommitted events for a cascade.
+// Framework distributes Revocation to all participants.
+message CascadeRollback {
+  string cascade_id = 1;
+  string reason = 2;
+}
+// docs:end:cascade_rollback
+
+// docs:start:cascade_conflict_detail
+// Error detail for conflict rejection when overlapping fields are locked.
+message CascadeConflictDetail {
+  repeated string cascade_ids = 1;       // Cascades holding locks
+  repeated string overlapping_fields = 2; // Fields that conflict
+}
+// docs:end:cascade_conflict_detail
 
 // ============================================================================
 // Dead Letter Queue (DLQ) Messages
