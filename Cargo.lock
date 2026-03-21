@@ -181,6 +181,7 @@ dependencies = [
 [[package]]
 name = "angzarr-client"
 version = "0.2.0"
+source = "git+https://github.com/angzarr-io/angzarr-client-rust.git#bf09b86c74a53d9b1ca9036d15db2c0ac7c3b029"
 dependencies = [
  "angzarr-macros",
  "async-trait",
@@ -205,6 +206,7 @@ dependencies = [
 [[package]]
 name = "angzarr-macros"
 version = "0.1.0"
+source = "git+https://github.com/angzarr-io/angzarr-client-rust.git#bf09b86c74a53d9b1ca9036d15db2c0ac7c3b029"
 dependencies = [
  "proc-macro2",
  "quote",

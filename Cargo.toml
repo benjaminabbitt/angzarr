@@ -370,8 +370,3 @@ codegen-units = 1
 strip = true
 panic = "abort"
 opt-level = 3
-
-# Path override for local development of 2PC features
-[patch."https://github.com/angzarr-io/angzarr-client-rust.git"]
-angzarr-client = { path = "../angzarr-client-rust" }
-
