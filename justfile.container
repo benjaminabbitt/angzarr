@@ -1,14 +1,17 @@
 # Angzarr - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI
 
 set shell := ["bash", "-c"]
 
 default:
     @just --list
 
+# Build all workspace crates
 build:
     cargo build
 
+# Build release binaries
 build-release:
     cargo build --release
 
@@ -16,17 +19,64 @@ build-release:
 build-standalone:
     cargo build --release --bin angzarr-standalone --features "standalone,amqp"
 
+# Check code compiles
 check:
     cargo check
 
+# Check formatting (use fmt-fix to auto-format)
 fmt:
+    cargo fmt --check
+
+# Auto-format code
+fmt-fix:
     cargo fmt
 
+# Run clippy linter
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy --all-targets --features "test-utils" -- -D warnings
 
+# Run unit tests
 test:
-    cargo test --lib
+    cargo test --lib --features "test-utils"
+
+# Run all checks (build + test + lint + fmt)
+check-all: build test lint fmt
+
+# === CI Integration Tests ===
+# These run in CI after unit tests pass
+
+# Run SQLite storage contract tests
+test-storage-sqlite:
+    cargo test --test storage_sqlite --features "test-utils"
+
+# Run config integration tests
+test-config:
+    cargo test --test config_integration --features "test-utils"
+
+# Run gRPC connection tests
+test-grpc:
+    cargo test --test grpc_connection --features "test-utils"
+
+# Run all CI integration tests
+test-integration: test-storage-sqlite test-config test-grpc
+
+# Run coverage for CI (unit + contract tests)
+cov-ci:
+    cargo llvm-cov --features "test-utils" \
+        --ignore-filename-regex '(\.pb\.rs|proto/|sidecar\.rs|bin/)' \
+        --fail-under-lines 70 \
+        --codecov --output-path codecov.json
+
+# Run mutation tests on changed code (CI uses git.diff file)
+mutants-ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -s git.diff ]; then
+        cargo install cargo-mutants --locked
+        cargo mutants --in-place --in-diff git.diff --no-shuffle -vV
+    else
+        echo "No changes to test"
+    fi
 
 # === Storage Contract Tests ===
 # =============================================================================

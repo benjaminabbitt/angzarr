@@ -92,7 +92,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo fmt --check
+            just -f justfile.container fmt
 
   lint:
     name: Lint
@@ -114,7 +114,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo clippy --all-targets --features "test-utils" -- -D warnings
+            just -f justfile.container lint
 
       - name: Buf lint
         run: |
@@ -154,7 +154,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo test --lib --features "test-utils"
+            just -f justfile.container test
 
   integration:
     name: Integration Tests
@@ -178,7 +178,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo test --test storage_sqlite --features "test-utils"
+            just -f justfile.container test-storage-sqlite
 
       - name: Run config integration tests
         run: |
@@ -186,7 +186,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo test --test config_integration --features "test-utils"
+            just -f justfile.container test-config
 
       - name: Run gRPC connection tests
         run: |
@@ -194,7 +194,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo test --test grpc_connection --features "test-utils"
+            just -f justfile.container test-grpc
 
   coverage:
     name: Coverage
@@ -216,10 +216,7 @@ jobs:
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ${{ needs.build-images.outputs.rust-tag }} \
-            cargo llvm-cov --features "test-utils" \
-              --ignore-filename-regex '(\.pb\.rs|proto/|sidecar\.rs|bin/)' \
-              --fail-under-lines 70 \
-              --codecov --output-path codecov.json
+            just -f justfile.container cov-ci
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -253,15 +250,11 @@ jobs:
 
       - name: Run mutation tests
         run: |
-          if [ -s git.diff ]; then
-            docker run --rm \
-              -v "${{ github.workspace }}:/workspace" \
-              -w /workspace \
-              ${{ needs.build-images.outputs.rust-tag }} \
-              sh -c "cargo install cargo-mutants --locked && cargo mutants --in-place --in-diff git.diff --no-shuffle -vV"
-          else
-            echo "No changes to test"
-          fi
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ${{ needs.build-images.outputs.rust-tag }} \
+            just -f justfile.container mutants-ci
         continue-on-error: true
 
       - name: Upload mutation results

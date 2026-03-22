@@ -57,6 +57,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
 # Add musl targets for static builds
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
+# Install just task runner
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
 # Install protobuf code generators for Rust
 RUN cargo install --locked \
     protoc-gen-prost \
