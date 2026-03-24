@@ -415,27 +415,24 @@ impl AggregateContext for LocalAggregateContext {
             self.call_sync_projectors(events).await
         };
 
-        // CASCADE mode: do NOT publish to bus (events flow via sync sagas/PMs)
-        // ASYNC and SIMPLE: publish to bus for async processing
-        let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
-        if !is_cascade {
-            tracing::info!(
-                pages = events.pages.len(),
+        // All modes: publish to bus for async processing (projectors, etc.)
+        // CASCADE mode also publishes after sync saga/PM processing
+        tracing::info!(
+            pages = events.pages.len(),
+            domain = %events.domain(),
+            "Aggregate publishing events to bus"
+        );
+
+        // Publish events to bus — cover.domain stays bare, bus computes routing key
+        let bus_events = Arc::new(events.clone());
+        let publish_result = self.event_bus.publish(bus_events).await;
+
+        if let Err(e) = publish_result {
+            warn!(
                 domain = %events.domain(),
-                "Aggregate publishing events to bus"
+                error = %e,
+                "Failed to publish events"
             );
-
-            // Publish events to bus — cover.domain stays bare, bus computes routing key
-            let bus_events = Arc::new(events.clone());
-            let publish_result = self.event_bus.publish(bus_events).await;
-
-            if let Err(e) = publish_result {
-                warn!(
-                    domain = %events.domain(),
-                    error = %e,
-                    "Failed to publish events"
-                );
-            }
         }
 
         Ok(projections)

@@ -445,7 +445,7 @@ impl AggregateContext for GrpcAggregateContext {
             _ => vec![],
         };
 
-        // CASCADE mode: call sync sagas and PMs instead of publishing to bus
+        // CASCADE mode: call sync sagas and PMs before publishing to bus
         let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
         if is_cascade {
             // Call sagas synchronously - they may produce commands for other aggregates
@@ -455,19 +455,19 @@ impl AggregateContext for GrpcAggregateContext {
             // Call PMs synchronously - they may produce commands for other aggregates
             self.call_sync_pms(events, crate::proto::SyncMode::Cascade)
                 .await?;
-        } else {
-            // ASYNC and SIMPLE: publish to bus for async processing
-            // Publish events to bus — cover.domain stays bare, bus computes routing key
-            let bus_events = Arc::new(events.clone());
-            let publish_result = self.event_bus.publish(bus_events).await;
+        }
 
-            if let Err(e) = publish_result {
-                warn!(
-                    domain = %events.domain(),
-                    error = %e,
-                    "Failed to publish events"
-                );
-            }
+        // All modes: publish to bus for async processing (projectors, etc.)
+        // Publish events to bus — cover.domain stays bare, bus computes routing key
+        let bus_events = Arc::new(events.clone());
+        let publish_result = self.event_bus.publish(bus_events).await;
+
+        if let Err(e) = publish_result {
+            warn!(
+                domain = %events.domain(),
+                error = %e,
+                "Failed to publish events"
+            );
         }
 
         Ok(projections)
