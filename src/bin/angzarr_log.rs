@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let projector_service = LogServiceHandle(Arc::clone(&log_service));
 
     // Health reporter
-    let (mut health_reporter, health_service) = health_reporter();
+    let (health_reporter, health_service) = health_reporter();
     health_reporter
         .set_serving::<ProjectorCoordinatorServiceServer<LogServiceHandle>>()
         .await;

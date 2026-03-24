@@ -191,7 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saga_coord = SagaCoord::new(factory, executor);
 
     // Health reporter for the coordinator
-    let (mut health_reporter, health_service) = health_reporter();
+    let (health_reporter, health_service) = health_reporter();
     health_reporter
         .set_service_status("", tonic_health::ServingStatus::Serving)
         .await;

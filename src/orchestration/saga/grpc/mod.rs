@@ -191,6 +191,7 @@ async fn handle_command_rejection(
         command: Some(notification_command),
         sync_mode: SyncMode::Async.into(),
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     };
     let response = handler
         .handle_compensation(correlated_request(sync_command, &correlation_id))

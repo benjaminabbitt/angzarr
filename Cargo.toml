@@ -84,10 +84,11 @@ full-musl = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lo
 angzarr-client = { git = "https://github.com/angzarr-io/angzarr-client-rust.git" }
 
 # gRPC
-tonic = "0.12"
-tonic-health = "0.12"
-prost = "0.13"
-prost-types = "0.13"
+tonic = { version = "0.14", features = ["tls-ring", "transport"] }
+tonic-health = "0.14"
+prost = "0.14"
+prost-types = "0.14"
+tonic-prost = "0.14.5"
 tokio-stream = { version = "0.1", features = ["net"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
@@ -125,7 +126,7 @@ serde_json = "1"
 inventory = "0.3"
 
 # Protobuf reflection (for logging projector)
-prost-reflect = { version = "0.14", features = ["serde"] }
+prost-reflect = { version = "0.16", features = ["serde"] }
 
 # CloudEvents SDK (for cloudevents projector)
 cloudevents-sdk = "0.9"
@@ -135,11 +136,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # OpenTelemetry (optional, feature-gated)
-opentelemetry = { version = "0.27", optional = true }
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
-opentelemetry-otlp = { version = "0.27", features = ["tonic", "metrics", "logs"], optional = true }
-opentelemetry-appender-tracing = { version = "0.27", optional = true }
-tracing-opentelemetry = { version = "0.28", optional = true }
+opentelemetry = { version = "0.31", optional = true }
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "metrics", "logs"], optional = true }
+opentelemetry-appender-tracing = { version = "0.31", optional = true }
+tracing-opentelemetry = { version = "0.32", optional = true }
 
 # Configuration
 config = "0.14"
@@ -203,8 +204,8 @@ nix = { version = "0.29", features = ["signal", "process", "fs", "user"] }
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
 [build-dependencies]
-tonic-build = "0.12"
-prost-build = "0.13"
+tonic-prost-build = "0.14"
+prost-build = "0.14"
 
 [[bin]]
 name = "angzarr-aggregate"

@@ -12,9 +12,9 @@ use tower_http::trace::TraceLayer;
 /// and sets it as the parent context on the span for distributed tracing.
 pub fn grpc_trace_layer() -> TraceLayer<
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
-    impl Fn(&http::Request<tonic::body::BoxBody>) -> tracing::Span + Clone,
+    impl Fn(&http::Request<tonic::body::Body>) -> tracing::Span + Clone,
 > {
-    TraceLayer::new_for_grpc().make_span_with(|request: &http::Request<tonic::body::BoxBody>| {
+    TraceLayer::new_for_grpc().make_span_with(|request: &http::Request<tonic::body::Body>| {
         let correlation_id = request
             .headers()
             .get(crate::proto_ext::CORRELATION_ID_HEADER)
@@ -40,7 +40,7 @@ fn extract_trace_context(headers: &http::HeaderMap, span: &tracing::Span) {
     let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
         propagator.extract(&HeaderExtractor(headers))
     });
-    span.set_parent(parent_cx);
+    let _ = span.set_parent(parent_cx);
 }
 
 /// Adapter to extract OTel context from HTTP headers.

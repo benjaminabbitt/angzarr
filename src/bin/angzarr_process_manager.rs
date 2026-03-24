@@ -213,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pm_coord = PmCoord::new(pm_factory, hybrid_fetcher, command_executor);
 
     // Health reporter for the coordinator
-    let (mut health_reporter, health_service) = health_reporter();
+    let (health_reporter, health_service) = health_reporter();
     health_reporter
         .set_service_status("", tonic_health::ServingStatus::Serving)
         .await;

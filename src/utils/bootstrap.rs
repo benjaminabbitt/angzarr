@@ -6,11 +6,18 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::LOG_ENV_VAR;
 
+/// Global handle to the TracerProvider so it stays alive for the process lifetime.
+///
+/// The batch exporter lives inside the provider — dropping it kills trace export.
+#[cfg(feature = "otel")]
+static TRACER_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::trace::SdkTracerProvider> =
+    std::sync::OnceLock::new();
+
 /// Global handle to the LoggerProvider so it stays alive for the process lifetime.
 ///
 /// The batch exporter lives inside the provider — dropping it kills log export.
 #[cfg(feature = "otel")]
-static LOG_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::logs::LoggerProvider> =
+static LOG_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::logs::SdkLoggerProvider> =
     std::sync::OnceLock::new();
 
 /// Initialize tracing and metrics with LOG_ENV_VAR environment variable.
@@ -59,12 +66,13 @@ pub fn init_tracing() {
             }
         };
 
-        let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
-            .with_batch_exporter(trace_exporter, opentelemetry_sdk::runtime::Tokio)
+        let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_batch_exporter(trace_exporter)
             .with_resource(otel_resource())
             .build();
 
         opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+        let _ = TRACER_PROVIDER.set(tracer_provider.clone());
 
         let otel_trace_layer =
             tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("angzarr"));
@@ -76,8 +84,8 @@ pub fn init_tracing() {
             .build()
         {
             Ok(log_exporter) => {
-                let log_provider = opentelemetry_sdk::logs::LoggerProvider::builder()
-                    .with_batch_exporter(log_exporter, opentelemetry_sdk::runtime::Tokio)
+                let log_provider = opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+                    .with_batch_exporter(log_exporter)
                     .with_resource(otel_resource())
                     .build();
                 let layer = opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(
@@ -99,11 +107,8 @@ pub fn init_tracing() {
             .build()
         {
             Ok(metrics_exporter) => {
-                let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(
-                    metrics_exporter,
-                    opentelemetry_sdk::runtime::Tokio,
-                )
-                .build();
+                let reader =
+                    opentelemetry_sdk::metrics::PeriodicReader::builder(metrics_exporter).build();
 
                 let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
                     .with_reader(reader)
@@ -179,7 +184,7 @@ fn otel_resource() -> opentelemetry_sdk::Resource {
         attrs.push(KeyValue::new("service.namespace", namespace));
     }
 
-    Resource::new(attrs)
+    Resource::builder_empty().with_attributes(attrs).build()
 }
 
 /// Graceful shutdown of OpenTelemetry providers.
@@ -188,7 +193,11 @@ fn otel_resource() -> opentelemetry_sdk::Resource {
 pub fn shutdown_telemetry() {
     #[cfg(feature = "otel")]
     {
-        opentelemetry::global::shutdown_tracer_provider();
+        if let Some(provider) = TRACER_PROVIDER.get() {
+            if let Err(e) = provider.shutdown() {
+                eprintln!("Failed to shut down tracer provider: {e}");
+            }
+        }
         if let Some(provider) = LOG_PROVIDER.get() {
             if let Err(e) = provider.shutdown() {
                 eprintln!("Failed to shut down log provider: {e}");

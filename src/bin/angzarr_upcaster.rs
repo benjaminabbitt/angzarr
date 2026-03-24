@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let upcaster_service = NoOpUpcaster;
 
     // Health reporter
-    let (mut health_reporter, health_service) = health_reporter();
+    let (health_reporter, health_service) = health_reporter();
     health_reporter
         .set_serving::<UpcasterServiceServer<NoOpUpcaster>>()
         .await;

@@ -246,6 +246,7 @@ async fn test_handle_command_invokes_business_logic() {
         command: Some(command_book),
         sync_mode: SyncMode::Async as i32,
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     });
 
     let response = service.handle_command(request).await;
@@ -265,6 +266,7 @@ async fn test_handle_command_missing_command_returns_error() {
         command: None,
         sync_mode: SyncMode::Async as i32,
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     });
 
     let response = service.handle_command(request).await;
@@ -287,6 +289,7 @@ async fn test_handle_command_with_sync_mode_creates_sync_context() {
         command: Some(command_book),
         sync_mode: SyncMode::Simple as i32,
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     });
 
     let response = service.handle_command(request).await;
@@ -347,6 +350,7 @@ async fn test_handle_compensation_missing_command_returns_error() {
         command: None,
         sync_mode: SyncMode::Async as i32,
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     });
 
     let response = service.handle_compensation(request).await;
@@ -372,6 +376,7 @@ async fn test_handle_compensation_returns_business_response() {
         command: Some(command_book),
         sync_mode: SyncMode::Async as i32,
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     });
 
     let response = service.handle_compensation(request).await;
@@ -394,6 +399,7 @@ async fn test_handle_compensation_with_empty_response() {
         command: Some(command_book),
         sync_mode: SyncMode::Async as i32,
         cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+        cascade_id: None,
     });
 
     let response = service.handle_compensation(request).await;

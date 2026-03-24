@@ -36,12 +36,12 @@ pub async fn serve_with_transport<L, ResBody>(
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     L: Layer<Routes> + Clone,
-    L::Service: Service<http::Request<tonic::body::BoxBody>, Response = http::Response<ResBody>>
+    L::Service: Service<http::Request<tonic::body::Body>, Response = http::Response<ResBody>>
         + Clone
         + Send
         + 'static,
-    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Future: Send + 'static,
-    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Error:
+    <L::Service as Service<http::Request<tonic::body::Body>>>::Future: Send + 'static,
+    <L::Service as Service<http::Request<tonic::body::Body>>>::Error:
         Into<Box<dyn std::error::Error + Send + Sync>> + Send,
     ResBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
     ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -69,12 +69,12 @@ pub async fn serve_with_transport_and_shutdown<L, ResBody, F>(
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     L: Layer<Routes> + Clone,
-    L::Service: Service<http::Request<tonic::body::BoxBody>, Response = http::Response<ResBody>>
+    L::Service: Service<http::Request<tonic::body::Body>, Response = http::Response<ResBody>>
         + Clone
         + Send
         + 'static,
-    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Future: Send + 'static,
-    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Error:
+    <L::Service as Service<http::Request<tonic::body::Body>>>::Future: Send + 'static,
+    <L::Service as Service<http::Request<tonic::body::Body>>>::Error:
         Into<Box<dyn std::error::Error + Send + Sync>> + Send,
     ResBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
     ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,

@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut prost_config = prost_build::Config::new();
     prost_config.enable_type_names();
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .file_descriptor_set_path(&descriptor_path)
         .build_server(true)
         .build_client(true)
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".angzarr.BusinessResponse.result",
             "#[allow(clippy::large_enum_variant)]",
         )
-        .compile_protos_with_config(
+        .compile_with_config(
             prost_config,
             &[
                 "proto/angzarr/types.proto",
