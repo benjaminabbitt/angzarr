@@ -16,9 +16,9 @@ use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher
 use crate::proto::process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient;
 use crate::proto::saga_coordinator_service_client::SagaCoordinatorServiceClient;
 use crate::proto::{
-    CascadeErrorMode, CommandBook, Cover, EventBook, EventRequest, MergeStrategy,
-    ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest, Snapshot, SnapshotRetention,
-    Uuid as ProtoUuid,
+    CascadeErrorMode, CommandBook, Cover, Edition, EventBook, EventPage, EventRequest,
+    MergeStrategy, ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest, Snapshot,
+    SnapshotRetention, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
@@ -27,6 +27,44 @@ use crate::storage::{EventStore, SnapshotStore, StorageError};
 use crate::utils::sequence_validator::sequence_mismatch_error_with_state;
 
 use super::{AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery};
+
+/// Build an EventBook with proper next_sequence set.
+///
+/// Used for explicit divergence when we bypass the EventBookRepository
+/// and load events directly from the EventStore.
+fn build_event_book(
+    domain: &str,
+    edition: &str,
+    root: Uuid,
+    pages: Vec<EventPage>,
+    snapshot: Option<Snapshot>,
+) -> EventBook {
+    let mut book = EventBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: Some(Edition {
+                name: edition.to_string(),
+                divergences: vec![],
+            }),
+        }),
+        pages,
+        snapshot,
+        ..Default::default()
+    };
+    calculate_set_next_seq(&mut book);
+    book
+}
+
+/// Calculate and set next_sequence on an EventBook.
+fn calculate_set_next_seq(book: &mut EventBook) {
+    let max_from_pages = book.pages.last().map(|p| p.sequence_num()).unwrap_or(0);
+    let max_from_snapshot = book.snapshot.as_ref().map(|s| s.sequence).unwrap_or(0);
+    book.next_sequence = max_from_pages.max(max_from_snapshot) + 1;
+}
 
 /// gRPC aggregate context using EventBookRepository and K8s service discovery.
 pub struct GrpcAggregateContext {
@@ -299,21 +337,29 @@ impl AggregateContext for GrpcAggregateContext {
         temporal: &TemporalQuery,
         explicit_divergence: Option<u32>,
     ) -> Result<EventBook, Status> {
-        // Note: In gRPC mode, explicit divergence is not yet supported.
-        // For now, we use the same behavior as before (implicit divergence).
-        // TODO: Add explicit divergence support to EventBookRepo when needed.
-        if explicit_divergence.is_some() {
-            tracing::warn!(
-                "Explicit divergence not supported in gRPC mode, falling back to implicit"
-            );
-        }
-
         match temporal {
-            TemporalQuery::Current => self
-                .event_book_repo
-                .get(domain, edition, root)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to load events: {e}"))),
+            TemporalQuery::Current => {
+                // For explicit divergence, skip snapshot and use get_with_divergence
+                // This loads events from main timeline up to divergence point
+                if explicit_divergence.is_some() {
+                    tracing::debug!(
+                        ?explicit_divergence,
+                        "Using explicit divergence for event loading"
+                    );
+                    let events = self
+                        .event_store
+                        .get_with_divergence(domain, edition, root, explicit_divergence)
+                        .await
+                        .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
+                    return Ok(build_event_book(domain, edition, root, events, None));
+                }
+
+                // Standard path: use EventBookRepo for snapshot + events
+                self.event_book_repo
+                    .get(domain, edition, root)
+                    .await
+                    .map_err(|e| Status::internal(format!("Failed to load events: {e}")))
+            }
             TemporalQuery::AsOfSequence(seq) => self
                 .event_book_repo
                 .get_temporal_by_sequence(domain, edition, root, *seq)
