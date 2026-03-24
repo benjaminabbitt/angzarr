@@ -78,7 +78,18 @@ pub struct AmqpConfig {
     pub queue: Option<String>,
     /// Routing key pattern for binding (e.g., "orders.*").
     pub routing_key: Option<String>,
+    /// Message TTL in milliseconds. Default: 1 hour (3,600,000ms).
+    /// Messages older than this are automatically discarded.
+    pub message_ttl_ms: Option<i32>,
+    /// Maximum queue length (number of messages). Default: 100,000.
+    /// When exceeded, oldest messages are dropped (head drop).
+    pub max_queue_length: Option<i32>,
 }
+
+/// Default message TTL: 1 hour (in milliseconds).
+const DEFAULT_MESSAGE_TTL_MS: i32 = 3_600_000;
+/// Default max queue length: 100,000 messages.
+const DEFAULT_MAX_QUEUE_LENGTH: i32 = 100_000;
 
 impl AmqpConfig {
     /// Create config for publishing only.
@@ -88,6 +99,8 @@ impl AmqpConfig {
             exchange: EVENTS_EXCHANGE.to_string(),
             queue: None,
             routing_key: None,
+            message_ttl_ms: None,
+            max_queue_length: None,
         }
     }
 
@@ -98,6 +111,8 @@ impl AmqpConfig {
             exchange: EVENTS_EXCHANGE.to_string(),
             queue: Some(queue.into()),
             routing_key: Some(format!("{}.*", domain)),
+            message_ttl_ms: Some(DEFAULT_MESSAGE_TTL_MS),
+            max_queue_length: Some(DEFAULT_MAX_QUEUE_LENGTH),
         }
     }
 
@@ -108,7 +123,21 @@ impl AmqpConfig {
             exchange: EVENTS_EXCHANGE.to_string(),
             queue: Some(queue.into()),
             routing_key: Some("#".to_string()),
+            message_ttl_ms: Some(DEFAULT_MESSAGE_TTL_MS),
+            max_queue_length: Some(DEFAULT_MAX_QUEUE_LENGTH),
         }
+    }
+
+    /// Set custom message TTL.
+    pub fn with_message_ttl(mut self, ttl_ms: i32) -> Self {
+        self.message_ttl_ms = Some(ttl_ms);
+        self
+    }
+
+    /// Set custom max queue length.
+    pub fn with_max_queue_length(mut self, max_length: i32) -> Self {
+        self.max_queue_length = Some(max_length);
+        self
     }
 }
 
@@ -216,10 +245,21 @@ impl AmqpEventBus {
         let exchange = self.config.exchange.clone();
         let pool = self.pool.clone();
         let handlers = self.handlers.clone();
+        let message_ttl_ms = self.config.message_ttl_ms;
+        let max_queue_length = self.config.max_queue_length;
 
         // Spawn consumer task with reconnection loop
         tokio::spawn(async move {
-            Self::consume_with_reconnect(pool, exchange, queue, routing_key, handlers).await;
+            Self::consume_with_reconnect(
+                pool,
+                exchange,
+                queue,
+                routing_key,
+                handlers,
+                message_ttl_ms,
+                max_queue_length,
+            )
+            .await;
         });
 
         Ok(())
@@ -232,6 +272,8 @@ impl AmqpEventBus {
         queue: String,
         routing_key: String,
         handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+        message_ttl_ms: Option<i32>,
+        max_queue_length: Option<i32>,
     ) {
         use futures::StreamExt;
         use std::time::Duration;
@@ -246,7 +288,16 @@ impl AmqpEventBus {
 
         loop {
             // Try to set up consumer
-            match Self::setup_consumer(&pool, &exchange, &queue, &routing_key).await {
+            match Self::setup_consumer(
+                &pool,
+                &exchange,
+                &queue,
+                &routing_key,
+                message_ttl_ms,
+                max_queue_length,
+            )
+            .await
+            {
                 Ok(mut consumer) => {
                     info!(
                         queue = %queue,
@@ -296,7 +347,11 @@ impl AmqpEventBus {
         exchange: &str,
         queue: &str,
         routing_key: &str,
+        message_ttl_ms: Option<i32>,
+        max_queue_length: Option<i32>,
     ) -> Result<lapin::Consumer> {
+        use lapin::types::{AMQPValue, ShortString};
+
         let conn = pool.get().await.map_err(|e: PoolError| {
             BusError::Connection(format!("Failed to get connection from pool: {}", e))
         })?;
@@ -306,7 +361,19 @@ impl AmqpEventBus {
             .await
             .map_err(|e| BusError::Connection(format!("Failed to create channel: {}", e)))?;
 
-        // Declare queue
+        // Build queue arguments with TTL and max-length
+        let mut queue_args = FieldTable::default();
+        if let Some(ttl) = message_ttl_ms {
+            queue_args.insert(ShortString::from("x-message-ttl"), AMQPValue::LongInt(ttl));
+        }
+        if let Some(max_len) = max_queue_length {
+            queue_args.insert(
+                ShortString::from("x-max-length"),
+                AMQPValue::LongInt(max_len),
+            );
+        }
+
+        // Declare queue with TTL and max-length to prevent unbounded growth
         channel
             .queue_declare(
                 queue,
@@ -314,7 +381,7 @@ impl AmqpEventBus {
                     durable: true,
                     ..Default::default()
                 },
-                FieldTable::default(),
+                queue_args,
             )
             .await
             .map_err(|e| BusError::Subscribe(format!("Failed to declare queue: {}", e)))?;

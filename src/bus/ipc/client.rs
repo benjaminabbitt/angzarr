@@ -523,13 +523,23 @@ impl EventBus for IpcEventBus {
                         .and_then(|_| file.write_all(&serialized))
                     {
                         if e.kind() == std::io::ErrorKind::WouldBlock {
-                            warn!(subscriber = %subscriber.name, "Pipe full, dropping event");
-                        } else if e.kind() != std::io::ErrorKind::BrokenPipe {
-                            warn!(
+                            // Return error instead of silently dropping.
+                            // Caller can decide retry strategy.
+                            return Err(BusError::Publish(format!(
+                                "IPC pipe buffer full for subscriber '{}', event not delivered",
+                                subscriber.name
+                            )));
+                        } else if e.kind() == std::io::ErrorKind::BrokenPipe {
+                            // Broken pipe means reader disconnected - not an error
+                            debug!(
                                 subscriber = %subscriber.name,
-                                error = %e,
-                                "Failed to write to pipe"
+                                "Subscriber pipe closed (broken pipe)"
                             );
+                        } else {
+                            return Err(BusError::Publish(format!(
+                                "Failed to write to IPC pipe for subscriber '{}': {}",
+                                subscriber.name, e
+                            )));
                         }
                     } else {
                         debug!(
@@ -540,13 +550,12 @@ impl EventBus for IpcEventBus {
                     }
                 }
                 Err(e) => {
-                    // ENXIO = no reader yet, that's okay
+                    // ENXIO = no reader yet, that's okay (subscriber hasn't started)
                     if e.raw_os_error() != Some(libc::ENXIO) {
-                        warn!(
-                            subscriber = %subscriber.name,
-                            error = %e,
-                            "Failed to open pipe"
-                        );
+                        return Err(BusError::Publish(format!(
+                            "Failed to open IPC pipe for subscriber '{}': {}",
+                            subscriber.name, e
+                        )));
                     }
                 }
             }

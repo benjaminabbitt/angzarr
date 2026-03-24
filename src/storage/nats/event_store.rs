@@ -16,7 +16,9 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::is_main_timeline;
-use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
+use crate::storage::{
+    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+};
 
 use super::DEFAULT_PREFIX;
 
@@ -33,6 +35,30 @@ const HEADER_SEQUENCE: &str = "Angzarr-Sequence";
 
 /// Header name for correlation ID.
 const HEADER_CORRELATION: &str = "Angzarr-Correlation";
+
+/// Header name for cascade ID (for cascade stream).
+const HEADER_CASCADE_ID: &str = "Angzarr-Cascade-Id";
+
+/// Header name for committed status (for cascade stream).
+const HEADER_COMMITTED: &str = "Angzarr-Committed";
+
+/// Header name for created_at timestamp (for cascade stream).
+const HEADER_CREATED_AT: &str = "Angzarr-Created-At";
+
+/// Header name for domain (for cascade stream participant identification).
+const HEADER_DOMAIN: &str = "Angzarr-Domain";
+
+/// Header name for edition (for cascade stream participant identification).
+const HEADER_EDITION: &str = "Angzarr-Edition";
+
+/// Header name for root UUID (for cascade stream participant identification).
+const HEADER_ROOT: &str = "Angzarr-Root";
+
+/// Cascade stream suffix.
+const CASCADE_STREAM_SUFFIX: &str = "CASCADE";
+
+/// Default query timeout in milliseconds.
+const DEFAULT_QUERY_TIMEOUT_MS: u64 = 100;
 
 /// EventStore backed by NATS JetStream streams.
 ///
@@ -55,6 +81,8 @@ const HEADER_CORRELATION: &str = "Angzarr-Correlation";
 pub struct NatsEventStore {
     jetstream: Context,
     prefix: String,
+    /// Timeout for consuming messages from streams.
+    query_timeout: std::time::Duration,
 }
 
 impl NatsEventStore {
@@ -71,7 +99,14 @@ impl NatsEventStore {
         Ok(Self {
             jetstream,
             prefix: prefix.unwrap_or(DEFAULT_PREFIX).to_string(),
+            query_timeout: std::time::Duration::from_millis(DEFAULT_QUERY_TIMEOUT_MS),
         })
+    }
+
+    /// Set custom query timeout for consuming messages from streams.
+    pub fn with_query_timeout(mut self, timeout_ms: u64) -> Self {
+        self.query_timeout = std::time::Duration::from_millis(timeout_ms);
+        self
     }
 
     /// Get the stream name for a domain.
@@ -139,6 +174,56 @@ impl NatsEventStore {
                     })
                     .await
                     .map_err(|e| StorageError::Nats(format!("Failed to create stream: {}", e)))?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Get the cascade stream name.
+    ///
+    /// All cascade tracking events go to a single stream for efficient cross-domain queries.
+    fn cascade_stream_name(&self) -> String {
+        format!("{}_{}", self.prefix.to_uppercase(), CASCADE_STREAM_SUFFIX)
+    }
+
+    /// Get the subject for a cascade event.
+    ///
+    /// Subject format: `{prefix}.cascade.{cascade_id}.{domain}.{root}.{edition}`
+    ///
+    /// This allows filtering by cascade_id prefix to find all participants.
+    fn cascade_subject(&self, cascade_id: &str, domain: &str, root: Uuid, edition: &str) -> String {
+        format!(
+            "{}.cascade.{}.{}.{}.{}",
+            self.prefix,
+            cascade_id,
+            domain,
+            root.as_hyphenated(),
+            edition
+        )
+    }
+
+    /// Ensure the cascade stream exists.
+    ///
+    /// The cascade stream captures all events with cascade_id for 2PC queries.
+    async fn ensure_cascade_stream(&self) -> Result<()> {
+        let stream_name = self.cascade_stream_name();
+        let subjects = format!("{}.cascade.>", self.prefix);
+
+        match self.jetstream.get_stream(&stream_name).await {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                self.jetstream
+                    .create_stream(StreamConfig {
+                        name: stream_name,
+                        subjects: vec![subjects],
+                        retention: RetentionPolicy::Limits,
+                        storage: StorageType::File,
+                        ..Default::default()
+                    })
+                    .await
+                    .map_err(|e| {
+                        StorageError::Nats(format!("Failed to create cascade stream: {}", e))
+                    })?;
                 Ok(())
             }
         }
@@ -212,9 +297,7 @@ impl NatsEventStore {
         let mut events = Vec::new();
 
         // Fetch all messages (EventBooks) and extract pages
-        while let Ok(Some(msg)) =
-            tokio::time::timeout(std::time::Duration::from_millis(100), messages.next()).await
-        {
+        while let Ok(Some(msg)) = tokio::time::timeout(self.query_timeout, messages.next()).await {
             let msg =
                 msg.map_err(|e| StorageError::Nats(format!("Failed to receive message: {}", e)))?;
 
@@ -315,9 +398,7 @@ impl NatsEventStore {
         };
 
         // Scan messages with timeout
-        while let Ok(Some(msg)) =
-            tokio::time::timeout(std::time::Duration::from_millis(100), messages.next()).await
-        {
+        while let Ok(Some(msg)) = tokio::time::timeout(self.query_timeout, messages.next()).await {
             let Ok(msg) = msg else { continue };
             let Ok(book) = EventBook::decode(msg.payload.as_ref()) else {
                 continue;
@@ -464,7 +545,7 @@ impl EventStore for NatsEventStore {
         headers.insert("Nats-Msg-Id", msg_id.as_str());
 
         self.jetstream
-            .publish_with_headers(subject.clone(), headers, payload.into())
+            .publish_with_headers(subject.clone(), headers, payload.clone().into())
             .await
             .map_err(|e| StorageError::Nats(format!("Failed to publish: {}", e)))?
             .await
@@ -478,6 +559,59 @@ impl EventStore for NatsEventStore {
             msg_id = %msg_id,
             "Published EventBook to NATS"
         );
+
+        // Dual-write to cascade stream for 2PC tracking
+        // Check if any event in the book has a cascade_id
+        for page in &book.pages {
+            if let Some(ref cascade_id) = page.cascade_id {
+                self.ensure_cascade_stream().await?;
+
+                let seq = Self::get_sequence(page);
+                let cascade_subject = self.cascade_subject(cascade_id, domain, root, edition);
+
+                // Build cascade tracking headers
+                let mut cascade_headers = async_nats::HeaderMap::new();
+                cascade_headers.insert(HEADER_CASCADE_ID, cascade_id.as_str());
+                cascade_headers.insert(HEADER_COMMITTED, page.committed.to_string().as_str());
+                cascade_headers.insert(HEADER_DOMAIN, domain);
+                cascade_headers.insert(HEADER_EDITION, edition);
+                cascade_headers.insert(HEADER_ROOT, root.as_hyphenated().to_string().as_str());
+                cascade_headers.insert(HEADER_SEQUENCE, seq.to_string().as_str());
+
+                // Add created_at timestamp if present
+                if let Some(ref ts) = page.created_at {
+                    let ts_str = format!("{}.{}", ts.seconds, ts.nanos);
+                    cascade_headers.insert(HEADER_CREATED_AT, ts_str.as_str());
+                }
+
+                // Deduplication ID for cascade event
+                let cascade_msg_id = format!(
+                    "cascade.{}.{}.{}.{}.{}",
+                    cascade_id, domain, root, edition, seq
+                );
+                cascade_headers.insert("Nats-Msg-Id", cascade_msg_id.as_str());
+
+                // Publish page to cascade stream (payload needed for sequence extraction)
+                let page_payload = page.encode_to_vec();
+                self.jetstream
+                    .publish_with_headers(cascade_subject, cascade_headers, page_payload.into())
+                    .await
+                    .map_err(|e| StorageError::Nats(format!("Failed to publish cascade: {}", e)))?
+                    .await
+                    .map_err(|e| {
+                        StorageError::Nats(format!("Cascade publish ack failed: {}", e))
+                    })?;
+
+                debug!(
+                    cascade_id = %cascade_id,
+                    domain = %domain,
+                    root = %root,
+                    seq = seq,
+                    committed = page.committed,
+                    "Published to cascade stream"
+                );
+            }
+        }
 
         Ok(AddOutcome::Added {
             first_sequence: first_seq,
@@ -555,7 +689,7 @@ impl EventStore for NatsEventStore {
 
         // Collect unique roots from message subjects
         while let Ok(Some(msg_result)) =
-            tokio::time::timeout(std::time::Duration::from_millis(100), messages.next()).await
+            tokio::time::timeout(self.query_timeout, messages.next()).await
         {
             if let Ok(msg) = msg_result {
                 // Parse subject: {prefix}.events.{domain}.{root}.{edition}
@@ -735,5 +869,197 @@ impl EventStore for NatsEventStore {
         // NATS doesn't store source tracking - saga idempotency not supported
         // Use SQLite or PostgreSQL for saga source tracking
         Ok(None)
+    }
+
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
+        use std::collections::{HashMap, HashSet};
+
+        // Parse threshold timestamp
+        let threshold_dt = chrono::DateTime::parse_from_rfc3339(threshold)
+            .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;
+
+        let stream_name = self.cascade_stream_name();
+        let stream = match self.jetstream.get_stream(&stream_name).await {
+            Ok(s) => s,
+            Err(_) => return Ok(Vec::new()), // No cascade stream yet
+        };
+
+        // Create ephemeral consumer to scan cascade events
+        let consumer_name = format!("stale-cascades-{}", Uuid::new_v4());
+        let consumer = stream
+            .create_consumer(ConsumerConfig {
+                name: Some(consumer_name),
+                deliver_policy: jetstream::consumer::DeliverPolicy::All,
+                ack_policy: jetstream::consumer::AckPolicy::None,
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| StorageError::Nats(format!("Failed to create cascade consumer: {}", e)))?;
+
+        let mut messages = consumer
+            .messages()
+            .await
+            .map_err(|e| StorageError::Nats(format!("Failed to get cascade messages: {}", e)))?;
+
+        // Track committed vs uncommitted cascade_ids with their oldest timestamps
+        let mut cascade_committed: HashSet<String> = HashSet::new();
+        let mut cascade_uncommitted: HashMap<String, chrono::DateTime<chrono::FixedOffset>> =
+            HashMap::new();
+
+        while let Ok(Some(msg)) = tokio::time::timeout(self.query_timeout, messages.next()).await {
+            let Ok(msg) = msg else { continue };
+
+            // Extract headers
+            let Some(ref headers) = msg.headers else {
+                continue;
+            };
+
+            let cascade_id = headers
+                .get(HEADER_CASCADE_ID)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+
+            if cascade_id.is_empty() {
+                continue;
+            }
+
+            let committed = headers
+                .get(HEADER_COMMITTED)
+                .map(|v| v.as_str() == "true")
+                .unwrap_or(false);
+
+            if committed {
+                // This cascade has at least one committed event - mark as committed
+                cascade_committed.insert(cascade_id);
+            } else {
+                // Parse created_at timestamp
+                if let Some(ts_val) = headers.get(HEADER_CREATED_AT) {
+                    let ts_str = ts_val.to_string();
+                    if let Some((secs_str, nanos_str)) = ts_str.split_once('.') {
+                        if let (Ok(secs), Ok(nanos)) =
+                            (secs_str.parse::<i64>(), nanos_str.parse::<u32>())
+                        {
+                            if let Some(dt) = chrono::DateTime::from_timestamp(secs, nanos) {
+                                let dt_fixed = dt.fixed_offset();
+                                // Track oldest timestamp for this cascade
+                                cascade_uncommitted
+                                    .entry(cascade_id)
+                                    .and_modify(|existing| {
+                                        if dt_fixed < *existing {
+                                            *existing = dt_fixed;
+                                        }
+                                    })
+                                    .or_insert(dt_fixed);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find stale cascades: uncommitted AND older than threshold AND never committed
+        let stale: Vec<String> = cascade_uncommitted
+            .into_iter()
+            .filter(|(cascade_id, oldest_ts)| {
+                !cascade_committed.contains(cascade_id) && *oldest_ts < threshold_dt
+            })
+            .map(|(cascade_id, _)| cascade_id)
+            .collect();
+
+        Ok(stale)
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        cascade_id: &str,
+    ) -> Result<Vec<CascadeParticipant>> {
+        use std::collections::HashMap;
+
+        let stream_name = self.cascade_stream_name();
+        let stream = match self.jetstream.get_stream(&stream_name).await {
+            Ok(s) => s,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        // Filter by cascade_id prefix in subject: {prefix}.cascade.{cascade_id}.>
+        let filter_subject = format!("{}.cascade.{}.>", self.prefix, cascade_id);
+
+        let consumer_name = format!("cascade-participants-{}", Uuid::new_v4());
+        let consumer = stream
+            .create_consumer(ConsumerConfig {
+                name: Some(consumer_name),
+                filter_subject,
+                deliver_policy: jetstream::consumer::DeliverPolicy::All,
+                ack_policy: jetstream::consumer::AckPolicy::None,
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| {
+                StorageError::Nats(format!(
+                    "Failed to create cascade participant consumer: {}",
+                    e
+                ))
+            })?;
+
+        let mut messages = consumer.messages().await.map_err(|e| {
+            StorageError::Nats(format!("Failed to get cascade participant messages: {}", e))
+        })?;
+
+        // Group by (domain, edition, root) and collect sequences
+        let mut participants: HashMap<(String, String, Uuid), Vec<u32>> = HashMap::new();
+
+        while let Ok(Some(msg)) = tokio::time::timeout(self.query_timeout, messages.next()).await {
+            let Ok(msg) = msg else { continue };
+
+            let Some(ref headers) = msg.headers else {
+                continue;
+            };
+
+            let domain = headers
+                .get(HEADER_DOMAIN)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let edition = headers
+                .get(HEADER_EDITION)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let root_str = headers
+                .get(HEADER_ROOT)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let seq_str = headers
+                .get(HEADER_SEQUENCE)
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+
+            if domain.is_empty() || root_str.is_empty() {
+                continue;
+            }
+
+            let Ok(root) = Uuid::parse_str(&root_str) else {
+                continue;
+            };
+            let Ok(seq) = seq_str.parse::<u32>() else {
+                continue;
+            };
+
+            participants
+                .entry((domain, edition, root))
+                .or_default()
+                .push(seq);
+        }
+
+        // Convert to CascadeParticipant structs
+        let result: Vec<CascadeParticipant> = participants
+            .into_iter()
+            .map(|((domain, edition, root), sequences)| CascadeParticipant {
+                domain,
+                edition,
+                root,
+                sequences,
+            })
+            .collect();
+
+        Ok(result)
     }
 }

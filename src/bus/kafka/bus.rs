@@ -136,22 +136,36 @@ impl KafkaEventBus {
                                 kafka_extract_trace_context(&message, &consume_span);
 
                                 let book = Arc::new(book);
-                                async {
-                                    crate::bus::dispatch_to_handlers(&handlers, &book).await;
+                                let all_succeeded = async {
+                                    crate::bus::dispatch_to_handlers(&handlers, &book).await
                                 }
                                 .instrument(consume_span)
                                 .await;
 
-                                // Commit offset after successful processing
-                                if let Err(e) = consumer
-                                    .commit_message(&message, rdkafka::consumer::CommitMode::Async)
-                                {
-                                    error!(error = %e, "Failed to commit offset");
+                                // Only commit offset after successful handler dispatch.
+                                // If handlers fail, don't commit - Kafka will redeliver.
+                                // Existing idempotency (sequence numbers, external_id)
+                                // handles duplicates from async commit failures.
+                                if all_succeeded {
+                                    if let Err(e) = consumer.commit_message(
+                                        &message,
+                                        rdkafka::consumer::CommitMode::Async,
+                                    ) {
+                                        error!(error = %e, "Failed to commit offset");
+                                    }
+                                } else {
+                                    warn!(
+                                        topic = %message.topic(),
+                                        partition = message.partition(),
+                                        offset = message.offset(),
+                                        "Handler failed, not committing offset for redelivery"
+                                    );
                                 }
                             }
                             Err(e) => {
                                 error!(error = %e, "Failed to decode event book");
-                                // Still commit to avoid reprocessing malformed messages
+                                // Commit malformed messages to avoid infinite reprocessing.
+                                // No retry will help if the message can't be decoded.
                                 let _ = consumer
                                     .commit_message(&message, rdkafka::consumer::CommitMode::Async);
                             }

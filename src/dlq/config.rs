@@ -178,7 +178,7 @@ impl Default for AmqpDlqConfig {
 }
 
 /// Kafka-specific DLQ configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(default)]
 pub struct KafkaDlqConfig {
     /// Kafka bootstrap servers (comma-separated).
@@ -193,6 +193,22 @@ pub struct KafkaDlqConfig {
     pub sasl_mechanism: Option<String>,
     /// Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL).
     pub security_protocol: Option<String>,
+}
+
+impl std::fmt::Debug for KafkaDlqConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KafkaDlqConfig")
+            .field("bootstrap_servers", &self.bootstrap_servers)
+            .field("topic_prefix", &self.topic_prefix)
+            .field("sasl_username", &self.sasl_username)
+            .field(
+                "sasl_password",
+                &self.sasl_password.as_ref().map(|_| "<redacted>"),
+            )
+            .field("sasl_mechanism", &self.sasl_mechanism)
+            .field("security_protocol", &self.security_protocol)
+            .finish()
+    }
 }
 
 impl Default for KafkaDlqConfig {

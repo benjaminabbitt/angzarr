@@ -533,22 +533,26 @@ impl EventStore for PostgresEventStore {
         // Find cascade_ids with uncommitted events older than threshold.
         // Exclude cascades that already have Confirmation/Revocation events
         // (indicated by having ANY committed event with that cascade_id).
-        let query = format!(
-            r#"
-            SELECT DISTINCT cascade_id
-            FROM events
-            WHERE committed = false
-              AND cascade_id IS NOT NULL
-              AND created_at < '{}'
-              AND cascade_id NOT IN (
-                SELECT DISTINCT cascade_id
-                FROM events
-                WHERE committed = true
-                  AND cascade_id IS NOT NULL
-              )
-            "#,
-            threshold
-        );
+
+        // Subquery: cascade_ids that have committed events (already resolved)
+        let committed_subquery = Query::select()
+            .distinct()
+            .column(Events::CascadeId)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Committed).eq(true))
+            .and_where(Expr::col(Events::CascadeId).is_not_null())
+            .to_owned();
+
+        // Main query: stale uncommitted cascades not in the committed set
+        let query = Query::select()
+            .distinct()
+            .column(Events::CascadeId)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Committed).eq(false))
+            .and_where(Expr::col(Events::CascadeId).is_not_null())
+            .and_where(Expr::col(Events::CreatedAt).lt(threshold))
+            .and_where(Expr::col(Events::CascadeId).not_in_subquery(committed_subquery))
+            .to_string(PostgresQueryBuilder);
 
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 

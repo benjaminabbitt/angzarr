@@ -6,10 +6,16 @@
 //! - event: serialized EventPage (Binary)
 //! - created_at: ISO 8601 timestamp (String)
 //! - correlation_id: for cross-domain queries (String)
+//! - committed: cascade commit status (Boolean)
+//! - cascade_id: cascade identifier (String, sparse)
 //!
 //! GSI `correlation-index`:
 //! - PK: correlation_id
 //! - SK: `{domain}#{edition}#{root}#{seq}`
+//!
+//! GSI `cascade-index`:
+//! - PK: cascade_id
+//! - SK: pk (main table partition key)
 
 use std::collections::HashMap;
 
@@ -22,8 +28,11 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::is_main_timeline;
-use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
+use crate::storage::{
+    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+};
 
 /// DynamoDB implementation of EventStore.
 pub struct DynamoEventStore {
@@ -69,7 +78,7 @@ impl DynamoEventStore {
 
     /// Get sequence from EventPage.
     fn get_sequence(event: &EventPage) -> u32 {
-        event.sequence
+        event.sequence_num()
     }
 
     /// Query events for a specific edition.
@@ -273,6 +282,16 @@ impl EventStore for DynamoEventStore {
                 // GSI sort key for correlation queries
                 let gsi_sk = format!("{}#{}#{}#{}", domain, edition, root, seq);
                 item.insert("gsi_sk".to_string(), AttributeValue::S(gsi_sk));
+            }
+
+            // Cascade tracking: extract from EventPage for GSI queries
+            item.insert(
+                "committed".to_string(),
+                AttributeValue::Bool(event.committed),
+            );
+
+            if let Some(ref cid) = event.cascade_id {
+                item.insert("cascade_id".to_string(), AttributeValue::S(cid.clone()));
             }
 
             self.client
@@ -645,5 +664,138 @@ impl EventStore for DynamoEventStore {
         // DynamoDB doesn't store source tracking - saga idempotency not supported
         // Use SQLite or PostgreSQL for saga source tracking
         Ok(None)
+    }
+
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
+        let threshold_dt = chrono::DateTime::parse_from_rfc3339(threshold)
+            .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;
+
+        // Scan cascade-index to find all cascade_ids and their states
+        // Group by cascade_id, check if any event is committed or all are stale
+        let result = self
+            .client
+            .scan()
+            .table_name(&self.table_name)
+            .index_name("cascade-index")
+            .projection_expression("cascade_id, committed, created_at")
+            .send()
+            .await
+            .map_err(|e| {
+                StorageError::NotImplemented(format!("DynamoDB cascade-index scan failed: {}", e))
+            })?;
+
+        // Track state per cascade_id
+        struct CascadeState {
+            has_committed: bool,
+            all_before_threshold: bool,
+        }
+        let mut cascade_states: HashMap<String, CascadeState> = HashMap::new();
+
+        if let Some(items) = result.items {
+            for item in items {
+                let cascade_id = match item.get("cascade_id") {
+                    Some(AttributeValue::S(cid)) => cid.clone(),
+                    _ => continue,
+                };
+
+                let committed = match item.get("committed") {
+                    Some(AttributeValue::Bool(b)) => *b,
+                    _ => false,
+                };
+
+                let is_stale = match item.get("created_at") {
+                    Some(AttributeValue::S(ts)) => chrono::DateTime::parse_from_rfc3339(ts)
+                        .map(|dt| dt < threshold_dt)
+                        .unwrap_or(false),
+                    _ => false,
+                };
+
+                let state = cascade_states.entry(cascade_id).or_insert(CascadeState {
+                    has_committed: false,
+                    all_before_threshold: true,
+                });
+
+                if committed {
+                    state.has_committed = true;
+                }
+                if !is_stale {
+                    state.all_before_threshold = false;
+                }
+            }
+        }
+
+        // Return cascade_ids that are stale (no committed events, all before threshold)
+        Ok(cascade_states
+            .into_iter()
+            .filter(|(_, state)| !state.has_committed && state.all_before_threshold)
+            .map(|(cid, _)| cid)
+            .collect())
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        cascade_id: &str,
+    ) -> Result<Vec<CascadeParticipant>> {
+        // Query cascade-index for all events with this cascade_id
+        let result = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .index_name("cascade-index")
+            .key_condition_expression("cascade_id = :cid")
+            .expression_attribute_values(":cid", AttributeValue::S(cascade_id.to_string()))
+            .send()
+            .await
+            .map_err(|e| {
+                StorageError::NotImplemented(format!("DynamoDB cascade-index query failed: {}", e))
+            })?;
+
+        // Group by (domain, edition, root), collect sequences for uncommitted events
+        let mut participants_map: HashMap<(String, String, Uuid), Vec<u32>> = HashMap::new();
+
+        if let Some(items) = result.items {
+            for item in items {
+                // Check if committed - skip committed events
+                let committed = match item.get("committed") {
+                    Some(AttributeValue::Bool(b)) => *b,
+                    _ => false,
+                };
+                if committed {
+                    continue;
+                }
+
+                // Parse pk to get domain, edition, root
+                let pk = match item.get("pk") {
+                    Some(AttributeValue::S(s)) => s,
+                    _ => continue,
+                };
+                let (domain, edition, root) = match Self::parse_pk(pk) {
+                    Some(parsed) => parsed,
+                    None => continue,
+                };
+
+                // Get sequence
+                let seq = match item.get("seq") {
+                    Some(AttributeValue::N(s)) => s.parse::<u32>().unwrap_or(0),
+                    _ => continue,
+                };
+
+                participants_map
+                    .entry((domain, edition, root))
+                    .or_default()
+                    .push(seq);
+            }
+        }
+
+        // Convert to CascadeParticipant list
+        Ok(participants_map
+            .into_iter()
+            .map(|((domain, edition, root), sequences)| CascadeParticipant {
+                domain,
+                edition,
+                root,
+                sequences,
+            })
+            .collect())
     }
 }

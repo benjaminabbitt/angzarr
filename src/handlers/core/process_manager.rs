@@ -39,6 +39,12 @@ pub struct ProcessManagerEventHandler {
     /// Empty means handle all events (distributed mode uses bus-level filtering).
     targets: Vec<Target>,
     backoff: ExponentialBuilder,
+    /// When true (default), orchestration errors are propagated to the caller.
+    /// When false, errors are logged but handler returns Ok(()).
+    ///
+    /// Default: true (maintains backward compatibility).
+    /// Use `with_error_propagation(false)` to swallow errors.
+    propagate_errors: bool,
 }
 
 impl ProcessManagerEventHandler {
@@ -55,6 +61,7 @@ impl ProcessManagerEventHandler {
             fact_executor: None,
             targets: Vec::new(),
             backoff: saga_backoff(),
+            propagate_errors: true,
         }
     }
 
@@ -73,6 +80,16 @@ impl ProcessManagerEventHandler {
     /// Create with custom backoff configuration.
     pub fn with_backoff(mut self, backoff: ExponentialBuilder) -> Self {
         self.backoff = backoff;
+        self
+    }
+
+    /// Configure error propagation behavior.
+    ///
+    /// When enabled (default), orchestration errors are returned to the caller,
+    /// which may trigger message redelivery depending on the bus implementation.
+    /// When disabled, errors are logged but the handler returns Ok(()).
+    pub fn with_error_propagation(mut self, propagate: bool) -> Self {
+        self.propagate_errors = propagate;
         self
     }
 
@@ -102,6 +119,7 @@ impl ProcessManagerEventHandler {
             fact_executor: None,
             targets: Vec::new(),
             backoff: saga_backoff(),
+            propagate_errors: true,
         }
     }
 }
@@ -123,6 +141,7 @@ impl EventHandler for ProcessManagerEventHandler {
         let command_executor = self.command_executor.clone();
         let fact_executor = self.fact_executor.clone();
         let backoff = self.backoff;
+        let propagate_errors = self.propagate_errors;
 
         Box::pin(
             async move {
@@ -164,7 +183,9 @@ impl EventHandler for ProcessManagerEventHandler {
                         error = %e,
                         "Process manager orchestration failed"
                     );
-                    return Err(e);
+                    if propagate_errors {
+                        return Err(e);
+                    }
                 }
 
                 Ok(())

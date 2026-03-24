@@ -51,11 +51,19 @@ impl Default for StorageConfig {
 }
 
 /// PostgreSQL-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(default)]
 pub struct PostgresConfig {
     /// PostgreSQL connection URI.
     pub uri: String,
+}
+
+impl std::fmt::Debug for PostgresConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PostgresConfig")
+            .field("uri", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Default for PostgresConfig {
@@ -87,11 +95,19 @@ impl SqliteConfig {
 }
 
 /// Redis-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(default)]
 pub struct RedisConfig {
     /// Redis connection URI.
     pub uri: String,
+}
+
+impl std::fmt::Debug for RedisConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RedisConfig")
+            .field("uri", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Default for RedisConfig {
@@ -111,6 +127,9 @@ pub struct NatsStorageConfig {
     pub url: String,
     /// Bucket prefix for KV stores.
     pub bucket_prefix: String,
+    /// Query timeout in milliseconds for consuming messages from streams.
+    /// Default: 100ms.
+    pub query_timeout_ms: u64,
 }
 
 #[cfg(feature = "nats")]
@@ -119,6 +138,7 @@ impl Default for NatsStorageConfig {
         Self {
             url: "nats://localhost:4222".to_string(),
             bucket_prefix: "angzarr".to_string(),
+            query_timeout_ms: 100,
         }
     }
 }

@@ -690,27 +690,31 @@ impl EventStore for SqliteEventStore {
         // (indicated by having ANY committed event with that cascade_id).
         //
         // SQL logic:
-        // 1. Find distinct cascade_ids where committed=0 AND created_at < threshold
-        // 2. Exclude cascade_ids that appear in committed=1 rows (already resolved)
+        // 1. Find distinct cascade_ids where committed=false AND created_at < threshold
+        // 2. Exclude cascade_ids that appear in committed=true rows (already resolved)
         //
         // Note: We use a simple approach - if a cascade has ANY committed event
         // with the same cascade_id, it means a Confirmation/Revocation was written.
-        let query = format!(
-            r#"
-            SELECT DISTINCT cascade_id
-            FROM events
-            WHERE committed = 0
-              AND cascade_id IS NOT NULL
-              AND created_at < '{}'
-              AND cascade_id NOT IN (
-                SELECT DISTINCT cascade_id
-                FROM events
-                WHERE committed = 1
-                  AND cascade_id IS NOT NULL
-              )
-            "#,
-            threshold
-        );
+
+        // Subquery: cascade_ids that have committed events (already resolved)
+        let committed_subquery = Query::select()
+            .distinct()
+            .column(Events::CascadeId)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Committed).eq(true))
+            .and_where(Expr::col(Events::CascadeId).is_not_null())
+            .to_owned();
+
+        // Main query: stale uncommitted cascades not in the committed set
+        let query = Query::select()
+            .distinct()
+            .column(Events::CascadeId)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Committed).eq(false))
+            .and_where(Expr::col(Events::CascadeId).is_not_null())
+            .and_where(Expr::col(Events::CreatedAt).lt(threshold))
+            .and_where(Expr::col(Events::CascadeId).not_in_subquery(committed_subquery))
+            .to_string(SqliteQueryBuilder);
 
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 

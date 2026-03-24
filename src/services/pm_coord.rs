@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use backon::ExponentialBuilder;
 use tonic::{Request, Response, Status};
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
@@ -141,14 +141,7 @@ impl ProcessManagerCoordinatorService for PmCoord {
         );
 
         // Gap-fill EventBook if incomplete
-        let trigger = if let Some(gap_filler) = &self.gap_filler {
-            gap_filler.fill_if_needed(trigger).await.map_err(|e| {
-                error!(error = %e, "Failed to fill EventBook gaps");
-                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
-            })?
-        } else {
-            trigger
-        };
+        let trigger = super::fill_gaps_if_needed(self.gap_filler.as_ref(), trigger).await?;
 
         // Create context and orchestrate
         let ctx = self.factory.create();
@@ -200,14 +193,7 @@ impl ProcessManagerCoordinatorService for PmCoord {
         );
 
         // Gap-fill EventBook if incomplete
-        let trigger = if let Some(gap_filler) = &self.gap_filler {
-            gap_filler.fill_if_needed(trigger).await.map_err(|e| {
-                error!(error = %e, "Failed to fill EventBook gaps");
-                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
-            })?
-        } else {
-            trigger
-        };
+        let trigger = super::fill_gaps_if_needed(self.gap_filler.as_ref(), trigger).await?;
 
         // Create context and call prepare + handle directly (no command delivery)
         let ctx = self.factory.create();

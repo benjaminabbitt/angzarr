@@ -2,10 +2,16 @@
 //!
 //! Row key format: `{domain}#{edition}#{root}#{sequence:010}`
 //! Column family: `event`
-//! Columns: `data` (EventPage), `created_at` (timestamp), `correlation_id`
+//! Columns: `data` (EventPage), `created_at` (timestamp), `correlation_id`,
+//!          `committed` (cascade status), `cascade_id` (cascade identifier)
+//!
+//! Cascade index table (separate table for efficient cascade queries):
+//! Row key format: `{cascade_id}#{domain}#{edition}#{root}#{sequence:010}`
+//! Column family: `ref`
+//! Columns: `committed`, `created_at`
 //!
 //! Note: This implementation requires a Bigtable emulator or real Bigtable instance.
-//! Tables must be pre-created with the `event` column family.
+//! Tables must be pre-created with the `event` and `ref` column families.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,13 +31,21 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto_ext::EventPageExt;
 use crate::storage::helpers::is_main_timeline;
-use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
+use crate::storage::{
+    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+};
 
 const COLUMN_FAMILY: &str = "event";
 const COL_DATA: &[u8] = b"data";
 const COL_CREATED_AT: &[u8] = b"created_at";
 const COL_CORRELATION_ID: &[u8] = b"correlation_id";
+const COL_COMMITTED: &[u8] = b"committed";
+const COL_CASCADE_ID: &[u8] = b"cascade_id";
+
+/// Column family for cascade index table.
+const CASCADE_INDEX_FAMILY: &str = "ref";
 
 /// Bigtable implementation of EventStore.
 ///
@@ -39,14 +53,38 @@ const COL_CORRELATION_ID: &[u8] = b"correlation_id";
 pub struct BigtableEventStore {
     client: Arc<Mutex<BigTable>>,
     table_name: String,
+    /// Cascade index table name for efficient cascade queries.
+    cascade_index_table: String,
 }
 
 impl BigtableEventStore {
     /// Create a new Bigtable event store.
+    ///
+    /// The cascade index table defaults to `{table_name}_cascade_index`.
     pub async fn new(
         project_id: &str,
         instance_id: &str,
         table_name: impl Into<String>,
+        emulator_host: Option<&str>,
+    ) -> Result<Self> {
+        let table_name = table_name.into();
+        let cascade_index_table = format!("{}_cascade_index", table_name);
+        Self::with_cascade_table(
+            project_id,
+            instance_id,
+            table_name,
+            cascade_index_table,
+            emulator_host,
+        )
+        .await
+    }
+
+    /// Create a new Bigtable event store with explicit cascade index table name.
+    pub async fn with_cascade_table(
+        project_id: &str,
+        instance_id: &str,
+        table_name: impl Into<String>,
+        cascade_index_table: impl Into<String>,
         emulator_host: Option<&str>,
     ) -> Result<Self> {
         let connection = if let Some(host) = emulator_host {
@@ -73,15 +111,21 @@ impl BigtableEventStore {
 
         let client = Arc::new(Mutex::new(connection.client()));
         let table_name = table_name.into();
+        let cascade_index_table = cascade_index_table.into();
 
         info!(
             project = %project_id,
             instance = %instance_id,
             table = %table_name,
+            cascade_index = %cascade_index_table,
             "Connected to Bigtable for events"
         );
 
-        Ok(Self { client, table_name })
+        Ok(Self {
+            client,
+            table_name,
+            cascade_index_table,
+        })
     }
 
     /// Build the row key for an event.
@@ -113,7 +157,7 @@ impl BigtableEventStore {
 
     /// Get sequence from EventPage.
     pub fn get_sequence(event: &EventPage) -> u32 {
-        event.sequence
+        event.sequence_num()
     }
 
     /// Parse ISO 8601 timestamp string to (seconds, nanos).
@@ -171,6 +215,76 @@ impl BigtableEventStore {
                 COLUMN_FAMILY,
                 COL_CORRELATION_ID,
                 correlation_id.as_bytes(),
+            ));
+        }
+
+        // Cascade tracking columns
+        mutations.push(Self::build_set_cell(
+            COLUMN_FAMILY,
+            COL_COMMITTED,
+            if event.committed { b"true" } else { b"false" },
+        ));
+
+        if let Some(ref cid) = event.cascade_id {
+            mutations.push(Self::build_set_cell(
+                COLUMN_FAMILY,
+                COL_CASCADE_ID,
+                cid.as_bytes(),
+            ));
+        }
+
+        mutations
+    }
+
+    /// Build row key for cascade index table.
+    pub fn cascade_index_row_key(
+        cascade_id: &str,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        sequence: u32,
+    ) -> Vec<u8> {
+        format!(
+            "{}#{}#{}#{}#{:010}",
+            cascade_id, domain, edition, root, sequence
+        )
+        .into_bytes()
+    }
+
+    /// Parse cascade index row key into (cascade_id, domain, edition, root, sequence).
+    pub fn parse_cascade_index_key(key: &[u8]) -> Option<(String, String, String, Uuid, u32)> {
+        let key_str = String::from_utf8(key.to_vec()).ok()?;
+        let parts: Vec<&str> = key_str.splitn(5, '#').collect();
+
+        if parts.len() != 5 {
+            return None;
+        }
+
+        let cascade_id = parts[0].to_string();
+        let domain = parts[1].to_string();
+        let edition = parts[2].to_string();
+        let root = Uuid::parse_str(parts[3]).ok()?;
+        let sequence = parts[4].parse::<u32>().ok()?;
+
+        Some((cascade_id, domain, edition, root, sequence))
+    }
+
+    /// Build mutations for cascade index entry.
+    pub fn build_cascade_index_mutations(event: &EventPage) -> Vec<Mutation> {
+        let mut mutations = Vec::new();
+
+        mutations.push(Self::build_set_cell(
+            CASCADE_INDEX_FAMILY,
+            COL_COMMITTED,
+            if event.committed { b"true" } else { b"false" },
+        ));
+
+        if let Some(ref ts) = event.created_at {
+            let ts_str = Self::format_timestamp(ts.seconds, ts.nanos);
+            mutations.push(Self::build_set_cell(
+                CASCADE_INDEX_FAMILY,
+                COL_CREATED_AT,
+                ts_str.as_bytes(),
             ));
         }
 
@@ -459,6 +573,8 @@ impl EventStore for BigtableEventStore {
         let table_name = client.get_full_table_name(&self.table_name);
         let last_seq = events.last().map(Self::get_sequence).unwrap_or(first_seq);
 
+        let cascade_index_table = client.get_full_table_name(&self.cascade_index_table);
+
         for event in &events {
             let seq = Self::get_sequence(event);
             let row_key = Self::row_key(domain, edition, root, seq);
@@ -474,6 +590,26 @@ impl EventStore for BigtableEventStore {
             client.mutate_row(request).await.map_err(|e| {
                 StorageError::NotImplemented(format!("Bigtable mutate_row failed: {}", e))
             })?;
+
+            // Dual-write to cascade index table if event has cascade_id
+            if let Some(ref cid) = event.cascade_id {
+                let cascade_row_key = Self::cascade_index_row_key(cid, domain, edition, root, seq);
+                let cascade_mutations = Self::build_cascade_index_mutations(event);
+
+                let cascade_request = MutateRowRequest {
+                    table_name: cascade_index_table.clone(),
+                    row_key: cascade_row_key,
+                    mutations: cascade_mutations,
+                    ..Default::default()
+                };
+
+                client.mutate_row(cascade_request).await.map_err(|e| {
+                    StorageError::NotImplemented(format!(
+                        "Bigtable cascade index mutate_row failed: {}",
+                        e
+                    ))
+                })?;
+            }
         }
 
         debug!(
@@ -841,5 +977,154 @@ impl EventStore for BigtableEventStore {
         // Bigtable doesn't store source tracking - saga idempotency not supported
         // Use SQLite or PostgreSQL for saga source tracking
         Ok(None)
+    }
+
+    async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
+        let threshold_dt = chrono::DateTime::parse_from_rfc3339(threshold)
+            .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;
+
+        let mut client = self.client.lock().await;
+        let table_name = client.get_full_table_name(&self.cascade_index_table);
+
+        // Scan entire cascade index table
+        let request = ReadRowsRequest {
+            table_name,
+            filter: Some(RowFilter {
+                filter: Some(Filter::FamilyNameRegexFilter(
+                    CASCADE_INDEX_FAMILY.to_string(),
+                )),
+            }),
+            ..Default::default()
+        };
+
+        let result = client.read_rows(request).await.map_err(|e| {
+            StorageError::NotImplemented(format!("Bigtable cascade index scan failed: {}", e))
+        })?;
+
+        // Track state per cascade_id
+        struct CascadeState {
+            has_committed: bool,
+            all_before_threshold: bool,
+        }
+        let mut cascade_states: HashMap<String, CascadeState> = HashMap::new();
+
+        for (row_key, cells) in result {
+            // Parse cascade_id from row key
+            let cascade_id = match Self::parse_cascade_index_key(&row_key) {
+                Some((cid, _, _, _, _)) => cid,
+                None => continue,
+            };
+
+            let mut committed = false;
+            let mut is_stale = false;
+
+            for cell in cells {
+                if cell.qualifier == COL_COMMITTED {
+                    committed = cell.value == b"true";
+                } else if cell.qualifier == COL_CREATED_AT {
+                    if let Ok(ts_str) = String::from_utf8(cell.value) {
+                        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&ts_str) {
+                            is_stale = dt < threshold_dt;
+                        }
+                    }
+                }
+            }
+
+            let state = cascade_states.entry(cascade_id).or_insert(CascadeState {
+                has_committed: false,
+                all_before_threshold: true,
+            });
+
+            if committed {
+                state.has_committed = true;
+            }
+            if !is_stale {
+                state.all_before_threshold = false;
+            }
+        }
+
+        // Return cascade_ids that are stale (no committed events, all before threshold)
+        Ok(cascade_states
+            .into_iter()
+            .filter(|(_, state)| !state.has_committed && state.all_before_threshold)
+            .map(|(cid, _)| cid)
+            .collect())
+    }
+
+    async fn query_cascade_participants(
+        &self,
+        cascade_id: &str,
+    ) -> Result<Vec<CascadeParticipant>> {
+        let mut client = self.client.lock().await;
+        let table_name = client.get_full_table_name(&self.cascade_index_table);
+
+        // Prefix scan for rows starting with {cascade_id}#
+        let prefix = format!("{}#", cascade_id).into_bytes();
+        let mut end_prefix = prefix.clone();
+        if let Some(last) = end_prefix.last_mut() {
+            *last = last.saturating_add(1);
+        }
+
+        let request = ReadRowsRequest {
+            table_name,
+            rows: Some(RowSet {
+                row_keys: vec![],
+                row_ranges: vec![RowRange {
+                    start_key: Some(
+                        bigtable_rs::google::bigtable::v2::row_range::StartKey::StartKeyClosed(
+                            prefix,
+                        ),
+                    ),
+                    end_key: Some(
+                        bigtable_rs::google::bigtable::v2::row_range::EndKey::EndKeyOpen(
+                            end_prefix,
+                        ),
+                    ),
+                }],
+            }),
+            filter: Some(RowFilter {
+                filter: Some(Filter::FamilyNameRegexFilter(
+                    CASCADE_INDEX_FAMILY.to_string(),
+                )),
+            }),
+            ..Default::default()
+        };
+
+        let result = client.read_rows(request).await.map_err(|e| {
+            StorageError::NotImplemented(format!("Bigtable cascade index query failed: {}", e))
+        })?;
+
+        // Group by (domain, edition, root), collect sequences for uncommitted events
+        let mut participants_map: HashMap<(String, String, Uuid), Vec<u32>> = HashMap::new();
+
+        for (row_key, cells) in result {
+            // Check if committed
+            let committed = cells
+                .iter()
+                .any(|c| c.qualifier == COL_COMMITTED && c.value == b"true");
+
+            if committed {
+                continue; // Skip committed events
+            }
+
+            // Parse row key to get domain, edition, root, sequence
+            if let Some((_, domain, edition, root, seq)) = Self::parse_cascade_index_key(&row_key) {
+                participants_map
+                    .entry((domain, edition, root))
+                    .or_default()
+                    .push(seq);
+            }
+        }
+
+        // Convert to CascadeParticipant list
+        Ok(participants_map
+            .into_iter()
+            .map(|((domain, edition, root), sequences)| CascadeParticipant {
+                domain,
+                edition,
+                root,
+                sequences,
+            })
+            .collect())
     }
 }

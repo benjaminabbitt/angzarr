@@ -1,5 +1,9 @@
 //! gRPC service implementations.
 
+use std::sync::Arc;
+use tonic::Status;
+use tracing::error;
+
 pub mod aggregate;
 pub mod event_query;
 pub mod gap_fill;
@@ -8,6 +12,34 @@ pub mod projector_coord;
 pub mod saga_coord;
 pub mod snapshot_handler;
 pub mod upcaster;
+
+use crate::proto::EventBook;
+
+/// Fill gaps in an EventBook if a gap filler is available.
+///
+/// This is a common pattern used by saga and PM coordinators to ensure
+/// EventBooks are complete before processing.
+///
+/// # Arguments
+/// * `gap_filler` - Optional gap filler instance
+/// * `book` - The EventBook to potentially fill
+///
+/// # Returns
+/// The filled EventBook, or the original if no gap filler is available.
+pub(crate) async fn fill_gaps_if_needed(
+    gap_filler: Option<
+        &Arc<gap_fill::GapFiller<gap_fill::NoOpPositionStore, gap_fill::RemoteEventSource>>,
+    >,
+    book: EventBook,
+) -> Result<EventBook, Status> {
+    match gap_filler {
+        Some(filler) => filler.fill_if_needed(book).await.map_err(|e| {
+            error!(error = %e, "Failed to fill EventBook gaps");
+            Status::internal(format!("{}{}", errmsg::REPAIR_EVENTBOOK_FAILED, e))
+        }),
+        None => Ok(book),
+    }
+}
 
 /// Error message constants for gRPC services.
 pub mod errmsg {

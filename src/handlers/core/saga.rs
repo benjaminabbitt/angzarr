@@ -41,6 +41,12 @@ pub struct SagaEventHandler {
     fact_executor: Option<Arc<dyn FactExecutor>>,
     output_domain_validator: Option<Arc<OutputDomainValidator>>,
     backoff: ExponentialBuilder,
+    /// When true, orchestration errors are propagated to the caller.
+    /// When false (default), errors are logged but handler returns Ok(()).
+    ///
+    /// Default: false (maintains backward compatibility).
+    /// Use `with_error_propagation(true)` to enable strict error handling.
+    propagate_errors: bool,
 }
 
 impl SagaEventHandler {
@@ -58,6 +64,7 @@ impl SagaEventHandler {
             fact_executor: None,
             output_domain_validator: None,
             backoff: saga_backoff(),
+            propagate_errors: false,
         }
     }
 
@@ -79,7 +86,18 @@ impl SagaEventHandler {
             fact_executor,
             output_domain_validator,
             backoff,
+            propagate_errors: false,
         }
+    }
+
+    /// Configure error propagation behavior.
+    ///
+    /// When enabled, orchestration errors are returned to the caller, which
+    /// may trigger message redelivery depending on the bus implementation.
+    /// When disabled (default), errors are logged but the handler returns Ok(()).
+    pub fn with_error_propagation(mut self, propagate: bool) -> Self {
+        self.propagate_errors = propagate;
+        self
     }
 }
 
@@ -96,6 +114,7 @@ impl EventHandler for SagaEventHandler {
         let fact_executor = self.fact_executor.clone();
         let validator = self.output_domain_validator.clone();
         let backoff = self.backoff;
+        let propagate_errors = self.propagate_errors;
 
         Box::pin(
             async move {
@@ -127,6 +146,9 @@ impl EventHandler for SagaEventHandler {
                         error = %e,
                         "Saga orchestration failed"
                     );
+                    if propagate_errors {
+                        return Err(e);
+                    }
                 }
 
                 Ok(())

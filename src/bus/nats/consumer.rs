@@ -1,6 +1,7 @@
 //! NATS JetStream consumer helpers.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_nats::jetstream::{
     self,
@@ -15,6 +16,17 @@ use tokio::sync::RwLock;
 use crate::bus::error::{BusError, Result};
 use crate::bus::traits::EventHandler;
 use crate::proto::EventBook;
+
+/// Idle heartbeat interval for NATS pull consumers.
+///
+/// When no messages are available, the server sends heartbeat messages at this interval.
+/// This allows detection of:
+/// - Stalled consumers (consumer not processing messages)
+/// - Network connectivity issues
+/// - Server-side problems
+///
+/// If two consecutive heartbeats are missed, the consumer recreates itself.
+const IDLE_HEARTBEAT: Duration = Duration::from_secs(5);
 
 /// Ensure the NATS JetStream stream exists for a domain.
 pub(super) async fn ensure_stream_for_domain(
@@ -50,12 +62,16 @@ pub(super) async fn ensure_stream_for_domain(
 ///
 /// Spawns a task that continuously reads messages, decodes EventBooks,
 /// dispatches to handlers, and acks messages.
+///
+/// Uses explicit heartbeat configuration for consumer health monitoring.
 pub(super) fn spawn_message_consumer(
     consumer: jetstream::consumer::Consumer<ConsumerConfig>,
     handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
 ) {
     tokio::spawn(async move {
-        let mut messages = match consumer.messages().await {
+        // Use stream builder to configure heartbeat explicitly
+        // This enables detection of stalled consumers and network issues
+        let mut messages = match consumer.stream().heartbeat(IDLE_HEARTBEAT).messages().await {
             Ok(m) => m,
             Err(e) => {
                 tracing::error!("Failed to get message stream: {}", e);

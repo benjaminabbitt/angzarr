@@ -78,7 +78,7 @@ jobs:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
         run: |
           cd proto
-          buf push --tag "${{ steps.version.outputs.version }}"
+          buf push --label "${{ steps.version.outputs.version }}"
 
   notify-clients:
     name: Notify Client Libraries

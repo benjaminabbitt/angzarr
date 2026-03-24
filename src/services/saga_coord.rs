@@ -147,14 +147,7 @@ impl SagaCoordinatorService for SagaCoord {
         );
 
         // Gap-fill EventBook if incomplete
-        let source = if let Some(gap_filler) = &self.gap_filler {
-            gap_filler.fill_if_needed(source).await.map_err(|e| {
-                error!(error = %e, "Failed to fill EventBook gaps");
-                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
-            })?
-        } else {
-            source
-        };
+        let source = super::fill_gaps_if_needed(self.gap_filler.as_ref(), source).await?;
 
         // Create context and orchestrate
         let ctx = self.factory.create(Arc::new(source));
@@ -206,14 +199,7 @@ impl SagaCoordinatorService for SagaCoord {
         );
 
         // Gap-fill EventBook if incomplete
-        let source = if let Some(gap_filler) = &self.gap_filler {
-            gap_filler.fill_if_needed(source).await.map_err(|e| {
-                error!(error = %e, "Failed to fill EventBook gaps");
-                Status::internal(format!("{}{}", super::errmsg::REPAIR_EVENTBOOK_FAILED, e))
-            })?
-        } else {
-            source
-        };
+        let source = super::fill_gaps_if_needed(self.gap_filler.as_ref(), source).await?;
 
         // Create context and call handle() directly (no command delivery)
         let ctx = self.factory.create(Arc::new(source));

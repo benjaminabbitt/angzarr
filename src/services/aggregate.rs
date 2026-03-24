@@ -6,6 +6,7 @@ use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 
 use crate::bus::EventBus;
+use crate::config::ResourceLimits;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::grpc::GrpcAggregateContext;
 use crate::orchestration::aggregate::{
@@ -24,6 +25,7 @@ use crate::proto_ext::CoverExt;
 use crate::services::upcaster::Upcaster;
 use crate::storage::{EventStore, SnapshotStore};
 use crate::utils::retry::saga_backoff;
+use crate::validation::validate_command_book;
 
 /// Aggregate service.
 ///
@@ -44,6 +46,8 @@ pub struct AggregateService {
     discovery: Arc<dyn ServiceDiscovery>,
     /// Upcaster for event version transformation.
     upcaster: Option<Arc<Upcaster>>,
+    /// Resource limits for validation.
+    limits: ResourceLimits,
 }
 
 impl AggregateService {
@@ -64,6 +68,7 @@ impl AggregateService {
             snapshot_read_enabled: true,
             discovery,
             upcaster: None,
+            limits: ResourceLimits::default(),
         }
     }
 
@@ -86,12 +91,19 @@ impl AggregateService {
             snapshot_read_enabled,
             discovery,
             upcaster: None,
+            limits: ResourceLimits::default(),
         }
     }
 
     /// Set the upcaster for event version transformation.
     pub fn with_upcaster(mut self, upcaster: Arc<Upcaster>) -> Self {
         self.upcaster = Some(upcaster);
+        self
+    }
+
+    /// Set resource limits for validation.
+    pub fn with_limits(mut self, limits: ResourceLimits) -> Self {
+        self.limits = limits;
         self
     }
 
@@ -116,6 +128,7 @@ impl AggregateService {
             snapshot_read_enabled: true,
             discovery,
             upcaster: None,
+            limits: ResourceLimits::default(),
         }
     }
 
@@ -139,6 +152,7 @@ impl AggregateService {
             snapshot_read_enabled,
             discovery,
             upcaster: None,
+            limits: ResourceLimits::default(),
         }
     }
 
@@ -204,6 +218,9 @@ impl CommandHandlerCoordinatorService for AggregateService {
             Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
         })?;
 
+        // Validate command book before processing
+        validate_command_book(&command_book, &self.limits)?;
+
         let ctx = self.create_context_for_sync_mode(sync_request.sync_mode);
 
         let result =
@@ -222,6 +239,9 @@ impl CommandHandlerCoordinatorService for AggregateService {
         let command_book = speculate_req.command.ok_or_else(|| {
             Status::invalid_argument(super::errmsg::SPECULATE_AGG_MISSING_COMMAND)
         })?;
+
+        // Validate command book before processing
+        validate_command_book(&command_book, &self.limits)?;
 
         let (as_of_sequence, as_of_timestamp) = match speculate_req.point_in_time {
             Some(temporal) => match temporal.point_in_time {
