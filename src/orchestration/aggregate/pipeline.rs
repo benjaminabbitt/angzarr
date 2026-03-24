@@ -18,7 +18,8 @@ use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, Ret
 use super::merge::{check_commutative_overlap, CommutativeMergeResult};
 use super::parsing::{
     extract_angzarr_deferred, extract_command_sequence, extract_edition, extract_event_edition,
-    has_deferred_sequence, parse_command_cover, parse_event_cover, stamp_deferred_sequences,
+    extract_explicit_divergence, has_deferred_sequence, parse_command_cover, parse_event_cover,
+    stamp_deferred_sequences,
 };
 use super::traits::{AggregateContext, ClientLogic};
 use super::types::{FactContext, FactResponse, PipelineMode, TemporalQuery};
@@ -156,9 +157,18 @@ async fn execute_mode(
             .await?;
     }
 
-    // Load prior events
+    // Extract explicit divergence from Edition proto for branching
+    let explicit_divergence = extract_explicit_divergence(&command_book, &domain);
+
+    // Load prior events (with explicit divergence for new edition branches)
     let prior_events = ctx
-        .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+        .load_prior_events_with_divergence(
+            &domain,
+            &edition,
+            root_uuid,
+            &TemporalQuery::Current,
+            explicit_divergence,
+        )
         .await?;
 
     // Transform events (upcasting)

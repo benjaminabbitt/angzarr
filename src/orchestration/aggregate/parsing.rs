@@ -137,6 +137,29 @@ pub fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
     Ok(edition)
 }
 
+/// Extract explicit divergence point for a domain from the Edition proto.
+///
+/// The Edition proto contains a list of DomainDivergence entries specifying
+/// where each domain should branch from the main timeline. This function
+/// finds the divergence point for the given domain.
+///
+/// Returns `None` if:
+/// - No Edition is present in the cover
+/// - Edition has no divergences
+/// - No divergence is specified for this domain
+pub fn extract_explicit_divergence(command_book: &CommandBook, domain: &str) -> Option<u32> {
+    command_book
+        .cover
+        .as_ref()
+        .and_then(|c| c.edition.as_ref())
+        .and_then(|e| {
+            e.divergences
+                .iter()
+                .find(|d| d.domain == domain)
+                .map(|d| d.sequence)
+        })
+}
+
 /// Extract edition from an EventBook's Cover.
 pub fn extract_event_edition(event_book: &EventBook) -> Result<String, Status> {
     let edition = event_book.edition().to_string();

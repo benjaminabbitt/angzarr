@@ -124,23 +124,41 @@ impl SqliteEventStore {
         root_str: &str,
         from: u32,
     ) -> Result<Vec<EventPage>> {
-        // Query edition events first to determine divergence point
+        self.composite_read_with_divergence(domain, edition, root_str, from, None)
+            .await
+    }
+
+    /// Perform a composite read with optional explicit divergence point.
+    ///
+    /// - `explicit_divergence = Some(N)`: Branch starts at sequence N
+    /// - `explicit_divergence = None`: Uses implicit divergence (first edition event)
+    async fn composite_read_with_divergence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+        from: u32,
+        explicit_divergence: Option<u32>,
+    ) -> Result<Vec<EventPage>> {
+        // Query edition events first
         let edition_events = self
             .query_edition_events(domain, edition, root_str, 0)
             .await?;
 
-        if edition_events.is_empty() {
-            // No edition events - return main timeline only
+        // Determine divergence point: explicit > implicit (first edition event) > 0
+        let divergence = if let Some(div) = explicit_divergence {
+            div
+        } else if edition_events.is_empty() {
+            // No edition events and no explicit divergence - return main timeline only
             return self
                 .query_edition_events(domain, DEFAULT_EDITION, root_str, from)
                 .await;
-        }
-
-        // Get implicit divergence point from first edition event
-        let divergence = self
-            .get_edition_min_sequence(domain, edition, root_str)
-            .await?
-            .unwrap_or(0);
+        } else {
+            // Implicit divergence from first edition event
+            self.get_edition_min_sequence(domain, edition, root_str)
+                .await?
+                .unwrap_or(0)
+        };
 
         // Query main timeline events up to divergence point
         let main_events = self
@@ -407,6 +425,27 @@ impl EventStore for SqliteEventStore {
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
         self.get_from(domain, edition, root, 0).await
+    }
+
+    async fn get_with_divergence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        explicit_divergence: Option<u32>,
+    ) -> Result<Vec<EventPage>> {
+        let root_str = root.to_string();
+
+        // Main timeline: simple query, explicit divergence doesn't apply
+        if is_main_timeline(edition) {
+            return self
+                .query_edition_events(domain, DEFAULT_EDITION, &root_str, 0)
+                .await;
+        }
+
+        // Named edition: use composite read with explicit divergence
+        self.composite_read_with_divergence(domain, edition, &root_str, 0, explicit_divergence)
+            .await
     }
 
     async fn get_from(

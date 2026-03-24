@@ -291,13 +291,23 @@ impl GrpcAggregateContext {
 #[async_trait]
 impl AggregateContext for GrpcAggregateContext {
     #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
-    async fn load_prior_events(
+    async fn load_prior_events_with_divergence(
         &self,
         domain: &str,
         edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
+        explicit_divergence: Option<u32>,
     ) -> Result<EventBook, Status> {
+        // Note: In gRPC mode, explicit divergence is not yet supported.
+        // For now, we use the same behavior as before (implicit divergence).
+        // TODO: Add explicit divergence support to EventBookRepo when needed.
+        if explicit_divergence.is_some() {
+            tracing::warn!(
+                "Explicit divergence not supported in gRPC mode, falling back to implicit"
+            );
+        }
+
         match temporal {
             TemporalQuery::Current => self
                 .event_book_repo

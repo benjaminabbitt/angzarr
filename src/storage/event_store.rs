@@ -152,6 +152,38 @@ pub trait EventStore: Send + Sync {
     /// Retrieve all events for an aggregate.
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>>;
 
+    /// Retrieve all events for an aggregate with explicit divergence point.
+    ///
+    /// For edition branches, the divergence point determines where the edition
+    /// splits from the main timeline:
+    /// - `explicit_divergence = Some(N)`: Branch starts at sequence N.
+    ///   Returns main timeline events with sequence < N, plus edition events.
+    /// - `explicit_divergence = None`: Uses implicit divergence (first edition event).
+    ///   This is the default behavior of `get()`.
+    ///
+    /// This method is required for creating NEW branches that don't yet have
+    /// edition events. Without explicit divergence, a new branch would get NO
+    /// events (since implicit divergence requires existing edition events).
+    ///
+    /// # Example: Branch at sequence 3
+    /// ```text
+    /// Main:   [0, 1, 2, 3, 4]
+    /// Branch with explicit_divergence=3: returns [0, 1, 2] from main
+    /// After adding branch event at seq 3: returns [0, 1, 2, branch_3]
+    /// ```
+    async fn get_with_divergence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        explicit_divergence: Option<u32>,
+    ) -> Result<Vec<EventPage>> {
+        // Default implementation: ignore explicit divergence, call regular get()
+        // Implementations that support divergence should override this.
+        let _ = explicit_divergence;
+        self.get(domain, edition, root).await
+    }
+
     /// Retrieve events from sequence N onwards.
     async fn get_from(
         &self,

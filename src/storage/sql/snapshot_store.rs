@@ -33,13 +33,12 @@ impl<DB: SqlDatabase> SqlSnapshotStore<DB> {
 
 /// Macro to implement SnapshotStore for a specific SQL backend.
 ///
-/// The `$supports_get_at_seq` parameter controls whether the backend
-/// supports historical snapshot queries (true for PostgreSQL, false for SQLite
-/// which stores only the latest snapshot per aggregate).
+/// Both backends now support multiple snapshots per aggregate with retention
+/// policies. The schema's primary key is (domain, edition, root, sequence).
 ///
 /// Note: Feature gating is applied at the macro invocation site, not inside the macro.
 macro_rules! impl_snapshot_store {
-    ($db_type:ty, supports_get_at_seq: $supports_get_at_seq:literal) => {
+    ($db_type:ty) => {
         #[async_trait::async_trait]
         impl crate::storage::SnapshotStore for SqlSnapshotStore<$db_type> {
             async fn get(
@@ -56,6 +55,7 @@ macro_rules! impl_snapshot_store {
 
                 let root_str = root.to_string();
 
+                // Get the snapshot with highest sequence (latest)
                 let stmt = Query::select()
                     .column(Snapshots::StateData)
                     .column(Snapshots::Sequence)
@@ -63,6 +63,8 @@ macro_rules! impl_snapshot_store {
                     .and_where(Expr::col(Snapshots::Edition).eq(edition))
                     .and_where(Expr::col(Snapshots::Domain).eq(domain))
                     .and_where(Expr::col(Snapshots::Root).eq(&root_str))
+                    .order_by(Snapshots::Sequence, sea_query::Order::Desc)
+                    .limit(1)
                     .to_owned();
 
                 let sql = <$db_type>::build_select(stmt);
@@ -85,44 +87,37 @@ macro_rules! impl_snapshot_store {
                 root: uuid::Uuid,
                 seq: u32,
             ) -> crate::storage::Result<Option<crate::proto::Snapshot>> {
-                // PostgreSQL supports historical snapshots, SQLite stores only latest
-                if $supports_get_at_seq {
-                    use prost::Message;
-                    use sea_query::{Expr, Query};
-                    use sqlx::Row;
+                use prost::Message;
+                use sea_query::{Expr, Query};
+                use sqlx::Row;
 
-                    use crate::storage::schema::Snapshots;
+                use crate::storage::schema::Snapshots;
 
-                    let root_str = root.to_string();
+                let root_str = root.to_string();
 
-                    let stmt = Query::select()
-                        .column(Snapshots::StateData)
-                        .column(Snapshots::Sequence)
-                        .from(Snapshots::Table)
-                        .and_where(Expr::col(Snapshots::Edition).eq(edition))
-                        .and_where(Expr::col(Snapshots::Domain).eq(domain))
-                        .and_where(Expr::col(Snapshots::Root).eq(&root_str))
-                        .and_where(Expr::col(Snapshots::Sequence).lte(seq))
-                        .order_by(Snapshots::Sequence, sea_query::Order::Desc)
-                        .limit(1)
-                        .to_owned();
+                // Get snapshot with highest sequence <= requested seq
+                let stmt = Query::select()
+                    .column(Snapshots::StateData)
+                    .column(Snapshots::Sequence)
+                    .from(Snapshots::Table)
+                    .and_where(Expr::col(Snapshots::Edition).eq(edition))
+                    .and_where(Expr::col(Snapshots::Domain).eq(domain))
+                    .and_where(Expr::col(Snapshots::Root).eq(&root_str))
+                    .and_where(Expr::col(Snapshots::Sequence).lte(seq))
+                    .order_by(Snapshots::Sequence, sea_query::Order::Desc)
+                    .limit(1)
+                    .to_owned();
 
-                    let sql = <$db_type>::build_select(stmt);
-                    let row = sqlx::query(&sql).fetch_optional(&self.pool).await?;
+                let sql = <$db_type>::build_select(stmt);
+                let row = sqlx::query(&sql).fetch_optional(&self.pool).await?;
 
-                    match row {
-                        Some(row) => {
-                            let state_data: Vec<u8> = row.get("state_data");
-                            let snapshot = crate::proto::Snapshot::decode(state_data.as_slice())?;
-                            Ok(Some(snapshot))
-                        }
-                        None => Ok(None),
+                match row {
+                    Some(row) => {
+                        let state_data: Vec<u8> = row.get("state_data");
+                        let snapshot = crate::proto::Snapshot::decode(state_data.as_slice())?;
+                        Ok(Some(snapshot))
                     }
-                } else {
-                    // SQLite stores single snapshot per aggregate.
-                    // Return it if it exists (sequence checking is simplified).
-                    let _ = seq; // Suppress unused warning
-                    self.get(domain, edition, root).await
+                    None => Ok(None),
                 }
             }
 
@@ -134,15 +129,19 @@ macro_rules! impl_snapshot_store {
                 snapshot: crate::proto::Snapshot,
             ) -> crate::storage::Result<()> {
                 use prost::Message;
-                use sea_query::{OnConflict, Query};
+                use sea_query::{Expr, OnConflict, Query};
 
+                use crate::proto::SnapshotRetention;
                 use crate::storage::schema::Snapshots;
 
                 let root_str = root.to_string();
                 let state_data = snapshot.encode_to_vec();
                 let sequence = snapshot.sequence;
+                let retention = snapshot.retention;
                 let created_at = chrono::Utc::now().to_rfc3339();
 
+                // Step 1: Insert or update the snapshot at this sequence
+                // PK is (domain, edition, root, sequence)
                 let stmt = Query::insert()
                     .into_table(Snapshots::Table)
                     .columns([
@@ -151,14 +150,16 @@ macro_rules! impl_snapshot_store {
                         Snapshots::Root,
                         Snapshots::Sequence,
                         Snapshots::StateData,
+                        Snapshots::Retention,
                         Snapshots::CreatedAt,
                     ])
                     .values_panic([
                         edition.into(),
                         domain.into(),
-                        root_str.into(),
+                        root_str.clone().into(),
                         sequence.into(),
                         state_data.into(),
+                        retention.into(),
                         created_at.into(),
                     ])
                     .on_conflict(
@@ -166,10 +167,11 @@ macro_rules! impl_snapshot_store {
                             Snapshots::Edition,
                             Snapshots::Domain,
                             Snapshots::Root,
+                            Snapshots::Sequence,
                         ])
                         .update_columns([
-                            Snapshots::Sequence,
                             Snapshots::StateData,
+                            Snapshots::Retention,
                             Snapshots::CreatedAt,
                         ])
                         .to_owned(),
@@ -178,6 +180,23 @@ macro_rules! impl_snapshot_store {
 
                 let sql = <$db_type>::build_insert(stmt);
                 sqlx::query(&sql).execute(&self.pool).await?;
+
+                // Step 2: Clean up old TRANSIENT snapshots (retention = 2)
+                // Keep PERSIST (1) and DEFAULT (0) snapshots
+                let cleanup_stmt = Query::delete()
+                    .from_table(Snapshots::Table)
+                    .and_where(Expr::col(Snapshots::Edition).eq(edition))
+                    .and_where(Expr::col(Snapshots::Domain).eq(domain))
+                    .and_where(Expr::col(Snapshots::Root).eq(&root_str))
+                    .and_where(Expr::col(Snapshots::Sequence).lt(sequence))
+                    .and_where(
+                        Expr::col(Snapshots::Retention)
+                            .eq(SnapshotRetention::RetentionTransient as i32),
+                    )
+                    .to_owned();
+
+                let cleanup_sql = <$db_type>::build_delete(cleanup_stmt);
+                sqlx::query(&cleanup_sql).execute(&self.pool).await?;
 
                 Ok(())
             }
@@ -212,6 +231,6 @@ macro_rules! impl_snapshot_store {
 
 // Generate implementations for each SQL backend
 #[cfg(feature = "postgres")]
-impl_snapshot_store!(super::postgres::Postgres, supports_get_at_seq: true);
+impl_snapshot_store!(super::postgres::Postgres);
 // SQLite is always compiled
-impl_snapshot_store!(super::sqlite::Sqlite, supports_get_at_seq: false);
+impl_snapshot_store!(super::sqlite::Sqlite);

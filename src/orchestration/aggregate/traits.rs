@@ -27,12 +27,30 @@ use super::types::{FactContext, TemporalQuery};
 #[async_trait]
 pub trait AggregateContext: Send + Sync {
     /// Load prior events for the aggregate.
+    ///
+    /// For edition branches, `explicit_divergence` specifies where the branch
+    /// splits from the main timeline. When `None`, uses implicit divergence
+    /// (first edition event). Explicit divergence is required for NEW branches
+    /// that don't yet have edition events.
     async fn load_prior_events(
         &self,
         domain: &str,
         edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
+    ) -> Result<EventBook, Status> {
+        self.load_prior_events_with_divergence(domain, edition, root, temporal, None)
+            .await
+    }
+
+    /// Load prior events with explicit divergence point for edition branching.
+    async fn load_prior_events_with_divergence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        temporal: &TemporalQuery,
+        explicit_divergence: Option<u32>,
     ) -> Result<EventBook, Status>;
 
     /// Persist new events to storage.
