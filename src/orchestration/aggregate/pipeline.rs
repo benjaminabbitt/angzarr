@@ -148,17 +148,36 @@ async fn execute_mode(
 
     let expected = extract_command_sequence(&command_book);
 
+    // Extract explicit divergence from Edition proto for branching.
+    // This must happen BEFORE pre_validate_sequence because explicit divergence
+    // means we're creating a new branch - the expected sequence won't match
+    // the current aggregate state in the new edition.
+    let explicit_divergence = extract_explicit_divergence(&command_book, &domain);
+
+    if explicit_divergence.is_some() {
+        tracing::debug!(
+            ?explicit_divergence,
+            %domain,
+            %edition,
+            expected,
+            "Using explicit divergence for edition branching"
+        );
+    }
+
     // For AGGREGATE_HANDLES, skip all coordinator-level sequence validation.
     // The aggregate is responsible for its own concurrency control.
     // For deferred sequences, we also skip pre-validation (we'll stamp after loading).
-    if merge_strategy != MergeStrategy::MergeAggregateHandles && !is_deferred {
+    // For explicit divergence (new edition branches), skip pre-validation because
+    // the expected sequence is the divergence point, not the current aggregate state.
+    let has_explicit_divergence = explicit_divergence.is_some();
+    if merge_strategy != MergeStrategy::MergeAggregateHandles
+        && !is_deferred
+        && !has_explicit_divergence
+    {
         // Pre-validate sequence (gRPC fast-path, no-op for local)
         ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
             .await?;
     }
-
-    // Extract explicit divergence from Edition proto for branching
-    let explicit_divergence = extract_explicit_divergence(&command_book, &domain);
 
     // Load prior events (with explicit divergence for new edition branches)
     let prior_events = ctx

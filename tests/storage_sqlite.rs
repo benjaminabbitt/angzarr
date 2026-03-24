@@ -100,12 +100,12 @@ async fn test_sqlite_snapshot_store() {
     test_domain_isolation(&store).await;
     println!("  test_domain_isolation: PASSED");
 
-    // retention tests (subset that works with single-snapshot storage)
+    // retention tests (now supported with new multi-snapshot schema)
     test_retention_transient_cleanup(&store).await;
     println!("  test_retention_transient_cleanup: PASSED");
 
-    // SKIPPED: test_retention_persist - SQLite stores only latest snapshot
-    println!("  test_retention_persist: SKIPPED (SQLite stores only latest snapshot)");
+    test_retention_persist(&store).await;
+    println!("  test_retention_persist: PASSED");
 
     test_retention_default(&store).await;
     println!("  test_retention_default: PASSED");

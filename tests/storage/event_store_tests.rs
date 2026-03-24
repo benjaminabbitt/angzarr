@@ -1012,6 +1012,47 @@ pub async fn test_edition_divergence_get_from<S: EventStore>(store: &S) {
     assert_eq!(from_events[1].sequence_num(), 4);
 }
 
+/// Test explicit divergence for NEW edition branches (no prior edition events).
+///
+/// This tests the case where we create a brand new branch with an explicit
+/// divergence point. Without existing edition events, implicit divergence
+/// fails - the stored procedure needs explicit divergence to know where to
+/// branch from the main timeline.
+///
+/// Scenario:
+/// - Main timeline has events 0-4
+/// - We want to branch at seq 3 (new branch starts from main[0..3])
+/// - Branch has NO existing events yet
+/// - Reading from branch should return main[0, 1, 2] (up to divergence)
+pub async fn test_edition_explicit_divergence_new_branch<S: EventStore>(store: &S) {
+    let domain = "test_explicit_div";
+    let root = Uuid::new_v4();
+
+    // Add events to main timeline (0, 1, 2, 3, 4)
+    store
+        .add(domain, "angzarr", root, make_events(0, 5), "", None, None)
+        .await
+        .expect("add to main should succeed");
+
+    // Read from a NEW branch with explicit divergence at seq 3.
+    // This branch has NO existing events.
+    // With explicit divergence at 3, we should get main[0, 1, 2].
+    let branch_events = store
+        .get_with_divergence(domain, "new-explicit-branch", root, Some(3))
+        .await
+        .expect("get from new branch should succeed");
+
+    // Should get main events up to (but not including) divergence point
+    assert_eq!(
+        branch_events.len(),
+        3,
+        "new branch with explicit divergence at 3 should have main[0, 1, 2]"
+    );
+    assert_eq!(branch_events[0].sequence_num(), 0);
+    assert_eq!(branch_events[1].sequence_num(), 1);
+    assert_eq!(branch_events[2].sequence_num(), 2);
+}
+
 pub async fn test_edition_filtered_roots<S: EventStore>(store: &S) {
     let domain = "test_edition_roots";
     let root_main = Uuid::new_v4();
@@ -1878,6 +1919,9 @@ macro_rules! run_event_store_tests {
 
         test_edition_filtered_roots($store).await;
         println!("  test_edition_filtered_roots: PASSED");
+
+        test_edition_explicit_divergence_new_branch($store).await;
+        println!("  test_edition_explicit_divergence_new_branch: PASSED");
 
         // idempotency tests
         test_add_with_external_id_returns_duplicate($store).await;
