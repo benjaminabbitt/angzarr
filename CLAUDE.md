@@ -55,7 +55,6 @@ Use enum names, not integer representations.
 | Python | Support scripts, secrets, health checks |
 | Kind | Local k8s (`just kind up/down/status`) |
 | Skaffold | **ALL** image builds/deploys (prevents cache staleness) |
-| Qdrant MCP | `just qdrant-start`, `just reindex`, `just qdrant-stop` |
 
 **Skaffold is mandatory.** Kind caches images by tag. Manual `podman build` + `helm upgrade` causes stale images. Skaffold uses content-addressable tags (git SHA).
 

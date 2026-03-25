@@ -98,8 +98,22 @@ impl<P: HandlerPositionStore, E: EventSource> GapFiller<P, E> {
 
     /// Fill gaps in an EventBook relative to the handler's checkpoint.
     ///
-    /// If the EventBook has events missing between the handler's checkpoint
-    /// and the first event in the book, fetches those events and prepends them.
+    /// Ensures handlers receive a complete event sequence by fetching any
+    /// events between their checkpoint and the incoming EventBook's first event.
+    ///
+    /// # Gap Analysis
+    ///
+    /// | Scenario | Condition | Action |
+    /// |----------|-----------|--------|
+    /// | Complete | first_event_seq == checkpoint + 1 | Return as-is |
+    /// | New Aggregate | checkpoint is None | Fetch from seq 0 |
+    /// | Gap | first_event_seq > checkpoint + 1 | Fetch missing range |
+    ///
+    /// # Early Returns
+    ///
+    /// - Empty books: No events to process, return as-is
+    /// - Books with snapshots: Snapshot represents complete state, no gap fill needed
+    /// - NewAggregate with first_event_seq == 0: Already starts at beginning
     ///
     /// # Returns
     /// Complete EventBook with all events from (checkpoint + 1) to max_sequence.

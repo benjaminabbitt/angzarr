@@ -8,14 +8,13 @@
 //! - Emitting SagaCompensationFailed events
 //! - Escalation via configurable handlers (EventBus, webhook, etc.)
 //!
-//! # New Provenance Model
+//! # Provenance Model
 //!
-//! Command provenance is now stored in each page's `PageHeader.angzarr_deferred`:
+//! Command provenance is stored in each page's `PageHeader.angzarr_deferred`:
 //! - `source`: Cover identifying the source aggregate (domain + root)
 //! - `source_seq`: Sequence of the triggering event
 //!
-//! The old `CommandBook.saga_origin` field is removed. The compensation flow
-//! extracts source info from the first command page's header.
+//! The compensation flow extracts source info from the first command page's header.
 
 use std::sync::Arc;
 
@@ -501,12 +500,28 @@ pub enum CompensationOutcome {
 
 /// Handle a BusinessResponse to a rejection Notification.
 ///
-/// Implements the decision logic for processing revocation responses:
-/// 1. If business returns events with pages → use them
-/// 2. If business returns RevocationResponse → process flags
-/// 3. If empty/error → use config-based fallback
+/// Routes compensation responses through a priority-based decision tree:
 ///
-/// Returns actions to take (emit events, escalate, etc.)
+/// # Response Priority
+///
+/// 1. **Explicit events** - Business provided compensation events directly.
+///    These are used as-is (business knows best how to compensate).
+///
+/// 2. **RevocationResponse** - Business returned flags indicating desired
+///    escalation behavior. Flags are processed by `process_revocation_flags`.
+///
+/// 3. **Empty/Error fallback** - If business returns empty response or gRPC
+///    fails, we use config-based fallback flags. This ensures compensation
+///    always has a defined behavior even when business logic is unavailable.
+///
+/// # Fallback Strategy
+///
+/// The fallback behavior exists because saga compensation must complete even
+/// if the source aggregate's revocation handler fails. Config flags determine
+/// whether to emit system events, quarantine, or escalate by default.
+///
+/// Importantly, fallback never sets `abort = true` - we don't want network
+/// failures to halt saga processing entirely.
 pub async fn handle_business_response(
     response: std::result::Result<BusinessResponse, tonic::Status>,
     context: &CompensationContext,
@@ -577,6 +592,38 @@ pub async fn handle_business_response(
 }
 
 /// Process RevocationResponse flags and take appropriate actions.
+///
+/// # Flag Processing Order
+///
+/// Flags are processed in a specific order to ensure proper escalation:
+///
+/// 1. **quarantine** (`send_to_dead_letter_queue`) - Preserves context for
+///    later replay/investigation. Runs first so failure data is captured
+///    even if subsequent steps fail.
+///
+/// 2. **notify** (`escalate`) - Alerts operators via webhook. Runs second
+///    so humans are notified after quarantine succeeds.
+///
+/// 3. **abort** - Stops the saga chain entirely. Checked after escalation
+///    so operators are notified before the chain halts.
+///
+/// 4. **emit_system_revocation** - Emits SagaCompensationFailed event to
+///    fallback domain. Only runs if abort is false.
+///
+/// # Error Isolation
+///
+/// Escalation handler errors (quarantine/notify failures) are logged but
+/// don't prevent other flags from processing. This ensures partial success:
+/// if quarantine succeeds but webhook fails, the data is still preserved.
+///
+/// # Outcome Mapping
+///
+/// | Flags Set | Outcome |
+/// |-----------|---------|
+/// | abort=true | `Err(Aborted)` |
+/// | emit_system_revocation=true | `EmitSystemRevocation` |
+/// | only escalation flags | `Declined` (escalation already happened) |
+/// | none | `Declined` |
 async fn process_revocation_flags(
     revocation: &RevocationResponse,
     context: &CompensationContext,
@@ -646,8 +693,26 @@ async fn process_revocation_flags(
 ///
 /// This is the shared entry point for saga compensation - both gRPC and local
 /// modes call this after getting the BusinessResponse from the coordinator.
-/// Handles event persistence acknowledgment, system revocation emission,
-/// escalation (quarantine/notify), and logging.
+///
+/// # Outcome Handling
+///
+/// | Outcome | Action |
+/// |---------|--------|
+/// | `Events` | Log success - events already persisted by HandleCompensation |
+/// | `EmitSystemRevocation` | Publish SagaCompensationFailed to event bus |
+/// | `Declined` | Debug log - business chose not to compensate |
+/// | `Aborted` (outcome) | Error log - business explicitly stopped chain |
+/// | `Aborted` (error) | Error log - abort flag was set during processing |
+/// | Other errors | Error log - unexpected failure |
+///
+/// # Aborted Variants
+///
+/// There are two paths to "aborted":
+/// - `CompensationOutcome::Aborted` - Business explicitly returned abort in events
+/// - `CompensationError::Aborted` - The abort flag was set in RevocationResponse
+///
+/// Both halt the saga chain, but the distinction helps with debugging whether
+/// the abort came from explicit business logic or flag-based processing.
 pub async fn process_compensation_response(
     response: std::result::Result<crate::proto::BusinessResponse, tonic::Status>,
     context: &CompensationContext,

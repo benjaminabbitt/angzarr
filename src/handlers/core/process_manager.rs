@@ -49,6 +49,21 @@ pub struct ProcessManagerEventHandler {
 
 impl ProcessManagerEventHandler {
     /// Create from a context factory with fetcher and executor.
+    ///
+    /// # When to Use
+    ///
+    /// Use this when you already have a `PMContextFactory` implementation:
+    /// - Standalone mode: `LocalPMContextFactory`
+    /// - Distributed mode with custom wiring
+    ///
+    /// For standard distributed mode with gRPC client, use `new()` instead.
+    ///
+    /// # Error Propagation
+    ///
+    /// Unlike `SagaEventHandler`, PM defaults to `propagate_errors = true`.
+    /// This reflects the difference in typical error handling: PM state is
+    /// persisted independently and errors often indicate data consistency
+    /// issues that should be investigated rather than swallowed.
     pub fn from_factory(
         context_factory: Arc<dyn PMContextFactory>,
         destination_fetcher: Arc<dyn DestinationFetcher>,
@@ -72,6 +87,16 @@ impl ProcessManagerEventHandler {
     }
 
     /// Set target filter for handler-level event filtering.
+    ///
+    /// # Target Filtering
+    ///
+    /// In **distributed mode**, filtering typically happens at the bus level
+    /// (AMQP routing keys, Kafka topics, etc.). Leave targets empty.
+    ///
+    /// In **standalone mode**, all events flow through a shared in-process bus.
+    /// Use targets to filter which events this PM should process.
+    ///
+    /// Empty targets = process all events (distributed mode default).
     pub fn with_targets(mut self, targets: Vec<Target>) -> Self {
         self.targets = targets;
         self

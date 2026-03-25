@@ -50,7 +50,14 @@ pub struct SagaEventHandler {
 }
 
 impl SagaEventHandler {
-    /// Create from a context factory with executor and fetcher.
+    /// Create a basic saga handler with minimal dependencies.
+    ///
+    /// Use this for simple sagas that:
+    /// - Only emit commands (no fact injection)
+    /// - Don't need output domain validation
+    /// - Use default retry backoff
+    ///
+    /// For advanced features, use `from_factory_with_validator`.
     pub fn from_factory(
         context_factory: Arc<dyn SagaContextFactory>,
         command_executor: Arc<dyn CommandExecutor>,
@@ -68,7 +75,24 @@ impl SagaEventHandler {
         }
     }
 
-    /// Create from a context factory with output domain validation and fact injection.
+    /// Create a fully-featured saga handler with all optional dependencies.
+    ///
+    /// # Parameters
+    ///
+    /// - `command_bus`: For async command delivery (alternative to sync executor)
+    /// - `destination_fetcher`: For looking up command destinations from service discovery
+    /// - `fact_executor`: For injecting facts (external events) into aggregates
+    /// - `output_domain_validator`: For validating saga output commands target allowed domains
+    /// - `backoff`: Custom retry configuration for transient failures
+    ///
+    /// # When to Use Each Dependency
+    ///
+    /// | Dependency | Use Case |
+    /// |------------|----------|
+    /// | `command_bus` | Saga outputs async commands (fire-and-forget) |
+    /// | `destination_fetcher` | Distributed mode with dynamic service discovery |
+    /// | `fact_executor` | Saga injects external facts (e.g., webhook events) |
+    /// | `output_domain_validator` | Enforce saga can only command specific domains |
     pub fn from_factory_with_validator(
         context_factory: Arc<dyn SagaContextFactory>,
         command_executor: Arc<dyn CommandExecutor>,

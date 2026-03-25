@@ -98,9 +98,6 @@ build/images/build.json
 
 .scm/sessions/
 
-# Vector database (local Qdrant storage for MCP semantic search)
-.vectors/
-
 # Mutation testing output
 mutants.out/
 mutants.out.*

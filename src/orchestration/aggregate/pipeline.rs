@@ -102,6 +102,45 @@ pub async fn execute_command_with_retry(
     run_with_retry(operation, backoff).await
 }
 
+/// Execute an aggregate command in normal (non-speculative) mode.
+///
+/// # Pipeline Stages
+///
+/// 1. **Parse** - Extract domain, root UUID, edition, correlation ID
+/// 2. **Idempotency check** - For deferred commands (saga-produced), return cached result
+/// 3. **Pre-validate** - Fast-path sequence check (skipped for certain strategies)
+/// 4. **Load** - Fetch prior events from storage (with optional divergence point)
+/// 5. **Transform** - Apply upcasting to prior events
+/// 6. **Validate sequence** - Check expected vs actual based on merge strategy
+/// 7. **Invoke** - Call business logic with contextual command
+/// 8. **Post-validate** - For COMMUTATIVE, check field overlap after execution
+/// 9. **Persist** - Store new events and optional snapshot
+/// 10. **Post-persist** - Publish to event bus, run sync projectors
+///
+/// # Merge Strategies
+///
+/// | Strategy | On Mismatch | Use Case |
+/// |----------|-------------|----------|
+/// | `STRICT` | Retry (FAILED_PRECONDITION) | Default, optimistic locking |
+/// | `COMMUTATIVE` | Check field overlap post-exec | Concurrent non-conflicting writes |
+/// | `MANUAL` | Send to DLQ (ABORTED) | Human review required |
+/// | `AGGREGATE_HANDLES` | Skip validation | Aggregate manages concurrency |
+///
+/// # Pre-Validation Bypass
+///
+/// Pre-validation is skipped when:
+/// - `AGGREGATE_HANDLES` strategy (aggregate manages its own concurrency)
+/// - Deferred sequences (saga commands stamped with actual sequence after load)
+/// - Explicit divergence (creating new edition branch from specific point)
+///
+/// # Deferred Sequence Handling
+///
+/// Saga-produced commands use `AngzarrDeferred` sequences. The flow:
+/// 1. Check idempotency using source provenance (return cached if duplicate)
+/// 2. Skip pre-validation (can't validate until we know actual sequence)
+/// 3. Load prior events to get actual sequence
+/// 4. Stamp actual sequence onto command pages
+/// 5. Proceed with normal execution
 #[tracing::instrument(
     name = "aggregate.execute",
     skip_all,

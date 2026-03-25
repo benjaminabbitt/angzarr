@@ -675,26 +675,6 @@ deploy: _cluster-ready
 dev: _cluster-ready
     skaffold dev
 
-# === Vector Search ===
-
-# Start Qdrant container for semantic search
-qdrant-start:
-    @mkdir -p "{{TOP}}/.vectors/qdrant-data"
-    @{{CONTAINER_CMD}} start qdrant 2>/dev/null || \
-        {{CONTAINER_CMD}} run -d --name qdrant \
-            -p 6333:6333 -p 6334:6334 \
-            -v "{{TOP}}/.vectors/qdrant-data:/qdrant/storage:Z" \
-            docker.io/qdrant/qdrant:latest
-    @echo "Qdrant running at http://127.0.0.1:6333"
-
-# Stop Qdrant container
-qdrant-stop:
-    @{{CONTAINER_CMD}} stop qdrant 2>/dev/null || true
-
-# Rebuild vector index for semantic codebase search (uses containerized Qdrant)
-reindex: qdrant-start
-    uv run "{{TOP}}/scripts/index_codebase.py" --url http://127.0.0.1:6333
-
 # === Claude Code LSP Setup ===
 
 # Check LSP configuration and server availability
