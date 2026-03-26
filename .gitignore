@@ -121,3 +121,6 @@ docs/build/
 docs/.docusaurus/
 .docs-backup/
 .claude/settings.local.json
+
+# SCM memory (local session data, not shared)
+.scm/memory/

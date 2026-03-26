@@ -51,7 +51,11 @@ struct MockSagaHandler;
 
 #[async_trait]
 impl SagaHandler for MockSagaHandler {
-    async fn handle(&self, _source: &EventBook) -> Result<SagaResponse, Status> {
+    async fn handle(
+        &self,
+        _source: &EventBook,
+        _destination_sequences: &std::collections::HashMap<String, u32>,
+    ) -> Result<SagaResponse, Status> {
         Ok(SagaResponse::default())
     }
 }
@@ -63,7 +67,8 @@ async fn test_instrumented_saga_delegates() {
     let handler = InstrumentedSagaHandler::new(inner, "test-saga");
 
     let source = EventBook::default();
-    let result = handler.handle(&source).await;
+    let sequences = std::collections::HashMap::new();
+    let result = handler.handle(&source, &sequences).await;
     assert!(result.is_ok());
 }
 

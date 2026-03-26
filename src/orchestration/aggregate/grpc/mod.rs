@@ -203,6 +203,7 @@ impl GrpcAggregateContext {
                     source: Some(events.clone()),
                     sync_mode: sync_mode.into(),
                     cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+                    destination_sequences: std::collections::HashMap::new(), // Coordinator fetches sequences
                 },
                 correlation_id,
             );

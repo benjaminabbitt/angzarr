@@ -20,9 +20,11 @@ set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 REGISTRY := "ghcr.io/angzarr-io"
-# Container runtime: prefer podman, fall back to docker, empty if neither available
+# Container runtime: prefer docker, fall back to podman, empty if neither available
 # (empty is fine when running inside a container where we don't need nested containers)
-CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null || echo ""`
+CONTAINER_CMD := `command -v docker 2>/dev/null || command -v podman 2>/dev/null || echo ""`
+# Run containers as current user to avoid root-owned files in mounted volumes
+CONTAINER_RUN := CONTAINER_CMD + " run --rm -u $(id -u):$(id -g)"
 
 # NOTE: Client libraries and examples have been extracted to separate repos:
 #   - angzarr-client-{lang}: Client libraries (pip install angzarr-client, etc.)
@@ -67,7 +69,7 @@ _container +ARGS: _build-images
         just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
         IMAGE=$(just _image-tag angzarr-rust)
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
             -w /workspace \
@@ -83,8 +85,11 @@ _container-dind +ARGS: _build-images
         just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
         IMAGE=$(just _image-tag angzarr-rust)
-        # Find container socket (podman or docker)
-        if command -v podman &>/dev/null; then
+        # Find container socket (docker or podman)
+        if [ -S "/var/run/docker.sock" ]; then
+            SOCK="/var/run/docker.sock"
+            SOCK_MSG="Ensure Docker daemon is running"
+        elif [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock" ]; then
             SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
             SOCK_MSG="Start the podman socket with: systemctl --user start podman.socket"
         else
@@ -96,7 +101,7 @@ _container-dind +ARGS: _build-images
             echo "$SOCK_MSG"
             exit 1
         fi
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
             -v "$SOCK:/var/run/docker.sock:Z" \
@@ -119,7 +124,7 @@ _lang-container LANG +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         {{ARGS}}
     else
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-{{LANG}}:latest \
@@ -153,7 +158,7 @@ _buf +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ] || command -v buf &>/dev/null; then
         cd "{{TOP}}/proto" && buf {{ARGS}}
     else
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace/proto \
             {{REGISTRY}}/angzarr-base:latest \
@@ -173,20 +178,13 @@ buf-push:
     just _buf push
 
 # Generate proto documentation (outputs to docs/docs/api/proto/)
-# Uses podman locally, docker in CI (auto-detects)
 buf-docs:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Auto-detect container runtime (prefer podman, fall back to docker)
-    CONTAINER_CMD=${CONTAINER_CMD:-$(command -v podman 2>/dev/null || command -v docker 2>/dev/null)}
-    if [ -z "$CONTAINER_CMD" ]; then
-        echo "Error: neither podman nor docker found" >&2
-        exit 1
-    fi
     mkdir -p "{{TOP}}/docs/docs/api/proto"
     # List proto files (exclude health which is internal)
     PROTOS=$(find "{{TOP}}/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
-    $CONTAINER_CMD run --rm \
+    {{CONTAINER_RUN}} \
         -v "{{TOP}}/proto:/protos:Z" \
         -v "{{TOP}}/docs/docs/api/proto:/out:Z" \
         docker.io/pseudomuto/protoc-gen-doc \
@@ -209,7 +207,7 @@ _go +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ] || (command -v go &>/dev/null && command -v buf &>/dev/null); then
         eval {{ARGS}}
     else
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-go:latest \
@@ -388,7 +386,7 @@ test-local:
     @echo "=== All Local Tests Complete ==="
     @echo "═══════════════════════════════════════════════════════════════════"
 
-# Run all local tests including testcontainers (requires podman socket)
+# Run all local tests including testcontainers (requires docker socket)
 # =============================================================================
 # Complete validation suite testing ALL storage and bus backends.
 #

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "scm": {
+      "command": "/home/babbitt/.local/bin/scm",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

@@ -8,10 +8,11 @@
       ]
     },
     "scm": {
-      "command": "/home/babbitt/go/bin/scm",
+      "command": "/home/babbitt/.local/bin/scm",
       "args": [
         "mcp"
       ],
+      "cwd": "${CLAUDE_PROJECT_DIR}",
       "_scm": "scm-auto"
     }
   }

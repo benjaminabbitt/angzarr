@@ -93,10 +93,30 @@ impl ProcessManagerContext for GrpcPMContext {
             "GrpcPMContext.handle sending trigger to PM"
         );
 
+        // Extract next_sequence from each destination EventBook
+        let destination_sequences = destinations
+            .iter()
+            .filter_map(|eb| {
+                let domain = eb.cover.as_ref()?.domain.clone();
+                let max_seq = eb
+                    .pages
+                    .iter()
+                    .filter_map(|p| {
+                        p.header.as_ref().and_then(|h| match &h.sequence_type {
+                            Some(crate::proto::page_header::SequenceType::Sequence(s)) => Some(*s),
+                            _ => None,
+                        })
+                    })
+                    .max()
+                    .unwrap_or(0);
+                Some((domain, max_seq + 1))
+            })
+            .collect();
+
         let request = ProcessManagerHandleRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
-            destinations: destinations.to_vec(),
+            destination_sequences,
         };
 
         let mut client = self.client.lock().await;

@@ -32,7 +32,7 @@ pub mod grpc;
 // Local module always compiled (sqlite always on)
 pub mod local;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -57,28 +57,30 @@ pub type OutputDomainValidator = dyn Fn(&CommandBook) -> Result<(), String> + Se
 
 /// Saga handler for stateless cross-domain translation.
 ///
-/// Sagas are **pure translators**: they receive source events and produce commands
-/// for target domains. They do NOT receive destination state — the framework handles
-/// sequence stamping and delivery retries.
+/// Sagas are **pure translators**: they receive source events and destination
+/// sequences for command stamping. They should NOT rebuild destination state
+/// to make decisions — use facts and let aggregates decide.
 ///
 /// # Contract
 ///
-/// - **Input**: Source EventBook (events from one domain)
+/// - **Input**: Source EventBook + destination sequences (domain → next_sequence)
 /// - **Output**: SagaResponse with commands (for target domains) and facts (for injection)
-/// - **Sequences**: Commands use `angzarr_deferred` (framework stamps explicit sequences on delivery)
+/// - **Sequences**: Use `stamp_command()` helper to stamp commands with correct sequence
 /// - **Stateless**: Each event is processed independently with no memory of previous events
 #[async_trait]
 pub trait SagaHandler: Send + Sync + 'static {
     /// Translate source events into commands for target domains.
     ///
-    /// Commands should have `cover` set to identify the target aggregate.
-    /// The framework will stamp `angzarr_deferred` with source info for:
-    /// - Provenance tracking (which event triggered this command)
-    /// - Compensation routing (where to send rejections)
-    /// - Idempotency (prevent duplicate processing on retry)
+    /// `destination_sequences` maps output domain names to their `next_sequence` values.
+    /// Use the client library's `stamp_command()` helper to stamp commands correctly.
     ///
+    /// Commands should have `cover` set to identify the target aggregate.
     /// Return empty commands vec if saga doesn't act on this event (no-op).
-    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, tonic::Status>;
+    async fn handle(
+        &self,
+        source: &EventBook,
+        destination_sequences: &HashMap<String, u32>,
+    ) -> Result<SagaResponse, tonic::Status>;
 }
 
 /// Factory for creating per-invocation saga contexts.
@@ -92,6 +94,14 @@ pub trait SagaContextFactory: Send + Sync {
 
     /// The name of this saga (used for metrics and tracing).
     fn name(&self) -> &str;
+
+    /// Output domains this saga sends commands to.
+    ///
+    /// Framework fetches `next_sequence` for each domain before invoking the saga.
+    /// Sagas use these sequences for command stamping via `stamp_command()` helper.
+    fn output_domains(&self) -> &[String] {
+        &[] // Default: no output domains (backward compat)
+    }
 }
 
 /// Operations needed by the saga orchestration.
@@ -101,18 +111,19 @@ pub trait SagaContextFactory: Send + Sync {
 /// captures the per-invocation context (source event book, saga handler, etc.)
 ///
 /// The new model has sagas as pure translators:
-/// - Saga receives only source events (no destination state)
-/// - Saga produces commands with deferred sequences
-/// - Framework stamps explicit sequences on delivery
+/// - Saga receives source events + destination sequences (for command stamping)
+/// - Saga produces commands with explicit sequences (via `stamp_command()` helper)
 /// - Framework retries delivery on conflict (not saga re-execution)
 #[async_trait]
 pub trait SagaRetryContext: Send + Sync {
     /// Execute saga translation: source events → commands + facts.
     ///
-    /// Returns commands (with angzarr_deferred) to deliver and events (facts)
-    /// to inject. The saga does NOT set explicit sequences — the framework
-    /// stamps them on delivery.
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>>;
+    /// `destination_sequences` maps domain names to their `next_sequence` values.
+    /// Sagas use these via `stamp_command()` helper to stamp commands correctly.
+    async fn handle(
+        &self,
+        destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Handle a permanently rejected command (compensation, logging, etc.)
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str);
@@ -131,6 +142,13 @@ pub trait SagaRetryContext: Send + Sync {
     /// Sagas that need precise per-event tracking should set `source_seq`
     /// explicitly on each command's `PageHeader.angzarr_deferred`.
     fn source_max_sequence(&self) -> u32;
+
+    /// Output domains this saga sends commands to.
+    ///
+    /// Framework fetches `next_sequence` for each domain before invoking handle().
+    fn output_domains(&self) -> &[String] {
+        &[] // Default: no output domains
+    }
 }
 
 /// State for retryable saga command delivery.
@@ -335,17 +353,16 @@ impl<'a> SagaRetryBuilder<'a> {
 
 /// Saga orchestration with delivery-retry model.
 ///
-/// 1. Execute saga translation: source events → commands with angzarr_deferred
-/// 2. Stamp provenance (source cover + seq) on commands
-/// 3. Validate output domains (if validator provided)
-/// 4. Deliver commands with retry on sequence conflict
-/// 5. Inject facts into target aggregates
+/// 1. Fetch destination sequences for output domains
+/// 2. Execute saga translation: source events + sequences → commands
+/// 3. Stamp provenance (source cover + seq) on commands
+/// 4. Validate output domains (if validator provided)
+/// 5. Deliver commands with retry on sequence conflict
+/// 6. Inject facts into target aggregates
 ///
-/// Sagas are **pure translators** — they receive only source events, not
-/// destination state. The framework handles:
-/// - Sequence stamping on delivery (converts angzarr_deferred → explicit)
-/// - Delivery retry on conflict (not saga re-execution)
-/// - Idempotency via angzarr_deferred source info
+/// Sagas are **pure translators** — they receive source events and destination
+/// sequences (for command stamping). They should NOT rebuild destination state
+/// to make decisions. Use facts and let aggregates decide.
 ///
 /// `sync_mode` controls how commands are executed:
 /// - `Async`: Commands published to bus (fire-and-forget), results via RejectionNotification
@@ -360,7 +377,7 @@ pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
     command_bus: Option<&dyn CommandBus>,
-    _fetcher: Option<&dyn DestinationFetcher>,
+    fetcher: Option<&dyn DestinationFetcher>,
     fact_executor: Option<&dyn FactExecutor>,
     saga_name: &str,
     correlation_id: &str,
@@ -368,11 +385,34 @@ pub async fn orchestrate_saga(
     sync_mode: SyncMode,
     backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
-    // Phase 1: Execute saga translation
-    // Saga receives only source events and produces commands with angzarr_deferred.
-    // No destination state fetching — sagas are pure translators.
+    // Phase 1: Fetch destination sequences for output domains
+    // Saga uses these for command stamping via stamp_command() helper.
+    let mut destination_sequences = HashMap::new();
+    let output_domains = ctx.output_domains();
+
+    if !output_domains.is_empty() {
+        if let Some(fetcher) = fetcher {
+            for domain in output_domains {
+                // Fetch by correlation_id to get current sequence for this workflow
+                if let Some(dest_book) = fetcher.fetch_by_correlation(domain, correlation_id).await
+                {
+                    destination_sequences.insert(domain.clone(), dest_book.next_sequence);
+                    debug!(%domain, next_seq = dest_book.next_sequence, "Fetched destination sequence");
+                } else {
+                    // Domain doesn't exist yet for this correlation - start at 0
+                    destination_sequences.insert(domain.clone(), 0);
+                    debug!(%domain, "Destination not found, using sequence 0");
+                }
+            }
+        } else {
+            warn!("Saga has output_domains but no DestinationFetcher provided");
+        }
+    }
+
+    // Phase 2: Execute saga translation
+    // Saga receives source events and destination sequences for command stamping.
     let saga_response = ctx
-        .handle()
+        .handle(destination_sequences)
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
 

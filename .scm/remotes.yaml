@@ -1,5 +1,13 @@
 remotes:
-    github:
+    personal:
         name: ""
-        url: https://github.com/benjaminabbitt/scm-github
+        url: https://github.com/benjaminabbitt/scm-personal
+        version: v1
+    scm-main:
+        name: ""
+        url: https://github.com/SophisticatedContextManager/scm-main
+        version: v1
+    scm-main-2:
+        name: ""
+        url: https://github.com/sophisticiatedContextManager/scm-main
         version: v1
