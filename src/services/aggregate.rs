@@ -221,7 +221,10 @@ impl CommandHandlerCoordinatorService for AggregateService {
         // Validate command book before processing
         validate_command_book(&command_book, &self.limits)?;
 
-        let ctx = self.create_context_for_sync_mode(sync_request.sync_mode);
+        let mut ctx = self.create_context_for_sync_mode(sync_request.sync_mode);
+        if let Some(ref cascade_id) = sync_request.cascade_id {
+            ctx = ctx.with_cascade_id(cascade_id);
+        }
 
         let result =
             execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;

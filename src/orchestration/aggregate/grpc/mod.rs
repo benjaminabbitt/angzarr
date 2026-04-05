@@ -82,6 +82,9 @@ pub struct GrpcAggregateContext {
     dlq_publisher: Arc<dyn DeadLetterPublisher>,
     /// Component name for DLQ metadata.
     component_name: String,
+    /// Cascade ID for 2PC atomic execution.
+    /// When set, events are persisted with `committed=false` and cascade_id stamped.
+    cascade_id: Option<String>,
 }
 
 impl GrpcAggregateContext {
@@ -106,6 +109,7 @@ impl GrpcAggregateContext {
             sync_mode: None,
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
+            cascade_id: None,
         }
     }
 
@@ -133,6 +137,7 @@ impl GrpcAggregateContext {
             sync_mode: None,
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
+            cascade_id: None,
         }
     }
 
@@ -160,6 +165,16 @@ impl GrpcAggregateContext {
     /// Set the component name for DLQ metadata.
     pub fn with_component_name(mut self, name: impl Into<String>) -> Self {
         self.component_name = name.into();
+        self
+    }
+
+    /// Set the cascade ID for 2PC atomic execution.
+    ///
+    /// When cascade_id is set, events are written with `committed=false` and
+    /// the cascade_id stamped on each event. This enables atomic commit/rollback
+    /// across multiple aggregates.
+    pub fn with_cascade_id(mut self, cascade_id: impl Into<String>) -> Self {
+        self.cascade_id = Some(cascade_id.into());
         self
     }
 
@@ -329,6 +344,10 @@ impl GrpcAggregateContext {
 
 #[async_trait]
 impl AggregateContext for GrpcAggregateContext {
+    fn cascade_id(&self) -> Option<&str> {
+        self.cascade_id.as_deref()
+    }
+
     #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
     async fn load_prior_events_with_divergence(
         &self,
@@ -386,7 +405,7 @@ impl AggregateContext for GrpcAggregateContext {
     ) -> Result<EventBook, Status> {
         // Compute new pages: those in received but not in prior
         let prior_max_seq = prior.pages.iter().map(|p| p.sequence_num()).max();
-        let new_pages: Vec<_> = received
+        let mut new_pages: Vec<_> = received
             .pages
             .iter()
             .filter(|p| {
@@ -414,6 +433,18 @@ impl AggregateContext for GrpcAggregateContext {
 
         // Persist new events if any
         if !new_pages.is_empty() {
+            // 2PC: If cascade_id is set, stamp events with committed=false
+            if let Some(ref cascade_id) = self.cascade_id {
+                new_pages = new_pages
+                    .into_iter()
+                    .map(|mut page| {
+                        page.committed = false;
+                        page.cascade_id = Some(cascade_id.clone());
+                        page
+                    })
+                    .collect();
+            }
+
             // Build cover from parameters if client didn't provide one
             let cover = received.cover.clone().or_else(|| {
                 Some(Cover {

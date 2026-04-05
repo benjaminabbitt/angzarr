@@ -103,12 +103,21 @@ pub trait EscalationHandler: Send + Sync {
 pub struct DefaultEscalationHandler {
     event_bus: Arc<dyn EventBus>,
     config: SagaCompensationConfig,
+    http_client: reqwest::Client,
 }
 
 impl DefaultEscalationHandler {
     /// Create a new default escalation handler.
     pub fn new(event_bus: Arc<dyn EventBus>, config: SagaCompensationConfig) -> Self {
-        Self { event_bus, config }
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client for webhook escalation");
+        Self {
+            event_bus,
+            config,
+            http_client,
+        }
     }
 }
 
@@ -182,15 +191,6 @@ impl EscalationHandler for DefaultEscalationHandler {
             "occurred_at": chrono::Utc::now().to_rfc3339(),
         });
 
-        // POST to webhook with retry (best-effort, don't fail on errors)
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| {
-                error!(error = %e, "Failed to create HTTP client for webhook");
-                CompensationError::EscalationFailed(format!("HTTP client error: {}", e))
-            })?;
-
         // Retry with exponential backoff: 100ms -> 1s, max 3 attempts
         let max_attempts = 3;
         let mut attempt = 0;
@@ -199,7 +199,8 @@ impl EscalationHandler for DefaultEscalationHandler {
         while attempt < max_attempts {
             attempt += 1;
 
-            match client
+            match self
+                .http_client
                 .post(webhook_url)
                 .header("Content-Type", "application/json")
                 .json(&payload)

@@ -1,5 +1,0 @@
-description: Rust development with prototyping focus
-parents:
-    - profile:scm-main/rust-developer
-bundles:
-    - bundle:personal/prototyping

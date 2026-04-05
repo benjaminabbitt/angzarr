@@ -80,8 +80,8 @@ full-musl = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lo
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)
-# NOTE: Using local path during development. For release, use git or crates.io dependency.
-angzarr-client = { path = "/home/babbitt/workspace/angzarr/client-rust/main" }
+# Git dependency for container builds; local path override in [patch] for development
+angzarr-client = { git = "https://github.com/angzarr-io/angzarr-client-rust.git" }
 
 # gRPC
 tonic = { version = "0.14", features = ["tls-ring", "transport"] }
@@ -371,3 +371,4 @@ codegen-units = 1
 strip = true
 panic = "abort"
 opt-level = 3
+

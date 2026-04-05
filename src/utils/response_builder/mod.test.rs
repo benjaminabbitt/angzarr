@@ -100,7 +100,7 @@ fn test_extract_events_from_response_with_events() {
         result: Some(business_response::Result::Events(event_book)),
     };
 
-    let result = extract_events_from_response(response, "test-correlation".to_string());
+    let result = extract_events_from_response(response, "test-correlation");
     assert!(result.is_ok());
     let events = result.unwrap();
     // Correlation ID should be set on cover
@@ -127,7 +127,7 @@ fn test_extract_events_from_response_revocation() {
         })),
     };
 
-    let result = extract_events_from_response(response, "test-correlation".to_string());
+    let result = extract_events_from_response(response, "test-correlation");
     assert!(result.is_err());
     let status = result.unwrap_err();
     assert_eq!(status.code(), tonic::Code::FailedPrecondition);
@@ -142,7 +142,7 @@ fn test_extract_events_from_response_revocation() {
 fn test_extract_events_from_response_empty() {
     let response = BusinessResponse { result: None };
 
-    let result = extract_events_from_response(response, "test-correlation".to_string());
+    let result = extract_events_from_response(response, "test-correlation");
     assert!(result.is_ok());
     let events = result.unwrap();
     assert!(events.pages.is_empty());
@@ -170,7 +170,7 @@ fn test_extract_events_from_response_notification() {
         })),
     };
 
-    let result = extract_events_from_response(response, "test-correlation".to_string());
+    let result = extract_events_from_response(response, "test-correlation");
     assert!(result.is_ok());
     let events = result.unwrap();
     assert!(events.pages.is_empty());

@@ -8,7 +8,7 @@
       ]
     },
     "scm": {
-      "command": "/home/babbitt/.local/bin/scm",
+      "command": "/home/babbitt/go/bin/scm",
       "args": [
         "mcp"
       ],

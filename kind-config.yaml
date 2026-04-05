@@ -109,6 +109,15 @@ nodes:
         protocol: TCP
 
       # =============================================================================
+      # OPTIONAL: AWS Emulation (Floci)
+      # Local AWS service emulation for SNS/SQS, S3, DynamoDB
+      # =============================================================================
+      # Floci - AWS emulator endpoint
+      - containerPort: 31566
+        hostPort: 4566
+        protocol: TCP
+
+      # =============================================================================
       # OPTIONAL: Observability Stack
       # Remove if not using monitoring/tracing
       # =============================================================================

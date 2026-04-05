@@ -85,9 +85,6 @@ RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > tests/integration/query_test.rs && \
     touch migrations/.keep
 
-# Ensure git dependencies are fresh
-RUN cargo update -p angzarr-client
-
 # Build dependencies (will fail on angzarr crate, but deps compile)
 RUN cargo build --profile container-dev --features otel,postgres,amqp \
     --bin angzarr-aggregate 2>&1 || true
@@ -164,9 +161,6 @@ RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
     echo "fn main() {}" > tests/interfaces/main.rs && \
     echo "fn main() {}" > tests/integration/query_test.rs && \
     touch migrations/.keep
-
-# Ensure git dependencies are fresh
-RUN cargo update -p angzarr-client
 
 # Build dependencies
 RUN if [ "$TARGETARCH" = "arm64" ]; then \

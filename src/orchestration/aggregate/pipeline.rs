@@ -15,13 +15,17 @@ use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventBookExt};
 use crate::utils::response_builder::extract_events_from_response;
 use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
-use super::merge::{check_commutative_overlap, CommutativeMergeResult};
+use super::merge::{
+    check_cascade_conflict, check_commutative_overlap, CascadeConflictResult,
+    CommutativeMergeResult,
+};
 use super::parsing::{
     extract_angzarr_deferred, extract_command_sequence, extract_edition, extract_event_edition,
     extract_explicit_divergence, has_deferred_sequence, parse_command_cover, parse_event_cover,
     stamp_deferred_sequences,
 };
 use super::traits::{AggregateContext, ClientLogic};
+use super::two_phase::{transform_for_two_phase, TwoPhaseContext};
 use super::types::{FactContext, FactResponse, PipelineMode, TemporalQuery};
 
 /// Execute the aggregate command pipeline.
@@ -232,6 +236,49 @@ async fn execute_mode(
     // Transform events (upcasting)
     let prior_events = ctx.transform_events(&domain, prior_events).await?;
 
+    // 2PC: Apply cascade transformation and conflict detection
+    let prior_events = if let Some(cascade_id) = ctx.cascade_id() {
+        let two_phase_ctx = TwoPhaseContext::for_handler(cascade_id);
+        let two_phase_result = transform_for_two_phase(&prior_events, &two_phase_ctx);
+
+        // Check for cascade field conflicts with uncommitted events from other cascades
+        if !two_phase_result.uncommitted_cascade_ids.is_empty() {
+            match check_cascade_conflict(business, &prior_events, &EventBook::default()).await {
+                Ok(CascadeConflictResult::Conflict {
+                    cascade_ids,
+                    overlapping_fields,
+                }) => {
+                    tracing::warn!(
+                        ?cascade_ids,
+                        ?overlapping_fields,
+                        "CASCADE: field conflict with uncommitted events"
+                    );
+                    return Err(Status::aborted(format!(
+                        "Cascade conflict: fields {:?} locked by cascades {:?}",
+                        overlapping_fields, cascade_ids
+                    )));
+                }
+                Ok(CascadeConflictResult::NoConflict) => {
+                    tracing::debug!("CASCADE: no field conflicts with uncommitted events");
+                }
+                Err(e) => {
+                    // Degrade gracefully - proceed without conflict detection
+                    tracing::debug!(
+                        error = %e,
+                        "CASCADE: conflict detection unavailable, proceeding optimistically"
+                    );
+                }
+            }
+        }
+
+        // Business logic sees 2PC-transformed events (own cascade visible, others as NoOp)
+        two_phase_result.events
+    } else {
+        // Non-cascade: apply standard 2PC transform to hide any uncommitted events
+        let two_phase_result = transform_for_two_phase(&prior_events, &TwoPhaseContext::standard());
+        two_phase_result.events
+    };
+
     // Get actual sequence
     let actual = prior_events.next_sequence();
 
@@ -296,7 +343,7 @@ async fn execute_mode(
         tracing::error!(error = %e, "client logic invocation failed");
         e
     })?;
-    let received_events = extract_events_from_response(response, correlation_id.to_string())?;
+    let received_events = extract_events_from_response(response, &correlation_id)?;
 
     // Post-execution commutative check: verify field overlap after we know what changed
     if needs_commutative_check {
@@ -387,7 +434,7 @@ async fn speculative_mode(
     })?;
 
     // For speculative mode, extract events but don't set correlation_id
-    let speculative_events = extract_events_from_response(response, String::new())?;
+    let speculative_events = extract_events_from_response(response, "")?;
 
     Ok(CommandResponse {
         events: Some(speculative_events),
@@ -465,8 +512,7 @@ pub async fn execute_fact_pipeline(
                 .await?;
 
             // Filter to only the events that were part of this fact injection
-            let mut existing_events = prior_events.clone();
-            existing_events.pages = prior_events
+            let filtered_pages: Vec<_> = prior_events
                 .pages
                 .into_iter()
                 .filter(|p| {
@@ -481,7 +527,12 @@ pub async fn execute_fact_pipeline(
                 .collect();
 
             return Ok(FactResponse {
-                events: existing_events,
+                events: EventBook {
+                    cover: prior_events.cover,
+                    pages: filtered_pages,
+                    snapshot: prior_events.snapshot,
+                    next_sequence: prior_events.next_sequence,
+                },
                 projections: vec![],
                 already_processed: true,
             });
@@ -512,15 +563,18 @@ pub async fn execute_fact_pipeline(
     // Get next available sequence
     let next_seq = prior_events.next_sequence();
 
+    // Save cover before moving fact_events into business logic
+    let fact_cover = fact_events.cover.clone();
+
     // Optionally invoke client logic to update aggregate state
     let processed_events = if let Some(logic) = business {
         let fact_ctx = FactContext {
-            facts: fact_events.clone(),
+            facts: fact_events,
             prior_events: Some(prior_events.clone()),
         };
         logic.invoke_fact(fact_ctx).await?
     } else {
-        fact_events.clone()
+        fact_events
     };
 
     // Assign real sequence numbers, replacing ExternalDeferredSequence markers.
@@ -551,7 +605,7 @@ pub async fn execute_fact_pipeline(
     }
 
     let events_to_persist = EventBook {
-        cover: fact_events.cover.clone(),
+        cover: fact_cover,
         pages: final_pages,
         snapshot: processed_events.snapshot,
         next_sequence: current_seq,

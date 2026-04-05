@@ -1,9 +1,0 @@
-defaults:
-    profiles:
-        - rust-dev
-    llm_plugin: claude-code
-    use_distilled: true
-llm:
-    plugins: {}
-mcp:
-    auto_register_scm: true

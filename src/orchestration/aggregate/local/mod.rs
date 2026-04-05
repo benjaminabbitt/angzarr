@@ -181,6 +181,10 @@ impl LocalAggregateContext {
 
 #[async_trait]
 impl AggregateContext for LocalAggregateContext {
+    fn cascade_id(&self) -> Option<&str> {
+        self.cascade_id.as_deref()
+    }
+
     #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
     async fn load_prior_events_with_divergence(
         &self,

@@ -633,8 +633,40 @@ infra-nats:
     helm upgrade --install angzarr-nats "{{HELM_K8S}}/nats" \
         -n angzarr --create-namespace --wait
 
+# Deploy Floci (AWS emulator - LocalStack alternative)
+infra-floci:
+    helm upgrade --install angzarr-floci "{{HELM_K8S}}/floci" \
+        -n angzarr --create-namespace \
+        --set service.type=NodePort --wait
+
+# Run Floci standalone (no cluster required, for quick local testing)
+floci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if {{CONTAINER_CMD}} ps -a --format '{{{{.Names}}}}' | grep -q '^floci$'; then
+        echo "Floci container already exists. Use 'just floci-stop' to remove it."
+        exit 1
+    fi
+    {{CONTAINER_CMD}} run -d --name floci -p 4566:4566 \
+        -e FLOCI_DEFAULT_REGION=us-east-1 \
+        hectorvent/floci:latest
+    echo "Floci available at http://localhost:4566"
+    echo ""
+    echo "Configure AWS CLI:"
+    echo "  export AWS_ACCESS_KEY_ID=test"
+    echo "  export AWS_SECRET_ACCESS_KEY=test"
+    echo "  export AWS_DEFAULT_REGION=us-east-1"
+    echo ""
+    echo "Test with:"
+    echo "  aws --endpoint-url=http://localhost:4566 s3 ls"
+
+# Stop Floci standalone container
+floci-stop:
+    {{CONTAINER_CMD}} stop floci && {{CONTAINER_CMD}} rm floci
+
 # Destroy infrastructure
 infra-destroy:
+    helm uninstall angzarr-floci -n angzarr || true
     helm uninstall angzarr-nats -n angzarr || true
     helm uninstall angzarr-redis -n angzarr || true
     helm uninstall angzarr-kafka -n angzarr || true

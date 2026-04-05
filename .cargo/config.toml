@@ -16,3 +16,10 @@ incremental = true
 # Custom commands
 [alias]
 xtask = "run --package xtask --"
+
+# =============================================================================
+# Development: Override git dependencies with local paths
+# This only affects local builds (not copied to containers)
+# =============================================================================
+[patch."https://github.com/angzarr-io/angzarr-client-rust.git"]
+angzarr-client = { path = "/home/babbitt/workspace/angzarr/client-rust/main" }
