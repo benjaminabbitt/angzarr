@@ -2,8 +2,8 @@ apiVersion: v2
 name: angzarr
 description: Schema-first CQRS/ES framework for polyglot client logic
 type: application
-version: 0.2.3
-appVersion: "0.2.3"
+version: 0.2.0
+appVersion: "0.2.0"
 home: https://github.com/angzarr-io/angzarr
 sources:
   - https://github.com/angzarr-io/angzarr
