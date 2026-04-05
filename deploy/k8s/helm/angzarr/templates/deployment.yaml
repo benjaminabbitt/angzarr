@@ -880,7 +880,7 @@ spec:
           image: "{{ .Values.images.stream.repository }}:{{ .Values.images.stream.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.images.stream.pullPolicy }}
           ports:
-            # Single gRPC server hosts both ProjectorCoordinator + EventStream
+            # Single gRPC server hosts both ProjectorService + EventStream
             - name: grpc
               containerPort: {{ .Values.infrastructure.stream.port }}
               protocol: TCP
