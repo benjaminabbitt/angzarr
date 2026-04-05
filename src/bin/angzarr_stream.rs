@@ -39,13 +39,13 @@ use tracing::{error, info, warn};
 use angzarr::config::Config;
 use angzarr::handlers::projectors::outbound::{self, OutboundService};
 use angzarr::proto::event_stream_service_server::EventStreamServiceServer;
-use angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorServiceServer;
-use angzarr::proto::{EventBook, EventRequest, Projection, SpeculateProjectorRequest};
+use angzarr::proto::projector_service_server::ProjectorServiceServer;
+use angzarr::proto::{EventBook, Projection};
 use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::init_tracing;
 
 /// Projector service that receives events from the projector sidecar.
-/// Implements ProjectorCoordinator (HandleSync) which is what angzarr-projector calls.
+/// Implements ProjectorService (Handle) which is what angzarr-projector calls.
 struct OutboundProjectorService {
     outbound_service: Arc<OutboundService>,
 }
@@ -57,38 +57,22 @@ impl OutboundProjectorService {
 }
 
 #[tonic::async_trait]
-impl angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorService
-    for OutboundProjectorService
-{
-    /// Handle sync event book from projector sidecar.
-    async fn handle_sync(
-        &self,
-        request: Request<EventRequest>,
-    ) -> Result<Response<Projection>, Status> {
-        let sync_book = request.into_inner();
-        if let Some(book) = sync_book.events {
-            if let Err(e) = self.outbound_service.handle(&book).await {
-                warn!(error = %e, "OutboundService handle failed");
-            }
+impl angzarr::proto::projector_service_server::ProjectorService for OutboundProjectorService {
+    /// Handle event book from projector sidecar.
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
+        let book = request.into_inner();
+        if let Err(e) = self.outbound_service.handle(&book).await {
+            warn!(error = %e, "OutboundService handle failed");
         }
 
         // Outbound projector doesn't produce projection output
         Ok(Response::new(Projection::default()))
     }
 
-    /// Fire-and-forget handle (not used by projector sidecar).
-    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
-        let book = request.into_inner();
-        if let Err(e) = self.outbound_service.handle(&book).await {
-            warn!(error = %e, "OutboundService handle failed");
-        }
-        Ok(Response::new(()))
-    }
-
     /// Speculative handle - outbound projector doesn't produce projections.
     async fn handle_speculative(
         &self,
-        _request: Request<SpeculateProjectorRequest>,
+        _request: Request<EventBook>,
     ) -> Result<Response<Projection>, Status> {
         // Outbound projector doesn't produce projection output
         // Speculative execution is a no-op for streaming
@@ -155,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Health reporter
     let (health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<ProjectorCoordinatorServiceServer<OutboundProjectorService>>()
+        .set_serving::<ProjectorServiceServer<OutboundProjectorService>>()
         .await;
 
     info!("angzarr-stream started");
@@ -163,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = Server::builder()
         .layer(grpc_trace_layer())
         .add_service(health_service)
-        .add_service(ProjectorCoordinatorServiceServer::new(projector_service))
+        .add_service(ProjectorServiceServer::new(projector_service))
         .add_service(EventStreamServiceServer::new(event_stream_service));
 
     serve_with_transport(router, &config.transport, "stream", None).await?;
