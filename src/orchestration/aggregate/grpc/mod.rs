@@ -16,9 +16,9 @@ use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher
 use crate::proto::process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient;
 use crate::proto::saga_coordinator_service_client::SagaCoordinatorServiceClient;
 use crate::proto::{
-    CascadeErrorMode, CommandBook, Cover, EventBook, EventRequest, MergeStrategy,
-    ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest, Snapshot, SnapshotRetention,
-    Uuid as ProtoUuid,
+    CascadeErrorMode, CommandBook, Cover, Edition, EventBook, EventPage, EventRequest,
+    MergeStrategy, ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest, Snapshot,
+    SnapshotRetention, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
@@ -27,6 +27,44 @@ use crate::storage::{EventStore, SnapshotStore, StorageError};
 use crate::utils::sequence_validator::sequence_mismatch_error_with_state;
 
 use super::{AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery};
+
+/// Build an EventBook with proper next_sequence set.
+///
+/// Used for explicit divergence when we bypass the EventBookRepository
+/// and load events directly from the EventStore.
+fn build_event_book(
+    domain: &str,
+    edition: &str,
+    root: Uuid,
+    pages: Vec<EventPage>,
+    snapshot: Option<Snapshot>,
+) -> EventBook {
+    let mut book = EventBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: Some(Edition {
+                name: edition.to_string(),
+                divergences: vec![],
+            }),
+        }),
+        pages,
+        snapshot,
+        ..Default::default()
+    };
+    calculate_set_next_seq(&mut book);
+    book
+}
+
+/// Calculate and set next_sequence on an EventBook.
+fn calculate_set_next_seq(book: &mut EventBook) {
+    let max_from_pages = book.pages.last().map(|p| p.sequence_num()).unwrap_or(0);
+    let max_from_snapshot = book.snapshot.as_ref().map(|s| s.sequence).unwrap_or(0);
+    book.next_sequence = max_from_pages.max(max_from_snapshot) + 1;
+}
 
 /// gRPC aggregate context using EventBookRepository and K8s service discovery.
 pub struct GrpcAggregateContext {
@@ -44,6 +82,9 @@ pub struct GrpcAggregateContext {
     dlq_publisher: Arc<dyn DeadLetterPublisher>,
     /// Component name for DLQ metadata.
     component_name: String,
+    /// Cascade ID for 2PC atomic execution.
+    /// When set, events are persisted with `committed=false` and cascade_id stamped.
+    cascade_id: Option<String>,
 }
 
 impl GrpcAggregateContext {
@@ -68,6 +109,7 @@ impl GrpcAggregateContext {
             sync_mode: None,
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
+            cascade_id: None,
         }
     }
 
@@ -95,6 +137,7 @@ impl GrpcAggregateContext {
             sync_mode: None,
             dlq_publisher: Arc::new(NoopDeadLetterPublisher),
             component_name: "aggregate".to_string(),
+            cascade_id: None,
         }
     }
 
@@ -122,6 +165,16 @@ impl GrpcAggregateContext {
     /// Set the component name for DLQ metadata.
     pub fn with_component_name(mut self, name: impl Into<String>) -> Self {
         self.component_name = name.into();
+        self
+    }
+
+    /// Set the cascade ID for 2PC atomic execution.
+    ///
+    /// When cascade_id is set, events are written with `committed=false` and
+    /// the cascade_id stamped on each event. This enables atomic commit/rollback
+    /// across multiple aggregates.
+    pub fn with_cascade_id(mut self, cascade_id: impl Into<String>) -> Self {
+        self.cascade_id = Some(cascade_id.into());
         self
     }
 
@@ -165,6 +218,7 @@ impl GrpcAggregateContext {
                     source: Some(events.clone()),
                     sync_mode: sync_mode.into(),
                     cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+                    destination_sequences: std::collections::HashMap::new(), // Coordinator fetches sequences
                 },
                 correlation_id,
             );
@@ -290,20 +344,42 @@ impl GrpcAggregateContext {
 
 #[async_trait]
 impl AggregateContext for GrpcAggregateContext {
+    fn cascade_id(&self) -> Option<&str> {
+        self.cascade_id.as_deref()
+    }
+
     #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
-    async fn load_prior_events(
+    async fn load_prior_events_with_divergence(
         &self,
         domain: &str,
         edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
+        explicit_divergence: Option<u32>,
     ) -> Result<EventBook, Status> {
         match temporal {
-            TemporalQuery::Current => self
-                .event_book_repo
-                .get(domain, edition, root)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to load events: {e}"))),
+            TemporalQuery::Current => {
+                // For explicit divergence, skip snapshot and use get_with_divergence
+                // This loads events from main timeline up to divergence point
+                if explicit_divergence.is_some() {
+                    tracing::debug!(
+                        ?explicit_divergence,
+                        "Using explicit divergence for event loading"
+                    );
+                    let events = self
+                        .event_store
+                        .get_with_divergence(domain, edition, root, explicit_divergence)
+                        .await
+                        .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
+                    return Ok(build_event_book(domain, edition, root, events, None));
+                }
+
+                // Standard path: use EventBookRepo for snapshot + events
+                self.event_book_repo
+                    .get(domain, edition, root)
+                    .await
+                    .map_err(|e| Status::internal(format!("Failed to load events: {e}")))
+            }
             TemporalQuery::AsOfSequence(seq) => self
                 .event_book_repo
                 .get_temporal_by_sequence(domain, edition, root, *seq)
@@ -329,7 +405,7 @@ impl AggregateContext for GrpcAggregateContext {
     ) -> Result<EventBook, Status> {
         // Compute new pages: those in received but not in prior
         let prior_max_seq = prior.pages.iter().map(|p| p.sequence_num()).max();
-        let new_pages: Vec<_> = received
+        let mut new_pages: Vec<_> = received
             .pages
             .iter()
             .filter(|p| {
@@ -357,6 +433,18 @@ impl AggregateContext for GrpcAggregateContext {
 
         // Persist new events if any
         if !new_pages.is_empty() {
+            // 2PC: If cascade_id is set, stamp events with committed=false
+            if let Some(ref cascade_id) = self.cascade_id {
+                new_pages = new_pages
+                    .into_iter()
+                    .map(|mut page| {
+                        page.committed = false;
+                        page.cascade_id = Some(cascade_id.clone());
+                        page
+                    })
+                    .collect();
+            }
+
             // Build cover from parameters if client didn't provide one
             let cover = received.cover.clone().or_else(|| {
                 Some(Cover {

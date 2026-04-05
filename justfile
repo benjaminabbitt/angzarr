@@ -20,9 +20,11 @@ set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 REGISTRY := "ghcr.io/angzarr-io"
-# Container runtime: prefer podman, fall back to docker, empty if neither available
+# Container runtime: prefer docker, fall back to podman, empty if neither available
 # (empty is fine when running inside a container where we don't need nested containers)
-CONTAINER_CMD := `command -v podman 2>/dev/null || command -v docker 2>/dev/null || echo ""`
+CONTAINER_CMD := `command -v docker 2>/dev/null || command -v podman 2>/dev/null || echo ""`
+# Run containers as current user to avoid root-owned files in mounted volumes
+CONTAINER_RUN := CONTAINER_CMD + " run --rm -u $(id -u):$(id -g)"
 
 # NOTE: Client libraries and examples have been extracted to separate repos:
 #   - angzarr-client-{lang}: Client libraries (pip install angzarr-client, etc.)
@@ -67,7 +69,7 @@ _container +ARGS: _build-images
         just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
         IMAGE=$(just _image-tag angzarr-rust)
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
             -w /workspace \
@@ -83,8 +85,11 @@ _container-dind +ARGS: _build-images
         just --justfile "{{TOP}}/justfile.container" {{ARGS}}
     else
         IMAGE=$(just _image-tag angzarr-rust)
-        # Find container socket (podman or docker)
-        if command -v podman &>/dev/null; then
+        # Find container socket (docker or podman)
+        if [ -S "/var/run/docker.sock" ]; then
+            SOCK="/var/run/docker.sock"
+            SOCK_MSG="Ensure Docker daemon is running"
+        elif [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock" ]; then
             SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
             SOCK_MSG="Start the podman socket with: systemctl --user start podman.socket"
         else
@@ -96,7 +101,7 @@ _container-dind +ARGS: _build-images
             echo "$SOCK_MSG"
             exit 1
         fi
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
             -v "$SOCK:/var/run/docker.sock:Z" \
@@ -119,7 +124,7 @@ _lang-container LANG +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         {{ARGS}}
     else
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-{{LANG}}:latest \
@@ -153,7 +158,7 @@ _buf +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ] || command -v buf &>/dev/null; then
         cd "{{TOP}}/proto" && buf {{ARGS}}
     else
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace/proto \
             {{REGISTRY}}/angzarr-base:latest \
@@ -173,20 +178,13 @@ buf-push:
     just _buf push
 
 # Generate proto documentation (outputs to docs/docs/api/proto/)
-# Uses podman locally, docker in CI (auto-detects)
 buf-docs:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Auto-detect container runtime (prefer podman, fall back to docker)
-    CONTAINER_CMD=${CONTAINER_CMD:-$(command -v podman 2>/dev/null || command -v docker 2>/dev/null)}
-    if [ -z "$CONTAINER_CMD" ]; then
-        echo "Error: neither podman nor docker found" >&2
-        exit 1
-    fi
     mkdir -p "{{TOP}}/docs/docs/api/proto"
     # List proto files (exclude health which is internal)
     PROTOS=$(find "{{TOP}}/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
-    $CONTAINER_CMD run --rm \
+    {{CONTAINER_RUN}} \
         -v "{{TOP}}/proto:/protos:Z" \
         -v "{{TOP}}/docs/docs/api/proto:/out:Z" \
         docker.io/pseudomuto/protoc-gen-doc \
@@ -209,7 +207,7 @@ _go +ARGS:
     if [ "${DEVCONTAINER:-}" = "true" ] || (command -v go &>/dev/null && command -v buf &>/dev/null); then
         eval {{ARGS}}
     else
-        {{CONTAINER_CMD}} run --rm --network=host \
+        {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -w /workspace \
             {{REGISTRY}}/angzarr-go:latest \
@@ -388,7 +386,7 @@ test-local:
     @echo "=== All Local Tests Complete ==="
     @echo "═══════════════════════════════════════════════════════════════════"
 
-# Run all local tests including testcontainers (requires podman socket)
+# Run all local tests including testcontainers (requires docker socket)
 # =============================================================================
 # Complete validation suite testing ALL storage and bus backends.
 #
@@ -635,8 +633,40 @@ infra-nats:
     helm upgrade --install angzarr-nats "{{HELM_K8S}}/nats" \
         -n angzarr --create-namespace --wait
 
+# Deploy Floci (AWS emulator - LocalStack alternative)
+infra-floci:
+    helm upgrade --install angzarr-floci "{{HELM_K8S}}/floci" \
+        -n angzarr --create-namespace \
+        --set service.type=NodePort --wait
+
+# Run Floci standalone (no cluster required, for quick local testing)
+floci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if {{CONTAINER_CMD}} ps -a --format '{{{{.Names}}}}' | grep -q '^floci$'; then
+        echo "Floci container already exists. Use 'just floci-stop' to remove it."
+        exit 1
+    fi
+    {{CONTAINER_CMD}} run -d --name floci -p 4566:4566 \
+        -e FLOCI_DEFAULT_REGION=us-east-1 \
+        hectorvent/floci:latest
+    echo "Floci available at http://localhost:4566"
+    echo ""
+    echo "Configure AWS CLI:"
+    echo "  export AWS_ACCESS_KEY_ID=test"
+    echo "  export AWS_SECRET_ACCESS_KEY=test"
+    echo "  export AWS_DEFAULT_REGION=us-east-1"
+    echo ""
+    echo "Test with:"
+    echo "  aws --endpoint-url=http://localhost:4566 s3 ls"
+
+# Stop Floci standalone container
+floci-stop:
+    {{CONTAINER_CMD}} stop floci && {{CONTAINER_CMD}} rm floci
+
 # Destroy infrastructure
 infra-destroy:
+    helm uninstall angzarr-floci -n angzarr || true
     helm uninstall angzarr-nats -n angzarr || true
     helm uninstall angzarr-redis -n angzarr || true
     helm uninstall angzarr-kafka -n angzarr || true
@@ -674,26 +704,6 @@ deploy: _cluster-ready
 # Watch and rebuild framework on change
 dev: _cluster-ready
     skaffold dev
-
-# === Vector Search ===
-
-# Start Qdrant container for semantic search
-qdrant-start:
-    @mkdir -p "{{TOP}}/.vectors/qdrant-data"
-    @{{CONTAINER_CMD}} start qdrant 2>/dev/null || \
-        {{CONTAINER_CMD}} run -d --name qdrant \
-            -p 6333:6333 -p 6334:6334 \
-            -v "{{TOP}}/.vectors/qdrant-data:/qdrant/storage:Z" \
-            docker.io/qdrant/qdrant:latest
-    @echo "Qdrant running at http://127.0.0.1:6333"
-
-# Stop Qdrant container
-qdrant-stop:
-    @{{CONTAINER_CMD}} stop qdrant 2>/dev/null || true
-
-# Rebuild vector index for semantic codebase search (uses containerized Qdrant)
-reindex: qdrant-start
-    uv run "{{TOP}}/scripts/index_codebase.py" --url http://127.0.0.1:6333
 
 # === Claude Code LSP Setup ===
 

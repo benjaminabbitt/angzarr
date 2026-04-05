@@ -12,6 +12,7 @@
 //! - Saga is NOT re-executed on conflict (delivery-retry model)
 
 use super::*;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
@@ -31,7 +32,10 @@ struct AlwaysSucceeds;
 
 #[async_trait]
 impl SagaRetryContext for AlwaysSucceeds {
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse::default())
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
@@ -51,7 +55,10 @@ struct RetryingSagaContext;
 
 #[async_trait]
 impl SagaRetryContext for RetryingSagaContext {
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse {
             commands: vec![CommandBook::default()],
             events: vec![],
@@ -76,7 +83,10 @@ struct AlwaysRejects {
 
 #[async_trait]
 impl SagaRetryContext for AlwaysRejects {
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse::default())
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
@@ -339,7 +349,10 @@ struct RetryableCommandContext;
 
 #[async_trait]
 impl SagaRetryContext for RetryableCommandContext {
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SagaResponse {
             commands: vec![CommandBook::default()],
             events: vec![],

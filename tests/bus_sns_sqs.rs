@@ -3,8 +3,8 @@
 //! Run with: cargo test --test bus_sns_sqs --features "sns-sqs test-utils" -- --nocapture
 //!
 //! These tests verify that the SNS/SQS bus implementation correctly fulfills
-//! the EventBus trait contract. Uses LocalStack to emulate AWS SNS/SQS locally.
-//! Tests share a single LocalStack container to avoid rootless port conflicts.
+//! the EventBus trait contract. Uses Floci to emulate AWS SNS/SQS locally.
+//! Tests share a single Floci container to avoid rootless port conflicts.
 
 #![cfg(feature = "sns-sqs")]
 
@@ -21,48 +21,43 @@ use testcontainers::{
 };
 use tokio::sync::OnceCell;
 
-/// Shared LocalStack container and endpoint URL.
+/// Shared Floci container and endpoint URL.
 /// Using a shared container avoids rootless port conflicts in podman
 /// that occur when rapidly starting/stopping containers.
-static LOCALSTACK: OnceCell<(ContainerAsync<GenericImage>, String)> = OnceCell::const_new();
+static FLOCI: OnceCell<(ContainerAsync<GenericImage>, String)> = OnceCell::const_new();
 
-/// Get the shared LocalStack endpoint, starting the container if needed.
-async fn get_localstack_endpoint() -> String {
-    let (_, endpoint) = LOCALSTACK
+/// Get the shared Floci endpoint, starting the container if needed.
+async fn get_floci_endpoint() -> String {
+    let (_, endpoint) = FLOCI
         .get_or_init(|| async {
-            println!("Starting shared LocalStack container...");
-            let (container, endpoint) = start_localstack_internal().await;
-            println!("LocalStack available at: {}", endpoint);
+            println!("Starting shared Floci container...");
+            let (container, endpoint) = start_floci_internal().await;
+            println!("Floci available at: {}", endpoint);
             (container, endpoint)
         })
         .await;
     endpoint.clone()
 }
 
-/// Start LocalStack container with SNS/SQS services (internal implementation).
+/// Start Floci container with AWS services (internal implementation).
 ///
 /// Returns (container, endpoint_url) where endpoint_url is suitable for AWS SDK connection.
-async fn start_localstack_internal() -> (ContainerAsync<GenericImage>, String) {
-    let image = GenericImage::new("localstack/localstack", "latest")
+async fn start_floci_internal() -> (ContainerAsync<GenericImage>, String) {
+    // Floci is a lightweight AWS emulator (LocalStack alternative)
+    // All services are enabled by default - no SERVICES env var needed
+    let image = GenericImage::new("hectorvent/floci", "latest")
         .with_exposed_port(4566.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("Ready."));
+        .with_wait_for(WaitFor::message_on_stdout("started in"));
 
     let container = image
-        .with_env_var("SERVICES", "sns,sqs")
-        .with_env_var("AWS_DEFAULT_REGION", "us-east-1")
-        .with_env_var("EAGER_SERVICE_LOADING", "1")
-        .with_env_var("DISABLE_EVENTS", "1") // Disable analytics
-        .with_env_var("SKIP_INFRA_DOWNLOADS", "1") // Don't download additional components
-        .with_env_var("DNS_DISABLED", "true") // Disable DNS to avoid conflicts
-        .with_env_var("LOCALSTACK_HOST", "localhost") // Use localhost for all service URLs
-        .with_startup_timeout(Duration::from_secs(180))
+        .with_env_var("FLOCI_DEFAULT_REGION", "us-east-1")
+        .with_startup_timeout(Duration::from_secs(60)) // Floci starts much faster than LocalStack
         .start()
         .await
-        .expect("Failed to start localstack container");
+        .expect("Failed to start floci container");
 
-    // Give LocalStack time to fully initialize services
-    // SNS/SQS services need extra time to be fully ready
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    // Floci starts very quickly - minimal delay needed
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let host_port = container
         .get_host_port_ipv4(4566)
@@ -76,7 +71,7 @@ async fn start_localstack_internal() -> (ContainerAsync<GenericImage>, String) {
 
     let endpoint_url = format!("http://{}:{}", host, host_port);
 
-    println!("LocalStack (SNS/SQS) available at: {}", endpoint_url);
+    println!("Floci (AWS emulator) available at: {}", endpoint_url);
 
     (container, endpoint_url)
 }
@@ -92,10 +87,10 @@ fn test_prefix() -> String {
 async fn test_sns_sqs_event_bus() {
     println!("=== SNS/SQS EventBus Tests ===");
 
-    let endpoint_url = get_localstack_endpoint().await;
+    let endpoint_url = get_floci_endpoint().await;
     let prefix = test_prefix();
 
-    // Set dummy AWS credentials for LocalStack
+    // Set dummy AWS credentials for Floci
     std::env::set_var("AWS_ACCESS_KEY_ID", "test");
     std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
     std::env::set_var("AWS_DEFAULT_REGION", "us-east-1");
@@ -117,9 +112,9 @@ async fn test_sns_sqs_event_bus() {
 async fn test_sns_sqs_dlq() {
     println!("=== SNS/SQS DLQ Tests ===");
 
-    let endpoint_url = get_localstack_endpoint().await;
+    let endpoint_url = get_floci_endpoint().await;
 
-    // Set dummy AWS credentials for LocalStack
+    // Set dummy AWS credentials for Floci
     std::env::set_var("AWS_ACCESS_KEY_ID", "test");
     std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
     std::env::set_var("AWS_DEFAULT_REGION", "us-east-1");

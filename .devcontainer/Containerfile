@@ -5,19 +5,32 @@
 ARG RUST_IMAGE
 FROM ${RUST_IMAGE}
 
-# Add podman for testcontainers support, mold linker, and build dependencies
+# Add docker CLI for testcontainers support, mold linker, and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    podman \
+    docker.io \
     libsasl2-dev \
     mold \
     cmake \
     libcurl4-openssl-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/podman /usr/bin/docker
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user (matches devcontainer.json remoteUser)
+ARG USERNAME=vscode
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && usermod -aG docker $USERNAME
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true
 
-# Configure testcontainers to use the mounted podman socket
-ENV DOCKER_HOST=unix:///run/podman/podman.sock
+# Configure testcontainers to use the mounted docker socket
+ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENV TESTCONTAINERS_RYUK_DISABLED=true
+
+# Switch to non-root user
+USER $USERNAME

@@ -7,17 +7,12 @@
         "mcp-tasks"
       ]
     },
-    "qdrant": {
-      "command": "uvx",
-      "args": [
-        "mcp-server-qdrant"
-      ]
-    },
     "scm": {
       "command": "/home/babbitt/go/bin/scm",
       "args": [
         "mcp"
       ],
+      "cwd": "${CLAUDE_PROJECT_DIR}",
       "_scm": "scm-auto"
     }
   }

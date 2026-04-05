@@ -15,12 +15,17 @@ use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventBookExt};
 use crate::utils::response_builder::extract_events_from_response;
 use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
-use super::merge::{check_commutative_overlap, CommutativeMergeResult};
+use super::merge::{
+    check_cascade_conflict, check_commutative_overlap, CascadeConflictResult,
+    CommutativeMergeResult,
+};
 use super::parsing::{
     extract_angzarr_deferred, extract_command_sequence, extract_edition, extract_event_edition,
-    has_deferred_sequence, parse_command_cover, parse_event_cover, stamp_deferred_sequences,
+    extract_explicit_divergence, has_deferred_sequence, parse_command_cover, parse_event_cover,
+    stamp_deferred_sequences,
 };
 use super::traits::{AggregateContext, ClientLogic};
+use super::two_phase::{transform_for_two_phase, TwoPhaseContext};
 use super::types::{FactContext, FactResponse, PipelineMode, TemporalQuery};
 
 /// Execute the aggregate command pipeline.
@@ -101,6 +106,45 @@ pub async fn execute_command_with_retry(
     run_with_retry(operation, backoff).await
 }
 
+/// Execute an aggregate command in normal (non-speculative) mode.
+///
+/// # Pipeline Stages
+///
+/// 1. **Parse** - Extract domain, root UUID, edition, correlation ID
+/// 2. **Idempotency check** - For deferred commands (saga-produced), return cached result
+/// 3. **Pre-validate** - Fast-path sequence check (skipped for certain strategies)
+/// 4. **Load** - Fetch prior events from storage (with optional divergence point)
+/// 5. **Transform** - Apply upcasting to prior events
+/// 6. **Validate sequence** - Check expected vs actual based on merge strategy
+/// 7. **Invoke** - Call business logic with contextual command
+/// 8. **Post-validate** - For COMMUTATIVE, check field overlap after execution
+/// 9. **Persist** - Store new events and optional snapshot
+/// 10. **Post-persist** - Publish to event bus, run sync projectors
+///
+/// # Merge Strategies
+///
+/// | Strategy | On Mismatch | Use Case |
+/// |----------|-------------|----------|
+/// | `STRICT` | Retry (FAILED_PRECONDITION) | Default, optimistic locking |
+/// | `COMMUTATIVE` | Check field overlap post-exec | Concurrent non-conflicting writes |
+/// | `MANUAL` | Send to DLQ (ABORTED) | Human review required |
+/// | `AGGREGATE_HANDLES` | Skip validation | Aggregate manages concurrency |
+///
+/// # Pre-Validation Bypass
+///
+/// Pre-validation is skipped when:
+/// - `AGGREGATE_HANDLES` strategy (aggregate manages its own concurrency)
+/// - Deferred sequences (saga commands stamped with actual sequence after load)
+/// - Explicit divergence (creating new edition branch from specific point)
+///
+/// # Deferred Sequence Handling
+///
+/// Saga-produced commands use `AngzarrDeferred` sequences. The flow:
+/// 1. Check idempotency using source provenance (return cached if duplicate)
+/// 2. Skip pre-validation (can't validate until we know actual sequence)
+/// 3. Load prior events to get actual sequence
+/// 4. Stamp actual sequence onto command pages
+/// 5. Proceed with normal execution
 #[tracing::instrument(
     name = "aggregate.execute",
     skip_all,
@@ -147,22 +191,93 @@ async fn execute_mode(
 
     let expected = extract_command_sequence(&command_book);
 
+    // Extract explicit divergence from Edition proto for branching.
+    // This must happen BEFORE pre_validate_sequence because explicit divergence
+    // means we're creating a new branch - the expected sequence won't match
+    // the current aggregate state in the new edition.
+    let explicit_divergence = extract_explicit_divergence(&command_book, &domain);
+
+    if explicit_divergence.is_some() {
+        tracing::debug!(
+            ?explicit_divergence,
+            %domain,
+            %edition,
+            expected,
+            "Using explicit divergence for edition branching"
+        );
+    }
+
     // For AGGREGATE_HANDLES, skip all coordinator-level sequence validation.
     // The aggregate is responsible for its own concurrency control.
     // For deferred sequences, we also skip pre-validation (we'll stamp after loading).
-    if merge_strategy != MergeStrategy::MergeAggregateHandles && !is_deferred {
+    // For explicit divergence (new edition branches), skip pre-validation because
+    // the expected sequence is the divergence point, not the current aggregate state.
+    let has_explicit_divergence = explicit_divergence.is_some();
+    if merge_strategy != MergeStrategy::MergeAggregateHandles
+        && !is_deferred
+        && !has_explicit_divergence
+    {
         // Pre-validate sequence (gRPC fast-path, no-op for local)
         ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
             .await?;
     }
 
-    // Load prior events
+    // Load prior events (with explicit divergence for new edition branches)
     let prior_events = ctx
-        .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+        .load_prior_events_with_divergence(
+            &domain,
+            &edition,
+            root_uuid,
+            &TemporalQuery::Current,
+            explicit_divergence,
+        )
         .await?;
 
     // Transform events (upcasting)
     let prior_events = ctx.transform_events(&domain, prior_events).await?;
+
+    // 2PC: Apply cascade transformation and conflict detection
+    let prior_events = if let Some(cascade_id) = ctx.cascade_id() {
+        let two_phase_ctx = TwoPhaseContext::for_handler(cascade_id);
+        let two_phase_result = transform_for_two_phase(&prior_events, &two_phase_ctx);
+
+        // Check for cascade field conflicts with uncommitted events from other cascades
+        if !two_phase_result.uncommitted_cascade_ids.is_empty() {
+            match check_cascade_conflict(business, &prior_events, &EventBook::default()).await {
+                Ok(CascadeConflictResult::Conflict {
+                    cascade_ids,
+                    overlapping_fields,
+                }) => {
+                    tracing::warn!(
+                        ?cascade_ids,
+                        ?overlapping_fields,
+                        "CASCADE: field conflict with uncommitted events"
+                    );
+                    return Err(Status::aborted(format!(
+                        "Cascade conflict: fields {:?} locked by cascades {:?}",
+                        overlapping_fields, cascade_ids
+                    )));
+                }
+                Ok(CascadeConflictResult::NoConflict) => {
+                    tracing::debug!("CASCADE: no field conflicts with uncommitted events");
+                }
+                Err(e) => {
+                    // Degrade gracefully - proceed without conflict detection
+                    tracing::debug!(
+                        error = %e,
+                        "CASCADE: conflict detection unavailable, proceeding optimistically"
+                    );
+                }
+            }
+        }
+
+        // Business logic sees 2PC-transformed events (own cascade visible, others as NoOp)
+        two_phase_result.events
+    } else {
+        // Non-cascade: apply standard 2PC transform to hide any uncommitted events
+        let two_phase_result = transform_for_two_phase(&prior_events, &TwoPhaseContext::standard());
+        two_phase_result.events
+    };
 
     // Get actual sequence
     let actual = prior_events.next_sequence();
@@ -228,7 +343,7 @@ async fn execute_mode(
         tracing::error!(error = %e, "client logic invocation failed");
         e
     })?;
-    let received_events = extract_events_from_response(response, correlation_id.to_string())?;
+    let received_events = extract_events_from_response(response, &correlation_id)?;
 
     // Post-execution commutative check: verify field overlap after we know what changed
     if needs_commutative_check {
@@ -319,7 +434,7 @@ async fn speculative_mode(
     })?;
 
     // For speculative mode, extract events but don't set correlation_id
-    let speculative_events = extract_events_from_response(response, String::new())?;
+    let speculative_events = extract_events_from_response(response, "")?;
 
     Ok(CommandResponse {
         events: Some(speculative_events),
@@ -397,8 +512,7 @@ pub async fn execute_fact_pipeline(
                 .await?;
 
             // Filter to only the events that were part of this fact injection
-            let mut existing_events = prior_events.clone();
-            existing_events.pages = prior_events
+            let filtered_pages: Vec<_> = prior_events
                 .pages
                 .into_iter()
                 .filter(|p| {
@@ -413,7 +527,12 @@ pub async fn execute_fact_pipeline(
                 .collect();
 
             return Ok(FactResponse {
-                events: existing_events,
+                events: EventBook {
+                    cover: prior_events.cover,
+                    pages: filtered_pages,
+                    snapshot: prior_events.snapshot,
+                    next_sequence: prior_events.next_sequence,
+                },
                 projections: vec![],
                 already_processed: true,
             });
@@ -444,15 +563,18 @@ pub async fn execute_fact_pipeline(
     // Get next available sequence
     let next_seq = prior_events.next_sequence();
 
+    // Save cover before moving fact_events into business logic
+    let fact_cover = fact_events.cover.clone();
+
     // Optionally invoke client logic to update aggregate state
     let processed_events = if let Some(logic) = business {
         let fact_ctx = FactContext {
-            facts: fact_events.clone(),
+            facts: fact_events,
             prior_events: Some(prior_events.clone()),
         };
         logic.invoke_fact(fact_ctx).await?
     } else {
-        fact_events.clone()
+        fact_events
     };
 
     // Assign real sequence numbers, replacing ExternalDeferredSequence markers.
@@ -483,7 +605,7 @@ pub async fn execute_fact_pipeline(
     }
 
     let events_to_persist = EventBook {
-        cover: fact_events.cover.clone(),
+        cover: fact_cover,
         pages: final_pages,
         snapshot: processed_events.snapshot,
         next_sequence: current_seq,

@@ -1,5 +1,0 @@
-remotes:
-    github:
-        name: ""
-        url: https://github.com/benjaminabbitt/scm-github
-        version: v1

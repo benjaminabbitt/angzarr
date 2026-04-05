@@ -75,11 +75,6 @@ pub use pipeline::{execute_command_pipeline, execute_command_with_retry, execute
 // Re-exports: two_phase
 pub use two_phase::{transform_for_two_phase, TwoPhaseContext, TwoPhaseResult};
 
-// Re-exports: merge (cascade conflict detection) - crate internal
-// TODO: Wire into pipeline when cascade mode goes live
-#[allow(unused_imports)]
-pub(crate) use merge::{check_cascade_conflict, CascadeConflictResult};
-
 // Re-export default edition constant
 pub use crate::proto_ext::constants::DEFAULT_EDITION;
 

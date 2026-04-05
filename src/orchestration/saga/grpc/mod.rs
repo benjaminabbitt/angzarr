@@ -4,6 +4,7 @@
 //! event fetching, and saga invocation. Includes compensation flow for
 //! rejected commands.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -63,14 +64,18 @@ impl GrpcSagaContext {
 
 #[async_trait]
 impl SagaRetryContext for GrpcSagaContext {
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = self.source.correlation_id();
         let edition = self.source.edition().to_string();
         let mut client = self.saga_client.lock().await;
         let request = SagaHandleRequest {
             source: Some(self.source.clone()),
-            sync_mode: SyncMode::Async.into(),
+            sync_mode: SyncMode::Simple.into(),
             cascade_error_mode: CascadeErrorMode::CascadeErrorFailFast.into(),
+            destination_sequences,
         };
         let mut response = client
             .handle(correlated_request(request, correlation_id))

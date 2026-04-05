@@ -17,8 +17,7 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use super::config::{EventBusMode, MessagingConfig};
-use super::error::Result;
+use super::config::EventBusMode;
 use super::factory::BusBackend;
 use super::traits::EventBus;
 
@@ -45,46 +44,51 @@ pub(crate) const ROOT_ID_ATTR: &str = "root_id";
 
 inventory::submit! {
     BusBackend {
-        try_create: |config, mode| Box::pin(try_create(config, mode)),
-    }
-}
+        try_create: |config, mode| {
+            // Clone what we need before creating the 'static future
+            let messaging_type = config.messaging_type.clone();
+            let topic_prefix = config.sns_sqs.topic_prefix.clone();
+            let region = config.sns_sqs.region.clone();
+            let domains = config.sns_sqs.domains.clone();
 
-async fn try_create(
-    config: &MessagingConfig,
-    mode: EventBusMode,
-) -> Option<Result<Arc<dyn EventBus>>> {
-    if config.messaging_type != "sns-sqs" {
-        return None;
-    }
+            Box::pin(async move {
+                if messaging_type != "sns-sqs" {
+                    return None;
+                }
 
-    let mut sns_sqs_config = match mode {
-        EventBusMode::Publisher => {
-            SnsSqsConfig::publisher().with_topic_prefix(&config.sns_sqs.topic_prefix)
-        }
-        EventBusMode::Subscriber { queue, domain } => SnsSqsConfig::subscriber(queue, vec![domain])
-            .with_topic_prefix(&config.sns_sqs.topic_prefix),
-        EventBusMode::SubscriberAll { queue } => {
-            let domains = config.sns_sqs.domains.clone().unwrap_or_default();
-            if domains.is_empty() {
-                SnsSqsConfig::subscriber_all(queue)
-            } else {
-                SnsSqsConfig::subscriber(queue, domains)
-            }
-            .with_topic_prefix(&config.sns_sqs.topic_prefix)
-        }
-    };
+                let mut sns_sqs_config = match mode {
+                    EventBusMode::Publisher => {
+                        SnsSqsConfig::publisher().with_topic_prefix(&topic_prefix)
+                    }
+                    EventBusMode::Subscriber { queue, domain } => {
+                        SnsSqsConfig::subscriber(queue, vec![domain])
+                            .with_topic_prefix(&topic_prefix)
+                    }
+                    EventBusMode::SubscriberAll { queue } => {
+                        let domains = domains.unwrap_or_default();
+                        if domains.is_empty() {
+                            SnsSqsConfig::subscriber_all(queue)
+                        } else {
+                            SnsSqsConfig::subscriber(queue, domains)
+                        }
+                        .with_topic_prefix(&topic_prefix)
+                    }
+                };
 
-    // Apply region if specified
-    if let Some(ref region) = config.sns_sqs.region {
-        sns_sqs_config = sns_sqs_config.with_region(region);
-    }
+                // Apply region if specified
+                if let Some(ref region) = region {
+                    sns_sqs_config = sns_sqs_config.with_region(region);
+                }
 
-    match SnsSqsEventBus::new(sns_sqs_config).await {
-        Ok(bus) => {
-            info!(messaging_type = "sns-sqs", "Event bus initialized");
-            Some(Ok(Arc::new(bus)))
-        }
-        Err(e) => Some(Err(e)),
+                match SnsSqsEventBus::new(sns_sqs_config).await {
+                    Ok(bus) => {
+                        info!(messaging_type = "sns-sqs", "Event bus initialized");
+                        Some(Ok(Arc::new(bus) as Arc<dyn EventBus>))
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            })
+        },
     }
 }
 

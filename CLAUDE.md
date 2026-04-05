@@ -55,7 +55,6 @@ Use enum names, not integer representations.
 | Python | Support scripts, secrets, health checks |
 | Kind | Local k8s (`just kind up/down/status`) |
 | Skaffold | **ALL** image builds/deploys (prevents cache staleness) |
-| Qdrant MCP | `just qdrant-start`, `just reindex`, `just qdrant-stop` |
 
 **Skaffold is mandatory.** Kind caches images by tag. Manual `podman build` + `helm upgrade` causes stale images. Skaffold uses content-addressable tags (git SHA).
 
@@ -151,7 +150,7 @@ All pure functions—100% unit testable without mocks. Same pattern across langu
 ### Sagas
 Domain translators. Events from domain A → commands to domain B. **Stateless.** Minimal logic—just field mapping.
 
-**Must set sequences:** `command.pages[0].sequence = destination.next_sequence()`
+**Destination sequences:** Framework provides `destination_sequences` map. Use `StampCommand(cmd, domain)` helper.
 
 Name: `saga-{source}-{target}`
 
@@ -161,7 +160,66 @@ Events in → external output (DB, API, files). Name: `projector-{source}-{featu
 ### Process Managers
 Multi-domain event correlation via correlation ID. Own aggregate (correlation ID = root). Stateful.
 
-**Must set sequences** like sagas.
+**Destination sequences:** Framework provides `destination_sequences` map (same as sagas).
+
+### Saga/PM Design Philosophy: Facts Over State Rebuilding
+
+**Sagas and PMs are translators/coordinators, NOT decision makers.**
+
+#### Output Options
+
+PMs can emit two types of output to destination aggregates:
+
+| Output | When to Use | Aggregate Response |
+|--------|-------------|-------------------|
+| **Commands** (preferred) | Normal flow - aggregate validates and decides | Accept → events, Reject → notification |
+| **Facts** | Injecting external/computed info that aggregate can't validate | Always accepted (no validation) |
+
+**Commands with Sync Mode (Preferred)**
+```rust
+// PM sends command, gets immediate response
+let cmd = SeatPlayer { player_root, seat, amount };
+destinations.stamp_command(&mut cmd, "table")?;
+// With SyncMode::Simple, PM receives immediate accept/reject
+// Handle rejection via on_rejected()
+```
+
+**Facts (When Validation Not Possible)**
+```rust
+// PM injects computed data aggregate can't derive
+let fact = ExternalPriceUpdated { asset_id, price, source: "oracle" };
+// Facts bypass command validation - use sparingly
+```
+
+#### Design Principles
+
+1. **Let aggregates decide** — Business logic belongs in aggregates, not coordinators
+2. **Prefer commands** — Use `SyncMode::Simple` for immediate feedback on acceptance/rejection
+3. **Use facts sparingly** — Only for external data injection, not to bypass validation
+4. **Use sequences for stamping** — Destinations provide `next_sequence` for command headers
+
+#### Anti-pattern: Decision Making in Sagas
+
+```python
+# BAD: Saga rebuilds state and makes decisions
+@handles(OrderCreated)
+def handle_order(self, event, destinations):
+    inventory = rebuild_state(destinations["inventory"])
+    if inventory.stock < event.quantity:  # Decision in saga!
+        return RejectCommand(...)
+    return CreateReservation(...)
+
+# GOOD: Saga translates, aggregate decides
+@handles(OrderCreated)
+def handle_order(self, event, ctx):
+    cmd = CreateReservation(order_id=event.order_id, quantity=event.quantity)
+    ctx.stamp_command(cmd, "inventory")
+    return cmd
+    # Inventory aggregate rejects if insufficient stock
+    # Saga handles rejection via @rejected decorator
+```
+
+**Key insight:** Sagas/PMs receive only sequence numbers, not EventBooks. They cannot (and should not) rebuild destination aggregate state.
 
 ### Event Design
 - Sagas/projectors: no querying, enrich at source aggregate

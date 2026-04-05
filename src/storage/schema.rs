@@ -42,6 +42,9 @@ pub enum Events {
 }
 
 /// Snapshots table schema.
+///
+/// Primary key is (domain, edition, root, sequence) to support multiple
+/// snapshots per aggregate with different retention policies.
 #[derive(Iden)]
 pub enum Snapshots {
     Table,
@@ -55,6 +58,8 @@ pub enum Snapshots {
     Sequence,
     #[iden = "state_data"]
     StateData,
+    #[iden = "retention"]
+    Retention,
     #[iden = "created_at"]
     CreatedAt,
 }

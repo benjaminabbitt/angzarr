@@ -89,8 +89,9 @@ message ProcessManagerHandleRequest {
   EventBook trigger = 1;
   // Current process manager state (event-sourced).
   EventBook process_state = 2;
-  // Additional destinations fetched per Prepare response.
-  repeated EventBook destinations = 3;
+  // Destination sequences for command stamping (domain → next_sequence).
+  // PM should NOT rebuild destination state — use facts and let aggregates decide.
+  map<string, uint32> destination_sequences = 3;
 }
 
 // Phase 2 response: local events, then remote commands and facts.

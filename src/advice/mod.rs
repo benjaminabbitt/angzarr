@@ -45,7 +45,7 @@ pub use instrumented_handlers::{
 pub use lossy::{LossyBus, LossyConfig, LossyDynBus, LossyStats};
 
 // Re-export metric constants for external dashboards/alerting
-pub use instrumented::{
+pub use metrics::{
     // Special values
     DOMAIN_CORRELATION_QUERY,
     // Operation names

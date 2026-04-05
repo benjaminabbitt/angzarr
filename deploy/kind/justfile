@@ -153,22 +153,21 @@ network-check:
     echo "=== Checking network connectivity from Kind cluster ==="
     echo ""
     echo "Testing DNS resolution..."
-    if podman exec {{CLUSTER_NAME}}-control-plane timeout 5 curl -s -I https://registry-1.docker.io/v2/ 2>/dev/null | head -1 | grep -q "HTTP"; then
+    if docker exec {{CLUSTER_NAME}}-control-plane timeout 5 curl -s -I https://registry-1.docker.io/v2/ 2>/dev/null | head -1 | grep -q "HTTP"; then
         echo "✓ Can reach Docker Hub"
     else
         echo "✗ Cannot reach Docker Hub"
         echo ""
-        echo "This is a common issue with Podman + Kind. Fixes (require sudo):"
+        echo "Check network settings:"
         echo "  1. Enable IP forwarding: sudo sysctl -w net.ipv4.ip_forward=1"
-        echo "  2. Check firewall: sudo firewall-cmd --add-masquerade --permanent"
-        echo "  3. Or use: sudo nft add rule ip nat POSTROUTING oifname \"eth*\" masquerade"
+        echo "  2. Check firewall settings"
         echo ""
         echo "See: https://github.com/kubernetes-sigs/kind/issues/2988"
         exit 1
     fi
     echo ""
     echo "Testing GitHub Container Registry..."
-    if podman exec {{CLUSTER_NAME}}-control-plane timeout 5 curl -s -I https://ghcr.io/v2/ 2>/dev/null | head -1 | grep -q "HTTP"; then
+    if docker exec {{CLUSTER_NAME}}-control-plane timeout 5 curl -s -I https://ghcr.io/v2/ 2>/dev/null | head -1 | grep -q "HTTP"; then
         echo "✓ Can reach ghcr.io"
     else
         echo "✗ Cannot reach ghcr.io"

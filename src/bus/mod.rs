@@ -69,7 +69,7 @@ pub use offloading::{OffloadingConfig, OffloadingEventBus};
 #[cfg(feature = "pubsub")]
 pub use pubsub::{PubSubConfig, PubSubEventBus};
 #[cfg(feature = "sns-sqs")]
-pub use sns_sqs::{SnsSqsEventBus, SnsSqsEventBusConfig};
+pub use sns_sqs::{SnsSqsConfig, SnsSqsEventBus};
 
 // ============================================================================
 // Instrumented Bus Wrappers

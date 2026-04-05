@@ -3,6 +3,7 @@
 //! Wraps handler traits to emit metrics on handler operations.
 //! When the `otel` feature is disabled, passes through with no overhead.
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -118,7 +119,11 @@ impl<T> InstrumentedSagaHandler<T> {
 
 #[async_trait]
 impl<T: SagaHandler> SagaHandler for InstrumentedSagaHandler<T> {
-    async fn handle(&self, source: &EventBook) -> Result<SagaResponse, Status> {
+    async fn handle(
+        &self,
+        source: &EventBook,
+        destination_sequences: &HashMap<String, u32>,
+    ) -> Result<SagaResponse, Status> {
         let start = Instant::now();
         let domain = source
             .cover
@@ -126,7 +131,7 @@ impl<T: SagaHandler> SagaHandler for InstrumentedSagaHandler<T> {
             .map(|c| c.domain.as_str())
             .unwrap_or("unknown");
 
-        let result = self.inner.handle(source).await;
+        let result = self.inner.handle(source, destination_sequences).await;
 
         #[cfg(feature = "otel")]
         {

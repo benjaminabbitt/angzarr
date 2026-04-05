@@ -23,7 +23,7 @@ use crate::proto::{business_response, BusinessResponse, CommandResponse, EventBo
 /// The EventBook from the response with correlation ID set, or an error for revocation.
 pub fn extract_events_from_response(
     response: BusinessResponse,
-    correlation_id: String,
+    correlation_id: &str,
 ) -> Result<EventBook, Status> {
     let mut events = match response.result {
         Some(business_response::Result::Events(events)) => events,
@@ -62,7 +62,7 @@ pub fn extract_events_from_response(
     // Propagate correlation ID from command to events via cover
     if let Some(ref mut cover) = events.cover {
         if cover.correlation_id.is_empty() {
-            cover.correlation_id = correlation_id;
+            cover.correlation_id = correlation_id.to_owned();
         }
     }
 

@@ -202,12 +202,16 @@ impl SagaCoordinatorService for SagaCoord {
         let source = super::fill_gaps_if_needed(self.gap_filler.as_ref(), source).await?;
 
         // Create context and call handle() directly (no command delivery)
+        // For speculative execution, pass empty sequences since we're not actually delivering commands
         let ctx = self.factory.create(Arc::new(source));
 
-        let response = ctx.handle().await.map_err(|e| {
-            error!(error = %e, "Saga handler failed");
-            Status::internal(format!("Saga handler failed: {}", e))
-        })?;
+        let response = ctx
+            .handle(std::collections::HashMap::new())
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Saga handler failed");
+                Status::internal(format!("Saga handler failed: {}", e))
+            })?;
 
         Ok(Response::new(response))
     }

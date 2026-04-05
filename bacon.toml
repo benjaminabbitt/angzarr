@@ -104,18 +104,6 @@ command = ["cargo", "check", "--workspace", "--features", "standalone", "--color
 need_stdout = false
 on_change_strategy = "kill_then_restart"
 
-[jobs.ex-go]
-command = ["just", "--justfile", "examples/go/justfile", "--working-directory", "examples/go", "build"]
-need_stdout = true
-on_change_strategy = "kill_then_restart"
-watch = ["examples/go/"]
-
-[jobs.ex-python]
-command = ["just", "--justfile", "examples/python/justfile", "--working-directory", "examples/python", "lint"]
-need_stdout = true
-on_change_strategy = "kill_then_restart"
-watch = ["examples/python/"]
-
 # Format Rust code
 [jobs.fmt]
 command = ["cargo", "fmt"]
@@ -136,19 +124,6 @@ need_stdout = true
 on_change_strategy = "kill_then_restart"
 watch = ["proto/"]
 
-# Proto generation - Python only
-[jobs.proto-python]
-command = ["just", "proto", "python"]
-need_stdout = true
-on_change_strategy = "kill_then_restart"
-watch = ["proto/"]
-
-# Proto generation - Go only
-[jobs.proto-go]
-command = ["just", "proto", "go"]
-need_stdout = true
-on_change_strategy = "kill_then_restart"
-watch = ["proto/"]
 
 # Standalone binaries
 [jobs.bin-standalone]

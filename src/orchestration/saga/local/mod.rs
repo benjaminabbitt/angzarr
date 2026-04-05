@@ -3,6 +3,7 @@
 //! Implements `SagaRetryContext` by composing in-process `CommandExecutor`,
 //! `DestinationFetcher`, and `SagaHandler`. One instance per saga invocation.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -80,11 +81,14 @@ impl LocalSagaContext {
 
 #[async_trait]
 impl SagaRetryContext for LocalSagaContext {
-    async fn handle(&self) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        destination_sequences: HashMap<String, u32>,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = self.source.edition().to_string();
         let mut response = self
             .saga_handler
-            .handle(&self.source)
+            .handle(&self.source, &destination_sequences)
             .await
             .map_err(box_err)?;
 

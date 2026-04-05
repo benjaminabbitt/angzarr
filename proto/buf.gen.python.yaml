@@ -1,9 +1,0 @@
-version: v2
-managed:
-  enabled: true
-plugins:
-  # Pin to v29.3 for protobuf 5.29.x/6.x compatibility (googleapis-common-protos doesn't support protobuf 7.x yet)
-  - remote: buf.build/protocolbuffers/python:v29.3
-    out: ../client/python/angzarr_client/proto
-  - remote: buf.build/grpc/python:v1.68.1
-    out: ../client/python/angzarr_client/proto

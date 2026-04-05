@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 use crate::bus::error::{BusError, Result};
 use crate::bus::traits::{EventBus, EventHandler, PublishResult};
 use crate::proto::EventBook;
-use crate::proto_ext::CoverExt;
+use crate::proto_ext::{CoverExt, EventPageExt};
 
 use super::config::SnsSqsConfig;
 use super::consumer::consume_sqs_queue;
@@ -248,7 +248,11 @@ impl EventBus for SnsSqsEventBus {
                 "{}-{}-{}",
                 domain,
                 root_id,
-                book.pages.iter().map(|p| p.sequence).max().unwrap_or(0)
+                book.pages
+                    .iter()
+                    .map(|p| p.sequence_num())
+                    .max()
+                    .unwrap_or(0)
             ))
             .send()
             .await

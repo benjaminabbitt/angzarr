@@ -181,23 +181,33 @@ impl LocalAggregateContext {
 
 #[async_trait]
 impl AggregateContext for LocalAggregateContext {
+    fn cascade_id(&self) -> Option<&str> {
+        self.cascade_id.as_deref()
+    }
+
     #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
-    async fn load_prior_events(
+    async fn load_prior_events_with_divergence(
         &self,
         domain: &str,
         edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
+        explicit_divergence: Option<u32>,
     ) -> Result<EventBook, Status> {
         match temporal {
             TemporalQuery::Current => {
-                // Try to load snapshot first
-                let snapshot = self
-                    .storage
-                    .snapshot_store
-                    .get(domain, edition, root)
-                    .await
-                    .map_err(|e| Status::internal(format!("Failed to load snapshot: {e}")))?;
+                // Try to load snapshot first (only for non-divergent reads)
+                // For explicit divergence on new branches, skip snapshots as they
+                // may not exist for the branch yet
+                let snapshot = if explicit_divergence.is_none() {
+                    self.storage
+                        .snapshot_store
+                        .get(domain, edition, root)
+                        .await
+                        .map_err(|e| Status::internal(format!("Failed to load snapshot: {e}")))?
+                } else {
+                    None
+                };
 
                 let (events, snapshot_data) = if let Some(snap) = snapshot {
                     let from_seq = snap.sequence + 1;
@@ -209,10 +219,11 @@ impl AggregateContext for LocalAggregateContext {
                         .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
                     (events, Some(snap))
                 } else {
+                    // Use get_with_divergence when explicit divergence is specified
                     let events = self
                         .storage
                         .event_store
-                        .get(domain, edition, root)
+                        .get_with_divergence(domain, edition, root, explicit_divergence)
                         .await
                         .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
                     (events, None)

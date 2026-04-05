@@ -80,16 +80,19 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
     }
 
     /// Process an event book for publishing, offloading large payloads.
-    async fn process_for_publish(&self, book: &EventBook) -> Result<EventBook> {
+    ///
+    /// Accepts and returns `Arc<EventBook>` to avoid cloning in the common case
+    /// where no offloading is needed (passthrough).
+    async fn process_for_publish(&self, book: Arc<EventBook>) -> Result<Arc<EventBook>> {
         let threshold = match self.effective_threshold() {
             Some(t) => t,
-            None => return Ok(book.clone()), // No limit, pass through
+            None => return Ok(book), // No limit, pass through (zero-copy)
         };
 
         // Check total serialized size first
         let total_size = book.encoded_len();
         if total_size <= threshold {
-            return Ok(book.clone()); // Small enough, pass through
+            return Ok(book); // Small enough, pass through (zero-copy)
         }
 
         // Need to offload - process each page
@@ -134,12 +137,12 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
             new_pages.push(page.clone());
         }
 
-        Ok(EventBook {
+        Ok(Arc::new(EventBook {
             cover: book.cover.clone(),
             pages: new_pages,
             snapshot: book.snapshot.clone(),
             next_sequence: book.next_sequence,
-        })
+        }))
     }
 
     /// Resolve external payload references in an event book.
@@ -151,9 +154,9 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
 #[async_trait]
 impl<S: PayloadStore + 'static> EventBus for OffloadingEventBus<S> {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        // Process for offloading
-        let processed = self.process_for_publish(&book).await?;
-        self.inner.publish(Arc::new(processed)).await
+        // Process for offloading (zero-copy passthrough when no offloading needed)
+        let processed = self.process_for_publish(book).await?;
+        self.inner.publish(processed).await
     }
 
     async fn subscribe(&self, handler: Box<dyn EventHandler>) -> Result<()> {

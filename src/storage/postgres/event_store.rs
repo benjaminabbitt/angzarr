@@ -39,16 +39,33 @@ impl PostgresEventStore {
         root: &str,
         from: u32,
     ) -> Result<Vec<EventPage>> {
+        self.composite_read_with_divergence(domain, edition, root, from, None)
+            .await
+    }
+
+    /// Query events with optional explicit divergence point.
+    ///
+    /// The explicit_divergence parameter specifies where the edition branches
+    /// from the main timeline. When None, uses implicit divergence (first edition event).
+    async fn composite_read_with_divergence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: &str,
+        from: u32,
+        explicit_divergence: Option<u32>,
+    ) -> Result<Vec<EventPage>> {
         // Use stored procedure for composite read
         // The procedure handles: main timeline query if edition is 'angzarr',
-        // or composite query (main + edition) with implicit divergence
-        let query = "SELECT event_data FROM get_edition_events_from($1, $2, $3, $4, NULL)";
+        // or composite query (main + edition) with optional explicit divergence
+        let query = "SELECT event_data FROM get_edition_events_from($1, $2, $3, $4, $5)";
 
         let rows = sqlx::query(query)
             .bind(domain)
             .bind(edition)
             .bind(root)
             .bind(from as i32)
+            .bind(explicit_divergence.map(|d| d as i32))
             .fetch_all(&self.pool)
             .await?;
 
@@ -251,6 +268,25 @@ impl EventStore for PostgresEventStore {
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
         self.get_from(domain, edition, root, 0).await
+    }
+
+    async fn get_with_divergence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        explicit_divergence: Option<u32>,
+    ) -> Result<Vec<EventPage>> {
+        let root_str = root.to_string();
+
+        // Main timeline: simple query, explicit divergence doesn't apply
+        if is_main_timeline(edition) {
+            return self.query_main_timeline(domain, &root_str, 0).await;
+        }
+
+        // Named edition: use stored procedure with explicit divergence
+        self.composite_read_with_divergence(domain, edition, &root_str, 0, explicit_divergence)
+            .await
     }
 
     async fn get_from(

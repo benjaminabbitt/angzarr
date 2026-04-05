@@ -12,8 +12,6 @@
 //! // All operations now emit metrics automatically
 //! ```
 
-use std::time::Instant;
-
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -22,22 +20,16 @@ use crate::storage::{
     AddOutcome, CascadeParticipant, EventStore, PositionStore, Result, SnapshotStore, SourceInfo,
 };
 
-// Re-export constants for backwards compatibility
-#[allow(unused_imports)]
-pub use super::metrics::{
-    DOMAIN_CORRELATION_QUERY, OP_EVENT_ADD, OP_EVENT_DELETE_EDITION, OP_EVENT_GET,
-    OP_EVENT_GET_BY_CORRELATION, OP_EVENT_GET_FROM, OP_EVENT_GET_FROM_TO,
-    OP_EVENT_GET_NEXT_SEQUENCE, OP_EVENT_GET_UNTIL_TIMESTAMP, OP_EVENT_LIST_DOMAINS,
-    OP_EVENT_LIST_ROOTS, OP_POSITION_GET, OP_POSITION_PUT, OP_SNAPSHOT_DELETE, OP_SNAPSHOT_GET,
-    OP_SNAPSHOT_GET_AT_SEQ, OP_SNAPSHOT_PUT,
-};
-
 // OTel metric instruments and helpers (only when otel feature enabled)
 #[cfg(feature = "otel")]
 use super::metrics::{
-    domain_attr, handler_attr, operation_attr, storage_type_attr, EVENTS_LOADED_TOTAL,
-    EVENTS_STORED_TOTAL, POSITIONS_UPDATED_TOTAL, SNAPSHOTS_LOADED_TOTAL, SNAPSHOTS_STORED_TOTAL,
-    STORAGE_DURATION,
+    domain_attr, handler_attr, operation_attr, storage_type_attr, DOMAIN_CORRELATION_QUERY,
+    EVENTS_LOADED_TOTAL, EVENTS_STORED_TOTAL, OP_EVENT_ADD, OP_EVENT_DELETE_EDITION, OP_EVENT_GET,
+    OP_EVENT_GET_BY_CORRELATION, OP_EVENT_GET_FROM, OP_EVENT_GET_FROM_TO,
+    OP_EVENT_GET_NEXT_SEQUENCE, OP_EVENT_GET_UNTIL_TIMESTAMP, OP_EVENT_LIST_DOMAINS,
+    OP_EVENT_LIST_ROOTS, OP_POSITION_GET, OP_POSITION_PUT, OP_SNAPSHOT_DELETE, OP_SNAPSHOT_GET,
+    OP_SNAPSHOT_GET_AT_SEQ, OP_SNAPSHOT_PUT, POSITIONS_UPDATED_TOTAL, SNAPSHOTS_LOADED_TOTAL,
+    SNAPSHOTS_STORED_TOTAL, STORAGE_DURATION,
 };
 
 /// Wrapper that adds metrics instrumentation to any storage implementation.
@@ -87,7 +79,9 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         external_id: Option<&str>,
         source_info: Option<&SourceInfo>,
     ) -> Result<AddOutcome> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+        #[cfg(feature = "otel")]
         let count = events.len();
 
         let result = self
@@ -122,13 +116,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 }
             }
         }
-        let _ = (start, count); // Suppress unused warnings when otel disabled
 
         result
     }
 
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get(domain, edition, root).await;
 
@@ -149,7 +143,6 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
@@ -161,7 +154,8 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         root: Uuid,
         from: u32,
     ) -> Result<Vec<EventPage>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get_from(domain, edition, root, from).await;
 
@@ -182,7 +176,6 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
@@ -195,7 +188,8 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         from: u32,
         to: u32,
     ) -> Result<Vec<EventPage>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self
             .inner
@@ -219,13 +213,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
 
     async fn list_roots(&self, domain: &str, edition: &str) -> Result<Vec<Uuid>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.list_roots(domain, edition).await;
 
@@ -239,13 +233,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 ],
             );
         }
-        let _ = start;
 
         result
     }
 
     async fn list_domains(&self) -> Result<Vec<String>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.list_domains().await;
 
@@ -259,13 +253,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 ],
             );
         }
-        let _ = start;
 
         result
     }
 
     async fn get_next_sequence(&self, domain: &str, edition: &str, root: Uuid) -> Result<u32> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get_next_sequence(domain, edition, root).await;
 
@@ -279,13 +273,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 ],
             );
         }
-        let _ = start;
 
         result
     }
 
     async fn get_by_correlation(&self, correlation_id: &str) -> Result<Vec<EventBook>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get_by_correlation(correlation_id).await;
 
@@ -310,7 +304,6 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
@@ -322,7 +315,8 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         root: Uuid,
         until: &str,
     ) -> Result<Vec<EventPage>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self
             .inner
@@ -346,13 +340,13 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
 
     async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.delete_edition_events(domain, edition).await;
 
@@ -366,7 +360,6 @@ impl<T: EventStore> EventStore for Instrumented<T> {
                 ],
             );
         }
-        let _ = start;
 
         result
     }
@@ -401,7 +394,8 @@ impl<T: EventStore> EventStore for Instrumented<T> {
 #[async_trait]
 impl<T: SnapshotStore> SnapshotStore for Instrumented<T> {
     async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Option<Snapshot>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get(domain, edition, root).await;
 
@@ -422,7 +416,6 @@ impl<T: SnapshotStore> SnapshotStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
@@ -434,7 +427,8 @@ impl<T: SnapshotStore> SnapshotStore for Instrumented<T> {
         root: Uuid,
         seq: u32,
     ) -> Result<Option<Snapshot>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get_at_seq(domain, edition, root, seq).await;
 
@@ -455,13 +449,13 @@ impl<T: SnapshotStore> SnapshotStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
 
     async fn put(&self, domain: &str, edition: &str, root: Uuid, snapshot: Snapshot) -> Result<()> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.put(domain, edition, root, snapshot).await;
 
@@ -482,13 +476,13 @@ impl<T: SnapshotStore> SnapshotStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
 
     async fn delete(&self, domain: &str, edition: &str, root: Uuid) -> Result<()> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.delete(domain, edition, root).await;
 
@@ -502,7 +496,6 @@ impl<T: SnapshotStore> SnapshotStore for Instrumented<T> {
                 ],
             );
         }
-        let _ = start;
 
         result
     }
@@ -517,7 +510,8 @@ impl<T: PositionStore> PositionStore for Instrumented<T> {
         edition: &str,
         root: &[u8],
     ) -> Result<Option<u32>> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self.inner.get(handler, domain, edition, root).await;
 
@@ -531,7 +525,6 @@ impl<T: PositionStore> PositionStore for Instrumented<T> {
                 ],
             );
         }
-        let _ = start;
 
         result
     }
@@ -544,7 +537,8 @@ impl<T: PositionStore> PositionStore for Instrumented<T> {
         root: &[u8],
         sequence: u32,
     ) -> Result<()> {
-        let start = Instant::now();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
 
         let result = self
             .inner
@@ -572,7 +566,6 @@ impl<T: PositionStore> PositionStore for Instrumented<T> {
                 );
             }
         }
-        let _ = start;
 
         result
     }
