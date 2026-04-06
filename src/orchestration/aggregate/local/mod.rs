@@ -435,6 +435,19 @@ impl AggregateContext for LocalAggregateContext {
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
+        // Publish FIRST — ensures events reach the bus even if sync projectors fail.
+        tracing::info!(
+            pages = events.pages.len(),
+            domain = %events.domain(),
+            "Aggregate publishing events to bus"
+        );
+
+        let bus_events = Arc::new(events.clone());
+        self.event_bus
+            .publish(bus_events)
+            .await
+            .map_err(|e| Status::unavailable(format!("Failed to publish events: {e}")))?;
+
         // ASYNC mode: fire-and-forget — no sync projectors
         // SIMPLE and CASCADE: call sync projectors
         let projections = if self.sync_mode == Some(crate::proto::SyncMode::Async) {
@@ -442,26 +455,6 @@ impl AggregateContext for LocalAggregateContext {
         } else {
             self.call_sync_projectors(events).await
         };
-
-        // All modes: publish to bus for async processing (projectors, etc.)
-        // CASCADE mode also publishes after sync saga/PM processing
-        tracing::info!(
-            pages = events.pages.len(),
-            domain = %events.domain(),
-            "Aggregate publishing events to bus"
-        );
-
-        // Publish events to bus — cover.domain stays bare, bus computes routing key
-        let bus_events = Arc::new(events.clone());
-        let publish_result = self.event_bus.publish(bus_events).await;
-
-        if let Err(e) = publish_result {
-            warn!(
-                domain = %events.domain(),
-                error = %e,
-                "Failed to publish events"
-            );
-        }
 
         Ok(projections)
     }

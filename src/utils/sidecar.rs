@@ -16,6 +16,8 @@ use crate::orchestration::command::grpc::GrpcCommandExecutor;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::grpc::GrpcDestinationFetcher;
 use crate::orchestration::destination::DestinationFetcher;
+use crate::orchestration::fact::grpc::GrpcFactExecutor;
+use crate::orchestration::FactExecutor;
 use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::transport::connect_to_address;
@@ -72,10 +74,18 @@ pub async fn bootstrap_sidecar(
 /// `AggregateCoordinator` and `EventQuery` services.
 pub async fn connect_endpoints(
     endpoints_str: &str,
-) -> Result<(Arc<dyn CommandExecutor>, Arc<dyn DestinationFetcher>), Box<dyn std::error::Error>> {
+) -> Result<
+    (
+        Arc<dyn CommandExecutor>,
+        Arc<dyn DestinationFetcher>,
+        Arc<dyn FactExecutor>,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let endpoints = parse_static_endpoints(endpoints_str);
 
     let mut command_clients = HashMap::new();
+    let mut fact_clients = HashMap::new();
     let mut query_clients = HashMap::new();
 
     for (domain, address) in endpoints {
@@ -94,6 +104,24 @@ pub async fn connect_endpoints(
         })
         .await?;
         command_clients.insert(domain.clone(), cmd_client);
+
+        // Create a separate client for fact injection (same service, different RPC method).
+        // Uses its own connection to avoid Mutex contention with the command client.
+        let addr = address.clone();
+        let svc = format!("fact-{}", domain);
+        let fact_client = (|| {
+            let a = addr.clone();
+            async move {
+                let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
+                Ok::<_, String>(CommandHandlerCoordinatorServiceClient::new(channel))
+            }
+        })
+        .retry(connection_backoff())
+        .notify(|err: &String, dur: Duration| {
+            warn!(service = %svc, error = %err, delay = ?dur, "Connection failed, retrying");
+        })
+        .await?;
+        fact_clients.insert(domain.clone(), fact_client);
 
         let addr = address.clone();
         let svc = format!("event-query-{}", domain);
@@ -116,8 +144,9 @@ pub async fn connect_endpoints(
 
     let executor: Arc<dyn CommandExecutor> = Arc::new(GrpcCommandExecutor::new(command_clients));
     let fetcher: Arc<dyn DestinationFetcher> = Arc::new(GrpcDestinationFetcher::new(query_clients));
+    let fact_executor: Arc<dyn FactExecutor> = Arc::new(GrpcFactExecutor::new(fact_clients));
 
-    Ok((executor, fetcher))
+    Ok((executor, fetcher, fact_executor))
 }
 
 /// Subscribe a handler to the event bus and block until Ctrl+C.

@@ -12,6 +12,7 @@ pub mod aggregate;
 pub mod command;
 pub mod correlation;
 pub mod destination;
+pub mod fact;
 pub mod process_manager;
 pub mod projector;
 pub mod saga;

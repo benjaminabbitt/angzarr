@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     info!("Using static endpoint configuration for two-phase saga routing");
-    let (executor, _fetcher) = connect_endpoints(&endpoints_str).await?;
+    let (executor, _fetcher, fact_executor) = connect_endpoints(&endpoints_str).await?;
     let factory: Arc<GrpcSagaContextFactory> = Arc::new(GrpcSagaContextFactory::new(
         Arc::new(Mutex::new(saga_client)),
         publisher,
@@ -152,7 +152,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         bootstrap.domain.clone(),
     ));
-    let handler = SagaEventHandler::from_factory(factory.clone(), executor.clone(), None);
+    let handler = SagaEventHandler::from_factory_with_validator(
+        factory.clone(),
+        executor.clone(),
+        None,
+        None,
+        Some(fact_executor.clone()),
+        None,
+        angzarr::utils::retry::saga_backoff(),
+    );
 
     // =========================================================================
     // Start bus subscriber (ASYNC mode)
@@ -188,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let coordinator_addr = format!("0.0.0.0:{}", coordinator_port);
 
     // Create saga coordinator service for CASCADE mode
-    let saga_coord = SagaCoord::new(factory, executor);
+    let saga_coord = SagaCoord::new(factory, executor).with_fact_executor(fact_executor);
 
     // Health reporter for the coordinator
     let (health_reporter, health_service) = health_reporter();

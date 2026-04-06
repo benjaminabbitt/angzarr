@@ -145,7 +145,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     })?;
 
-    let (command_executor, remote_fetcher) = connect_endpoints(&endpoints_str).await?;
+    let (command_executor, remote_fetcher, fact_executor) =
+        connect_endpoints(&endpoints_str).await?;
 
     // Wrap the remote fetcher with hybrid that handles PM domain locally
     let hybrid_fetcher: Arc<HybridDestinationFetcher> = Arc::new(HybridDestinationFetcher::new(
@@ -174,6 +175,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_store,
         event_bus,
     )
+    .with_fact_executor(Some(fact_executor.clone()))
     .with_targets(subscriptions);
 
     // =========================================================================
@@ -210,7 +212,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let coordinator_addr = format!("0.0.0.0:{}", coordinator_port);
 
     // Create PM coordinator service for CASCADE mode
-    let pm_coord = PmCoord::new(pm_factory, hybrid_fetcher, command_executor);
+    let pm_coord = PmCoord::new(pm_factory, hybrid_fetcher, command_executor)
+        .with_fact_executor(fact_executor);
 
     // Health reporter for the coordinator
     let (health_reporter, health_service) = health_reporter();

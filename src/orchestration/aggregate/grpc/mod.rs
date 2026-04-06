@@ -539,6 +539,15 @@ impl AggregateContext for GrpcAggregateContext {
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
+        // Publish FIRST — ensures events reach the bus even if sync calls below fail.
+        // Without this ordering, a sync projector/saga/PM failure would leave events
+        // persisted in PostgreSQL but never published to the bus.
+        let bus_events = Arc::new(events.clone());
+        self.event_bus
+            .publish(bus_events)
+            .await
+            .map_err(|e| Status::unavailable(format!("Failed to publish events: {e}")))?;
+
         // ASYNC mode: fire-and-forget — no sync projectors
         // SIMPLE and CASCADE: call sync projectors
         let projections = match self.sync_mode {
@@ -550,7 +559,7 @@ impl AggregateContext for GrpcAggregateContext {
             _ => vec![],
         };
 
-        // CASCADE mode: call sync sagas and PMs before publishing to bus
+        // CASCADE mode: call sync sagas and PMs after publishing to bus
         let is_cascade = self.sync_mode == Some(crate::proto::SyncMode::Cascade);
         if is_cascade {
             // Call sagas synchronously - they may produce commands for other aggregates
@@ -560,19 +569,6 @@ impl AggregateContext for GrpcAggregateContext {
             // Call PMs synchronously - they may produce commands for other aggregates
             self.call_sync_pms(events, crate::proto::SyncMode::Cascade)
                 .await?;
-        }
-
-        // All modes: publish to bus for async processing (projectors, etc.)
-        // Publish events to bus — cover.domain stays bare, bus computes routing key
-        let bus_events = Arc::new(events.clone());
-        let publish_result = self.event_bus.publish(bus_events).await;
-
-        if let Err(e) = publish_result {
-            warn!(
-                domain = %events.domain(),
-                error = %e,
-                "Failed to publish events"
-            );
         }
 
         Ok(projections)

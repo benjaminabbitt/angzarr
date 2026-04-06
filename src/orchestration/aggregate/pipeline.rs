@@ -182,8 +182,15 @@ async fn execute_mode(
                 source_seq = deferred.source_seq,
                 "Deferred command already processed, returning cached result"
             );
+
+            // Re-publish: if the first attempt persisted events but failed to
+            // publish (e.g., bus was temporarily unavailable), this ensures
+            // the events eventually reach the bus on retry.
+            let projections = ctx.post_persist(&existing_events).await?;
+
             return Ok(CommandResponse {
                 events: Some(existing_events),
+                projections,
                 ..Default::default()
             });
         }
@@ -624,14 +631,21 @@ pub async fn execute_fact_pipeline(
                 })
                 .collect();
 
+            let dup_book = EventBook {
+                cover: prior_events.cover,
+                pages: filtered_pages,
+                snapshot: prior_events.snapshot,
+                next_sequence: prior_events.next_sequence,
+            };
+
+            // Re-publish: if the first attempt persisted events but failed to
+            // publish (e.g., bus was temporarily unavailable), this ensures
+            // the events eventually reach the bus on retry.
+            let projections = ctx.post_persist(&dup_book).await?;
+
             Ok(FactResponse {
-                events: EventBook {
-                    cover: prior_events.cover,
-                    pages: filtered_pages,
-                    snapshot: prior_events.snapshot,
-                    next_sequence: prior_events.next_sequence,
-                },
-                projections: vec![],
+                events: dup_book,
+                projections,
                 already_processed: true,
             })
         }
