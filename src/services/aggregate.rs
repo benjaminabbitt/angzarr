@@ -323,6 +323,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
                     &edition,
                     root_uuid,
                     &correlation_id,
+                    None,
                 )
                 .await?;
 

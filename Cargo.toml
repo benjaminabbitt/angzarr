@@ -79,10 +79,6 @@ full = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb",
 full-musl = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lossy"]
 
 [dependencies]
-# Client library (proto types, extension traits, client implementations)
-# Git dependency for container builds; local path override in [patch] for development
-angzarr-client = { git = "https://github.com/angzarr-io/angzarr-client-rust.git" }
-
 # gRPC
 tonic = { version = "0.14", features = ["tls-ring", "transport"] }
 tonic-health = "0.14"

@@ -168,34 +168,34 @@ Multi-domain event correlation via correlation ID. Own aggregate (correlation ID
 
 #### Output Options
 
-PMs can emit two types of output to destination aggregates:
+Sagas and PMs can emit two types of output to destination aggregates:
 
 | Output | When to Use | Aggregate Response |
 |--------|-------------|-------------------|
-| **Commands** (preferred) | Normal flow - aggregate validates and decides | Accept → events, Reject → notification |
-| **Facts** | Injecting external/computed info that aggregate can't validate | Always accepted (no validation) |
+| **Facts** | Inter-domain messages, sagas, external events (webhooks) | Always accepted (no validation) |
+| **Commands** | When the destination aggregate must validate and can reject | Accept → events, Reject → notification |
 
-**Commands with Sync Mode (Preferred)**
+**Facts (typical for sagas and inter-domain messages)**
 ```rust
-// PM sends command, gets immediate response
+// Saga translates domain A event into domain B fact
+let fact = PlayerSeated { player_root, seat, table_id };
+// Fact is injected directly — destination aggregate records it
+```
+
+**Commands (when validation/rejection is needed)**
+```rust
+// PM sends command when aggregate must decide
 let cmd = SeatPlayer { player_root, seat, amount };
 destinations.stamp_command(&mut cmd, "table")?;
 // With SyncMode::Simple, PM receives immediate accept/reject
 // Handle rejection via on_rejected()
 ```
 
-**Facts (When Validation Not Possible)**
-```rust
-// PM injects computed data aggregate can't derive
-let fact = ExternalPriceUpdated { asset_id, price, source: "oracle" };
-// Facts bypass command validation - use sparingly
-```
-
 #### Design Principles
 
 1. **Let aggregates decide** — Business logic belongs in aggregates, not coordinators
-2. **Prefer commands** — Use `SyncMode::Simple` for immediate feedback on acceptance/rejection
-3. **Use facts sparingly** — Only for external data injection, not to bypass validation
+2. **Facts are the norm for inter-domain flow** — Sagas typically emit facts, not commands
+3. **Use commands when rejection matters** — Commands let the destination validate and reject
 4. **Use sequences for stamping** — Destinations provide `next_sequence` for command headers
 
 #### Anti-pattern: Decision Making in Sagas
@@ -209,14 +209,14 @@ def handle_order(self, event, destinations):
         return RejectCommand(...)
     return CreateReservation(...)
 
-# GOOD: Saga translates, aggregate decides
+# GOOD: Saga translates, aggregate records the fact
 @handles(OrderCreated)
 def handle_order(self, event, ctx):
-    cmd = CreateReservation(order_id=event.order_id, quantity=event.quantity)
-    ctx.stamp_command(cmd, "inventory")
-    return cmd
-    # Inventory aggregate rejects if insufficient stock
-    # Saga handles rejection via @rejected decorator
+    fact = OrderRequested(order_id=event.order_id, quantity=event.quantity)
+    ctx.inject_fact(fact, "inventory")
+    return fact
+    # Inventory aggregate records the fact
+    # If validation is needed, use a command instead
 ```
 
 **Key insight:** Sagas/PMs receive only sequence numbers, not EventBooks. They cannot (and should not) rebuild destination aggregate state.

@@ -21,7 +21,11 @@ use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventPageExt};
 use crate::storage::DomainStorage;
 use crate::storage::StorageError;
 
-use super::{AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery};
+use crate::storage::AddOutcome;
+
+use super::{
+    AggregateContext, AggregateContextFactory, ClientLogic, PersistOutcome, TemporalQuery,
+};
 
 /// Build an EventBook with proper next_sequence set.
 fn build_event_book(
@@ -274,7 +278,8 @@ impl AggregateContext for LocalAggregateContext {
         edition: &str,
         root: Uuid,
         correlation_id: &str,
-    ) -> Result<EventBook, Status> {
+        external_id: Option<&str>,
+    ) -> Result<PersistOutcome, Status> {
         // Compute new pages: those in received but not in prior
         let prior_max_seq = prior.pages.iter().map(|p| extract_sequence(Some(p))).max();
         let new_pages: Vec<_> = received
@@ -307,12 +312,12 @@ impl AggregateContext for LocalAggregateContext {
                 }
                 c
             });
-            return Ok(EventBook {
+            return Ok(PersistOutcome::NoOp(EventBook {
                 cover,
                 pages: vec![],
                 snapshot: received.snapshot.clone(),
                 ..Default::default()
-            });
+            }));
         }
 
         // Persist new events if any
@@ -348,7 +353,8 @@ impl AggregateContext for LocalAggregateContext {
                 new_pages.clone()
             };
 
-            self.storage
+            let outcome = self
+                .storage
                 .event_store
                 .add(
                     domain,
@@ -356,7 +362,7 @@ impl AggregateContext for LocalAggregateContext {
                     root,
                     pages_to_persist,
                     correlation_id,
-                    None,
+                    external_id,
                     None, // No source tracking for direct aggregate execution
                 )
                 .await
@@ -369,6 +375,17 @@ impl AggregateContext for LocalAggregateContext {
                     }
                     _ => Status::internal(format!("Failed to persist events: {e}")),
                 })?;
+
+            if let AddOutcome::Duplicate {
+                first_sequence,
+                last_sequence,
+            } = outcome
+            {
+                return Ok(PersistOutcome::Duplicate {
+                    first_sequence,
+                    last_sequence,
+                });
+            }
         }
 
         // Persist snapshot if changed and enabled
@@ -408,12 +425,12 @@ impl AggregateContext for LocalAggregateContext {
             });
             c
         });
-        Ok(EventBook {
+        Ok(PersistOutcome::Persisted(EventBook {
             cover,
             pages: new_pages,
             snapshot: received.snapshot.clone(),
             ..Default::default()
-        })
+        }))
     }
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]

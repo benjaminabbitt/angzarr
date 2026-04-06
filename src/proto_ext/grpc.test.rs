@@ -8,7 +8,7 @@
 //! middleware extracts this header to create linked spans.
 
 use super::*;
-use angzarr_client::proto_ext::constants::CORRELATION_ID_HEADER;
+use crate::proto_ext::constants::CORRELATION_ID_HEADER;
 
 /// correlated_request with valid ID inserts header.
 ///

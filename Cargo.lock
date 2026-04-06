@@ -106,9 +106,8 @@ dependencies = [
 
 [[package]]
 name = "angzarr"
-version = "0.2.1"
+version = "0.3.2"
 dependencies = [
- "angzarr-client",
  "async-nats",
  "async-trait",
  "aws-config",
@@ -177,40 +176,6 @@ dependencies = [
  "tracing-subscriber",
  "trivial-delegation",
  "uuid",
-]
-
-[[package]]
-name = "angzarr-client"
-version = "0.3.0"
-dependencies = [
- "angzarr-macros",
- "async-trait",
- "backon",
- "chrono",
- "hex",
- "hyper-util",
- "prost",
- "prost-build",
- "prost-types",
- "serde",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "tonic-prost",
- "tower",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "angzarr-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

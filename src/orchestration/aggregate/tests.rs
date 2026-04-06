@@ -895,7 +895,8 @@ fn test_cascade_id_trait_default() {
             _: &str,
             _: Uuid,
             _: &str,
-        ) -> Result<EventBook, tonic::Status> {
+            _: Option<&str>,
+        ) -> Result<super::traits::PersistOutcome, tonic::Status> {
             unimplemented!()
         }
         async fn post_persist(

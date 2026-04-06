@@ -9,6 +9,7 @@
 pub mod advice;
 pub mod bus;
 pub mod cascade;
+pub mod client_traits;
 pub mod config;
 pub mod descriptor;
 pub mod discovery;
@@ -19,6 +20,7 @@ pub mod handlers;
 pub mod orchestration;
 pub mod payload_store;
 pub mod process;
+pub mod proto;
 pub mod proto_ext;
 pub mod proto_reflect;
 pub mod registration;
@@ -35,20 +37,11 @@ pub mod validation;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
-// Re-export proto types from angzarr-client (includes both client and server)
-pub use angzarr_client::proto;
-
-// Re-export extension traits (our proto_ext module re-exports from angzarr-client + adds framework-specific)
-pub use angzarr_client::{
+// Re-export extension traits for convenient imports
+pub use proto_ext::{
     CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt, ProtoUuidExt,
     UuidExt,
 };
-
-// Re-export client traits from angzarr-client
-pub mod client_traits {
-    pub use angzarr_client::error::{ClientError, Result};
-    pub use angzarr_client::traits::{GatewayClient, QueryClient, SpeculativeClient};
-}
 
 // Re-export trivial_delegation macro for marking functions excluded from unit testing
 pub use trivial_delegation::trivial_delegation;

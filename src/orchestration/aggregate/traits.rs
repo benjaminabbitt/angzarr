@@ -16,6 +16,20 @@ use crate::proto::{
 
 use super::types::{FactContext, TemporalQuery};
 
+/// Result of persisting events to storage.
+#[derive(Debug, Clone)]
+pub enum PersistOutcome {
+    /// Events were persisted successfully.
+    Persisted(EventBook),
+    /// No changes to persist (command was a no-op).
+    NoOp(EventBook),
+    /// Duplicate external_id detected. No new events persisted.
+    Duplicate {
+        first_sequence: u32,
+        last_sequence: u32,
+    },
+}
+
 /// Context for aggregate command pipeline.
 ///
 /// Implementations provide storage access and post-persist behavior.
@@ -25,6 +39,7 @@ use super::types::{FactContext, TemporalQuery};
 /// Domain is the bare aggregate domain (`"order"`, `"cart"`).
 /// Edition identifies the timeline (`"angzarr"` for main, named editions for forks).
 #[async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait AggregateContext: Send + Sync {
     /// Load prior events for the aggregate.
     ///
@@ -59,7 +74,11 @@ pub trait AggregateContext: Send + Sync {
     /// to determine what to persist:
     /// - If snapshots differ (by state comparison), persist the new snapshot
     /// - If pages differ (new pages in received), persist the new pages
-    /// - If identical, no-op
+    /// - If identical, returns `PersistOutcome::NoOp`
+    ///
+    /// When `external_id` is provided (fact injection), the storage layer
+    /// atomically checks for duplicates and returns `PersistOutcome::Duplicate`
+    /// if the external_id was already used for this aggregate root.
     async fn persist_events(
         &self,
         prior: &EventBook,
@@ -68,7 +87,8 @@ pub trait AggregateContext: Send + Sync {
         edition: &str,
         root: Uuid,
         correlation_id: &str,
-    ) -> Result<EventBook, Status>;
+        external_id: Option<&str>,
+    ) -> Result<PersistOutcome, Status>;
 
     /// Publish to event bus AND call sync projectors via service discovery.
     /// Returns projections from sync projectors.
@@ -111,36 +131,6 @@ pub trait AggregateContext: Send + Sync {
             actual = actual_sequence,
             "DLQ not configured, dropping command"
         );
-    }
-
-    /// Check if an external_id has already been used for fact injection.
-    ///
-    /// Returns `Some((first_seq, last_seq))` if already claimed, None if available.
-    /// Default implementation returns None (no idempotency checking).
-    async fn check_fact_idempotency(
-        &self,
-        _domain: &str,
-        _edition: &str,
-        _root: Uuid,
-        _external_id: &str,
-    ) -> Result<Option<(u32, u32)>, Status> {
-        Ok(None)
-    }
-
-    /// Record a fact injection for idempotency tracking.
-    ///
-    /// Called after facts are persisted to record the external_id claim.
-    /// Default implementation does nothing.
-    async fn record_fact_idempotency(
-        &self,
-        _domain: &str,
-        _edition: &str,
-        _root: Uuid,
-        _external_id: &str,
-        _first_sequence: u32,
-        _last_sequence: u32,
-    ) -> Result<(), Status> {
-        Ok(())
     }
 
     /// Get the cascade ID for 2PC atomic execution, if set.

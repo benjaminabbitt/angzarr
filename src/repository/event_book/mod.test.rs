@@ -48,7 +48,7 @@ async fn test_put_and_get_roundtrip() {
     let book =
         make_event_book_with_root("orders", root, vec![make_event_page(0), make_event_page(1)]);
 
-    repo.put("test", &book).await.unwrap();
+    repo.put("test", &book, None).await.unwrap();
 
     let retrieved = repo.get("orders", "test", root).await.unwrap();
     assert_eq!(retrieved.pages.len(), 2);
@@ -160,7 +160,7 @@ async fn test_put_missing_cover_returns_error() {
         ..Default::default()
     };
 
-    let result = repo.put("test", &book).await;
+    let result = repo.put("test", &book, None).await;
 
     assert!(result.is_err());
 }
@@ -184,7 +184,7 @@ async fn test_put_missing_root_returns_error() {
         ..Default::default()
     };
 
-    let result = repo.put("test", &book).await;
+    let result = repo.put("test", &book, None).await;
 
     assert!(result.is_err());
 }
@@ -210,7 +210,7 @@ async fn test_put_invalid_uuid_returns_error() {
         ..Default::default()
     };
 
-    let result = repo.put("test", &book).await;
+    let result = repo.put("test", &book, None).await;
 
     assert!(result.is_err());
 }
@@ -239,7 +239,7 @@ async fn test_put_propagates_store_error() {
     let root = Uuid::new_v4();
     let book = make_event_book_with_root("orders", root, vec![]);
 
-    let result = repo.put("test", &book).await;
+    let result = repo.put("test", &book, None).await;
 
     assert!(result.is_err());
 }

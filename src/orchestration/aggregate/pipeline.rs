@@ -24,7 +24,7 @@ use super::parsing::{
     extract_explicit_divergence, has_deferred_sequence, parse_command_cover, parse_event_cover,
     stamp_deferred_sequences,
 };
-use super::traits::{AggregateContext, ClientLogic};
+use super::traits::{AggregateContext, ClientLogic, PersistOutcome};
 use super::two_phase::{transform_for_two_phase, TwoPhaseContext};
 use super::types::{FactContext, FactResponse, PipelineMode, TemporalQuery};
 
@@ -379,7 +379,7 @@ async fn execute_mode(
     }
 
     // Persist (compares prior with received to detect new events/snapshot)
-    let mut persisted = ctx
+    let outcome = ctx
         .persist_events(
             &prior_events,
             &received_events,
@@ -387,8 +387,17 @@ async fn execute_mode(
             &edition,
             root_uuid,
             &correlation_id,
+            None, // Commands don't use external_id idempotency
         )
         .await?;
+
+    let mut persisted = match outcome {
+        PersistOutcome::Persisted(events) | PersistOutcome::NoOp(events) => events,
+        PersistOutcome::Duplicate { .. } => {
+            // Should not happen for commands (no external_id passed)
+            return Err(Status::internal("Unexpected duplicate in command pipeline"));
+        }
+    };
 
     // Set next_sequence on persisted EventBook for callers
     calculate_set_next_seq(&mut persisted);
@@ -493,52 +502,6 @@ pub async fn execute_fact_pipeline(
     span.record("root_uuid", tracing::field::display(&root_uuid));
     span.record("external_id", external_id.as_str());
 
-    // Check idempotency if external_id is provided
-    if !external_id.is_empty() {
-        if let Some((first_seq, last_seq)) = ctx
-            .check_fact_idempotency(&domain, &edition, root_uuid, &external_id)
-            .await?
-        {
-            // Already processed - load and return existing events
-            tracing::debug!(
-                external_id = %external_id,
-                first_seq = first_seq,
-                last_seq = last_seq,
-                "Fact already processed (idempotent response)"
-            );
-
-            let prior_events = ctx
-                .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
-                .await?;
-
-            // Filter to only the events that were part of this fact injection
-            let filtered_pages: Vec<_> = prior_events
-                .pages
-                .into_iter()
-                .filter(|p| {
-                    if let Some(SequenceType::Sequence(seq)) =
-                        p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
-                    {
-                        *seq >= first_seq && *seq <= last_seq
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-
-            return Ok(FactResponse {
-                events: EventBook {
-                    cover: prior_events.cover,
-                    pages: filtered_pages,
-                    snapshot: prior_events.snapshot,
-                    next_sequence: prior_events.next_sequence,
-                },
-                projections: vec![],
-                already_processed: true,
-            });
-        }
-    }
-
     // Validate that at least one page has ExternalDeferred (fact marker)
     let has_fact_marker = fact_events.pages.iter().any(|p| {
         matches!(
@@ -611,8 +574,13 @@ pub async fn execute_fact_pipeline(
         next_sequence: current_seq,
     };
 
-    // Persist events
-    let mut persisted = ctx
+    // Persist events — storage layer handles idempotency atomically via external_id
+    let ext_id = if external_id.is_empty() {
+        None
+    } else {
+        Some(external_id.as_str())
+    };
+    let outcome = ctx
         .persist_events(
             &prior_events,
             &events_to_persist,
@@ -620,58 +588,65 @@ pub async fn execute_fact_pipeline(
             &edition,
             root_uuid,
             &correlation_id,
+            ext_id,
         )
         .await?;
 
-    // Set next_sequence
-    calculate_set_next_seq(&mut persisted);
+    match outcome {
+        PersistOutcome::Duplicate {
+            first_sequence,
+            last_sequence,
+        } => {
+            // Already processed — load and return existing events
+            tracing::debug!(
+                external_id = %external_id,
+                first_seq = first_sequence,
+                last_seq = last_sequence,
+                "Fact already processed (idempotent response)"
+            );
 
-    // Record idempotency if external_id is provided
-    if !external_id.is_empty() && !persisted.pages.is_empty() {
-        let first_seq = persisted
-            .pages
-            .first()
-            .and_then(|p| {
-                if let Some(SequenceType::Sequence(s)) =
-                    p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
-                {
-                    Some(*s)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(next_seq);
-        let last_seq = persisted
-            .pages
-            .last()
-            .and_then(|p| {
-                if let Some(SequenceType::Sequence(s)) =
-                    p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
-                {
-                    Some(*s)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(current_seq.saturating_sub(1));
+            let prior_events = ctx
+                .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+                .await?;
 
-        ctx.record_fact_idempotency(
-            &domain,
-            &edition,
-            root_uuid,
-            &external_id,
-            first_seq,
-            last_seq,
-        )
-        .await?;
+            // Filter to only the events that were part of this fact injection
+            let filtered_pages: Vec<_> = prior_events
+                .pages
+                .into_iter()
+                .filter(|p| {
+                    if let Some(SequenceType::Sequence(seq)) =
+                        p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
+                    {
+                        *seq >= first_sequence && *seq <= last_sequence
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+
+            Ok(FactResponse {
+                events: EventBook {
+                    cover: prior_events.cover,
+                    pages: filtered_pages,
+                    snapshot: prior_events.snapshot,
+                    next_sequence: prior_events.next_sequence,
+                },
+                projections: vec![],
+                already_processed: true,
+            })
+        }
+        PersistOutcome::Persisted(mut persisted) | PersistOutcome::NoOp(mut persisted) => {
+            // Set next_sequence
+            calculate_set_next_seq(&mut persisted);
+
+            // Post-persist: publish + sync projectors
+            let projections = ctx.post_persist(&persisted).await?;
+
+            Ok(FactResponse {
+                events: persisted,
+                projections,
+                already_processed: false,
+            })
+        }
     }
-
-    // Post-persist: publish + sync projectors
-    let projections = ctx.post_persist(&persisted).await?;
-
-    Ok(FactResponse {
-        events: persisted,
-        projections,
-        already_processed: false,
-    })
 }

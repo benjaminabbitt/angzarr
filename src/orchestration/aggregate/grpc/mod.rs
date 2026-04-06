@@ -26,7 +26,11 @@ use crate::services::upcaster::Upcaster;
 use crate::storage::{EventStore, SnapshotStore, StorageError};
 use crate::utils::sequence_validator::sequence_mismatch_error_with_state;
 
-use super::{AggregateContext, AggregateContextFactory, ClientLogic, TemporalQuery};
+use crate::storage::AddOutcome;
+
+use super::{
+    AggregateContext, AggregateContextFactory, ClientLogic, PersistOutcome, TemporalQuery,
+};
 
 /// Build an EventBook with proper next_sequence set.
 ///
@@ -402,7 +406,8 @@ impl AggregateContext for GrpcAggregateContext {
         edition: &str,
         root: Uuid,
         correlation_id: &str,
-    ) -> Result<EventBook, Status> {
+        external_id: Option<&str>,
+    ) -> Result<PersistOutcome, Status> {
         // Compute new pages: those in received but not in prior
         let prior_max_seq = prior.pages.iter().map(|p| p.sequence_num()).max();
         let mut new_pages: Vec<_> = received
@@ -428,7 +433,7 @@ impl AggregateContext for GrpcAggregateContext {
 
         if new_pages.is_empty() && !snapshot_changed {
             // Nothing to persist
-            return Ok(received.clone());
+            return Ok(PersistOutcome::NoOp(received.clone()));
         }
 
         // Persist new events if any
@@ -462,8 +467,9 @@ impl AggregateContext for GrpcAggregateContext {
                 snapshot: None,
                 ..Default::default()
             };
-            self.event_book_repo
-                .put(edition, &events_to_persist)
+            let outcome = self
+                .event_book_repo
+                .put(edition, &events_to_persist, external_id)
                 .await
                 .map_err(|e| match e {
                     StorageError::SequenceConflict { expected, actual } => {
@@ -474,6 +480,17 @@ impl AggregateContext for GrpcAggregateContext {
                     }
                     _ => Status::internal(format!("Failed to persist events: {e}")),
                 })?;
+
+            if let AddOutcome::Duplicate {
+                first_sequence,
+                last_sequence,
+            } = outcome
+            {
+                return Ok(PersistOutcome::Duplicate {
+                    first_sequence,
+                    last_sequence,
+                });
+            }
         }
 
         // Persist snapshot if changed and enabled
@@ -512,12 +529,12 @@ impl AggregateContext for GrpcAggregateContext {
                 edition: None,
             })
         });
-        Ok(EventBook {
+        Ok(PersistOutcome::Persisted(EventBook {
             cover: result_cover,
             pages: new_pages,
             snapshot: received.snapshot.clone(),
             ..Default::default()
-        })
+        }))
     }
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]

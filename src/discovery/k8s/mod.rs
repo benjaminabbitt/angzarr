@@ -4,6 +4,12 @@
 //! resources with appropriate labels. Service mesh handles L7 gRPC load
 //! balancing—we just connect to Service DNS names.
 //!
+//! # Future
+//!
+//! - Saga discovery via `app.kubernetes.io/component: saga` label
+//! - Process manager discovery via `app.kubernetes.io/component: process-manager` label
+//! - PM subscription tracking via `angzarr.io/subscriptions` label (comma-separated domains)
+//!
 //! # Label Scheme
 //!
 //! ```yaml
@@ -49,16 +55,6 @@ const DOMAIN_LABEL: &str = "angzarr.io/domain";
 /// Component values.
 const COMPONENT_AGGREGATE: &str = "aggregate";
 const COMPONENT_PROJECTOR: &str = "projector";
-// Future: K8s watcher support for sagas/PMs
-#[allow(dead_code)]
-const COMPONENT_SAGA: &str = "saga";
-#[allow(dead_code)]
-const COMPONENT_PROCESS_MANAGER: &str = "process-manager";
-
-/// Label for PM subscriptions (comma-separated domains).
-/// Future: K8s watcher support for PMs
-#[allow(dead_code)]
-const SUBSCRIPTIONS_LABEL: &str = "angzarr.io/subscriptions";
 
 /// Default gRPC port.
 const DEFAULT_GRPC_PORT: u16 = 50051;

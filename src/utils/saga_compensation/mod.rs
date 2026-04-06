@@ -99,7 +99,7 @@ pub trait EscalationHandler: Send + Sync {
 /// Default escalation handler that routes based on configuration.
 ///
 /// - `quarantine`: If `dead_letter_queue_url` configured → publishes to fallback domain via EventBus
-/// - `notify`: If `escalation_webhook_url` configured → calls webhook (TODO)
+/// - `notify`: If `escalation_webhook_url` configured → calls webhook with retry
 pub struct DefaultEscalationHandler {
     event_bus: Arc<dyn EventBus>,
     config: SagaCompensationConfig,

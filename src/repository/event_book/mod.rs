@@ -34,7 +34,7 @@ use std::collections::HashSet;
 
 use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
 use crate::proto_ext::{calculate_set_next_seq, EventPageExt};
-use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
+use crate::storage::{AddOutcome, EventStore, Result, SnapshotStore, StorageError};
 
 /// Extract domain, root UUID, and correlation_id from an EventBook.
 fn extract_cover(book: &EventBook) -> Result<(&str, Uuid, &str)> {
@@ -323,8 +323,14 @@ impl EventBookRepository {
 
     /// Persist an EventBook.
     ///
-    /// Stores all events in the event store.
-    pub async fn put(&self, edition: &str, book: &EventBook) -> Result<()> {
+    /// Stores all events in the event store. When `external_id` is provided,
+    /// the storage layer atomically checks for duplicates.
+    pub async fn put(
+        &self,
+        edition: &str,
+        book: &EventBook,
+        external_id: Option<&str>,
+    ) -> Result<AddOutcome> {
         let (domain, root_uuid, correlation_id) = extract_cover(book)?;
         self.event_store
             .add(
@@ -333,11 +339,10 @@ impl EventBookRepository {
                 root_uuid,
                 book.pages.clone(),
                 correlation_id,
-                None, // No idempotency key for regular puts
+                external_id,
                 None, // No source info for regular puts
             )
             .await
-            .map(|_| ()) // Ignore AddOutcome, just succeed
     }
 }
 
