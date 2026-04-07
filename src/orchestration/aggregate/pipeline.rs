@@ -567,7 +567,10 @@ pub async fn execute_fact_pipeline(
                 .created_at
                 .or_else(|| Some(prost_types::Timestamp::from(std::time::SystemTime::now()))),
             payload: page.payload,
-            committed: page.committed,
+            // Facts are external realities — always immediately committed.
+            // If this runs inside a cascade, persist_events will override to
+            // committed=false and stamp the cascade_id.
+            committed: true,
             cascade_id: page.cascade_id,
         };
         final_pages.push(new_page);

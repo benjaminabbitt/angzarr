@@ -174,12 +174,7 @@ pub trait ClientLogic: Send + Sync {
     /// Called when fact events (with ExternalDeferredSequence markers) are injected.
     /// The aggregate updates its state based on the facts and returns
     /// events to persist. The coordinator will assign real sequence numbers.
-    ///
-    /// Default: Returns the facts unchanged (pass-through).
-    async fn invoke_fact(&self, ctx: FactContext) -> Result<EventBook, Status> {
-        // Default: pass through facts unchanged
-        Ok(ctx.facts)
-    }
+    async fn invoke_fact(&self, ctx: FactContext) -> Result<EventBook, Status>;
 
     /// Replay events to compute state for COMMUTATIVE merge detection.
     ///

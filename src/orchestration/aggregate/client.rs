@@ -9,7 +9,7 @@ use tonic::Status;
 
 use crate::proto::{
     command_handler_service_client::CommandHandlerServiceClient, BusinessResponse,
-    ContextualCommand, EventBook, ReplayRequest,
+    ContextualCommand, EventBook, FactRequest, ReplayRequest,
 };
 
 use super::traits::ClientLogic;
@@ -38,8 +38,17 @@ impl ClientLogic for GrpcBusinessLogic {
     }
 
     async fn invoke_fact(&self, ctx: FactContext) -> Result<EventBook, Status> {
-        // Default: pass through facts unchanged
-        Ok(ctx.facts)
+        let request = FactRequest {
+            facts: Some(ctx.facts),
+            prior_events: ctx.prior_events,
+        };
+        Ok(self
+            .client
+            .lock()
+            .await
+            .handle_fact(request)
+            .await?
+            .into_inner())
     }
 
     async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {

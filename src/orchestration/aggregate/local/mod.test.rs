@@ -36,6 +36,13 @@ impl ClientLogic for MockClientLogic {
             result: Some(BrResult::Events(EventBook::default())),
         })
     }
+
+    async fn invoke_fact(
+        &self,
+        ctx: crate::orchestration::aggregate::FactContext,
+    ) -> Result<EventBook, Status> {
+        Ok(ctx.facts)
+    }
 }
 
 fn create_test_storage() -> DomainStorage {

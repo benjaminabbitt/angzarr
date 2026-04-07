@@ -458,6 +458,49 @@ async fn test_handle_event_with_route_to_handler() {
     assert!(fact_response.events.is_some());
 }
 
+/// Facts are persisted with committed=true regardless of protobuf default.
+///
+/// Protobuf bool defaults to false. Without explicit override, fact events
+/// would be stored as uncommitted (2PC pending), making them invisible to
+/// normal reads and subject to reaper cleanup. Facts are external realities
+/// and must always be immediately committed.
+#[tokio::test]
+async fn test_handle_event_facts_persisted_as_committed() {
+    let (service, _) = create_test_service().await;
+
+    let root = Uuid::new_v4();
+    // Create a fact page with committed=false (protobuf default)
+    let mut fact_page = make_fact_page();
+    fact_page.committed = false; // Simulate protobuf default
+
+    let facts = make_event_book("orders", root, vec![fact_page]);
+
+    let request = Request::new(EventRequest {
+        events: Some(facts),
+        sync_mode: SyncMode::Async as i32,
+        route_to_handler: false,
+    });
+
+    let response = service.handle_event(request).await;
+    assert!(
+        response.is_ok(),
+        "Expected ok but got: {:?}",
+        response.err()
+    );
+
+    let fact_response = response.unwrap().into_inner();
+    let events = fact_response.events.expect("should have events");
+
+    // The pipeline must set committed=true on fact pages
+    for page in &events.pages {
+        assert!(
+            page.committed,
+            "Fact events must be committed=true, got false for seq {:?}",
+            page.header
+        );
+    }
+}
+
 /// Facts without route_to_handler persist directly.
 #[tokio::test]
 async fn test_handle_event_without_route_to_handler() {

@@ -17,9 +17,20 @@ option ruby_package = "Angzarr";
 service CommandHandlerService {
   // Process command and return business response (events or revocation request)
   rpc Handle(ContextualCommand) returns (BusinessResponse);
+  // Process fact events - update aggregate state based on external realities.
+  // Optional: if unimplemented, facts are persisted as-is (pass-through).
+  rpc HandleFact(FactRequest) returns (EventBook);
   // Replay events to compute state (for conflict detection)
   // Optional: only needed if aggregate supports MERGE_COMMUTATIVE
   rpc Replay(ReplayRequest) returns (ReplayResponse);
+}
+
+// Request to process fact events through aggregate business logic.
+// The aggregate updates its state based on external realities and returns
+// events to persist. The coordinator assigns real sequence numbers.
+message FactRequest {
+  EventBook facts = 1;           // Fact events with ExternalDeferredSequence markers
+  EventBook prior_events = 2;    // Prior events for state reconstruction
 }
 
 // Request to replay events and compute resulting state
