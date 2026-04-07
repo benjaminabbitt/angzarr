@@ -34,7 +34,7 @@ annotations:
     artifacthub.io/operator: "false"
     artifacthub.io/prerelease: "true"
 apiVersion: v2
-appVersion: 0.4.0
+appVersion: 0.4.1
 description: Schema-first CQRS/ES framework for polyglot client logic
 home: https://github.com/angzarr-io/angzarr
 keywords:
@@ -50,4 +50,4 @@ name: angzarr
 sources:
     - https://github.com/angzarr-io/angzarr
 type: application
-version: 0.4.0
+version: 0.4.1
