@@ -263,8 +263,7 @@ fn make_event_page(sequence: u32) -> EventPage {
         }),
         created_at: None,
         payload: None,
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     }
 }
 

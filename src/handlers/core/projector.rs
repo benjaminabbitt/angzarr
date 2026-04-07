@@ -207,9 +207,7 @@ fn create_projection_event_book(
                 type_url: PROJECTION_TYPE_URL.to_string(),
                 value: projection_bytes,
             })),
-            created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         ..Default::default()
     }

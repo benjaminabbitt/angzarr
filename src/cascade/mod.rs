@@ -5,7 +5,7 @@
 //!
 //! # Background
 //!
-//! When `execute_atomic()` is used, events are written with `committed=false`.
+//! When `execute_atomic()` is used, events are written with `no_commit=true`.
 //! On success, a `Confirmation` event is written; on failure, a `Revocation`.
 //! If the process crashes mid-cascade, uncommitted events remain in storage.
 //!

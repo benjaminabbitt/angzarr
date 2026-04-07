@@ -179,8 +179,7 @@ fn test_extract_sequence_from_some() {
         }),
         payload: None,
         created_at: None,
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     };
     assert_eq!(extract_sequence(Some(&page)), 5);
 }
@@ -210,8 +209,7 @@ fn test_build_event_book_with_pages() {
             }),
             payload: None,
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         },
         crate::proto::EventPage {
             header: Some(PageHeader {
@@ -219,8 +217,7 @@ fn test_build_event_book_with_pages() {
             }),
             payload: None,
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         },
     ];
     let book = build_event_book("orders", "angzarr", root, pages, None);

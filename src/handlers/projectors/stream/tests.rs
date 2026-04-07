@@ -21,8 +21,7 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
                 value: vec![],
             })),
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         snapshot: None,
         ..Default::default()

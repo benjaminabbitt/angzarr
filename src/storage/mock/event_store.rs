@@ -339,7 +339,7 @@ impl EventStore for MockEventStore {
         for events in store.values() {
             for stored in events {
                 if let Some(ref cascade_id) = stored.page.cascade_id {
-                    if stored.page.committed {
+                    if !stored.page.no_commit {
                         // This cascade has a committed event (Confirmation/Revocation marker)
                         resolved_cascades.insert(cascade_id.clone());
                     } else {
@@ -379,7 +379,7 @@ impl EventStore for MockEventStore {
         for ((domain, edition, root), events) in store.iter() {
             for stored in events {
                 if let Some(ref cid) = stored.page.cascade_id {
-                    if cid == cascade_id && !stored.page.committed {
+                    if cid == cascade_id && stored.page.no_commit {
                         let key = (domain.clone(), edition.clone(), *root);
                         participants_map
                             .entry(key)

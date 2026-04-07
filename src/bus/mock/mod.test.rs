@@ -39,8 +39,7 @@ fn make_event_book(domain: &str, root: Uuid, event_count: usize) -> EventBook {
                     value: vec![],
                 })),
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             })
             .collect(),
         snapshot: None,

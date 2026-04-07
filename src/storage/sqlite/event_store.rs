@@ -240,7 +240,7 @@ impl SqliteEventStore {
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
 
             // Extract cascade tracking fields from EventPage
-            let committed = event.committed;
+            let committed = !event.no_commit;
             let cascade_id = event.cascade_id.clone();
 
             if first_sequence.is_none() {

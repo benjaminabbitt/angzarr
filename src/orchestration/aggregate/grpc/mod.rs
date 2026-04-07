@@ -87,7 +87,7 @@ pub struct GrpcAggregateContext {
     /// Component name for DLQ metadata.
     component_name: String,
     /// Cascade ID for 2PC atomic execution.
-    /// When set, events are persisted with `committed=false` and cascade_id stamped.
+    /// When set, events are persisted with `no_commit=true` and cascade_id stamped.
     cascade_id: Option<String>,
 }
 
@@ -174,7 +174,7 @@ impl GrpcAggregateContext {
 
     /// Set the cascade ID for 2PC atomic execution.
     ///
-    /// When cascade_id is set, events are written with `committed=false` and
+    /// When cascade_id is set, events are written with `no_commit=true` and
     /// the cascade_id stamped on each event. This enables atomic commit/rollback
     /// across multiple aggregates.
     pub fn with_cascade_id(mut self, cascade_id: impl Into<String>) -> Self {
@@ -438,12 +438,12 @@ impl AggregateContext for GrpcAggregateContext {
 
         // Persist new events if any
         if !new_pages.is_empty() {
-            // 2PC: If cascade_id is set, stamp events with committed=false
+            // 2PC: If cascade_id is set, stamp events with no_commit=true
             if let Some(ref cascade_id) = self.cascade_id {
                 new_pages = new_pages
                     .into_iter()
                     .map(|mut page| {
-                        page.committed = false;
+                        page.no_commit = true;
                         page.cascade_id = Some(cascade_id.clone());
                         page
                     })

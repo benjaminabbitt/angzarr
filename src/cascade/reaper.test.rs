@@ -17,7 +17,7 @@ use crate::storage::{EventStore, MockEventStore};
 /// Create a test event with the given cascade tracking fields.
 fn make_test_event(
     sequence: u32,
-    committed: bool,
+    no_commit: bool,
     cascade_id: Option<&str>,
     created_at: DateTime<Utc>,
 ) -> EventPage {
@@ -36,7 +36,7 @@ fn make_test_event(
             nanos: created_at.timestamp_subsec_nanos() as i32,
         }),
         payload: Some(crate::proto::event_page::Payload::Event(payload)),
-        committed,
+        no_commit,
         cascade_id: cascade_id.map(String::from),
     }
 }
@@ -48,7 +48,7 @@ async fn test_no_stale_cascades_when_all_committed() {
     let root = Uuid::new_v4();
 
     // Add committed events (no cascade_id)
-    let event = make_test_event(0, true, None, Utc::now());
+    let event = make_test_event(0, false, None, Utc::now());
     store
         .add("test", "angzarr", root, vec![event], "", None, None)
         .await
@@ -68,7 +68,7 @@ async fn test_fresh_uncommitted_events_not_revoked() {
     let cascade_id = "cascade-fresh";
 
     // Add uncommitted event that was just created
-    let event = make_test_event(0, false, Some(cascade_id), Utc::now());
+    let event = make_test_event(0, true, Some(cascade_id), Utc::now());
     store
         .add("test", "angzarr", root, vec![event], "", None, None)
         .await
@@ -90,7 +90,7 @@ async fn test_stale_uncommitted_events_revoked() {
 
     // Add uncommitted event that was created 2 hours ago
     let old_time = Utc::now() - chrono::Duration::hours(2);
-    let event = make_test_event(0, false, Some(cascade_id), old_time);
+    let event = make_test_event(0, true, Some(cascade_id), old_time);
     store
         .add("test", "angzarr", root, vec![event], "", None, None)
         .await
@@ -108,7 +108,10 @@ async fn test_stale_uncommitted_events_revoked() {
 
     // Check the second event is a Revocation
     let revocation_event = &events[1];
-    assert!(revocation_event.committed, "Revocation should be committed");
+    assert!(
+        !revocation_event.no_commit,
+        "Revocation should be committed"
+    );
     assert_eq!(
         revocation_event.cascade_id.as_deref(),
         Some(cascade_id),
@@ -125,14 +128,14 @@ async fn test_resolved_cascades_not_revoked() {
 
     // Add uncommitted event from 2 hours ago
     let old_time = Utc::now() - chrono::Duration::hours(2);
-    let uncommitted = make_test_event(0, false, Some(cascade_id), old_time);
+    let uncommitted = make_test_event(0, true, Some(cascade_id), old_time);
     store
         .add("test", "angzarr", root, vec![uncommitted], "", None, None)
         .await
         .unwrap();
 
     // Add a committed event with same cascade_id (simulates Confirmation/Revocation)
-    let confirmation = make_test_event(1, true, Some(cascade_id), Utc::now());
+    let confirmation = make_test_event(1, false, Some(cascade_id), Utc::now());
     store
         .add("test", "angzarr", root, vec![confirmation], "", None, None)
         .await
@@ -156,8 +159,8 @@ async fn test_multiple_participants_revoked() {
     let root1 = Uuid::new_v4();
     let root2 = Uuid::new_v4();
 
-    let event1 = make_test_event(0, false, Some(cascade_id), old_time);
-    let event2 = make_test_event(0, false, Some(cascade_id), old_time);
+    let event1 = make_test_event(0, true, Some(cascade_id), old_time);
+    let event2 = make_test_event(0, true, Some(cascade_id), old_time);
 
     store
         .add("test", "angzarr", root1, vec![event1], "", None, None)
@@ -186,8 +189,8 @@ async fn test_multiple_stale_cascades() {
     let root1 = Uuid::new_v4();
     let root2 = Uuid::new_v4();
 
-    let event1 = make_test_event(0, false, Some(cascade1), old_time);
-    let event2 = make_test_event(0, false, Some(cascade2), old_time);
+    let event1 = make_test_event(0, true, Some(cascade1), old_time);
+    let event2 = make_test_event(0, true, Some(cascade2), old_time);
 
     store
         .add("test", "angzarr", root1, vec![event1], "", None, None)
@@ -212,7 +215,7 @@ async fn test_zero_timeout_revokes_all() {
     let cascade_id = "cascade-zero";
 
     // Add uncommitted event that was just created
-    let event = make_test_event(0, false, Some(cascade_id), Utc::now());
+    let event = make_test_event(0, true, Some(cascade_id), Utc::now());
     store
         .add("test", "angzarr", root, vec![event], "", None, None)
         .await
@@ -235,8 +238,8 @@ async fn test_regular_committed_events_ignored() {
     let root = Uuid::new_v4();
 
     // Add various committed events
-    let event1 = make_test_event(0, true, None, Utc::now());
-    let event2 = make_test_event(1, true, Some("some-cascade"), Utc::now());
+    let event1 = make_test_event(0, false, None, Utc::now());
+    let event2 = make_test_event(1, false, Some("some-cascade"), Utc::now());
 
     store
         .add(

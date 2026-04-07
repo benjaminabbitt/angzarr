@@ -74,7 +74,7 @@ pub struct LocalAggregateContext {
     component_name: String,
     /// Sync mode for projector/saga invocation and bus publishing.
     sync_mode: Option<crate::proto::SyncMode>,
-    /// Cascade ID for 2PC: when set, events are written with committed=false.
+    /// Cascade ID for 2PC: when set, events are written with no_commit=true.
     cascade_id: Option<String>,
 }
 
@@ -137,7 +137,7 @@ impl LocalAggregateContext {
 
     /// Set the cascade ID for 2PC atomic execution.
     ///
-    /// When cascade_id is set, events are written with `committed=false` and
+    /// When cascade_id is set, events are written with `no_commit=true` and
     /// the cascade_id stamped on each event. This enables atomic commit/rollback
     /// across multiple aggregates.
     pub fn with_cascade_id(mut self, cascade_id: impl Into<String>) -> Self {
@@ -338,13 +338,13 @@ impl AggregateContext for LocalAggregateContext {
                 )));
             }
 
-            // 2PC: If cascade_id is set, stamp events with committed=false
+            // 2PC: If cascade_id is set, stamp events with no_commit=true
             let pages_to_persist = if let Some(ref cascade_id) = self.cascade_id {
                 new_pages
                     .iter()
                     .map(|page| {
                         let mut stamped = page.clone();
-                        stamped.committed = false;
+                        stamped.no_commit = true;
                         stamped.cascade_id = Some(cascade_id.clone());
                         stamped
                     })

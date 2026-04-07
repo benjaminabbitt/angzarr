@@ -64,8 +64,8 @@ pub fn make_event_page(seq: u32) -> EventPage {
             value: vec![],
         })),
         created_at: None,
-        committed: true,
         cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -80,8 +80,8 @@ pub fn make_event_page_typed(seq: u32, type_url: &str) -> EventPage {
             value: vec![],
         })),
         created_at: None,
-        committed: true,
         cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -96,7 +96,7 @@ pub fn make_uncommitted_event_page(seq: u32, cascade_id: &str) -> EventPage {
             value: vec![],
         })),
         created_at: None,
-        committed: false,
+        no_commit: true,
         cascade_id: Some(cascade_id.to_string()),
     }
 }

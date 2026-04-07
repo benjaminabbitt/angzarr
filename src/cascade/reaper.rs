@@ -154,7 +154,7 @@ impl<S: EventStore + 'static> CascadeReaper<S> {
             value: revocation.encode_to_vec(),
         };
 
-        // Create EventPage with committed=true (framework event)
+        // Create EventPage (no_commit defaults to false = committed)
         let now = Utc::now();
         let page = EventPage {
             header: Some(PageHeader {
@@ -165,8 +165,9 @@ impl<S: EventStore + 'static> CascadeReaper<S> {
                 nanos: now.timestamp_subsec_nanos() as i32,
             }),
             payload: Some(crate::proto::event_page::Payload::Event(event_any)),
-            committed: true, // Revocation events are always committed
+            // Revocation events are always committed (no_commit defaults to false)
             cascade_id: Some(cascade_id.to_string()),
+            no_commit: false,
         };
 
         // Write to storage

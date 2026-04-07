@@ -230,11 +230,11 @@ pub(crate) fn partition_by_commit_status(
     let committed_pages: Vec<_> = events
         .pages
         .iter()
-        .filter(|p| p.committed)
+        .filter(|p| !p.no_commit)
         .cloned()
         .collect();
 
-    let uncommitted: Vec<_> = events.pages.iter().filter(|p| !p.committed).collect();
+    let uncommitted: Vec<_> = events.pages.iter().filter(|p| p.no_commit).collect();
 
     let committed_book = EventBook {
         cover: events.cover.clone(),

@@ -181,8 +181,7 @@ fn test_extract_command_regular_event_returns_none() {
                 type_url: "type.googleapis.com/test.PlayerCreated".to_string(),
                 value: vec![1, 2, 3],
             })),
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         ..Default::default()
     };
@@ -203,8 +202,7 @@ fn test_extract_command_no_payload_returns_none() {
             }),
             created_at: None,
             payload: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         ..Default::default()
     };
@@ -230,8 +228,7 @@ fn test_extract_command_invalid_protobuf_returns_none() {
                 type_url: "type.googleapis.com/angzarr.CommandBook".to_string(),
                 value: vec![0xFF, 0xFF, 0xFF], // Invalid protobuf
             })),
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         ..Default::default()
     };

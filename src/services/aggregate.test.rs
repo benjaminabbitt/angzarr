@@ -138,8 +138,7 @@ fn make_event_page(seq: u32) -> EventPage {
             value: vec![],
         })),
         created_at: None,
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -159,8 +158,7 @@ fn make_fact_page() -> EventPage {
             value: vec![],
         })),
         created_at: None,
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -458,20 +456,20 @@ async fn test_handle_event_with_route_to_handler() {
     assert!(fact_response.events.is_some());
 }
 
-/// Facts are persisted with committed=true regardless of protobuf default.
+/// Facts are persisted with no_commit=false (committed) regardless of input.
 ///
-/// Protobuf bool defaults to false. Without explicit override, fact events
-/// would be stored as uncommitted (2PC pending), making them invisible to
-/// normal reads and subject to reaper cleanup. Facts are external realities
-/// and must always be immediately committed.
+/// Protobuf bool defaults to false, which now correctly means "committed".
+/// But if a caller accidentally sets no_commit=true, the pipeline must
+/// override it. Facts are external realities and must always be immediately
+/// committed.
 #[tokio::test]
 async fn test_handle_event_facts_persisted_as_committed() {
     let (service, _) = create_test_service().await;
 
     let root = Uuid::new_v4();
-    // Create a fact page with committed=false (protobuf default)
+    // Create a fact page with no_commit=true (simulate caller error)
     let mut fact_page = make_fact_page();
-    fact_page.committed = false; // Simulate protobuf default
+    fact_page.no_commit = true; // Simulate caller sending uncommitted
 
     let facts = make_event_book("orders", root, vec![fact_page]);
 
@@ -491,11 +489,11 @@ async fn test_handle_event_facts_persisted_as_committed() {
     let fact_response = response.unwrap().into_inner();
     let events = fact_response.events.expect("should have events");
 
-    // The pipeline must set committed=true on fact pages
+    // The pipeline must set no_commit=false on fact pages (committed)
     for page in &events.pages {
         assert!(
-            page.committed,
-            "Fact events must be committed=true, got false for seq {:?}",
+            !page.no_commit,
+            "Fact events must be committed (no_commit=false), got no_commit=true for seq {:?}",
             page.header
         );
     }

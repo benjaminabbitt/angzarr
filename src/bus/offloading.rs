@@ -121,7 +121,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
                                 header: page.header.clone(),
                                 created_at: page.created_at,
                                 payload: Some(Payload::External(reference)),
-                                committed: page.committed,
+                                no_commit: page.no_commit,
                                 cascade_id: page.cascade_id.clone(),
                             });
                             continue;
@@ -228,7 +228,7 @@ async fn resolve_payloads_with_store<S: PayloadStore>(
                                 header: page.header.clone(),
                                 created_at: page.created_at,
                                 payload: Some(Payload::Event(event)),
-                                committed: page.committed,
+                                no_commit: page.no_commit,
                                 cascade_id: page.cascade_id.clone(),
                             });
                             continue;

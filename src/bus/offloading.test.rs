@@ -44,8 +44,7 @@ fn make_event_book(payload_size: usize) -> EventBook {
                 type_url: "test.Event".to_string(),
                 value: vec![0u8; payload_size],
             })),
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         snapshot: None,
         next_sequence: 1,
@@ -227,8 +226,7 @@ async fn test_resolving_handler_resolves_external_payloads() {
             }),
             created_at: None,
             payload: Some(event_page::Payload::External(reference)),
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         snapshot: None,
         next_sequence: 1,

@@ -21,8 +21,7 @@ pub fn make_event(seq: u32, event_type: &str) -> EventPage {
             type_url: format!("type.example/{}", event_type),
             value: vec![1, 2, 3, seq as u8],
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -225,8 +224,7 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
             type_url: "type.example/TestEvent".to_string(),
             value: vec![10, 20, 30, 40, 50, 100, 200],
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     };
 
     store
@@ -1225,8 +1223,7 @@ pub async fn test_get_until_timestamp_filters<S: EventStore>(store: &S) {
             type_url: "type.example/Old".to_string(),
             value: vec![1],
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     };
 
     let event_new = EventPage {
@@ -1238,8 +1235,7 @@ pub async fn test_get_until_timestamp_filters<S: EventStore>(store: &S) {
             type_url: "type.example/New".to_string(),
             value: vec![2],
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     };
 
     store
@@ -1286,8 +1282,7 @@ pub async fn test_get_until_timestamp_returns_all_when_recent<S: EventStore>(sto
             type_url: "type.example/E".to_string(),
             value: vec![1],
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     };
 
     store
@@ -1325,8 +1320,7 @@ pub async fn test_timestamp_preservation<S: EventStore>(store: &S) {
             type_url: "type.example/TimestampTest".to_string(),
             value: vec![1, 2, 3],
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     };
 
     store
@@ -1559,7 +1553,7 @@ pub async fn test_find_by_source_no_match<S: EventStore>(store: &S) {
 /// Create a test event with cascade tracking fields.
 pub fn make_cascade_event(
     seq: u32,
-    committed: bool,
+    no_commit: bool,
     cascade_id: Option<&str>,
     timestamp_secs: i64,
 ) -> EventPage {
@@ -1575,7 +1569,7 @@ pub fn make_cascade_event(
             type_url: format!("type.example/CascadeEvent{}", seq),
             value: vec![seq as u8],
         })),
-        committed,
+        no_commit,
         cascade_id: cascade_id.map(String::from),
     }
 }
@@ -1586,7 +1580,7 @@ pub async fn test_query_stale_cascades_finds_old_uncommitted<S: EventStore>(stor
 
     // Add uncommitted event from 2 hours ago
     let old_time = chrono::Utc::now() - chrono::Duration::hours(2);
-    let event = make_cascade_event(0, false, Some("cascade-stale-1"), old_time.timestamp());
+    let event = make_cascade_event(0, true, Some("cascade-stale-1"), old_time.timestamp());
 
     store
         .add(domain, "angzarr", root, vec![event], "", None, None)
@@ -1612,8 +1606,7 @@ pub async fn test_query_stale_cascades_ignores_resolved<S: EventStore>(store: &S
 
     // Add uncommitted event from 2 hours ago
     let old_time = chrono::Utc::now() - chrono::Duration::hours(2);
-    let uncommitted =
-        make_cascade_event(0, false, Some("cascade-resolved-1"), old_time.timestamp());
+    let uncommitted = make_cascade_event(0, true, Some("cascade-resolved-1"), old_time.timestamp());
 
     store
         .add(domain, "angzarr", root, vec![uncommitted], "", None, None)
@@ -1623,7 +1616,7 @@ pub async fn test_query_stale_cascades_ignores_resolved<S: EventStore>(store: &S
     // Add committed event with same cascade_id (resolves the cascade)
     let committed = make_cascade_event(
         1,
-        true,
+        false,
         Some("cascade-resolved-1"),
         chrono::Utc::now().timestamp(),
     );
@@ -1652,7 +1645,7 @@ pub async fn test_query_stale_cascades_ignores_fresh<S: EventStore>(store: &S) {
     // Add uncommitted event from just now
     let event = make_cascade_event(
         0,
-        false,
+        true,
         Some("cascade-fresh-1"),
         chrono::Utc::now().timestamp(),
     );
@@ -1686,13 +1679,13 @@ pub async fn test_query_cascade_participants_finds_uncommitted<S: EventStore>(st
     // Add uncommitted events with cascade_id
     let event1 = make_cascade_event(
         0,
-        false,
+        true,
         Some("cascade-parts-1"),
         chrono::Utc::now().timestamp(),
     );
     let event2 = make_cascade_event(
         1,
-        false,
+        true,
         Some("cascade-parts-1"),
         chrono::Utc::now().timestamp(),
     );
@@ -1732,7 +1725,7 @@ pub async fn test_query_cascade_participants_ignores_committed<S: EventStore>(st
     // Add committed event (should not be returned as participant)
     let event = make_cascade_event(
         0,
-        true,
+        false,
         Some("cascade-committed-1"),
         chrono::Utc::now().timestamp(),
     );
@@ -1761,13 +1754,13 @@ pub async fn test_query_cascade_participants_multiple_aggregates<S: EventStore>(
     // Add uncommitted events to two aggregates with same cascade_id
     let event1 = make_cascade_event(
         0,
-        false,
+        true,
         Some("cascade-multi-1"),
         chrono::Utc::now().timestamp(),
     );
     let event2 = make_cascade_event(
         0,
-        false,
+        true,
         Some("cascade-multi-1"),
         chrono::Utc::now().timestamp(),
     );

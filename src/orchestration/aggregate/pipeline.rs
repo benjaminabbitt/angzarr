@@ -569,9 +569,9 @@ pub async fn execute_fact_pipeline(
             payload: page.payload,
             // Facts are external realities — always immediately committed.
             // If this runs inside a cascade, persist_events will override to
-            // committed=false and stamp the cascade_id.
-            committed: true,
+            // no_commit=true and stamp the cascade_id.
             cascade_id: page.cascade_id,
+            no_commit: false,
         };
         final_pages.push(new_page);
         current_seq += 1;

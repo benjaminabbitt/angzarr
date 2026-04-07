@@ -76,8 +76,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
                 value: vec![],
             })),
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }]
     } else {
         vec![]
@@ -320,8 +319,7 @@ fn test_build_combined_events_merges_pages() {
                 }),
                 payload: None,
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -329,8 +327,7 @@ fn test_build_combined_events_merges_pages() {
                 }),
                 payload: None,
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             },
         ],
         snapshot: None,
@@ -345,8 +342,7 @@ fn test_build_combined_events_merges_pages() {
             }),
             payload: None,
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         snapshot: None,
         next_sequence: 3,
@@ -434,8 +430,7 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -443,8 +438,7 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -452,8 +446,7 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             },
             crate::proto::EventPage {
                 header: Some(PageHeader {
@@ -461,8 +454,7 @@ fn test_build_events_up_to_sequence_filters_correctly() {
                 }),
                 payload: None,
                 created_at: None,
-                committed: true,
-                cascade_id: None,
+                ..Default::default()
             },
         ],
         snapshot: None,
@@ -493,8 +485,7 @@ fn test_build_events_up_to_sequence_zero_returns_empty() {
             }),
             payload: None,
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         snapshot: None,
         next_sequence: 1,
@@ -776,7 +767,7 @@ fn test_diff_test_state_fields_field_removed() {
 
 fn make_cascade_event_page(
     sequence: u32,
-    committed: bool,
+    no_commit: bool,
     cascade_id: Option<&str>,
 ) -> crate::proto::EventPage {
     crate::proto::EventPage {
@@ -788,7 +779,7 @@ fn make_cascade_event_page(
             value: vec![],
         })),
         created_at: None,
-        committed,
+        no_commit,
         cascade_id: cascade_id.map(|s| s.to_string()),
     }
 }
@@ -803,8 +794,8 @@ fn test_partition_all_committed() {
     let root = Uuid::new_v4();
     let mut book = make_event_book("test", root, None);
     book.pages = vec![
-        make_cascade_event_page(1, true, None),
-        make_cascade_event_page(2, true, None),
+        make_cascade_event_page(1, false, None),
+        make_cascade_event_page(2, false, None),
     ];
 
     let (committed, uncommitted) = partition_by_commit_status(&book);
@@ -814,16 +805,16 @@ fn test_partition_all_committed() {
 
 /// Uncommitted events from a cascade are correctly partitioned.
 ///
-/// When a cascade writes events with committed=false, they must be
+/// When a cascade writes events with no_commit=true, they must be
 /// separated so the conflict detection can identify locked fields.
 #[test]
 fn test_partition_with_uncommitted_cascade() {
     let root = Uuid::new_v4();
     let mut book = make_event_book("test", root, None);
     book.pages = vec![
-        make_cascade_event_page(1, true, None),
-        make_cascade_event_page(2, false, Some("cascade-A")),
-        make_cascade_event_page(3, false, Some("cascade-A")),
+        make_cascade_event_page(1, false, None),
+        make_cascade_event_page(2, true, Some("cascade-A")),
+        make_cascade_event_page(3, true, Some("cascade-A")),
     ];
 
     let (committed, uncommitted) = partition_by_commit_status(&book);
@@ -841,10 +832,10 @@ fn test_partition_multiple_cascades() {
     let root = Uuid::new_v4();
     let mut book = make_event_book("test", root, None);
     book.pages = vec![
-        make_cascade_event_page(1, true, None),
-        make_cascade_event_page(2, false, Some("cascade-A")),
-        make_cascade_event_page(3, false, Some("cascade-B")),
-        make_cascade_event_page(4, true, None),
+        make_cascade_event_page(1, false, None),
+        make_cascade_event_page(2, true, Some("cascade-A")),
+        make_cascade_event_page(3, true, Some("cascade-B")),
+        make_cascade_event_page(4, false, None),
     ];
 
     let (committed, uncommitted) = partition_by_commit_status(&book);

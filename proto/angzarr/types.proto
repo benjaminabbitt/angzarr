@@ -152,7 +152,7 @@ message EventPage {
   // Field 5 removed: FactSequence replaced by PageHeader.external_deferred
 
   // Two-phase commit support (Phase 1: 2PC Storage Model)
-  bool committed = 6;            // false = pending 2PC, needs Confirmation; true = immediately committed
+  bool no_commit = 6;             // true = pending 2PC (cascade), needs Confirmation; false (default) = immediately committed
   optional string cascade_id = 7; // Groups related pending events for atomic commit/rollback (null if not in cascade)
 }
 // docs:end:event_page

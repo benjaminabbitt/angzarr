@@ -40,8 +40,7 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
                 value: vec![],
             })),
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         }],
         snapshot: None,
         ..Default::default()
@@ -59,8 +58,7 @@ fn make_multi_page_event_book(correlation_id: &str, page_count: usize) -> EventB
                 value: vec![],
             })),
             created_at: None,
-            committed: true,
-            cascade_id: None,
+            ..Default::default()
         })
         .collect();
 

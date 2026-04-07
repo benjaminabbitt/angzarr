@@ -25,7 +25,7 @@ fn make_cover() -> Cover {
     }
 }
 
-fn make_event_page(sequence: u32, committed: bool, cascade_id: &str) -> EventPage {
+fn make_event_page(sequence: u32, no_commit: bool, cascade_id: &str) -> EventPage {
     EventPage {
         header: Some(PageHeader {
             sequence_type: Some(page_header::SequenceType::Sequence(sequence)),
@@ -35,7 +35,7 @@ fn make_event_page(sequence: u32, committed: bool, cascade_id: &str) -> EventPag
             type_url: "test.TestEvent".to_string(),
             value: vec![1, 2, 3],
         })),
-        committed,
+        no_commit,
         cascade_id: if cascade_id.is_empty() {
             None
         } else {
@@ -59,8 +59,7 @@ fn make_confirmation(sequences: Vec<u32>, cascade_id: &str, seq: u32) -> EventPa
             type_url: type_url::CONFIRMATION.to_string(),
             value: conf.encode_to_vec(),
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -80,8 +79,7 @@ fn make_revocation(sequences: Vec<u32>, cascade_id: &str, reason: &str, seq: u32
             type_url: type_url::REVOCATION.to_string(),
             value: rev.encode_to_vec(),
         })),
-        committed: true,
-        cascade_id: None,
+        ..Default::default()
     }
 }
 
@@ -102,8 +100,8 @@ fn make_event_book(pages: Vec<EventPage>) -> EventBook {
 #[test]
 fn committed_events_pass_through() {
     let events = make_event_book(vec![
-        make_event_page(1, true, ""),
-        make_event_page(2, true, ""),
+        make_event_page(1, false, ""),
+        make_event_page(2, false, ""),
     ]);
 
     let result = transform_for_two_phase(&events, &TwoPhaseContext::standard());
@@ -117,8 +115,8 @@ fn committed_events_pass_through() {
 #[test]
 fn uncommitted_events_become_noop_in_standard_mode() {
     let events = make_event_book(vec![
-        make_event_page(1, true, ""),
-        make_event_page(2, false, "cascade-1"),
+        make_event_page(1, false, ""),
+        make_event_page(2, true, "cascade-1"),
     ]);
 
     let result = transform_for_two_phase(&events, &TwoPhaseContext::standard());
@@ -133,8 +131,8 @@ fn uncommitted_events_become_noop_in_standard_mode() {
 #[test]
 fn own_cascade_uncommitted_pass_through_in_handler_mode() {
     let events = make_event_book(vec![
-        make_event_page(1, true, ""),
-        make_event_page(2, false, "cascade-1"),
+        make_event_page(1, false, ""),
+        make_event_page(2, true, "cascade-1"),
     ]);
 
     let result = transform_for_two_phase(&events, &TwoPhaseContext::for_handler("cascade-1"));
@@ -148,8 +146,8 @@ fn own_cascade_uncommitted_pass_through_in_handler_mode() {
 #[test]
 fn other_cascade_uncommitted_become_noop_in_handler_mode() {
     let events = make_event_book(vec![
-        make_event_page(1, false, "cascade-1"),
-        make_event_page(2, false, "cascade-2"),
+        make_event_page(1, true, "cascade-1"),
+        make_event_page(2, true, "cascade-2"),
     ]);
 
     let result = transform_for_two_phase(&events, &TwoPhaseContext::for_handler("cascade-1"));
@@ -166,7 +164,7 @@ fn other_cascade_uncommitted_become_noop_in_handler_mode() {
 #[test]
 fn framework_events_become_noop() {
     let events = make_event_book(vec![
-        make_event_page(1, true, ""),
+        make_event_page(1, false, ""),
         make_confirmation(vec![1], "cascade-1", 2),
         make_revocation(vec![], "cascade-2", "timeout", 3),
     ]);
@@ -185,7 +183,7 @@ fn framework_events_become_noop() {
 #[test]
 fn confirmed_uncommitted_pass_through() {
     let events = make_event_book(vec![
-        make_event_page(1, false, "cascade-1"),
+        make_event_page(1, true, "cascade-1"),
         make_confirmation(vec![1], "cascade-1", 2),
     ]);
 
@@ -200,7 +198,7 @@ fn confirmed_uncommitted_pass_through() {
 #[test]
 fn revoked_events_become_noop() {
     let events = make_event_book(vec![
-        make_event_page(1, false, "cascade-1"),
+        make_event_page(1, true, "cascade-1"),
         make_revocation(vec![1], "cascade-1", "saga_failed", 2),
     ]);
 
@@ -216,7 +214,7 @@ fn revoked_events_become_noop() {
 fn revoked_wins_over_confirmed() {
     // Edge case: both confirmed and revoked (defensive - revoked wins)
     let events = make_event_book(vec![
-        make_event_page(1, false, "cascade-1"),
+        make_event_page(1, true, "cascade-1"),
         make_confirmation(vec![1], "cascade-1", 2),
         make_revocation(vec![1], "cascade-1", "later_revoked", 3),
     ]);
@@ -231,7 +229,7 @@ fn revoked_wins_over_confirmed() {
 fn revoked_committed_events_become_noop() {
     // Revocation can apply to already-committed events too
     let events = make_event_book(vec![
-        make_event_page(1, true, ""),
+        make_event_page(1, false, ""),
         make_revocation(vec![1], "", "compensation", 2),
     ]);
 
@@ -248,8 +246,8 @@ fn revoked_committed_events_become_noop() {
 #[test]
 fn conflict_detection_sees_all_uncommitted() {
     let events = make_event_book(vec![
-        make_event_page(1, false, "cascade-1"),
-        make_event_page(2, false, "cascade-2"),
+        make_event_page(1, true, "cascade-1"),
+        make_event_page(2, true, "cascade-2"),
     ]);
 
     let result = transform_for_two_phase(&events, &TwoPhaseContext::for_conflict_detection());

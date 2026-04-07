@@ -143,7 +143,7 @@ fn transform_event_page(
     }
 
     // Committed events pass through
-    if page.committed {
+    if !page.no_commit {
         // Check if later revoked
         if revoked.contains(&sequence) {
             return make_noop_with_cascade(
@@ -233,8 +233,8 @@ fn make_noop_with_cascade(page: &EventPage, cascade_id: &str, reason: &str) -> E
             type_url: type_url::NOOP.to_string(),
             value: noop.encode_to_vec(),
         })),
-        committed: true, // NoOp is always "committed" (it's a placeholder)
-        cascade_id: None,
+        // NoOp is always "committed" (it's a placeholder, no_commit defaults to false)
+        ..Default::default()
     }
 }
 
