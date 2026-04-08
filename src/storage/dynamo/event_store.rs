@@ -287,7 +287,7 @@ impl EventStore for DynamoEventStore {
             // Cascade tracking: extract from EventPage for GSI queries
             item.insert(
                 "committed".to_string(),
-                AttributeValue::Bool(event.committed),
+                AttributeValue::Bool(!event.no_commit),
             );
 
             if let Some(ref cid) = event.cascade_id {

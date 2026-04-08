@@ -222,7 +222,7 @@ impl BigtableEventStore {
         mutations.push(Self::build_set_cell(
             COLUMN_FAMILY,
             COL_COMMITTED,
-            if event.committed { b"true" } else { b"false" },
+            if !event.no_commit { b"true" } else { b"false" },
         ));
 
         if let Some(ref cid) = event.cascade_id {
@@ -276,7 +276,7 @@ impl BigtableEventStore {
         mutations.push(Self::build_set_cell(
             CASCADE_INDEX_FAMILY,
             COL_COMMITTED,
-            if event.committed { b"true" } else { b"false" },
+            if !event.no_commit { b"true" } else { b"false" },
         ));
 
         if let Some(ref ts) = event.created_at {

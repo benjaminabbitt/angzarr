@@ -572,7 +572,7 @@ impl EventStore for NatsEventStore {
                 // Build cascade tracking headers
                 let mut cascade_headers = async_nats::HeaderMap::new();
                 cascade_headers.insert(HEADER_CASCADE_ID, cascade_id.as_str());
-                cascade_headers.insert(HEADER_COMMITTED, page.committed.to_string().as_str());
+                cascade_headers.insert(HEADER_COMMITTED, (!page.no_commit).to_string().as_str());
                 cascade_headers.insert(HEADER_DOMAIN, domain);
                 cascade_headers.insert(HEADER_EDITION, edition);
                 cascade_headers.insert(HEADER_ROOT, root.as_hyphenated().to_string().as_str());
@@ -607,7 +607,7 @@ impl EventStore for NatsEventStore {
                     domain = %domain,
                     root = %root,
                     seq = seq,
-                    committed = page.committed,
+                    committed = !page.no_commit,
                     "Published to cascade stream"
                 );
             }
