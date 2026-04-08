@@ -7,16 +7,16 @@ import (
 
 // OpenAPISpec represents a minimal OpenAPI v2 (Swagger) spec for patching.
 type OpenAPISpec struct {
-	Swagger     string                            `json:"swagger"`
-	Info        map[string]interface{}            `json:"info"`
-	Host        string                            `json:"host,omitempty"`
-	BasePath    string                            `json:"basePath,omitempty"`
-	Schemes     []string                          `json:"schemes,omitempty"`
-	Consumes    []string                          `json:"consumes,omitempty"`
-	Produces    []string                          `json:"produces,omitempty"`
-	Paths       map[string]interface{}            `json:"paths"`
-	Definitions map[string]interface{}            `json:"definitions"`
-	Extra       map[string]interface{}            `json:"-"` // Catch-all for other fields
+	Swagger     string                 `json:"swagger"`
+	Info        map[string]interface{} `json:"info"`
+	Host        string                 `json:"host,omitempty"`
+	BasePath    string                 `json:"basePath,omitempty"`
+	Schemes     []string               `json:"schemes,omitempty"`
+	Consumes    []string               `json:"consumes,omitempty"`
+	Produces    []string               `json:"produces,omitempty"`
+	Paths       map[string]interface{} `json:"paths"`
+	Definitions map[string]interface{} `json:"definitions"`
+	Extra       map[string]interface{} `json:"-"` // Catch-all for other fields
 }
 
 // PatchOpenAPISpec adds discovered types to an existing OpenAPI spec.

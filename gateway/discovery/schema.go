@@ -137,7 +137,7 @@ func BuildAnyOneOf(types []DiscoveredType, filter func(DiscoveredType) bool) *JS
 			Description: t.FullName,
 			Properties: map[string]*JSONSchema{
 				"@type": {
-					Type:  "string",
+					Type:        "string",
 					Description: fmt.Sprintf("Must be '%s'", t.TypeURL),
 				},
 			},
