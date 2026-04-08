@@ -47,6 +47,38 @@ jobs:
             exit 1
           fi
 
+      - name: Verify proto version
+        run: |
+          BUF_VERSION=$(grep '^version:' proto/buf_version.yaml | awk '{print $2}')
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "$BUF_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: proto/buf_version.yaml ($BUF_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+  # Publish protos to Buf Schema Registry
+  publish-protos:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint and build protos
+        run: |
+          buf lint proto/
+          buf build proto/
+
+      - name: Push to Buf Schema Registry
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          buf push proto/ --label "$VERSION"
+
   # Build and push base/language images first
   build-base-images:
     needs: validate
@@ -153,7 +185,7 @@ jobs:
 
   # Create GitHub release
   create-release:
-    needs: [validate, publish-helm]
+    needs: [validate, publish-helm, publish-protos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -201,6 +233,7 @@ jobs:
 
           | Artifact | Location |
           |----------|----------|
+          | Protos (BSR) | `buf.build/angzarr/angzarr:$VERSION` |
           | Helm Chart | `oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/angzarr:$VERSION` |
           | aggregate | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate:$VERSION` |
           | projector | `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector:$VERSION` |
