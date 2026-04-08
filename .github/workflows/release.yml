@@ -150,7 +150,7 @@ jobs:
 
   # Package and publish Helm chart
   publish-helm:
-    needs: build-containers
+    needs: [validate, build-containers]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
