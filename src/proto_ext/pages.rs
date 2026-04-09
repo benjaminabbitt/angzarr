@@ -121,7 +121,7 @@ impl EventPageExt for EventPage {
             Some(crate::proto::event_page::Payload::Event(e)) => e,
             _ => return None,
         };
-        let expected = format!("{}/{}", TYPE_URL_PREFIX, M::full_name());
+        let expected = format!("{}{}", TYPE_URL_PREFIX, M::full_name());
         if event.type_url != expected {
             return None;
         }
@@ -199,7 +199,7 @@ impl CommandPageExt for CommandPage {
             Some(crate::proto::command_page::Payload::Command(c)) => c,
             _ => return None,
         };
-        let expected = format!("{}/{}", TYPE_URL_PREFIX, M::full_name());
+        let expected = format!("{}{}", TYPE_URL_PREFIX, M::full_name());
         if command.type_url != expected {
             return None;
         }
