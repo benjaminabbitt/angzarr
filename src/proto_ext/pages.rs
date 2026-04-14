@@ -229,7 +229,7 @@ impl AngzarrDeferredSequenceExt for AngzarrDeferredSequence {
         let source = self.source.as_ref().expect("source required");
         format!(
             "{}:{}:{}:{}",
-            source.edition(),
+            source.edition().unwrap_or_default(),
             source.domain,
             source.root_id_hex().unwrap_or_default(),
             self.source_seq

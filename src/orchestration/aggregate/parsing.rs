@@ -132,7 +132,7 @@ pub fn stamp_deferred_sequences(command: &mut CommandBook, actual_sequence: u32)
 /// Returns the edition name from `Cover.edition`, defaulting to [`DEFAULT_EDITION`]
 /// when absent or empty. Validates edition format.
 pub fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
-    let edition = command_book.edition().to_string();
+    let edition = command_book.edition().unwrap_or_default().to_string();
     crate::validation::validate_edition(&edition)?;
     Ok(edition)
 }
@@ -162,7 +162,7 @@ pub fn extract_explicit_divergence(command_book: &CommandBook, domain: &str) -> 
 
 /// Extract edition from an EventBook's Cover.
 pub fn extract_event_edition(event_book: &EventBook) -> Result<String, Status> {
-    let edition = event_book.edition().to_string();
+    let edition = event_book.edition().unwrap_or_default().to_string();
     crate::validation::validate_edition(&edition)?;
     Ok(edition)
 }

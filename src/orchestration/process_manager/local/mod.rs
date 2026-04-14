@@ -53,7 +53,7 @@ impl ProcessManagerContext for LocalPMContext {
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
     ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = trigger.edition().to_string();
+        let edition = trigger.edition().unwrap_or_default().to_string();
         let mut covers = self.handler.prepare(trigger, pm_state);
 
         for cover in &mut covers {
@@ -70,7 +70,7 @@ impl ProcessManagerContext for LocalPMContext {
         pm_state: Option<&EventBook>,
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = trigger.edition().to_string();
+        let edition = trigger.edition().unwrap_or_default().to_string();
         let result = self.handler.handle(trigger, pm_state, destinations);
 
         let mut commands = result.commands;
@@ -98,7 +98,7 @@ impl ProcessManagerContext for LocalPMContext {
             .and_then(|c| c.root.as_ref())
             .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
             .unwrap_or_else(uuid::Uuid::nil);
-        let edition = process_events.edition();
+        let edition = process_events.edition().unwrap_or_default();
 
         // PM events bypass the command pipeline — use edition from trigger cover.
         // Persist to event store

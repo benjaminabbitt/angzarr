@@ -291,7 +291,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
             Status::invalid_argument(super::errmsg::COMMAND_REQUEST_MISSING_COMMAND)
         })?;
         let (domain, root_uuid) = parse_command_cover(&command_book)?;
-        let edition = command_book.edition().to_string();
+        let edition = command_book.edition().unwrap_or_default().to_string();
         let correlation_id =
             crate::orchestration::correlation::extract_correlation_id(&command_book)?;
 

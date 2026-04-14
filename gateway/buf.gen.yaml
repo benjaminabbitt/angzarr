@@ -31,4 +31,4 @@ plugins:
       - allow_merge=true
       - merge_file_name=angzarr
 inputs:
-  - directory: ../proto
+  - directory: ../angzarr-project/proto

@@ -85,7 +85,7 @@ impl SagaRetryContext for LocalSagaContext {
         &self,
         destination_sequences: HashMap<String, u32>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = self.source.edition().to_string();
+        let edition = self.source.edition().unwrap_or_default().to_string();
         let mut response = self
             .saga_handler
             .handle(&self.source, &destination_sequences)

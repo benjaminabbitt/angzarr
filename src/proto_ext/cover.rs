@@ -5,7 +5,7 @@
 
 use crate::proto::{CommandBook, Cover, Edition, EventBook, Query};
 
-use super::constants::{DEFAULT_EDITION, UNKNOWN_DOMAIN};
+use super::constants::UNKNOWN_DOMAIN;
 
 /// Extension trait for types with an optional Cover.
 ///
@@ -48,31 +48,17 @@ pub trait CoverExt {
         !self.correlation_id().is_empty()
     }
 
-    /// Get the edition name from the cover.
-    ///
-    /// Returns the explicit edition name if set and non-empty, otherwise
-    /// defaults to the canonical timeline name (`"angzarr"`).
-    fn edition(&self) -> &str {
+    /// Get the edition name from the cover, or None if not set.
+    fn edition(&self) -> Option<&str> {
         self.cover()
             .and_then(|c| c.edition.as_ref())
             .map(|e| e.name.as_str())
             .filter(|e| !e.is_empty())
-            .unwrap_or(DEFAULT_EDITION)
     }
 
     /// Get the Edition struct from the cover, if present.
     fn edition_struct(&self) -> Option<&crate::proto::Edition> {
         self.cover().and_then(|c| c.edition.as_ref())
-    }
-
-    /// Get the edition name as an Option, without defaulting.
-    ///
-    /// Returns `Some(&str)` if edition is set and non-empty, `None` otherwise.
-    fn edition_opt(&self) -> Option<&str> {
-        self.cover()
-            .and_then(|c| c.edition.as_ref())
-            .map(|e| e.name.as_str())
-            .filter(|n| !n.is_empty())
     }
 
     /// Compute the bus routing key: `"{domain}"`.
@@ -88,7 +74,7 @@ pub trait CoverExt {
     /// Used for caching aggregate state during saga retry to avoid redundant fetches.
     /// Includes edition to prevent collision between aggregates in different timelines.
     fn cache_key(&self) -> String {
-        let edition = self.edition();
+        let edition = self.edition().unwrap_or_default();
         let domain = self.domain();
         let root = self.root_id_hex().unwrap_or_default();
         format!("{edition}:{domain}:{root}")
