@@ -156,11 +156,11 @@ proto: gateway-gen
 _buf +ARGS:
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ] || command -v buf &>/dev/null; then
-        cd "{{TOP}}/proto" && buf {{ARGS}}
+        cd "{{TOP}}/angzarr-project/proto" && buf {{ARGS}}
     else
         {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
-            -w /workspace/proto \
+            -w /workspace/angzarr-project/proto \
             {{REGISTRY}}/angzarr-base:latest \
             buf {{ARGS}}
     fi
@@ -183,9 +183,9 @@ buf-docs:
     set -euo pipefail
     mkdir -p "{{TOP}}/docs/docs/api/proto"
     # List proto files (exclude health which is internal)
-    PROTOS=$(find "{{TOP}}/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
+    PROTOS=$(find "{{TOP}}/angzarr-project/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
     {{CONTAINER_RUN}} \
-        -v "{{TOP}}/proto:/protos:Z" \
+        -v "{{TOP}}/angzarr-project/proto:/protos:Z" \
         -v "{{TOP}}/docs/docs/api/proto:/out:Z" \
         docker.io/pseudomuto/protoc-gen-doc \
         --proto_path=/protos \
