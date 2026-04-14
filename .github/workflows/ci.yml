@@ -100,6 +100,8 @@ jobs:
     needs: build-images
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -120,7 +122,7 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/proto \
+            -w /workspace/angzarr-project/proto \
             ${{ needs.build-images.outputs.rust-tag }} \
             buf lint
 
@@ -129,7 +131,7 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/proto \
+            -w /workspace/angzarr-project/proto \
             ${{ needs.build-images.outputs.rust-tag }} \
             buf breaking --against 'https://github.com/${{ github.repository }}.git#branch=main'
         continue-on-error: true
@@ -140,6 +142,8 @@ jobs:
     needs: build-images
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -162,6 +166,8 @@ jobs:
     needs: build-images
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -202,6 +208,8 @@ jobs:
     needs: build-images
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -234,6 +242,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -312,6 +321,8 @@ jobs:
       images-json: ${{ steps.images-json.outputs.json }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install Skaffold
         run: |
