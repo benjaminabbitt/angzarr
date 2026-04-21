@@ -14,7 +14,7 @@
 //! 2. **Protocol overhead**: Adding headers to the length-prefixed pipe protocol
 //!    would require a breaking wire format change for minimal observability gain.
 //!
-//! 3. **Standalone focus**: IPC is primarily for local development and testing
+//! 3. **Local-dev focus**: IPC is primarily for local development and testing
 //!    where distributed tracing across services is less critical.
 //!
 //! For production distributed tracing, use AMQP, Kafka, or SNS/SQS buses which

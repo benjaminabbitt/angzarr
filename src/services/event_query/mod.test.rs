@@ -17,7 +17,6 @@
 //! not aggregate state reconstruction. Use AggregateService for state.
 
 use super::*;
-use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{event_page, page_header, EventPage, PageHeader, SequenceRange, TemporalQuery};
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use prost_types::{Any, Timestamp};
@@ -97,7 +96,7 @@ async fn test_get_event_book_with_data() {
         ..Default::default()
     }];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, "", None, None)
+        .add("orders", "", root, events, "", None, None)
         .await
         .unwrap();
 
@@ -196,7 +195,7 @@ async fn test_get_event_book_with_range() {
             ..Default::default()
         }];
         event_store
-            .add("orders", DEFAULT_EDITION, root, events, "", None, None)
+            .add("orders", "", root, events, "", None, None)
             .await
             .unwrap();
     }
@@ -275,7 +274,7 @@ async fn test_get_events_with_data() {
         ..Default::default()
     }];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, "", None, None)
+        .add("orders", "", root, events, "", None, None)
         .await
         .unwrap();
 
@@ -383,27 +382,11 @@ async fn test_get_aggregate_roots_with_data() {
         ..Default::default()
     };
     event_store
-        .add(
-            "orders",
-            DEFAULT_EDITION,
-            root1,
-            vec![event.clone()],
-            "",
-            None,
-            None,
-        )
+        .add("orders", "", root1, vec![event.clone()], "", None, None)
         .await
         .unwrap();
     event_store
-        .add(
-            "orders",
-            DEFAULT_EDITION,
-            root2,
-            vec![event],
-            "",
-            None,
-            None,
-        )
+        .add("orders", "", root2, vec![event], "", None, None)
         .await
         .unwrap();
 
@@ -435,7 +418,7 @@ async fn test_get_aggregate_roots_multiple_domains() {
     event_store
         .add(
             "orders",
-            DEFAULT_EDITION,
+            "",
             uuid::Uuid::new_v4(),
             vec![event.clone()],
             "",
@@ -447,7 +430,7 @@ async fn test_get_aggregate_roots_multiple_domains() {
     event_store
         .add(
             "inventory",
-            DEFAULT_EDITION,
+            "",
             uuid::Uuid::new_v4(),
             vec![event],
             "",
@@ -492,15 +475,7 @@ async fn test_get_event_book_by_correlation_id() {
         ..Default::default()
     }];
     event_store
-        .add(
-            "orders",
-            DEFAULT_EDITION,
-            root,
-            events,
-            correlation_id,
-            None,
-            None,
-        )
+        .add("orders", "", root, events, correlation_id, None, None)
         .await
         .unwrap();
 
@@ -570,15 +545,7 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
             ..Default::default()
         }];
         event_store
-            .add(
-                domain,
-                DEFAULT_EDITION,
-                root,
-                events,
-                correlation_id,
-                None,
-                None,
-            )
+            .add(domain, "", root, events, correlation_id, None, None)
             .await
             .unwrap();
     }
@@ -660,7 +627,7 @@ async fn test_get_event_book_temporal_by_time() {
         },
     ];
     event_store
-        .add("orders", DEFAULT_EDITION, root, events, "", None, None)
+        .add("orders", "", root, events, "", None, None)
         .await
         .unwrap();
 
@@ -712,7 +679,7 @@ async fn test_get_event_book_temporal_by_sequence() {
             ..Default::default()
         }];
         event_store
-            .add("orders", DEFAULT_EDITION, root, events, "", None, None)
+            .add("orders", "", root, events, "", None, None)
             .await
             .unwrap();
     }
@@ -793,7 +760,7 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
         ..Default::default()
     }];
     event_store
-        .add("customer", DEFAULT_EDITION, root, events, "", None, None)
+        .add("customer", "", root, events, "", None, None)
         .await
         .unwrap();
 
@@ -807,7 +774,7 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
         retention: crate::proto::SnapshotRetention::RetentionDefault as i32,
     };
     snapshot_store
-        .put("customer", DEFAULT_EDITION, root, snapshot)
+        .put("customer", "", root, snapshot)
         .await
         .unwrap();
 
@@ -866,7 +833,7 @@ async fn test_get_event_book_with_sequences() {
             ..Default::default()
         }];
         event_store
-            .add("orders", DEFAULT_EDITION, root, events, "", None, None)
+            .add("orders", "", root, events, "", None, None)
             .await
             .unwrap();
     }

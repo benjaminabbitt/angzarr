@@ -32,6 +32,21 @@ fn test_is_retryable_status() {
         "Sequence mismatch: command expects 0, aggregate at 5"
     )));
 
+    // Storage-level sequence conflict is also retryable
+    assert!(is_retryable_status(&Status::failed_precondition(
+        "Sequence conflict: expected 0, got 3"
+    )));
+
+    // FailedPrecondition from a business guard (e.g. aggregate handler
+    // rejection) is NOT retryable — the same guard would re-fail on
+    // refresh. Only sequence-shaped messages are eligible.
+    assert!(!is_retryable_status(&Status::failed_precondition(
+        "Hand already dealt"
+    )));
+    assert!(!is_retryable_status(&Status::failed_precondition(
+        "Player does not exist"
+    )));
+
     // ABORTED (DLQ routing with MERGE_MANUAL) is NOT retryable
     assert!(!is_retryable_status(&Status::aborted(
         "Sent to DLQ for manual review"

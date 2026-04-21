@@ -5,7 +5,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info};
 
-use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{
     event_query_service_server::EventQueryService as EventQueryTrait, query::Selection,
     temporal_query::PointInTime, AggregateRoot, EventBook, Query, Uuid as ProtoUuid,
@@ -103,7 +102,7 @@ impl EventQueryTrait for EventQueryService {
             Status::invalid_argument(format!("{}{}", crate::services::errmsg::INVALID_UUID, e))
         })?;
 
-        let edition = cover.edition();
+        let edition = cover.edition().unwrap_or_default();
         validation::validate_edition(edition)?;
 
         info!(
@@ -222,13 +221,11 @@ impl EventQueryTrait for EventQueryService {
             Status::invalid_argument(format!("{}{}", crate::services::errmsg::INVALID_UUID, e))
         })?;
 
+        let edition = cover.edition().unwrap_or_default().to_string();
         let event_book_repo = self.event_book_repo.clone();
 
         tokio::spawn(async move {
-            match event_book_repo
-                .get(&domain, DEFAULT_EDITION, root_uuid)
-                .await
-            {
+            match event_book_repo.get(&domain, &edition, root_uuid).await {
                 Ok(book) => {
                     if tx.send(Ok(book)).await.is_err() {
                         debug!(domain = %domain, root = %root_uuid, "Client disconnected before response");
@@ -276,7 +273,7 @@ impl EventQueryTrait for EventQueryService {
                             }
                         };
                         let domain = cover.domain.clone();
-                        let edition = cover.edition();
+                        let edition = cover.edition().unwrap_or_default();
                         let root = match cover.root.as_ref() {
                             Some(r) => match uuid::Uuid::from_slice(&r.value) {
                                 Ok(uuid) => uuid,
@@ -420,7 +417,7 @@ impl EventQueryTrait for EventQueryService {
             };
 
             for domain in domains {
-                match event_store.list_roots(&domain, DEFAULT_EDITION).await {
+                match event_store.list_roots(&domain, "").await {
                     Ok(roots) => {
                         for root in roots {
                             let aggregate = AggregateRoot {

@@ -200,8 +200,6 @@ fn test_build_compensation_failed_event() {
     let context = make_context();
     let event = build_compensation_failed_event(&context, "Business declined");
 
-    // saga_name is empty in the new model (source aggregate handles compensation)
-    assert_eq!(event.saga_name, "");
     assert_eq!(event.triggering_event_sequence, 5);
     assert_eq!(
         event.triggering_aggregate.as_ref().unwrap().domain,

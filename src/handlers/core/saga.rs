@@ -4,7 +4,7 @@
 //! using the shared orchestration module.
 //!
 //! Works with any `SagaContextFactory` implementation — gRPC (distributed)
-//! or local (standalone) — enabling deploy-anywhere saga code.
+//! or local (in-process) — enabling deploy-anywhere saga code.
 //!
 //! Supports:
 //! - Two-phase saga protocol (prepare → fetch destinations → execute)
@@ -30,7 +30,7 @@ use crate::utils::retry::saga_backoff;
 /// Event handler that orchestrates saga execution via a context factory.
 ///
 /// Uses `SagaContextFactory` to create per-invocation contexts, enabling
-/// the same handler code for both distributed (gRPC) and standalone (local) modes.
+/// the same handler code for both distributed (gRPC) and in-process (local) modes.
 /// Command execution and destination fetching are passed directly to
 /// orchestration functions, matching the PM handler pattern.
 pub struct SagaEventHandler {

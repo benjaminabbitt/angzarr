@@ -26,7 +26,6 @@ description: Auto-generated documentation for Angzarr protobuf definitions
   
 - [angzarr/meta.proto](#angzarr_meta-proto)
     - [DeleteEditionEvents](#angzarr-DeleteEditionEvents)
-    - [EditionEventsDeleted](#angzarr-EditionEventsDeleted)
   
 - [angzarr/process_manager.proto](#angzarr_process_manager-proto)
     - [ProcessManagerHandleRequest](#angzarr-ProcessManagerHandleRequest)
@@ -482,20 +481,6 @@ Main timeline (&#39;angzarr&#39; or empty edition name) cannot be deleted.
 
 
 
-
-
-
-
-### EditionEventsDeleted {#angzarr-EditionEventsDeleted}
-Response from edition event deletion.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| edition | string |  |  |
-| domain | string |  |  |
-| deleted_count | uint32 |  |  |
-| deleted_at | string |  |  |
 
 
 

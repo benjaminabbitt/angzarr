@@ -79,7 +79,7 @@ pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
 /// Per-domain event and snapshot storage.
 ///
 /// Bundles the event store and snapshot store for a single domain.
-/// Used by standalone mode to route storage operations by domain.
+/// Used by in-process mode to route storage operations by domain.
 #[derive(Clone)]
 pub struct DomainStorage {
     /// Event store for this domain.

@@ -979,6 +979,18 @@ impl EventStore for BigtableEventStore {
         Ok(None)
     }
 
+    async fn find_by_external_id(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // Bigtable doesn't store external_id tracking — fact pre-handler
+        // idempotency not supported. Use SQLite or PostgreSQL.
+        Ok(None)
+    }
+
     async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
         let threshold_dt = chrono::DateTime::parse_from_rfc3339(threshold)
             .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;

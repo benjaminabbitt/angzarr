@@ -129,11 +129,14 @@ pub fn stamp_deferred_sequences(command: &mut CommandBook, actual_sequence: u32)
 
 /// Extract and validate edition name from a CommandBook's Cover.
 ///
-/// Returns the edition name from `Cover.edition`, defaulting to [`DEFAULT_EDITION`]
-/// when absent or empty. Validates edition format.
+/// Returns the explicit edition name, or the empty string `""` for the
+/// default/main timeline. The storage layer translates `""` to SQL NULL
+/// — the empty string never reaches the database.
 pub fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
-    let edition = command_book.edition().to_string();
-    crate::validation::validate_edition(&edition)?;
+    let edition = command_book.edition().unwrap_or("").to_string();
+    if !edition.is_empty() {
+        crate::validation::validate_edition(&edition)?;
+    }
     Ok(edition)
 }
 
@@ -161,8 +164,12 @@ pub fn extract_explicit_divergence(command_book: &CommandBook, domain: &str) -> 
 }
 
 /// Extract edition from an EventBook's Cover.
+///
+/// Returns the explicit edition name, or `""` for the default timeline.
 pub fn extract_event_edition(event_book: &EventBook) -> Result<String, Status> {
-    let edition = event_book.edition().to_string();
-    crate::validation::validate_edition(&edition)?;
+    let edition = event_book.edition().unwrap_or("").to_string();
+    if !edition.is_empty() {
+        crate::validation::validate_edition(&edition)?;
+    }
     Ok(edition)
 }

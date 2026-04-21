@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Target projector: {} (name: {})", address, projector_name);
 
-    // Get command: prefer env var (for standalone mode), fall back to config
+    // Get command: prefer env var (for local-dev mode), fall back to config
     let command = match std::env::var(TARGET_COMMAND_JSON_ENV_VAR) {
         Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
             warn!(

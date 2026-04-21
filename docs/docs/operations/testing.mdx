@@ -59,7 +59,7 @@ flowchart TB
 | **Unit** | Single function/module | Fast (ms) | None |
 | **Integration** | Framework plumbing | Fast (ms) | In-process (RuntimeBuilder, SQLite, channels) |
 | **Contract** | Interface compliance | Medium (s) | Testcontainers |
-| **Acceptance** | Business behavior | Medium (s) | Channel + SQLite (standalone) or full stack (direct) |
+| **Acceptance** | Business behavior | Medium (s) | Channel + SQLite (in-process) or full stack (direct) |
 
 ---
 
@@ -413,8 +413,6 @@ Test Angzarr **framework internals** using synthetic aggregates (`EchoAggregate`
 - Saga activation and cross-domain command routing
 - Snapshot/recovery, lossy bus resilience
 
-**Location:** `tests/standalone_integration/`
-
 ### Gherkin Example
 
 ```gherkin title="tests/interfaces/features/event_bus.feature"
@@ -694,10 +692,10 @@ Acceptance tests support two backends via trait abstraction:
 
 | Mode | Description | Infrastructure | Use Case |
 |------|-------------|----------------|----------|
-| **Standalone** (default) | In-process `RuntimeBuilder` | Channel bus + SQLite | Fast local development |
+| **In-process** (default) | In-process `RuntimeBuilder` | Channel bus + SQLite | Fast local development |
 | **Direct** | Remote gRPC against deployed cluster | NATS + Postgres (or configured) | K8s validation |
 
-**Standalone mode uses test infrastructure, not production tooling:**
+**In-process mode uses test infrastructure, not production tooling:**
 - **Channel bus** (in-memory) instead of NATS JetStream
 - **SQLite** (in-memory) instead of Postgres
 - Single process, no containers required
@@ -705,7 +703,7 @@ Acceptance tests support two backends via trait abstraction:
 This trades production fidelity for speed. Use **Direct mode** to validate against real infrastructure.
 
 ```bash title="illustrative"
-# Standalone (default) — channel bus + SQLite, in-process
+# In-process (default) — channel bus + SQLite
 cargo test --package e2e --test acceptance
 
 # Direct mode — real infrastructure via gRPC
@@ -739,9 +737,6 @@ just test-interfaces-all
 ```bash title="illustrative"
 # Unit tests
 cargo test --lib
-
-# Integration tests (in-process, no containers)
-cargo test --test standalone_integration --features sqlite
 
 # Contract tests (testcontainers for real backends)
 STORAGE_BACKEND=sqlite cargo test --test interface_tests --features sqlite

@@ -1,6 +1,6 @@
 //! In-memory channel DLQ publisher.
 //!
-//! Used for standalone mode and testing.
+//! Used for in-process mode and testing.
 //!
 //! # Manual Setup Required
 //!
@@ -35,7 +35,7 @@ use super::super::{AngzarrDeadLetter, DeadLetterPublisher, DlqError};
 
 /// In-memory DLQ publisher using a channel.
 ///
-/// Used for standalone mode and testing. Requires manual instantiation via
+/// Used for in-process mode and testing. Requires manual instantiation via
 /// [`new()`](Self::new) because the caller needs the receiver to consume
 /// dead letters. Not available via the DLQ factory.
 pub struct ChannelDeadLetterPublisher {

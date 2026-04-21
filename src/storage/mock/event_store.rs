@@ -324,6 +324,32 @@ impl EventStore for MockEventStore {
         Ok(None)
     }
 
+    async fn find_by_external_id(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        if external_id.is_empty() {
+            return Ok(None);
+        }
+        let key = (domain.to_string(), edition.to_string(), root);
+        let store = self.events.read().await;
+        if let Some(events) = store.get(&key) {
+            let matching: Vec<EventPage> = events
+                .iter()
+                .filter(|e| e.external_id == external_id)
+                .map(|e| e.page.clone())
+                .collect();
+            if matching.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(matching));
+        }
+        Ok(None)
+    }
+
     async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
         use std::collections::HashSet;
 

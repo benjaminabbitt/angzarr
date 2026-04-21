@@ -13,8 +13,8 @@ pub use client::{
 };
 pub use limits::ResourceLimits;
 pub use server::{
-    ConfigError, ExternalServiceConfig, GatewayConfig, HealthCheckConfig, ResolvedStandaloneConfig,
-    ServerConfig, ServiceConfig, ServiceConfigRef, StandaloneConfig, TargetConfig,
+    ConfigError, ExternalServiceConfig, HealthCheckConfig, ServerConfig, ServiceConfig,
+    ServiceConfigRef, TargetConfig,
 };
 
 /// Default configuration file name.
@@ -106,8 +106,6 @@ pub struct Config {
     pub process_managers: Option<Vec<ProcessManagerClientConfig>>,
     /// Saga compensation configuration.
     pub saga_compensation: Option<SagaCompensationConfig>,
-    /// Standalone mode configuration (services, gateway).
-    pub standalone: StandaloneConfig,
     /// Upcaster configuration for event version transformation.
     pub upcaster: UpcasterConfig,
     /// Resource limits for message processing and queries.

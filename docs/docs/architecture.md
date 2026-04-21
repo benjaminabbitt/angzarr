@@ -185,7 +185,7 @@ Events are correlated via `correlation_id` on `Cover`, allowing clients to track
 
 | Backend | Status | Use Case |
 |---------|--------|----------|
-| SQLite | Tested | Local development, standalone mode |
+| SQLite | Tested | Local development |
 | PostgreSQL | Tested | Production |
 | Redis | Tested | High-throughput scenarios |
 | Bigtable | Tested | GCP deployments, petabyte scale |
@@ -198,7 +198,7 @@ Events are correlated via `correlation_id` on `Cover`, allowing clients to track
 
 | Backend | Status | Use Case |
 |---------|--------|----------|
-| Channel (in-process) | Tested | Standalone mode |
+| Channel (in-process) | Tested | In-process testing |
 | RabbitMQ/AMQP | Tested | Production |
 | Kafka | Implemented | High-throughput streaming |
 | GCP Pub/Sub | Implemented | GCP deployments |

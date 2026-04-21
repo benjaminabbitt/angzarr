@@ -70,7 +70,7 @@ impl DestinationFetcher for HybridDestinationFetcher {
                 .root
                 .as_ref()
                 .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())?;
-            let edition = cover.edition();
+            let edition = cover.edition().unwrap_or_default();
 
             // Use EventBookRepository to properly load snapshot + subsequent events
             let repo = EventBookRepository::new(

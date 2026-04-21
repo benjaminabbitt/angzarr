@@ -4,7 +4,7 @@
 //! using the shared orchestration module.
 //!
 //! Works with any `PMContextFactory` implementation — gRPC (distributed)
-//! or local (standalone) — enabling deploy-anywhere process manager code.
+//! or local (in-process) — enabling deploy-anywhere process manager code.
 
 use std::sync::Arc;
 
@@ -29,7 +29,7 @@ use crate::utils::retry::saga_backoff;
 /// Event handler that orchestrates process manager execution via a context factory.
 ///
 /// Uses `PMContextFactory` to create per-invocation contexts, enabling
-/// the same handler code for both distributed (gRPC) and standalone (local) modes.
+/// the same handler code for both distributed (gRPC) and in-process (local) modes.
 pub struct ProcessManagerEventHandler {
     context_factory: Arc<dyn PMContextFactory>,
     destination_fetcher: Arc<dyn DestinationFetcher>,
@@ -53,7 +53,7 @@ impl ProcessManagerEventHandler {
     /// # When to Use
     ///
     /// Use this when you already have a `PMContextFactory` implementation:
-    /// - Standalone mode: `LocalPMContextFactory`
+    /// - In-process mode: `LocalPMContextFactory`
     /// - Distributed mode with custom wiring
     ///
     /// For standard distributed mode with gRPC client, use `new()` instead.
@@ -93,7 +93,7 @@ impl ProcessManagerEventHandler {
     /// In **distributed mode**, filtering typically happens at the bus level
     /// (AMQP routing keys, Kafka topics, etc.). Leave targets empty.
     ///
-    /// In **standalone mode**, all events flow through a shared in-process bus.
+    /// In **in-process mode**, all events flow through a shared in-process bus.
     /// Use targets to filter which events this PM should process.
     ///
     /// Empty targets = process all events (distributed mode default).
@@ -151,7 +151,7 @@ impl ProcessManagerEventHandler {
 
 impl EventHandler for ProcessManagerEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
-        // Check subscription filter (handler-level filtering for standalone mode)
+        // Check subscription filter (handler-level filtering for in-process mode)
         if !self.targets.is_empty() && !crate::bus::any_target_matches(&book, &self.targets) {
             return Box::pin(async { Ok(()) });
         }

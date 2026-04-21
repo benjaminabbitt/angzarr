@@ -5,4 +5,4 @@
 //! both message types (Cover, EventBook, CommandBook, etc.) and gRPC
 //! service client/server stubs.
 
-tonic::include_proto!("angzarr");
+tonic::include_proto!("angzarr_client.proto.angzarr");

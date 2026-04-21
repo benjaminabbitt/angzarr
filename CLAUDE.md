@@ -5,8 +5,8 @@ Correctness over speed. Second priority: reducing reviewer cognitive load.
 ### Fix What You Find
 Prototype codebase. If you encounter broken things, note the issue, check with me about priority, propose a fix. Leave codebase better than found.
 
-### Standalone vs Distributed
-Keep modes as similar as possible—differ only where necessary (process count, bus transports, storage).
+### In-process vs Distributed
+Keep the in-process and distributed code paths as similar as possible—differ only where necessary (process count, bus transports, storage).
 
 ### Priorities
 1. Understanding — minimize cognitive load, avoid foot-guns
@@ -29,14 +29,22 @@ CQRS-ES poker system. Player domain: functional aggregates. Others: object-orien
 **Run after every new test.** Tests must kill mutants to be meaningful.
 
 ```bash
-git worktree add --detach ../.mutants-worktree HEAD
-cargo mutants -d ../.mutants-worktree --in-place --timeout 120 -f <file> -- --lib --features "sqlite test-utils"
-git worktree remove ../.mutants-worktree --force
+cargo mutants --in-place --timeout 120 --build-timeout 240 -f <file> -- --lib
 ```
+
+**Why `--in-place`:** the repo has a git submodule (`angzarr-project`) and out-of-tree
+path-deps (`../../prj-event/main` etc.). cargo-mutants' copy mode handles neither —
+it would clone source files but not init the submodule or follow sibling paths. The
+maintainer recommends `--in-place` for these layouts ([issue #348][m1]).
+
+**Caveats while it runs:** don't commit, edit files, or run cargo concurrently —
+mutated source briefly lives in your working tree. On crash, mutations may be left
+behind; grep for `cargo-mutants` to find the markers. `--jobs` is disabled in this
+mode.
 
 **Workflow:** Write test → run mutants → verify kills → improve or delete if none killed.
 
-**Disk space:** Worktree shares .git (332MB), only copies source (~10MB). `--in-place` is safe since worktree is disposable. Much smaller than cargo-mutants' default full copy (466MB+).
+[m1]: https://github.com/sourcefrog/cargo-mutants/issues/348
 
 **Exclusions:** Skip `src/proto/`, `*.pb.rs`. DO test `src/proto_ext/` and hand-written proto code.
 
@@ -101,19 +109,13 @@ Single-line forwarding functions use `#[trivial_delegation]` to skip mutation/co
 
 - Storage: `tests/storage_*.rs`
 - Bus: `tests/bus_*.rs`
-- Run: `cargo test --test storage_sqlite --features "sqlite test-utils"`
-
-### Integration Tests
-Framework internals with synthetic aggregates (`EchoAggregate`, etc.). Uses `RuntimeBuilder` in-process.
-
-- Location: `tests/standalone_integration/`
-- Run: `just test-local`
+- Run: `cargo test --test storage_sqlite --features test-utils`
 
 ### Acceptance Tests
 Business behavior via Gherkin. Full stack through sagas, PMs, projectors.
 
 - Features: `features/` (synced to client/example repos)
-- Modes: standalone (in-process) or direct (deployed cluster)
+- Modes: in-process or direct (deployed cluster)
 
 ### Gherkin Authoring
 Business-readable spec, not test code. Describe **what/why**, never **how**.

@@ -35,7 +35,7 @@
 //!
 //! # Module Structure
 //!
-//! - `local/`: in-process PM handler calls (standalone mode)
+//! - `local/`: in-process PM handler calls
 //! - `grpc/`: remote gRPC PM client calls (distributed mode)
 
 pub mod grpc;

@@ -34,11 +34,10 @@ impl Default for ServerConfig {
     }
 }
 
-/// Unified service configuration for both sidecar and standalone modes.
+/// Sidecar service configuration.
 ///
 /// Works as:
 /// - A sidecar target: `target: { domain: cart, command: [...] }`
-/// - A standalone entry: `standalone.aggregates[*]`
 /// - A file reference: `{ file: path/to/service.yaml }`
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServiceConfig {
@@ -223,16 +222,6 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Gateway configuration for standalone mode.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct GatewayConfig {
-    /// Enable the gateway.
-    pub enabled: bool,
-    /// Port for TCP gateway (if not using UDS).
-    pub port: Option<u16>,
-}
-
 /// Health check configuration for external services.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -284,145 +273,6 @@ pub struct ExternalServiceConfig {
 
 fn default_health_timeout() -> u64 {
     30
-}
-
-/// Configuration for component registration/republishing.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct RegistrationConfig {
-    /// Republish strategy: "fixed" or "exponential".
-    #[serde(default = "default_registration_strategy")]
-    pub strategy: String,
-    /// Fixed interval in seconds (used when strategy = "fixed").
-    #[serde(default = "default_registration_interval")]
-    pub interval_secs: u64,
-    /// Initial delay in seconds for exponential backoff.
-    #[serde(default = "default_registration_initial")]
-    pub initial_secs: u64,
-    /// Maximum delay in seconds for exponential backoff.
-    #[serde(default = "default_registration_max")]
-    pub max_secs: u64,
-    /// Backoff multiplier for exponential strategy.
-    #[serde(default = "default_registration_multiplier")]
-    pub multiplier: f64,
-    /// Enable jitter for exponential backoff.
-    #[serde(default = "default_registration_jitter")]
-    pub jitter: bool,
-}
-
-fn default_registration_strategy() -> String {
-    "fixed".to_string()
-}
-
-fn default_registration_interval() -> u64 {
-    30
-}
-
-fn default_registration_initial() -> u64 {
-    1
-}
-
-fn default_registration_max() -> u64 {
-    60
-}
-
-fn default_registration_multiplier() -> f64 {
-    2.0
-}
-
-fn default_registration_jitter() -> bool {
-    true
-}
-
-impl Default for RegistrationConfig {
-    fn default() -> Self {
-        Self {
-            strategy: default_registration_strategy(),
-            interval_secs: default_registration_interval(),
-            initial_secs: default_registration_initial(),
-            max_secs: default_registration_max(),
-            multiplier: default_registration_multiplier(),
-            jitter: default_registration_jitter(),
-        }
-    }
-}
-
-impl RegistrationConfig {
-    /// Build a republish strategy from this config.
-    pub fn build_strategy(&self) -> Box<dyn crate::registration::RepublishStrategy> {
-        use crate::registration::{ExponentialBackoff, FixedInterval};
-        use std::time::Duration;
-
-        match self.strategy.as_str() {
-            "exponential" => Box::new(
-                ExponentialBackoff::new()
-                    .with_initial(Duration::from_secs(self.initial_secs))
-                    .with_max(Duration::from_secs(self.max_secs))
-                    .with_multiplier(self.multiplier)
-                    .with_jitter(self.jitter),
-            ),
-            _ => Box::new(FixedInterval::new(Duration::from_secs(self.interval_secs))),
-        }
-    }
-}
-
-/// Standalone mode configuration.
-/// Groups all settings for running angzarr locally with spawned processes.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct StandaloneConfig {
-    /// Aggregate services (client logic handlers).
-    pub aggregates: Vec<ServiceConfig>,
-    /// Saga services (cross-aggregate workflows).
-    pub sagas: Vec<ServiceConfig>,
-    /// Process manager services (stateful workflow coordinators).
-    pub process_managers: Vec<ServiceConfig>,
-    /// Projector services (read model builders).
-    pub projectors: Vec<ServiceConfig>,
-    /// External services (REST APIs, GraphQL servers, etc.).
-    #[serde(default)]
-    pub services: Vec<ExternalServiceConfig>,
-    /// Component registration/republishing configuration.
-    #[serde(default)]
-    pub registration: RegistrationConfig,
-    /// Gateway configuration.
-    pub gateway: GatewayConfig,
-}
-
-/// Resolved standalone config with all file references expanded.
-#[derive(Debug, Clone)]
-pub struct ResolvedStandaloneConfig {
-    /// Resolved aggregate services.
-    pub aggregates: Vec<ServiceConfig>,
-    /// Resolved saga services.
-    pub sagas: Vec<ServiceConfig>,
-    /// Resolved process manager services.
-    pub process_managers: Vec<ServiceConfig>,
-    /// Resolved projector services.
-    pub projectors: Vec<ServiceConfig>,
-    /// External services (no resolution needed).
-    pub services: Vec<ExternalServiceConfig>,
-    /// Component registration/republishing configuration.
-    pub registration: RegistrationConfig,
-    /// Gateway configuration.
-    pub gateway: GatewayConfig,
-}
-
-impl StandaloneConfig {
-    /// Resolve all service references, loading external files.
-    /// Currently a no-op since StandaloneConfig uses direct ServiceConfig.
-    /// File references support will be added later via ServiceConfigRef.
-    pub fn resolve(&self, _base_dir: &Path) -> Result<ResolvedStandaloneConfig, ConfigError> {
-        Ok(ResolvedStandaloneConfig {
-            aggregates: self.aggregates.clone(),
-            sagas: self.sagas.clone(),
-            process_managers: self.process_managers.clone(),
-            projectors: self.projectors.clone(),
-            services: self.services.clone(),
-            registration: self.registration.clone(),
-            gateway: self.gateway.clone(),
-        })
-    }
 }
 
 #[cfg(test)]

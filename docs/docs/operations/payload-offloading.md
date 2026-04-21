@@ -40,7 +40,7 @@ The claim check pattern trades latency for reliability — payloads that would f
 
 ### Filesystem
 
-Local storage for development and standalone mode:
+Local storage for development:
 
 ```yaml title="illustrative - filesystem config"
 payload_offload:

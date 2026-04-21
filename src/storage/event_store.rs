@@ -247,6 +247,25 @@ pub trait EventStore: Send + Sync {
         source_info: &SourceInfo,
     ) -> Result<Option<Vec<EventPage>>>;
 
+    /// Find events by external_id (for fact-injection idempotency checking).
+    ///
+    /// Queries for events within the target aggregate that were persisted
+    /// with the given `external_id`. Used to short-circuit fact handlers
+    /// on external-system retries (e.g. Stripe webhook redelivery) before
+    /// the handler is invoked. Storage-level dedup at `add()` remains the
+    /// authoritative safety net.
+    ///
+    /// Returns `Some(events)` if matching events exist, `None` if not.
+    /// Returns `None` for empty external_id (non-idempotent operations
+    /// never recorded a claim, so any match would be coincidental).
+    async fn find_by_external_id(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>>;
+
     /// Delete all events for an edition+domain combination.
     ///
     /// Returns the number of events deleted.

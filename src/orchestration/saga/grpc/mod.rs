@@ -69,7 +69,7 @@ impl SagaRetryContext for GrpcSagaContext {
         destination_sequences: HashMap<String, u32>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = self.source.correlation_id();
-        let edition = self.source.edition().to_string();
+        let edition = self.source.edition().unwrap_or_default().to_string();
         let mut client = self.saga_client.lock().await;
         let request = SagaHandleRequest {
             source: Some(self.source.clone()),

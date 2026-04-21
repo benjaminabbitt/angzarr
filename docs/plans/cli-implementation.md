@@ -266,7 +266,7 @@ service MetaService {
   //       (like git branches created on first commit)
   rpc ListEditions (ListEditionsRequest) returns (ListEditionsResponse);
   rpc GetEdition (GetEditionRequest) returns (EditionMetadata);
-  rpc DeleteEdition (DeleteEditionRequest) returns (EditionEventsDeleted);
+  rpc DeleteEdition (DeleteEditionRequest) returns (google.protobuf.Empty);
   rpc AdoptEdition (AdoptEditionRequest) returns (AdoptEditionResponse);
 
   // Snapshot operations

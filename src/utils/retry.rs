@@ -134,7 +134,18 @@ pub fn connection_backoff() -> ExponentialBuilder {
 /// require human review rather than auto-retry. Respecting that decision means
 /// routing to DLQ, not retrying.
 pub fn is_retryable_status(status: &Status) -> bool {
-    matches!(status.code(), Code::FailedPrecondition)
+    if !matches!(status.code(), Code::FailedPrecondition) {
+        return false;
+    }
+    // FailedPrecondition is overloaded: aggregate guards (e.g.
+    // "Hand already dealt", "Player does not exist") also surface as
+    // FailedPrecondition. Only sequence-related rejections are actually
+    // retryable — refetching state and retrying a guard rejection just
+    // hits the same guard. Match the message prefix the framework emits
+    // (`Sequence mismatch:` from sequence_validator,
+    // `Sequence conflict:` from storage::error::SEQUENCE_CONFLICT).
+    let msg = status.message();
+    msg.starts_with("Sequence mismatch:") || msg.starts_with("Sequence conflict:")
 }
 
 /// The outcome of a single attempt of a retryable operation.

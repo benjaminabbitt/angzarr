@@ -30,7 +30,7 @@ impl LocalDestinationFetcher {
 impl DestinationFetcher for LocalDestinationFetcher {
     async fn fetch(&self, cover: &Cover) -> Option<EventBook> {
         let domain = &cover.domain;
-        let edition = cover.edition();
+        let edition = cover.edition().unwrap_or_default();
         let root_uuid = cover.root_uuid()?;
 
         let store = self.domain_stores.get(domain)?;
@@ -79,7 +79,7 @@ impl DestinationFetcher for LocalDestinationFetcher {
 
         // Re-fetch using EventBookRepository to get snapshot-optimized version
         let cover = book.cover.as_ref()?;
-        let edition = cover.edition();
+        let edition = cover.edition().unwrap_or_default();
         let root_uuid = cover.root_uuid()?;
 
         let repo = store.event_book_repo();

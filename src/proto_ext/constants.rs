@@ -29,4 +29,4 @@ pub const DEFAULT_EDITION: &str = "angzarr";
 /// Type URL prefix for googleapis.com protobuf Any messages.
 ///
 /// Used by `decode_typed` to match type URLs in Event/Command payloads.
-pub const TYPE_URL_PREFIX: &str = "type.googleapis.com";
+pub const TYPE_URL_PREFIX: &str = "type.googleapis.com/";

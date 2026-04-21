@@ -1,4 +1,4 @@
-//! Orchestration layer for unified standalone and distributed execution.
+//! Orchestration layer for unified in-process and distributed execution.
 //!
 //! Each sub-module defines a trait (interface) in `mod.rs` with shared orchestration logic.
 //! Transport-specific implementations live in `local/` (in-process) and `grpc/` (remote)

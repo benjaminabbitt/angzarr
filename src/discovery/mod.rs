@@ -7,8 +7,8 @@
 //!   - `app.kubernetes.io/component`: aggregate, projector, or saga
 //!   - `angzarr.io/domain`: target domain
 //!
-//! - **Static**: Environment variable or manual registration for Cloud Run,
-//!   standalone mode, and testing.
+//! - **Static**: Environment variable or manual registration for Cloud Run
+//!   and testing.
 
 #[cfg(feature = "k8s")]
 pub mod k8s;

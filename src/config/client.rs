@@ -61,7 +61,6 @@ impl Default for SagaCompensationConfig {
 /// Process Manager client/deployment configuration.
 ///
 /// Used for distributed mode connectivity and timeout settings.
-/// For runtime configuration (subscriptions), see `standalone::traits::ProcessManagerConfig`.
 ///
 /// Process managers coordinate long-running workflows across multiple aggregates.
 /// They maintain event-sourced state and can subscribe to multiple domains.

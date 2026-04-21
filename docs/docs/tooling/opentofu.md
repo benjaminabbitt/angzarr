@@ -69,59 +69,15 @@ deploy/tofu/
 
 ## Deployment Targets
 
-Angzarr supports five deployment modes:
+Angzarr supports these deployment modes:
 
 | Mode | Target | Storage | Messaging | Best For |
 |------|--------|---------|-----------|----------|
-| **Standalone** | Single process | SQLite | Channel bus | Development, testing |
 | **Local K8s** | Kind cluster | PostgreSQL | RabbitMQ | Local integration testing |
 | **GCP Cloud Run** | Serverless | Cloud SQL | Pub/Sub | Serverless production |
 | **GCP GKE** | Kubernetes | Cloud SQL or PostgreSQL | Pub/Sub or Kafka | K8s production on GCP |
 | **AWS Fargate** | Serverless containers | RDS | SNS/SQS | Serverless production on AWS |
 | **AWS EKS** | Kubernetes | RDS or PostgreSQL | MSK or RabbitMQ | K8s production on AWS |
-
----
-
-## Standalone Mode
-
-Standalone mode runs angzarr as a single process without containers or orchestration. Ideal for development and testing.
-
-### Configuration
-
-```bash
-# Build with standalone features
-cargo build --features standalone
-
-# Run
-cargo run --features standalone --bin angzarr_standalone
-```
-
-### Characteristics
-
-| Component | Implementation |
-|-----------|----------------|
-| Storage | SQLite (file-based) |
-| Event Bus | Channel bus (in-process) |
-| Transport | Unix domain sockets |
-| Scaling | Single instance |
-
-### Environment Variables
-
-```bash
-# Storage
-ANGZARR_STORAGE_TYPE=sqlite
-ANGZARR_SQLITE_PATH=./data/events.db
-
-# Logging
-ANGZARR_LOG=angzarr=debug
-```
-
-### When to Use
-
-- Local development without containers
-- Unit and integration testing
-- CI pipelines
-- Prototyping
 
 ---
 

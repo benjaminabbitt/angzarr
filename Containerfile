@@ -23,9 +23,12 @@ FROM ${RUST_IMAGE} AS proto-gen
 WORKDIR /app
 
 # Copy only what's needed for proto generation
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto/ ./proto/
-COPY crates/ ./crates/
+COPY core/main/Cargo.toml core/main/Cargo.lock core/main/build.rs ./
+COPY core/main/proto/ ./proto/
+COPY core/main/angzarr-project/ ./angzarr-project/
+COPY core/main/crates/ ./crates/
+COPY core/main/xtask/ ./xtask/
+COPY client-rust/main/ /client-rust/main/
 
 # Create minimal stubs - just enough for cargo to run build.rs
 RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
@@ -60,10 +63,12 @@ FROM ${RUST_IMAGE} AS builder-dev-deps
 WORKDIR /app
 
 # Copy dependency manifests
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto/ ./proto/
-COPY crates/ ./crates/
-COPY xtask/ ./xtask/
+COPY core/main/Cargo.toml core/main/Cargo.lock core/main/build.rs ./
+COPY core/main/proto/ ./proto/
+COPY core/main/angzarr-project/ ./angzarr-project/
+COPY core/main/crates/ ./crates/
+COPY core/main/xtask/ ./xtask/
+COPY client-rust/main/ /client-rust/main/
 
 # Copy pre-generated proto files from proto-gen stage
 COPY --from=proto-gen /proto-out/ /proto-cache/
@@ -98,9 +103,9 @@ FROM builder-dev-deps AS builder-dev
 RUN rm -rf src/ tests/ migrations/
 
 # Copy real source
-COPY src/ ./src/
-COPY migrations/ ./migrations/
-COPY tests/ ./tests/
+COPY core/main/src/ ./src/
+COPY core/main/migrations/ ./migrations/
+COPY core/main/tests/ ./tests/
 
 # Inject pre-generated proto files into cargo's expected location
 # This makes build.rs a no-op (files already exist)
@@ -120,9 +125,7 @@ RUN cargo build --profile container-dev --features otel,postgres,amqp \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
-    --bin angzarr-process-manager \
-    --bin angzarr-log \
-    --bin angzarr-stream && \
+    --bin angzarr-process-manager && \
     cp target/container-dev/angzarr-* /tmp/
 
 # =============================================================================
@@ -137,10 +140,12 @@ ENV RUSTFLAGS="-C target-feature=+crt-static"
 WORKDIR /app
 
 # Copy dependency manifests
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto/ ./proto/
-COPY crates/ ./crates/
-COPY xtask/ ./xtask/
+COPY core/main/Cargo.toml core/main/Cargo.lock core/main/build.rs ./
+COPY core/main/proto/ ./proto/
+COPY core/main/angzarr-project/ ./angzarr-project/
+COPY core/main/crates/ ./crates/
+COPY core/main/xtask/ ./xtask/
+COPY client-rust/main/ /client-rust/main/
 
 # Copy pre-generated proto files
 COPY --from=proto-gen /proto-out/ /proto-cache/
@@ -182,9 +187,9 @@ ARG TARGETARCH
 RUN rm -rf src/ tests/ migrations/
 
 # Copy real source
-COPY src/ ./src/
-COPY migrations/ ./migrations/
-COPY tests/ ./tests/
+COPY core/main/src/ ./src/
+COPY core/main/migrations/ ./migrations/
+COPY core/main/tests/ ./tests/
 
 # Determine target
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
@@ -213,9 +218,7 @@ RUN TARGET=$(cat /tmp/target) && \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
-    --bin angzarr-process-manager \
-    --bin angzarr-log \
-    --bin angzarr-stream && \
+    --bin angzarr-process-manager && \
     cp target/$TARGET/production/angzarr-* /tmp/
 
 # =============================================================================
@@ -257,16 +260,6 @@ COPY --from=builder-dev /tmp/angzarr-process-manager ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS angzarr-log-dev
-COPY --from=builder-dev /tmp/angzarr-log ./server
-EXPOSE 50051
-ENTRYPOINT ["./server"]
-
-FROM runtime-dev-base AS angzarr-stream-dev
-COPY --from=builder-dev /tmp/angzarr-stream ./server
-EXPOSE 50051
-ENTRYPOINT ["./server"]
-
 # =============================================================================
 # Release images (slow builds, minimal runtime, all features)
 # =============================================================================
@@ -289,12 +282,3 @@ COPY --from=builder-release /tmp/angzarr-process-manager ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS angzarr-log
-COPY --from=builder-release /tmp/angzarr-log ./server
-EXPOSE 50051
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS angzarr-stream
-COPY --from=builder-release /tmp/angzarr-stream ./server
-EXPOSE 50051
-ENTRYPOINT ["./server"]

@@ -48,7 +48,7 @@ impl DlqConfig {
         !self.targets.is_empty()
     }
 
-    /// Create a single-target config for channel backend (standalone mode).
+    /// Create a single-target config for channel backend (in-process mode).
     pub fn channel() -> Self {
         Self {
             targets: vec![DlqTargetConfig {

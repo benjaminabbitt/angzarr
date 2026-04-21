@@ -377,6 +377,18 @@ impl<T: EventStore> EventStore for Instrumented<T> {
             .await
     }
 
+    async fn find_by_external_id(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        self.inner
+            .find_by_external_id(domain, edition, root, external_id)
+            .await
+    }
+
     async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
         // Delegate to inner - no separate metrics for cascade queries
         self.inner.query_stale_cascades(threshold).await

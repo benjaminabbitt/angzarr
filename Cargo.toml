@@ -21,7 +21,6 @@ default = ["otel"]
 # =============================================================================
 # Deployment Profiles (opinionated stacks)
 # =============================================================================
-# Note: standalone mode is now in the separate angzarr-standalone crate
 # Note: sqlite is always compiled (no feature gate) for local orchestration support
 # k8s: Generic Kubernetes with Postgres + RabbitMQ
 k8s = ["postgres", "amqp", "otel", "dep:kube", "dep:k8s-openapi"]
@@ -72,7 +71,6 @@ coverage_nightly = []
 # All Features (for CI/development)
 # =============================================================================
 # Note: sqlite is always compiled, not listed here
-# Note: standalone mode moved to separate angzarr-standalone crate
 full = ["k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb", "lossy"]
 # full-musl: For musl static builds - excludes kafka (requires librdkafka with OpenSSL)
 # GCP crates use rustls-tls feature for musl compatibility
@@ -123,9 +121,6 @@ inventory = "0.3"
 
 # Protobuf reflection (for logging projector)
 prost-reflect = { version = "0.16", features = ["serde"] }
-
-# CloudEvents SDK (for cloudevents projector)
-cloudevents-sdk = "0.9"
 
 # Logging/Tracing
 tracing = "0.1"
@@ -191,7 +186,7 @@ sha2 = "0.10.9"
 mutants = "0.0.4"
 trivial-delegation = { path = "crates/trivial-delegation" }
 
-# Unix process management (for standalone orchestrator)
+# Unix process management (signals, child-process lifecycle).
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process", "fs", "user"] }
 
@@ -218,19 +213,6 @@ path = "src/bin/angzarr_saga.rs"
 [[bin]]
 name = "angzarr-process-manager"
 path = "src/bin/angzarr_process_manager.rs"
-
-[[bin]]
-name = "angzarr-log"
-path = "src/bin/angzarr_log.rs"
-
-[[bin]]
-name = "angzarr-stream"
-path = "src/bin/angzarr_stream.rs"
-
-[[bin]]
-name = "angzarr-event-projector"
-path = "src/bin/angzarr_event_projector.rs"
-required-features = ["postgres"]
 
 [[bin]]
 name = "angzarr-upcaster"
@@ -285,7 +267,7 @@ required-features = ["nats"]
 
 [[test]]
 name = "storage_sqlite"
-# SQLite provides embedded storage for standalone mode. Testing ensures all three
+# SQLite provides embedded storage for local-dev mode. Testing ensures all three
 # stores (Event, Snapshot, Position) work correctly with in-memory SQLite.
 # Note: sqlite is always compiled, no required-features needed
 

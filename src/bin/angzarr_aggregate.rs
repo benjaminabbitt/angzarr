@@ -32,7 +32,7 @@
 //! - pubsub: GCP Pub/Sub (ANGZARR__MESSAGING__PROJECT_ID)
 //! - sns-sqs: AWS SNS/SQS (ANGZARR__MESSAGING__AWS_REGION)
 //! - nats: NATS JetStream (ANGZARR__MESSAGING__NATS_URL)
-//! - ipc: Unix domain sockets (standalone mode)
+//! - ipc: Unix domain sockets (local-dev mode)
 //! - channel: In-memory (testing only)
 //!
 //! ## Embedded Mode
@@ -156,10 +156,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Load service discovery for sync processing
-    // In standalone mode, DISCOVERY_ENV_VAR=static skips K8s entirely
+    // With DISCOVERY_ENV_VAR=static we skip K8s entirely
     let discovery: Arc<dyn ServiceDiscovery> =
         if std::env::var(DISCOVERY_ENV_VAR).as_deref() == Ok(DISCOVERY_STATIC) {
-            info!("Using static service discovery (standalone mode)");
+            info!("Using static service discovery");
             Arc::new(StaticServiceDiscovery::new())
         } else {
             #[cfg(feature = "k8s")]

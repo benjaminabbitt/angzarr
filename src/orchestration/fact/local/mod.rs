@@ -14,7 +14,7 @@ use crate::orchestration::FactExecutor;
 /// Trait for injecting facts via a local command router.
 ///
 /// Abstracts the fact injection pipeline so local fact executor doesn't
-/// depend on standalone-specific types like CommandRouter.
+/// depend on specific router implementation types.
 #[async_trait]
 pub trait FactRouterExecutor: Send + Sync {
     /// Inject a fact into the target aggregate identified by the fact's cover domain.

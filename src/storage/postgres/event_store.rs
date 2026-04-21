@@ -6,15 +6,34 @@
 
 use async_trait::async_trait;
 use prost::Message;
-use sea_query::{Expr, Order, PostgresQueryBuilder, Query};
+use sea_query::{Expr, Iden, Order, PostgresQueryBuilder, Query, SimpleExpr};
 use sqlx::{Acquire, PgPool, Row};
 use uuid::Uuid;
 
-use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
 use crate::storage::{AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo};
+
+/// Build a WHERE predicate on an edition column that translates the empty
+/// string (our "main timeline" sentinel at the Rust API) to SQL NULL.
+fn edition_predicate<T: Iden + 'static>(col: T, edition: &str) -> SimpleExpr {
+    if edition.is_empty() {
+        Expr::col(col).is_null()
+    } else {
+        Expr::col(col).eq(edition)
+    }
+}
+
+/// Convert the API-layer edition ("" = main) to the storage-layer value
+/// (`None` = SQL NULL).
+fn edition_to_db(edition: &str) -> Option<String> {
+    if edition.is_empty() {
+        None
+    } else {
+        Some(edition.to_string())
+    }
+}
 
 /// PostgreSQL implementation of EventStore.
 pub struct PostgresEventStore {
@@ -89,7 +108,7 @@ impl PostgresEventStore {
         let query = Query::select()
             .column(Events::EventData)
             .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(DEFAULT_EDITION))
+            .and_where(edition_predicate(Events::Edition, ""))
             .and_where(Expr::col(Events::Domain).eq(domain))
             .and_where(Expr::col(Events::Root).eq(root))
             .and_where(Expr::col(Events::Sequence).gte(from))
@@ -141,7 +160,7 @@ impl EventStore for PostgresEventStore {
                 .expr(Expr::col(Events::Sequence).min())
                 .expr(Expr::col(Events::Sequence).max())
                 .from(Events::Table)
-                .and_where(Expr::col(Events::Edition).eq(edition))
+                .and_where(edition_predicate(Events::Edition, edition))
                 .and_where(Expr::col(Events::Domain).eq(domain))
                 .and_where(Expr::col(Events::Root).eq(&root_str))
                 .and_where(Expr::col(Events::ExternalId).eq(external_id))
@@ -167,7 +186,7 @@ impl EventStore for PostgresEventStore {
             let query = Query::select()
                 .expr(Expr::col(Events::Sequence).max())
                 .from(Events::Table)
-                .and_where(Expr::col(Events::Edition).eq(edition))
+                .and_where(edition_predicate(Events::Edition, edition))
                 .and_where(Expr::col(Events::Domain).eq(domain))
                 .and_where(Expr::col(Events::Root).eq(&root_str))
                 .to_string(PostgresQueryBuilder);
@@ -187,11 +206,12 @@ impl EventStore for PostgresEventStore {
         let mut first_sequence = None;
         let mut last_sequence = 0u32;
 
-        // Prepare source tracking values
+        // Prepare source tracking values. source_edition stored as NULL
+        // when the source was on the main timeline ("" at the API).
         let (source_edition, source_domain, source_root, source_seq) =
             if let Some(info) = source_info.filter(|s| !s.is_empty()) {
                 (
-                    Some(info.edition.clone()),
+                    edition_to_db(&info.edition),
                     Some(info.domain.clone()),
                     Some(info.root.to_string()),
                     Some(info.seq as i32),
@@ -237,7 +257,7 @@ impl EventStore for PostgresEventStore {
                     Events::CascadeId,
                 ])
                 .values_panic([
-                    edition.into(),
+                    edition_to_db(edition).into(),
                     domain.into(),
                     root_str.clone().into(),
                     sequence.into(),
@@ -320,7 +340,7 @@ impl EventStore for PostgresEventStore {
         let query = Query::select()
             .column(Events::EventData)
             .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(edition_predicate(Events::Edition, edition))
             .and_where(Expr::col(Events::Domain).eq(domain))
             .and_where(Expr::col(Events::Root).eq(&root_str))
             .and_where(Expr::col(Events::Sequence).gte(from))
@@ -352,7 +372,7 @@ impl EventStore for PostgresEventStore {
         let query = Query::select()
             .column(Events::EventData)
             .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(edition_predicate(Events::Edition, edition))
             .and_where(Expr::col(Events::Domain).eq(domain))
             .and_where(Expr::col(Events::Root).eq(&root_str))
             .and_where(Expr::col(Events::CreatedAt).lte(until))
@@ -376,7 +396,7 @@ impl EventStore for PostgresEventStore {
             .distinct()
             .column(Events::Root)
             .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(edition_predicate(Events::Edition, edition))
             .and_where(Expr::col(Events::Domain).eq(domain))
             .to_string(PostgresQueryBuilder);
 
@@ -415,7 +435,7 @@ impl EventStore for PostgresEventStore {
             let edition_query = Query::select()
                 .expr(Expr::col(Events::Sequence).max())
                 .from(Events::Table)
-                .and_where(Expr::col(Events::Edition).eq(edition))
+                .and_where(edition_predicate(Events::Edition, edition))
                 .and_where(Expr::col(Events::Domain).eq(domain))
                 .and_where(Expr::col(Events::Root).eq(&root_str))
                 .to_string(PostgresQueryBuilder);
@@ -435,17 +455,19 @@ impl EventStore for PostgresEventStore {
             // No edition events - fall through to check main timeline
         }
 
-        // Query the target edition (or main timeline for fallback)
+        // Query the target edition (or main timeline for fallback).
+        // The main timeline is our `""` sentinel at the Rust API layer,
+        // which `edition_predicate` translates to `IS NULL`.
         let target_edition = if is_main_timeline(edition) {
             edition
         } else {
-            DEFAULT_EDITION
+            ""
         };
 
         let query = Query::select()
             .expr(Expr::col(Events::Sequence).max())
             .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(target_edition))
+            .and_where(edition_predicate(Events::Edition, target_edition))
             .and_where(Expr::col(Events::Domain).eq(domain))
             .and_where(Expr::col(Events::Root).eq(&root_str))
             .to_string(PostgresQueryBuilder);
@@ -539,10 +561,13 @@ impl EventStore for PostgresEventStore {
         let query = Query::select()
             .column(Events::EventData)
             .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(edition_predicate(Events::Edition, edition))
             .and_where(Expr::col(Events::Domain).eq(domain))
             .and_where(Expr::col(Events::Root).eq(&root_str))
-            .and_where(Expr::col(Events::SourceEdition).eq(&source_info.edition))
+            .and_where(edition_predicate(
+                Events::SourceEdition,
+                &source_info.edition,
+            ))
             .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
             .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
@@ -562,6 +587,41 @@ impl EventStore for PostgresEventStore {
             events.push(event);
         }
 
+        Ok(Some(events))
+    }
+
+    async fn find_by_external_id(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        if external_id.is_empty() {
+            return Ok(None);
+        }
+
+        let root_str = root.to_string();
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(edition_predicate(Events::Edition, edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(&root_str))
+            .and_where(Expr::col(Events::ExternalId).eq(external_id))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(PostgresQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            events.push(EventPage::decode(event_data.as_slice())?);
+        }
         Ok(Some(events))
     }
 

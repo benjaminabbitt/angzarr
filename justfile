@@ -156,11 +156,11 @@ proto: gateway-gen
 _buf +ARGS:
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ] || command -v buf &>/dev/null; then
-        cd "{{TOP}}/proto" && buf {{ARGS}}
+        cd "{{TOP}}/angzarr-project/proto" && buf {{ARGS}}
     else
         {{CONTAINER_RUN}} --network=host \
             -v "{{TOP}}:/workspace:Z" \
-            -w /workspace/proto \
+            -w /workspace/angzarr-project/proto \
             {{REGISTRY}}/angzarr-base:latest \
             buf {{ARGS}}
     fi
@@ -183,9 +183,9 @@ buf-docs:
     set -euo pipefail
     mkdir -p "{{TOP}}/docs/docs/api/proto"
     # List proto files (exclude health which is internal)
-    PROTOS=$(find "{{TOP}}/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
+    PROTOS=$(find "{{TOP}}/angzarr-project/proto" -name '*.proto' ! -path '*/health/*' -printf '%P\n' | sort)
     {{CONTAINER_RUN}} \
-        -v "{{TOP}}/proto:/protos:Z" \
+        -v "{{TOP}}/angzarr-project/proto:/protos:Z" \
         -v "{{TOP}}/docs/docs/api/proto:/out:Z" \
         docker.io/pseudomuto/protoc-gen-doc \
         --proto_path=/protos \
@@ -255,10 +255,6 @@ build:
 # Build release binaries
 build-release:
     just _container build-release
-
-# Build standalone binary for integration tests
-build-standalone:
-    just _container build-standalone
 
 # Check code compiles
 check:
@@ -431,10 +427,6 @@ clean-all:
 # Run unit tests with coverage
 cov-unit:
     just _container cov-unit
-
-# Run standalone integration tests with coverage
-cov-integration:
-    just _container cov-integration
 
 # Run interface/Gherkin tests with coverage
 cov-gherkin:
@@ -639,7 +631,7 @@ infra-floci:
         -n angzarr --create-namespace \
         --set service.type=NodePort --wait
 
-# Run Floci standalone (no cluster required, for quick local testing)
+# Run Floci locally (no cluster required, for quick local testing)
 floci:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -660,7 +652,7 @@ floci:
     echo "Test with:"
     echo "  aws --endpoint-url=http://localhost:4566 s3 ls"
 
-# Stop Floci standalone container
+# Stop Floci container
 floci-stop:
     {{CONTAINER_CMD}} stop floci && {{CONTAINER_CMD}} rm floci
 

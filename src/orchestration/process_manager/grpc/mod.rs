@@ -56,7 +56,7 @@ impl ProcessManagerContext for GrpcPMContext {
         pm_state: Option<&EventBook>,
     ) -> Result<super::PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
-        let edition = trigger.edition().to_string();
+        let edition = trigger.edition().unwrap_or_default().to_string();
         let request = ProcessManagerPrepareRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
@@ -84,7 +84,7 @@ impl ProcessManagerContext for GrpcPMContext {
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
-        let edition = trigger.edition().to_string();
+        let edition = trigger.edition().unwrap_or_default().to_string();
 
         tracing::info!(
             trigger_pages = trigger.pages.len(),
@@ -150,7 +150,7 @@ impl ProcessManagerContext for GrpcPMContext {
             .and_then(|c| c.root.as_ref())
             .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
             .unwrap_or_else(uuid::Uuid::nil);
-        let edition = process_events.edition();
+        let edition = process_events.edition().unwrap_or_default();
 
         // Persist directly to event store (bypasses command pipeline)
         if let Err(e) = self

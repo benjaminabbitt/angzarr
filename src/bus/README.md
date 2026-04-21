@@ -144,7 +144,7 @@ The `should_ack()` method returns `true` for `Success` and `DecodeError`—malfo
 | Transport | Durability | Latency | Use Case |
 |-----------|------------|---------|----------|
 | Channel | None | Microseconds | Single-process, testing. Events lost on crash. |
-| IPC | None | Sub-millisecond | Multi-process standalone. Named pipes, Unix only. |
+| IPC | None | Sub-millisecond | Multi-process local dev. Named pipes, Unix only. |
 | AMQP (RabbitMQ) | Configurable | Milliseconds | Production default. Mature, widely deployed. |
 | Kafka | Strong | Milliseconds | High-throughput, log retention for replay. |
 | GCP Pub/Sub | Strong | Milliseconds | GCP deployments. Managed, scalable. |
@@ -175,7 +175,7 @@ Kinesis is appropriate when you need:
 
 **Channel**: Unit tests, single-process embedded deployments. No external dependencies.
 
-**IPC**: Standalone mode with multiple processes (aggregate + projectors). Low latency, zero network overhead.
+**IPC**: Local-dev deployments with multiple processes (aggregate + projectors). Low latency, zero network overhead.
 
 **AMQP**: Distributed deployments. Durable queues, topic-based routing, dead-letter handling.
 
@@ -249,7 +249,7 @@ Each transport has a corresponding DLQ publisher in `src/dlq/mod.rs`:
 
 | Backend | DLQ Publisher | Topic Format |
 |---------|---------------|--------------|
-| Channel | `ChannelDeadLetterPublisher` | In-memory (standalone/test) |
+| Channel | `ChannelDeadLetterPublisher` | In-memory (in-process/test) |
 | AMQP | `AmqpDeadLetterPublisher` | Exchange: `angzarr.dlq`, routing key: `{domain}` |
 | Kafka | `KafkaDeadLetterPublisher` | Topic: `angzarr-dlq-{domain}` |
 | Pub/Sub | `PubSubDeadLetterPublisher` | Topic: `angzarr-dlq-{domain}` |

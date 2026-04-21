@@ -93,7 +93,7 @@ If no snapshot exists (or reads are disabled), replay starts from sequence 0.
 | Backend | Durability | Latency | Scaling | Use Case |
 |---------|------------|---------|---------|----------|
 | PostgreSQL | Strong | Low | Vertical | Production default. ACID guarantees, familiar tooling. |
-| SQLite | Strong | Lowest | None | Standalone/embedded mode. Single-file, zero config. |
+| SQLite | Strong | Lowest | None | Embedded/local-dev mode. Single-file, zero config. |
 | Redis | Configurable | Lowest | Horizontal | High-throughput, acceptable loss risk. |
 | Bigtable | Strong | Low | Massive | Google Cloud native, petabyte scale. |
 | DynamoDB | Strong | Low | Massive | AWS native, serverless scaling. |

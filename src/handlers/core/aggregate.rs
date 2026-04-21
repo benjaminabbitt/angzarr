@@ -4,7 +4,7 @@
 //! using the command pipeline and context factory.
 //!
 //! Works with any `AggregateContextFactory` implementation — gRPC (distributed)
-//! or local (standalone) — enabling deploy-anywhere aggregate code.
+//! or local (in-process) — enabling deploy-anywhere aggregate code.
 //!
 //! Supports:
 //! - Synchronous gRPC command handling (client waits for response)
@@ -42,7 +42,7 @@ pub struct SyncProjectorEntry {
 /// Command handler that orchestrates aggregate execution via a context factory.
 ///
 /// Uses `AggregateContextFactory` to create per-invocation contexts, enabling
-/// the same handler code for both distributed (gRPC) and standalone (local) modes.
+/// the same handler code for both distributed (gRPC) and in-process (local) modes.
 ///
 /// One handler per aggregate domain (like SagaEventHandler is one per saga).
 pub struct AggregateCommandHandler {

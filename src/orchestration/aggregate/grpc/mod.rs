@@ -16,9 +16,9 @@ use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher
 use crate::proto::process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient;
 use crate::proto::saga_coordinator_service_client::SagaCoordinatorServiceClient;
 use crate::proto::{
-    CascadeErrorMode, CommandBook, Cover, Edition, EventBook, EventPage, EventRequest,
-    MergeStrategy, ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest, Snapshot,
-    SnapshotRetention, Uuid as ProtoUuid,
+    AngzarrDeferredSequence, CascadeErrorMode, CommandBook, Cover, Edition, EventBook, EventPage,
+    EventRequest, MergeStrategy, ProcessManagerCoordinatorRequest, Projection, SagaHandleRequest,
+    Snapshot, SnapshotRetention, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
@@ -31,6 +31,38 @@ use crate::storage::AddOutcome;
 use super::{
     AggregateContext, AggregateContextFactory, ClientLogic, PersistOutcome, TemporalQuery,
 };
+
+/// Translate an `AngzarrDeferredSequence` into a `SourceInfo` for the
+/// storage layer's `find_by_source` lookup. Same shape as the local-impl
+/// helper — kept duplicated rather than hoisted to avoid a circular dep
+/// on `super::traits` from the storage module.
+fn deferred_to_source_info(
+    deferred: &AngzarrDeferredSequence,
+) -> Result<Option<crate::storage::SourceInfo>, Status> {
+    let Some(source) = deferred.source.as_ref() else {
+        return Ok(None);
+    };
+    if source.domain.is_empty() {
+        return Ok(None);
+    }
+    let Some(root_uuid) = source.root.as_ref() else {
+        return Ok(None);
+    };
+    let source_root = Uuid::from_slice(&root_uuid.value).map_err(|e| {
+        Status::invalid_argument(format!("deferred source root is not a valid UUID: {e}"))
+    })?;
+    let edition_str = source
+        .edition
+        .as_ref()
+        .map(|e| e.name.as_str())
+        .unwrap_or("");
+    Ok(Some(crate::storage::SourceInfo::new(
+        edition_str,
+        source.domain.as_str(),
+        source_root,
+        deferred.source_seq,
+    )))
+}
 
 /// Build an EventBook with proper next_sequence set.
 ///
@@ -407,6 +439,7 @@ impl AggregateContext for GrpcAggregateContext {
         root: Uuid,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&crate::storage::SourceInfo>,
     ) -> Result<PersistOutcome, Status> {
         // Compute new pages: those in received but not in prior
         let prior_max_seq = prior.pages.iter().map(|p| p.sequence_num()).max();
@@ -469,7 +502,7 @@ impl AggregateContext for GrpcAggregateContext {
             };
             let outcome = self
                 .event_book_repo
-                .put(edition, &events_to_persist, external_id)
+                .put(edition, &events_to_persist, external_id, source_info)
                 .await
                 .map_err(|e| match e {
                     StorageError::SequenceConflict { expected, actual } => {
@@ -619,6 +652,47 @@ impl AggregateContext for GrpcAggregateContext {
             events.pages = upcasted_pages;
         }
         Ok(events)
+    }
+
+    /// Look up cached events for a saga-produced command by source provenance.
+    /// Mirrors the `LocalAggregateContext` impl — see that comment for the
+    /// at-least-once redelivery rationale.
+    async fn check_deferred_idempotency(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        deferred: &AngzarrDeferredSequence,
+    ) -> Result<Option<EventBook>, Status> {
+        let Some(source_info) = deferred_to_source_info(deferred)? else {
+            return Ok(None);
+        };
+        let pages = self
+            .event_store
+            .find_by_source(domain, edition, root, &source_info)
+            .await
+            .map_err(|e| Status::internal(format!("Deferred idempotency lookup failed: {e}")))?;
+        Ok(pages.map(|pages| build_event_book(domain, edition, root, pages, None)))
+    }
+
+    /// External-fact equivalent — see `LocalAggregateContext` impl for
+    /// the at-least-once webhook redelivery rationale.
+    async fn check_external_idempotency(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        external_id: &str,
+    ) -> Result<Option<EventBook>, Status> {
+        if external_id.is_empty() {
+            return Ok(None);
+        }
+        let pages = self
+            .event_store
+            .find_by_external_id(domain, edition, root, external_id)
+            .await
+            .map_err(|e| Status::internal(format!("External idempotency lookup failed: {e}")))?;
+        Ok(pages.map(|pages| build_event_book(domain, edition, root, pages, None)))
     }
 
     async fn send_to_dlq(

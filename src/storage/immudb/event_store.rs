@@ -588,6 +588,18 @@ impl EventStore for ImmudbEventStore {
         // Use SQLite or PostgreSQL for saga source tracking
         Ok(None)
     }
+
+    async fn find_by_external_id(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // ImmuDB doesn't store external_id tracking — fact pre-handler
+        // idempotency not supported. Use SQLite or PostgreSQL.
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
