@@ -256,10 +256,6 @@ build:
 build-release:
     just _container build-release
 
-# Build standalone binary for integration tests
-build-standalone:
-    just _container build-standalone
-
 # Check code compiles
 check:
     just _container check
@@ -431,10 +427,6 @@ clean-all:
 # Run unit tests with coverage
 cov-unit:
     just _container cov-unit
-
-# Run standalone integration tests with coverage
-cov-integration:
-    just _container cov-integration
 
 # Run interface/Gherkin tests with coverage
 cov-gherkin:
@@ -639,7 +631,7 @@ infra-floci:
         -n angzarr --create-namespace \
         --set service.type=NodePort --wait
 
-# Run Floci standalone (no cluster required, for quick local testing)
+# Run Floci locally (no cluster required, for quick local testing)
 floci:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -660,7 +652,7 @@ floci:
     echo "Test with:"
     echo "  aws --endpoint-url=http://localhost:4566 s3 ls"
 
-# Stop Floci standalone container
+# Stop Floci container
 floci-stop:
     {{CONTAINER_CMD}} stop floci && {{CONTAINER_CMD}} rm floci
 

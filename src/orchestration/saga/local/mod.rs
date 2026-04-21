@@ -23,7 +23,7 @@ use super::{SagaContextFactory, SagaHandler, SagaRetryContext};
 /// Trait for executing compensation commands.
 ///
 /// Abstracts the compensation execution so local saga context doesn't
-/// depend on standalone-specific types like CommandRouter.
+/// depend on specific router types like CommandRouter.
 #[async_trait]
 pub trait CompensationExecutor: Send + Sync {
     /// Execute a compensation command and return the business response.
@@ -184,7 +184,7 @@ impl SagaRetryContext for LocalSagaContext {
     }
 }
 
-/// Factory that produces `LocalSagaContext` instances for standalone mode.
+/// Factory that produces `LocalSagaContext` instances for in-process mode.
 ///
 /// Captures in-process saga handler and optional compensation dependencies.
 /// Command execution and destination fetching are handled by the event handler.

@@ -19,17 +19,10 @@ message Target {
 
 ## Configuration
 
-**Environment variable** (distributed mode):
+**Environment variable**:
 ```bash
 # Format: domain:Type1,Type2;domain2:Type3
 ANGZARR_SUBSCRIPTIONS="order:OrderCreated,OrderCompleted;inventory"
-```
-
-**Config file** (standalone mode):
-```yaml
-sagas:
-  - domain: saga-order-fulfillment
-    subscriptions: "order:OrderCompleted"
 ```
 
 ## Filter Semantics

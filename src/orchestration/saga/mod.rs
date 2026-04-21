@@ -25,7 +25,7 @@
 //!
 //! # Module Structure
 //!
-//! - `local/`: in-process saga handler calls (standalone mode)
+//! - `local/`: in-process saga handler calls
 //! - `grpc/`: remote gRPC saga client calls (distributed mode)
 
 pub mod grpc;

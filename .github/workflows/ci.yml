@@ -176,7 +176,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Note: Standalone integration tests moved to angzarr-standalone crate
       # Note: Binary integration tests require binaries built first, run separately
       - name: Run SQLite storage contract tests
         run: |

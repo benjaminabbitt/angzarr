@@ -1,4 +1,4 @@
-//! Projector abstraction shared across standalone and distributed modes.
+//! Projector abstraction shared across in-process and distributed modes.
 
 use std::sync::Arc;
 

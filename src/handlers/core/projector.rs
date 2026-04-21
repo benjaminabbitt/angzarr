@@ -4,7 +4,7 @@
 //! services via the `ProjectorHandler` trait.
 //!
 //! Works with any `ProjectorHandler` implementation — gRPC (distributed)
-//! or local (standalone) — enabling deploy-anywhere projector code.
+//! or local (in-process) — enabling deploy-anywhere projector code.
 //!
 //! When projectors produce output (Projections), these are published back
 //! to the event bus as synthetic EventBooks with the original correlation_id
@@ -26,7 +26,7 @@ use crate::proto_ext::{CoverExt, PROJECTION_DOMAIN_PREFIX, PROJECTION_TYPE_URL};
 
 /// Event handler that forwards events to a projector via `ProjectorHandler`.
 ///
-/// Enables the same handler code for both distributed (gRPC) and standalone
+/// Enables the same handler code for both distributed (gRPC) and in-process
 /// (local) modes.
 ///
 /// Calls projector to get output, then publishes the Projection back to

@@ -16,7 +16,7 @@ use super::CommandOutcome;
 /// Trait for executing commands via a command router.
 ///
 /// Abstracts the command router so local command executor doesn't
-/// depend on standalone-specific types like CommandRouter.
+/// depend on specific router implementation types.
 #[async_trait]
 pub trait CommandRouterExecutor: Send + Sync {
     /// Execute a command with standard mode (events published to bus).

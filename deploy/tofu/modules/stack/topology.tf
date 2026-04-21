@@ -12,8 +12,7 @@ locals {
       for name, domain in var.domains : {
         id          = name
         type        = "domain"
-        entry_point = contains(local.entry_points, name)
-        standalone  = domain.standalone
+        entry_point = contains(local.entry_points, name) || domain.entry_point
       }
     ],
     # Process manager nodes
@@ -22,7 +21,6 @@ locals {
         id          = name
         type        = "process_manager"
         entry_point = false
-        standalone  = false
       }
     ]
   )

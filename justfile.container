@@ -15,10 +15,6 @@ build:
 build-release:
     cargo build --release
 
-# Build standalone binary with all features needed for integration tests
-build-standalone:
-    cargo build --release --bin angzarr-standalone --features "standalone,amqp"
-
 # Check code compiles
 check:
     cargo check
@@ -287,10 +283,6 @@ COV_FEATURES := "--features 'sqlite test-utils'"
 cov-unit:
     cargo llvm-cov --lib {{COV_FEATURES}} {{COV_IGNORE}}
 
-# Run standalone integration tests with coverage
-cov-integration:
-    cargo llvm-cov --test standalone_integration {{COV_FEATURES}} {{COV_IGNORE}}
-
 # Run interface/Gherkin tests with coverage
 cov-gherkin:
     cargo llvm-cov --test interfaces {{COV_FEATURES}} {{COV_IGNORE}}
@@ -300,7 +292,6 @@ cov:
     cargo llvm-cov \
         --workspace \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         {{COV_FEATURES}} \
         {{COV_IGNORE}}
@@ -310,7 +301,6 @@ cov-summary:
     cargo llvm-cov \
         --workspace \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         {{COV_FEATURES}} \
         {{COV_IGNORE}} \
@@ -321,7 +311,6 @@ cov-html:
     cargo llvm-cov \
         --workspace \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         {{COV_FEATURES}} \
         {{COV_IGNORE}} \
@@ -333,7 +322,6 @@ cov-lcov:
     cargo llvm-cov \
         --workspace \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         {{COV_FEATURES}} \
         {{COV_IGNORE}} \
@@ -372,7 +360,6 @@ cov-contracts:
 cov-full:
     cargo llvm-cov \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         --test bus_amqp \
         --features "sqlite postgres test-utils amqp" \
@@ -382,7 +369,6 @@ cov-full:
 cov-full-html:
     cargo llvm-cov \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         --test bus_amqp \
         --features "sqlite postgres test-utils amqp" \
@@ -394,7 +380,6 @@ cov-full-html:
 cov-full-summary:
     cargo llvm-cov \
         --lib \
-        --test standalone_integration \
         --test interfaces \
         --test bus_amqp \
         --features "sqlite postgres test-utils amqp" \

@@ -1,4 +1,4 @@
-//! Core types and logic for editions, not specific to standalone runtime.
+//! Core types and logic for editions.
 
 /// Serialized divergence point type for sequence-based divergence.
 pub const DIVERGENCE_TYPE_SEQUENCE: &str = "sequence";

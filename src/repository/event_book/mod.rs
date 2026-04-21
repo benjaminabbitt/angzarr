@@ -324,12 +324,16 @@ impl EventBookRepository {
     /// Persist an EventBook.
     ///
     /// Stores all events in the event store. When `external_id` is provided,
-    /// the storage layer atomically checks for duplicates.
+    /// the storage layer atomically checks for duplicates. When
+    /// `source_info` is provided (saga-produced commands), the storage
+    /// layer tags each persisted event with that provenance for the
+    /// `find_by_source` deferred-idempotency lookup.
     pub async fn put(
         &self,
         edition: &str,
         book: &EventBook,
         external_id: Option<&str>,
+        source_info: Option<&crate::storage::SourceInfo>,
     ) -> Result<AddOutcome> {
         let (domain, root_uuid, correlation_id) = extract_cover(book)?;
         self.event_store
@@ -340,7 +344,7 @@ impl EventBookRepository {
                 book.pages.clone(),
                 correlation_id,
                 external_id,
-                None, // No source info for regular puts
+                source_info,
             )
             .await
     }

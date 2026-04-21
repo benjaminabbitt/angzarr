@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/angzarr-io/angzarr/gateway/discovery"
-	gw "github.com/angzarr-io/angzarr/gateway/gen/angzarr"
+	gw "github.com/angzarr-io/angzarr/gateway/gen/angzarr_client/proto/angzarr"
 )
 
 //go:embed api/*

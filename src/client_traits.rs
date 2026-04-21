@@ -1,8 +1,8 @@
 //! Client traits for gateway and query operations.
 //!
 //! These traits define the client API for interacting with angzarr services.
-//! Both standalone (in-process) and distributed (gRPC) modes implement
-//! the same traits, enabling deploy-anywhere client code.
+//! Both in-process and distributed (gRPC) modes implement the same traits,
+//! enabling deploy-anywhere client code.
 
 use async_trait::async_trait;
 use tonic::{Code, Status};

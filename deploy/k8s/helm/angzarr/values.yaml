@@ -252,7 +252,7 @@ storage:
       username: "username"
       password: "password"
   sqlite:
-    # SQLite database path (for standalone/testing)
+    # SQLite database path (for local-dev/testing)
     path: ""
   redis:
     # Redis connection URI

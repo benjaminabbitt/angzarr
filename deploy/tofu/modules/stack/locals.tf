@@ -86,16 +86,16 @@ locals {
     local.pm_target_domains
   )
 
-  # Standalone domains (explicitly marked)
-  standalone_domains = toset([
+  # Entry-point domains (explicitly marked, exempt from orphan validation)
+  entry_point_domains = toset([
     for name, domain in var.domains : name
-    if domain.standalone
+    if domain.entry_point
   ])
 
-  # Orphan domains (not connected and not standalone)
+  # Orphan domains (not connected and not marked as entry point)
   orphan_domains = [
     for name in local.domain_names : name
-    if !contains(local.connected_domains, name) && !contains(local.standalone_domains, name)
+    if !contains(local.connected_domains, name) && !contains(local.entry_point_domains, name)
   ]
 
   # Entry points: domains with no inbound sagas or PM commands

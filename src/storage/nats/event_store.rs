@@ -871,6 +871,18 @@ impl EventStore for NatsEventStore {
         Ok(None)
     }
 
+    async fn find_by_external_id(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        // NATS doesn't store external_id tracking — fact pre-handler
+        // idempotency not supported. Use SQLite or PostgreSQL.
+        Ok(None)
+    }
+
     async fn query_stale_cascades(&self, threshold: &str) -> Result<Vec<String>> {
         use std::collections::{HashMap, HashSet};
 

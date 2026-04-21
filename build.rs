@@ -2,17 +2,31 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Rerun if proto files or migration files change
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/types.proto");
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/types.proto"
+    );
     println!("cargo:rerun-if-changed=migrations");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/command_handler.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/projector.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/saga.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/process_manager.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/query.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/stream.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/upcaster.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/meta.proto");
-    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr/cloudevents.proto");
+    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/command_handler.proto");
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/projector.proto"
+    );
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/saga.proto"
+    );
+    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/process_manager.proto");
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/query.proto"
+    );
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/stream.proto"
+    );
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/upcaster.proto"
+    );
+    println!(
+        "cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/meta.proto"
+    );
+    println!("cargo:rerun-if-changed=angzarr-project/proto/angzarr_client/proto/angzarr/cloudevents.proto");
     println!("cargo:rerun-if-changed=proto/io/cloudevents/v1/cloudevents.proto");
 
     // Generate descriptor.bin for proto reflection (used by COMMUTATIVE merge)
@@ -28,22 +42,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .type_attribute(
-            ".angzarr.BusinessResponse.result",
+            ".angzarr_client.proto.angzarr.BusinessResponse.result",
             "#[allow(clippy::large_enum_variant)]",
         )
         .compile_with_config(
             prost_config,
             &[
-                "angzarr-project/proto/angzarr/types.proto",
-                "angzarr-project/proto/angzarr/command_handler.proto",
-                "angzarr-project/proto/angzarr/projector.proto",
-                "angzarr-project/proto/angzarr/saga.proto",
-                "angzarr-project/proto/angzarr/process_manager.proto",
-                "angzarr-project/proto/angzarr/query.proto",
-                "angzarr-project/proto/angzarr/stream.proto",
-                "angzarr-project/proto/angzarr/upcaster.proto",
-                "angzarr-project/proto/angzarr/meta.proto",
-                "angzarr-project/proto/angzarr/cloudevents.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/types.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/command_handler.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/projector.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/saga.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/process_manager.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/query.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/stream.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/upcaster.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/meta.proto",
+                "angzarr-project/proto/angzarr_client/proto/angzarr/cloudevents.proto",
                 "proto/io/cloudevents/v1/cloudevents.proto",
             ],
             &["angzarr-project/proto", "proto"],

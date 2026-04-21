@@ -55,7 +55,7 @@ check "pm_has_targets" {
 check "no_orphan_domains" {
   assert {
     condition     = length(local.orphan_domains) == 0
-    error_message = "Orphan domains found (not connected via saga/PM and not marked standalone): ${join(", ", local.orphan_domains)}. Either connect them via sagas/PMs or mark as standalone = true."
+    error_message = "Orphan domains found (not connected via saga/PM and not marked as entry point): ${join(", ", local.orphan_domains)}. Either connect them via sagas/PMs or mark as entry_point = true."
   }
 }
 

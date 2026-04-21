@@ -197,6 +197,16 @@ impl EventStore for MockEventStore {
         unimplemented!("Not needed for gap-fill tests")
     }
 
+    async fn find_by_external_id(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
+    ) -> StorageResult<Option<Vec<EventPage>>> {
+        unimplemented!("Not needed for gap-fill tests")
+    }
+
     async fn delete_edition_events(&self, _domain: &str, _edition: &str) -> StorageResult<u32> {
         unimplemented!("Not needed for gap-fill tests")
     }

@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use backon::ExponentialBuilder;
 use tonic::Status;
+use uuid::Uuid;
 
 use crate::proto::{
     page_header::SequenceType, CommandBook, CommandResponse, ContextualCommand, EventBook,
@@ -171,6 +172,31 @@ async fn execute_mode(
     // Check for deferred sequences (saga-produced commands)
     let is_deferred = has_deferred_sequence(&command_book);
 
+    // Capture source provenance now, before `stamp_deferred_sequences` later
+    // in the pipeline rewrites the angzarr_deferred header into an explicit
+    // Sequence. Persist passes this to the storage layer so a future
+    // redelivery's `check_deferred_idempotency` lookup can find these
+    // events by `(source.domain, source.root, source_seq)`.
+    let source_info = extract_angzarr_deferred(&command_book).and_then(|deferred| {
+        let source = deferred.source.as_ref()?;
+        if source.domain.is_empty() {
+            return None;
+        }
+        let root_proto = source.root.as_ref()?;
+        let source_root = Uuid::from_slice(&root_proto.value).ok()?;
+        let source_edition = source
+            .edition
+            .as_ref()
+            .map(|e| e.name.as_str())
+            .unwrap_or("");
+        Some(crate::storage::SourceInfo::new(
+            source_edition,
+            source.domain.as_str(),
+            source_root,
+            deferred.source_seq,
+        ))
+    });
+
     // For angzarr_deferred, check idempotency first
     if let Some(deferred) = extract_angzarr_deferred(&command_book) {
         if let Some(existing_events) = ctx
@@ -191,7 +217,6 @@ async fn execute_mode(
             return Ok(CommandResponse {
                 events: Some(existing_events),
                 projections,
-                ..Default::default()
             });
         }
     }
@@ -395,6 +420,7 @@ async fn execute_mode(
             root_uuid,
             &correlation_id,
             None, // Commands don't use external_id idempotency
+            source_info.as_ref(),
         )
         .await?;
 
@@ -415,7 +441,6 @@ async fn execute_mode(
     Ok(CommandResponse {
         events: Some(persisted),
         projections,
-        cascade_errors: vec![],
     })
 }
 
@@ -455,7 +480,6 @@ async fn speculative_mode(
     Ok(CommandResponse {
         events: Some(speculative_events),
         projections: vec![],
-        cascade_errors: vec![],
     })
 }
 
@@ -508,6 +532,28 @@ pub async fn execute_fact_pipeline(
     span.record("edition", edition.as_str());
     span.record("root_uuid", tracing::field::display(&root_uuid));
     span.record("external_id", external_id.as_str());
+
+    // Pre-handler idempotency check — symmetric with the saga path. On a
+    // webhook redelivery (same external_id under (domain, edition, root))
+    // return the cached events without invoking `business.invoke_fact`.
+    // Storage-level dedup at persist remains the safety net regardless.
+    if !external_id.is_empty() {
+        if let Some(cached) = ctx
+            .check_external_idempotency(&domain, &edition, root_uuid, &external_id)
+            .await?
+        {
+            tracing::debug!(
+                external_id = external_id.as_str(),
+                "Fact already processed (external_id pre-handler hit), returning cached result"
+            );
+            let projections = ctx.post_persist(&cached).await?;
+            return Ok(FactResponse {
+                events: cached,
+                projections,
+                already_processed: true,
+            });
+        }
+    }
 
     // Validate that at least one page has ExternalDeferred (fact marker)
     let has_fact_marker = fact_events.pages.iter().any(|p| {
@@ -599,59 +645,11 @@ pub async fn execute_fact_pipeline(
             root_uuid,
             &correlation_id,
             ext_id,
+            None, // fact pipeline uses external_id idempotency, not deferred-source
         )
         .await?;
 
     match outcome {
-        PersistOutcome::Duplicate {
-            first_sequence,
-            last_sequence,
-        } => {
-            // Already processed — load and return existing events
-            tracing::debug!(
-                external_id = %external_id,
-                first_seq = first_sequence,
-                last_seq = last_sequence,
-                "Fact already processed (idempotent response)"
-            );
-
-            let prior_events = ctx
-                .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
-                .await?;
-
-            // Filter to only the events that were part of this fact injection
-            let filtered_pages: Vec<_> = prior_events
-                .pages
-                .into_iter()
-                .filter(|p| {
-                    if let Some(SequenceType::Sequence(seq)) =
-                        p.header.as_ref().and_then(|h| h.sequence_type.as_ref())
-                    {
-                        *seq >= first_sequence && *seq <= last_sequence
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-
-            let dup_book = EventBook {
-                cover: prior_events.cover,
-                pages: filtered_pages,
-                snapshot: prior_events.snapshot,
-                next_sequence: prior_events.next_sequence,
-            };
-
-            // Re-publish: if the first attempt persisted events but failed to
-            // publish (e.g., bus was temporarily unavailable), this ensures
-            // the events eventually reach the bus on retry.
-            let projections = ctx.post_persist(&dup_book).await?;
-
-            Ok(FactResponse {
-                events: dup_book,
-                projections,
-                already_processed: true,
-            })
-        }
         PersistOutcome::Persisted(mut persisted) | PersistOutcome::NoOp(mut persisted) => {
             // Set next_sequence
             calculate_set_next_seq(&mut persisted);
@@ -664,6 +662,25 @@ pub async fn execute_fact_pipeline(
                 projections,
                 already_processed: false,
             })
+        }
+        PersistOutcome::Duplicate { .. } => {
+            // The pre-handler `check_external_idempotency` short-circuits all
+            // duplicate fact deliveries before reaching persist, so the
+            // storage layer cannot return Duplicate for a fact in normal
+            // operation. The only way to land here is a TOCTOU race
+            // between two concurrent injections of the same external_id
+            // — both pre-checks miss, both call persist, second one's
+            // storage-level atomic dedup wins. Treat as an internal
+            // condition: storage-level dedup is the safety net, but the
+            // race-loser caller never sees the cached events through this
+            // code path. Logging surfaces the race for diagnostics.
+            tracing::warn!(
+                external_id = %external_id,
+                "Fact pipeline reached PersistOutcome::Duplicate — concurrent fact race detected"
+            );
+            Err(Status::aborted(
+                "concurrent fact injection — retry to read the cached result",
+            ))
         }
     }
 }

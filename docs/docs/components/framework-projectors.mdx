@@ -250,20 +250,6 @@ Each EventBook page becomes a CloudEvent with:
 
 ---
 
-## Standalone Mode Integration
-
-In standalone mode, register framework projectors via `RuntimeBuilder`:
-
-```rust title="illustrative - standalone mode registration"
-let mut runtime = RuntimeBuilder::new()
-    .with_sqlite_memory()
-    .register_aggregate("orders", orders_aggregate)
-    .build()
-    .await?;
-```
-
----
-
 ## Next Steps
 
 - **[Projectors](/components/projector)** — Custom projector patterns

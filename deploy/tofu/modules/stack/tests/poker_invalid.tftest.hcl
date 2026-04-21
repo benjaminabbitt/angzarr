@@ -92,9 +92,9 @@ run "pm_subscribes_to_nonexistent_domain" {
 
   variables {
     domains = {
-      # entry_point domain (not targeted by PM, marked standalone)
+      # entry_point domain (not targeted by PM, marked as entry point)
       entry = {
-        standalone = true
+        entry_point = true
         aggregate = {
           image = "ghcr.io/poker/entry-aggregate:latest"
         }
@@ -159,9 +159,9 @@ run "pm_missing_subscriptions" {
 
   variables {
     domains = {
-      # entry point domain (not targeted by PM, marked standalone)
+      # entry point domain (not targeted by PM, marked as entry point)
       entry = {
-        standalone = true
+        entry_point = true
         aggregate = {
           image = "ghcr.io/poker/entry-aggregate:latest"
         }
@@ -218,7 +218,7 @@ run "pm_missing_targets" {
 }
 
 #------------------------------------------------------------------------------
-# Test: Orphan domain (not connected and not standalone)
+# Test: Orphan domain (not connected and not marked as entry point)
 #------------------------------------------------------------------------------
 
 run "orphan_domain_not_connected" {
@@ -232,7 +232,7 @@ run "orphan_domain_not_connected" {
           image = "ghcr.io/poker/player-aggregate:latest"
         }
       }
-      # ERROR: 'audit' is not connected to anything and not marked standalone
+      # ERROR: 'audit' is not connected to anything and not marked as entry point
       audit = {
         aggregate = {
           image = "ghcr.io/poker/audit-aggregate:latest"
@@ -367,7 +367,7 @@ run "invalid_event_store_capability" {
     }
     domains = {
       player = {
-        standalone = true
+        entry_point = true
         aggregate = {
           image = "ghcr.io/poker/player-aggregate:latest"
         }
@@ -409,7 +409,7 @@ run "invalid_position_store_capability" {
     }
     domains = {
       player = {
-        standalone = true
+        entry_point = true
         aggregate = {
           image = "ghcr.io/poker/player-aggregate:latest"
         }

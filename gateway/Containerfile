@@ -9,10 +9,10 @@ WORKDIR /workspace
 RUN go install github.com/bufbuild/buf/cmd/buf@v1.47.2
 
 # Copy proto files for generation
-COPY angzarr-project/proto/ ./angzarr-project/proto/
+COPY core/main/angzarr-project/proto/ ./angzarr-project/proto/
 
 # Copy gateway module
-COPY gateway/ ./gateway/
+COPY core/main/gateway/ ./gateway/
 
 WORKDIR /workspace/gateway
 

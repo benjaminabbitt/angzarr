@@ -152,7 +152,7 @@ variable "domains" {
     - sagas: Map of saga name to saga config (translates events to other domains)
     - projectors: Map of projector name to projector config (optional)
     - storage: Optional storage override (null = use default_storage)
-    - standalone: Mark as standalone to exempt from orphan validation (default: false)
+    - entry_point: Mark as an entry-point domain to exempt from orphan validation (default: false)
   EOT
   type = map(object({
     aggregate = object({
@@ -191,7 +191,7 @@ variable "domains" {
         })
       }))
     }))
-    standalone = optional(bool, false)
+    entry_point = optional(bool, false)
   }))
 
   validation {

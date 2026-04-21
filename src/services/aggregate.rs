@@ -324,6 +324,7 @@ impl CommandHandlerCoordinatorService for AggregateService {
                     root_uuid,
                     &correlation_id,
                     None,
+                    None, // speculative path doesn't carry source provenance
                 )
                 .await?;
 

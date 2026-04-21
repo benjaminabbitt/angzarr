@@ -79,6 +79,14 @@ pub trait AggregateContext: Send + Sync {
     /// When `external_id` is provided (fact injection), the storage layer
     /// atomically checks for duplicates and returns `PersistOutcome::Duplicate`
     /// if the external_id was already used for this aggregate root.
+    ///
+    /// When `source_info` is provided (saga-produced commands carrying an
+    /// `AngzarrDeferredSequence` header), the storage layer tags each
+    /// persisted event with that provenance. A subsequent
+    /// `check_deferred_idempotency` lookup with the same provenance
+    /// recognizes the redelivery and short-circuits before invoking the
+    /// destination handler.
+    #[allow(clippy::too_many_arguments)]
     async fn persist_events(
         &self,
         prior: &EventBook,
@@ -88,6 +96,7 @@ pub trait AggregateContext: Send + Sync {
         root: Uuid,
         correlation_id: &str,
         external_id: Option<&str>,
+        source_info: Option<&crate::storage::SourceInfo>,
     ) -> Result<PersistOutcome, Status>;
 
     /// Publish to event bus AND call sync projectors via service discovery.
@@ -155,6 +164,30 @@ pub trait AggregateContext: Send + Sync {
         _edition: &str,
         _root: Uuid,
         _deferred: &AngzarrDeferredSequence,
+    ) -> Result<Option<EventBook>, Status> {
+        Ok(None)
+    }
+
+    /// Check if an external fact has already been processed.
+    ///
+    /// For facts with `external_deferred.external_id`, checks if events
+    /// exist with that external_id under (domain, edition, root). Returns
+    /// `Some(events)` if already processed (so the pipeline can return
+    /// the cached events without re-invoking `business.invoke_fact`),
+    /// None if this is a new external_id.
+    ///
+    /// Symmetric with `check_deferred_idempotency` — both protect against
+    /// at-least-once delivery (saga AMQP redelivery / external webhook
+    /// retry) by short-circuiting before the handler runs. Storage-level
+    /// dedup at persist remains the safety net even if this returns None.
+    ///
+    /// Default implementation returns None (no idempotency checking).
+    async fn check_external_idempotency(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _external_id: &str,
     ) -> Result<Option<EventBook>, Status> {
         Ok(None)
     }

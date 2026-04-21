@@ -12,7 +12,8 @@ minimum_test_timeout = 30
 
 # Test configuration
 test_tool = "cargo"
-additional_cargo_test_args = ["--features", "sqlite", "--features", "test-utils"]
+# sqlite is always compiled (no feature gate) — see Cargo.toml
+additional_cargo_test_args = ["--features", "test-utils"]
 
 # Cap lints to avoid warnings causing build failures in mutated code
 cap_lints = true
@@ -41,7 +42,6 @@ exclude_globs = [
 
   # Build/config
   "build.rs",
-  "**/mod.rs",
 ]
 
 # Skip mutations in calls to these functions

@@ -19,7 +19,7 @@ An append-only database that stores events. The event store is the **source of t
 
 Angzarr supports multiple event store backends:
 - PostgreSQL (recommended for production)
-- SQLite (standalone/testing)
+- SQLite (local development/testing)
 - Redis (high-throughput scenarios)
 - NATS JetStream (distributed)
 

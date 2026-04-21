@@ -887,6 +887,7 @@ fn test_cascade_id_trait_default() {
             _: Uuid,
             _: &str,
             _: Option<&str>,
+            _: Option<&crate::storage::SourceInfo>,
         ) -> Result<super::traits::PersistOutcome, tonic::Status> {
             unimplemented!()
         }

@@ -224,3 +224,294 @@ fn test_build_event_book_with_pages() {
 
     assert_eq!(book.pages.len(), 2);
 }
+
+// ========================================================================
+// check_deferred_idempotency Tests
+//
+// AMQP redelivery of a saga's trigger event causes the saga to redispatch
+// the same logical command. The pipeline calls
+// `ctx.check_deferred_idempotency` first; on a redelivery it must return
+// the cached events from the prior successful dispatch so the destination
+// aggregate's business handler is never invoked twice. The default trait
+// impl returns Ok(None) (no idempotency); the LocalAggregateContext
+// override consults the storage layer's `find_by_source` lookup.
+// ========================================================================
+
+fn deferred(source_domain: &str, source_root: Uuid, source_seq: u32) -> AngzarrDeferredSequence {
+    AngzarrDeferredSequence {
+        source: Some(Cover {
+            domain: source_domain.to_string(),
+            root: Some(ProtoUuid {
+                value: source_root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        source_seq,
+    }
+}
+
+#[tokio::test]
+async fn test_check_deferred_idempotency_returns_none_when_no_prior_dispatch() {
+    let ctx = LocalAggregateContext::without_discovery(
+        create_test_storage(),
+        Arc::new(MockEventBus::new()),
+    );
+    let target_root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+    let result = ctx
+        .check_deferred_idempotency("hand", "", target_root, &deferred("table", source_root, 5))
+        .await;
+    assert!(matches!(result, Ok(None)));
+}
+
+#[tokio::test]
+async fn test_check_deferred_idempotency_returns_cached_events_on_redelivery() {
+    // Setup: persist an event at the target aggregate that carries source
+    // provenance from a saga trigger. A subsequent check_deferred_idempotency
+    // call with the same provenance must return that cached event.
+    let storage = create_test_storage();
+    let event_store = storage.event_store.clone();
+    let ctx = LocalAggregateContext::without_discovery(storage, Arc::new(MockEventBus::new()));
+
+    let target_root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+    let source_info = crate::storage::SourceInfo::new("", "table", source_root, 5);
+
+    let event = crate::proto::EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
+        ..Default::default()
+    };
+    event_store
+        .add(
+            "hand",
+            "",
+            target_root,
+            vec![event],
+            "corr-1",
+            None,
+            Some(&source_info),
+        )
+        .await
+        .expect("seed event");
+
+    let cached = ctx
+        .check_deferred_idempotency("hand", "", target_root, &deferred("table", source_root, 5))
+        .await
+        .expect("idempotency lookup");
+
+    let book = cached.expect("redelivery should hit the cached prior dispatch");
+    assert_eq!(
+        book.pages.len(),
+        1,
+        "exactly the prior event should be returned"
+    );
+    let cover = book.cover.as_ref().expect("event book carries cover");
+    assert_eq!(cover.domain, "hand");
+}
+
+#[tokio::test]
+async fn test_persist_events_propagates_source_info_for_deferred_commands() {
+    // When the pipeline persists events produced by a saga-deferred command,
+    // the destination aggregate's events must be tagged with the source
+    // provenance. Without this, a subsequent redelivery's
+    // `check_deferred_idempotency` lookup finds nothing and the
+    // handler is invoked redundantly.
+    let storage = create_test_storage();
+    let event_store = storage.event_store.clone();
+    let ctx = LocalAggregateContext::without_discovery(storage, Arc::new(MockEventBus::new()));
+
+    let target_root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+    let source_info = crate::storage::SourceInfo::new("", "table", source_root, 5);
+
+    let prior = build_event_book("hand", "", target_root, vec![], None);
+    let received_pages = vec![EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
+        ..Default::default()
+    }];
+    let received = build_event_book("hand", "", target_root, received_pages, None);
+
+    let outcome = ctx
+        .persist_events(
+            &prior,
+            &received,
+            "hand",
+            "",
+            target_root,
+            "corr-1",
+            None,
+            Some(&source_info),
+        )
+        .await
+        .expect("persist should succeed");
+    assert!(matches!(outcome, PersistOutcome::Persisted(_)));
+
+    // Round-trip: the freshly persisted event must be discoverable by
+    // its source provenance, otherwise the idempotency check on
+    // redelivery wouldn't find it.
+    let cached = event_store
+        .find_by_source("hand", "", target_root, &source_info)
+        .await
+        .expect("find_by_source");
+    let pages = cached.expect("source_info should propagate from persist into the store");
+    assert_eq!(pages.len(), 1);
+}
+
+// ========================================================================
+// check_external_idempotency Tests
+//
+// External webhook delivery is at-least-once: a Stripe retry of the same
+// payment_intent (external_id) should not re-invoke the fact handler.
+// Storage-level external_id dedup at persist already prevents
+// double-write, but pre-handler dedup is symmetric with the saga path
+// and avoids redundant business invocation.
+// ========================================================================
+
+#[tokio::test]
+async fn test_check_external_idempotency_returns_none_when_no_prior_fact() {
+    let ctx = LocalAggregateContext::without_discovery(
+        create_test_storage(),
+        Arc::new(MockEventBus::new()),
+    );
+    let target_root = Uuid::new_v4();
+    let result = ctx
+        .check_external_idempotency("player", "", target_root, "stripe-pi-1")
+        .await;
+    assert!(matches!(result, Ok(None)));
+}
+
+#[tokio::test]
+async fn test_check_external_idempotency_returns_cached_events_on_redelivery() {
+    let storage = create_test_storage();
+    let event_store = storage.event_store.clone();
+    let ctx = LocalAggregateContext::without_discovery(storage, Arc::new(MockEventBus::new()));
+
+    let target_root = Uuid::new_v4();
+    let event = crate::proto::EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
+        ..Default::default()
+    };
+    event_store
+        .add(
+            "player",
+            "",
+            target_root,
+            vec![event],
+            "corr-1",
+            Some("stripe-pi-1"),
+            None,
+        )
+        .await
+        .expect("seed event");
+
+    let cached = ctx
+        .check_external_idempotency("player", "", target_root, "stripe-pi-1")
+        .await
+        .expect("idempotency lookup");
+
+    let book = cached.expect("redelivery should hit the cached prior fact");
+    assert_eq!(book.pages.len(), 1);
+}
+
+#[tokio::test]
+async fn test_check_external_idempotency_distinguishes_external_id() {
+    let storage = create_test_storage();
+    let event_store = storage.event_store.clone();
+    let ctx = LocalAggregateContext::without_discovery(storage, Arc::new(MockEventBus::new()));
+
+    let target_root = Uuid::new_v4();
+    let event = crate::proto::EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
+        ..Default::default()
+    };
+    event_store
+        .add(
+            "player",
+            "",
+            target_root,
+            vec![event],
+            "corr-1",
+            Some("stripe-pi-1"),
+            None,
+        )
+        .await
+        .expect("seed event");
+
+    let result = ctx
+        .check_external_idempotency("player", "", target_root, "stripe-pi-2")
+        .await
+        .expect("idempotency lookup");
+    assert!(
+        result.is_none(),
+        "different external_id must not collide with prior fact"
+    );
+}
+
+#[tokio::test]
+async fn test_check_external_idempotency_returns_none_for_empty_external_id() {
+    // Empty external_id means "non-idempotent fact" — the storage layer
+    // never records empty strings for dedup, so the lookup must short-
+    // circuit to None and let the handler run normally.
+    let ctx = LocalAggregateContext::without_discovery(
+        create_test_storage(),
+        Arc::new(MockEventBus::new()),
+    );
+    let target_root = Uuid::new_v4();
+    let result = ctx
+        .check_external_idempotency("player", "", target_root, "")
+        .await;
+    assert!(matches!(result, Ok(None)));
+}
+
+#[tokio::test]
+async fn test_check_deferred_idempotency_distinguishes_source_seq() {
+    // Same source.root but a different source_seq is a *different* logical
+    // saga dispatch — return None so the pipeline invokes the handler.
+    let storage = create_test_storage();
+    let event_store = storage.event_store.clone();
+    let ctx = LocalAggregateContext::without_discovery(storage, Arc::new(MockEventBus::new()));
+
+    let target_root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+    let event = crate::proto::EventPage {
+        header: Some(PageHeader {
+            sequence_type: Some(crate::proto::page_header::SequenceType::Sequence(0)),
+        }),
+        ..Default::default()
+    };
+    event_store
+        .add(
+            "hand",
+            "",
+            target_root,
+            vec![event],
+            "corr-1",
+            None,
+            Some(&crate::storage::SourceInfo::new(
+                "",
+                "table",
+                source_root,
+                5,
+            )),
+        )
+        .await
+        .expect("seed event");
+
+    let result = ctx
+        .check_deferred_idempotency("hand", "", target_root, &deferred("table", source_root, 6))
+        .await
+        .expect("idempotency lookup");
+    assert!(
+        result.is_none(),
+        "different source_seq must not collide with prior dispatch"
+    );
+}

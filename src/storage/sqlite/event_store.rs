@@ -712,6 +712,41 @@ impl EventStore for SqliteEventStore {
         Ok(Some(events))
     }
 
+    async fn find_by_external_id(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        external_id: &str,
+    ) -> Result<Option<Vec<EventPage>>> {
+        if external_id.is_empty() {
+            return Ok(None);
+        }
+
+        let root_str = root.to_string();
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(&root_str))
+            .and_where(Expr::col(Events::ExternalId).eq(external_id))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(SqliteQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            events.push(EventPage::decode(event_data.as_slice())?);
+        }
+        Ok(Some(events))
+    }
+
     async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
         let query = Query::delete()
             .from_table(Events::Table)

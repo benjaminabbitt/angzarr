@@ -31,63 +31,45 @@ build:
     # Dev targets (default) - fast native builds
     # RUST_IMAGE injected via requires dependency (not :latest)
     - image: ghcr.io/angzarr-io/angzarr-aggregate
-      context: .
+      context: ../..
       docker:
-        dockerfile: Containerfile
+        dockerfile: core/main/Containerfile
         target: angzarr-aggregate-dev
       requires:
         - image: ghcr.io/angzarr-io/angzarr-rust
           alias: RUST_IMAGE
 
     - image: ghcr.io/angzarr-io/angzarr-projector
-      context: .
+      context: ../..
       docker:
-        dockerfile: Containerfile
+        dockerfile: core/main/Containerfile
         target: angzarr-projector-dev
       requires:
         - image: ghcr.io/angzarr-io/angzarr-rust
           alias: RUST_IMAGE
 
     - image: ghcr.io/angzarr-io/angzarr-saga
-      context: .
+      context: ../..
       docker:
-        dockerfile: Containerfile
+        dockerfile: core/main/Containerfile
         target: angzarr-saga-dev
       requires:
         - image: ghcr.io/angzarr-io/angzarr-rust
           alias: RUST_IMAGE
 
     - image: ghcr.io/angzarr-io/angzarr-process-manager
-      context: .
+      context: ../..
       docker:
-        dockerfile: Containerfile
+        dockerfile: core/main/Containerfile
         target: angzarr-process-manager-dev
       requires:
         - image: ghcr.io/angzarr-io/angzarr-rust
           alias: RUST_IMAGE
 
-    - image: ghcr.io/angzarr-io/angzarr-log
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: angzarr-log-dev
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-rust
-          alias: RUST_IMAGE
-
-    - image: ghcr.io/angzarr-io/angzarr-stream
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: angzarr-stream-dev
-      requires:
-        - image: ghcr.io/angzarr-io/angzarr-rust
-          alias: RUST_IMAGE
-
     - image: ghcr.io/angzarr-io/angzarr-grpc-gateway
-      context: .
+      context: ../..
       docker:
-        dockerfile: gateway/Containerfile
+        dockerfile: core/main/gateway/Containerfile
 
 profiles:
   # Release profile - slow musl builds, minimal images
@@ -95,60 +77,42 @@ profiles:
     build:
       artifacts:
         - image: ghcr.io/angzarr-io/angzarr-aggregate
-          context: .
+          context: ../..
           docker:
-            dockerfile: Containerfile
+            dockerfile: core/main/Containerfile
             target: angzarr-aggregate
           requires:
             - image: ghcr.io/angzarr-io/angzarr-rust
               alias: RUST_IMAGE
 
         - image: ghcr.io/angzarr-io/angzarr-projector
-          context: .
+          context: ../..
           docker:
-            dockerfile: Containerfile
+            dockerfile: core/main/Containerfile
             target: angzarr-projector
           requires:
             - image: ghcr.io/angzarr-io/angzarr-rust
               alias: RUST_IMAGE
 
         - image: ghcr.io/angzarr-io/angzarr-saga
-          context: .
+          context: ../..
           docker:
-            dockerfile: Containerfile
+            dockerfile: core/main/Containerfile
             target: angzarr-saga
           requires:
             - image: ghcr.io/angzarr-io/angzarr-rust
               alias: RUST_IMAGE
 
         - image: ghcr.io/angzarr-io/angzarr-process-manager
-          context: .
+          context: ../..
           docker:
-            dockerfile: Containerfile
+            dockerfile: core/main/Containerfile
             target: angzarr-process-manager
           requires:
             - image: ghcr.io/angzarr-io/angzarr-rust
               alias: RUST_IMAGE
 
-        - image: ghcr.io/angzarr-io/angzarr-log
-          context: .
-          docker:
-            dockerfile: Containerfile
-            target: angzarr-log
-          requires:
-            - image: ghcr.io/angzarr-io/angzarr-rust
-              alias: RUST_IMAGE
-
-        - image: ghcr.io/angzarr-io/angzarr-stream
-          context: .
-          docker:
-            dockerfile: Containerfile
-            target: angzarr-stream
-          requires:
-            - image: ghcr.io/angzarr-io/angzarr-rust
-              alias: RUST_IMAGE
-
         - image: ghcr.io/angzarr-io/angzarr-grpc-gateway
-          context: .
+          context: ../..
           docker:
-            dockerfile: gateway/Containerfile
+            dockerfile: core/main/gateway/Containerfile

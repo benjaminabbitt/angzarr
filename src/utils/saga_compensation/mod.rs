@@ -385,7 +385,6 @@ pub fn build_notification(context: &CompensationContext) -> Notification {
             value: rejection.encode_to_vec(),
         }),
         sent_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-        metadata: std::collections::HashMap::new(),
     }
 }
 
@@ -437,11 +436,8 @@ pub fn build_compensation_failed_event(
     compensation_failure_reason: &str,
 ) -> SagaCompensationFailed {
     SagaCompensationFailed {
-        // Source info now comes from angzarr_deferred
         triggering_aggregate: context.source.source.clone(),
         triggering_event_sequence: context.source.source_seq,
-        // saga_name removed from new model - source aggregate handles compensation
-        saga_name: String::new(),
         rejection_reason: context.rejection_reason.clone(),
         compensation_failure_reason: compensation_failure_reason.to_string(),
         rejected_command: Some(context.rejected_command.clone()),

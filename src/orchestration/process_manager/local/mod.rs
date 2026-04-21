@@ -174,7 +174,7 @@ impl ProcessManagerContext for LocalPMContext {
     }
 }
 
-/// Factory that produces `LocalPMContext` instances for standalone mode.
+/// Factory that produces `LocalPMContext` instances for in-process mode.
 ///
 /// Captures in-process PM handler and domain storage.
 /// Each call to `create()` produces a context for one PM invocation.
