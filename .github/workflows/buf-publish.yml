@@ -79,16 +79,3 @@ jobs:
         run: |
           cd proto
           buf push --label "${{ steps.version.outputs.version }}"
-
-  notify-clients:
-    name: Notify Client Libraries
-    runs-on: ubuntu-latest
-    needs: publish
-    steps:
-      - name: Trigger Rust client rebuild
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.REPO_DISPATCH_TOKEN }}
-          repository: angzarr-io/angzarr-client-rust
-          event-type: protos-updated
-          client-payload: '{"version": "${{ needs.publish.outputs.version }}", "sha": "${{ github.sha }}"}'
