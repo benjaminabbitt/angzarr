@@ -23,12 +23,11 @@ FROM ${RUST_IMAGE} AS proto-gen
 WORKDIR /app
 
 # Copy only what's needed for proto generation
-COPY core/main/Cargo.toml core/main/Cargo.lock core/main/build.rs ./
-COPY core/main/proto/ ./proto/
-COPY core/main/angzarr-project/ ./angzarr-project/
-COPY core/main/crates/ ./crates/
-COPY core/main/xtask/ ./xtask/
-COPY client-rust/main/ /client-rust/main/
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY angzarr-project/ ./angzarr-project/
+COPY crates/ ./crates/
+COPY xtask/ ./xtask/
 
 # Create minimal stubs - just enough for cargo to run build.rs
 RUN mkdir -p src/bin tests/integration tests/interfaces migrations && \
@@ -63,12 +62,11 @@ FROM ${RUST_IMAGE} AS builder-dev-deps
 WORKDIR /app
 
 # Copy dependency manifests
-COPY core/main/Cargo.toml core/main/Cargo.lock core/main/build.rs ./
-COPY core/main/proto/ ./proto/
-COPY core/main/angzarr-project/ ./angzarr-project/
-COPY core/main/crates/ ./crates/
-COPY core/main/xtask/ ./xtask/
-COPY client-rust/main/ /client-rust/main/
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY angzarr-project/ ./angzarr-project/
+COPY crates/ ./crates/
+COPY xtask/ ./xtask/
 
 # Copy pre-generated proto files from proto-gen stage
 COPY --from=proto-gen /proto-out/ /proto-cache/
@@ -103,9 +101,9 @@ FROM builder-dev-deps AS builder-dev
 RUN rm -rf src/ tests/ migrations/
 
 # Copy real source
-COPY core/main/src/ ./src/
-COPY core/main/migrations/ ./migrations/
-COPY core/main/tests/ ./tests/
+COPY src/ ./src/
+COPY migrations/ ./migrations/
+COPY tests/ ./tests/
 
 # Inject pre-generated proto files into cargo's expected location
 # This makes build.rs a no-op (files already exist)
@@ -140,12 +138,11 @@ ENV RUSTFLAGS="-C target-feature=+crt-static"
 WORKDIR /app
 
 # Copy dependency manifests
-COPY core/main/Cargo.toml core/main/Cargo.lock core/main/build.rs ./
-COPY core/main/proto/ ./proto/
-COPY core/main/angzarr-project/ ./angzarr-project/
-COPY core/main/crates/ ./crates/
-COPY core/main/xtask/ ./xtask/
-COPY client-rust/main/ /client-rust/main/
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY angzarr-project/ ./angzarr-project/
+COPY crates/ ./crates/
+COPY xtask/ ./xtask/
 
 # Copy pre-generated proto files
 COPY --from=proto-gen /proto-out/ /proto-cache/
@@ -187,9 +184,9 @@ ARG TARGETARCH
 RUN rm -rf src/ tests/ migrations/
 
 # Copy real source
-COPY core/main/src/ ./src/
-COPY core/main/migrations/ ./migrations/
-COPY core/main/tests/ ./tests/
+COPY src/ ./src/
+COPY migrations/ ./migrations/
+COPY tests/ ./tests/
 
 # Determine target
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
