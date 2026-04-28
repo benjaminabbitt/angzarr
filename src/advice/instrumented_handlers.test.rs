@@ -79,15 +79,10 @@ async fn test_instrumented_saga_delegates() {
 struct MockPMHandler;
 
 impl ProcessManagerHandler for MockPMHandler {
-    fn prepare(&self, _trigger: &EventBook, _process_state: Option<&EventBook>) -> Vec<Cover> {
-        vec![]
-    }
-
     fn handle(
         &self,
         _trigger: &EventBook,
         _process_state: Option<&EventBook>,
-        _destinations: &[EventBook],
     ) -> ProcessManagerHandleResult {
         ProcessManagerHandleResult::default()
     }
@@ -100,7 +95,7 @@ fn test_instrumented_pm_delegates() {
     let handler = InstrumentedPMHandler::new(inner, "test-pm");
 
     let trigger = EventBook::default();
-    let result = handler.handle(&trigger, None, &[]);
+    let result = handler.handle(&trigger, None);
     assert!(result.commands.is_empty());
     assert!(result.process_events.is_none());
     assert!(result.facts.is_empty());

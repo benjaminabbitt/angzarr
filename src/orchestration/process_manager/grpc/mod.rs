@@ -1,6 +1,6 @@
 //! gRPC process manager context.
 //!
-//! Delegates prepare/handle to remote `ProcessManagerServiceClient` via gRPC.
+//! Delegates handle to remote `ProcessManagerServiceClient` via gRPC.
 //! Persists PM events directly to event store and publishes to event bus,
 //! bypassing the command pipeline (no aggregate sidecar for PM domain).
 
@@ -13,9 +13,7 @@ use tracing::error;
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
-use crate::proto::{
-    CommandResponse, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest,
-};
+use crate::proto::{CommandResponse, EventBook, ProcessManagerHandleRequest};
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::storage::EventStore;
 
@@ -50,38 +48,10 @@ impl GrpcPMContext {
 
 #[async_trait]
 impl ProcessManagerContext for GrpcPMContext {
-    async fn prepare(
-        &self,
-        trigger: &EventBook,
-        pm_state: Option<&EventBook>,
-    ) -> Result<super::PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let correlation_id = trigger.correlation_id();
-        let edition = trigger.edition().unwrap_or_default().to_string();
-        let request = ProcessManagerPrepareRequest {
-            trigger: Some(trigger.clone()),
-            process_state: pm_state.cloned(),
-        };
-
-        let mut client = self.client.lock().await;
-        let response = client
-            .prepare(correlated_request(request, correlation_id))
-            .await?
-            .into_inner();
-
-        let mut covers = response.destinations;
-        for cover in &mut covers {
-            cover.stamp_edition_if_empty(&edition);
-        }
-        Ok(super::PmPrepareResponse {
-            destinations: covers,
-        })
-    }
-
     async fn handle(
         &self,
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
-        destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
         let edition = trigger.edition().unwrap_or_default().to_string();
@@ -93,30 +63,13 @@ impl ProcessManagerContext for GrpcPMContext {
             "GrpcPMContext.handle sending trigger to PM"
         );
 
-        // Extract next_sequence from each destination EventBook
-        let destination_sequences = destinations
-            .iter()
-            .filter_map(|eb| {
-                let domain = eb.cover.as_ref()?.domain.clone();
-                let max_seq = eb
-                    .pages
-                    .iter()
-                    .filter_map(|p| {
-                        p.header.as_ref().and_then(|h| match &h.sequence_type {
-                            Some(crate::proto::page_header::SequenceType::Sequence(s)) => Some(*s),
-                            _ => None,
-                        })
-                    })
-                    .max()
-                    .unwrap_or(0);
-                Some((domain, max_seq + 1))
-            })
-            .collect();
-
+        // PMs do not rebuild destination state; destination_sequences is
+        // populated by the coordinator side from any pre-fetched aggregates.
+        // For pure-PM-state PMs this map is empty.
         let request = ProcessManagerHandleRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
-            destination_sequences,
+            destination_sequences: Default::default(),
         };
 
         let mut client = self.client.lock().await;

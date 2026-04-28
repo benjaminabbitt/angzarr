@@ -27,20 +27,10 @@ struct EmptyPm;
 
 #[async_trait]
 impl ProcessManagerContext for EmptyPm {
-    async fn prepare(
-        &self,
-        _trigger: &EventBook,
-        _pm_state: Option<&EventBook>,
-    ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(PmPrepareResponse {
-            destinations: vec![],
-        })
-    }
     async fn handle(
         &self,
         _trigger: &EventBook,
         _pm_state: Option<&EventBook>,
-        _destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(PmHandleResponse {
             commands: vec![],
@@ -68,20 +58,10 @@ struct PmWithEvents {
 
 #[async_trait]
 impl ProcessManagerContext for PmWithEvents {
-    async fn prepare(
-        &self,
-        _trigger: &EventBook,
-        _pm_state: Option<&EventBook>,
-    ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(PmPrepareResponse {
-            destinations: vec![],
-        })
-    }
     async fn handle(
         &self,
         _trigger: &EventBook,
         _pm_state: Option<&EventBook>,
-        _destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         use crate::proto::EventPage;
         Ok(PmHandleResponse {

@@ -25,10 +25,9 @@
 //! # Execution Flow
 //!
 //! 1. **Fetch PM state**: Load existing workflow progress by correlation_id
-//! 2. **Prepare**: PM declares additional destination aggregates to fetch
-//! 3. **Handle**: PM produces commands + its own state events
-//! 4. **Persist PM events**: Store PM state changes (retries on conflict)
-//! 5. **Execute commands**: Send to target aggregates (no retry here)
+//! 2. **Handle**: PM produces commands + its own state events
+//! 3. **Persist PM events**: Store PM state changes (retries on conflict)
+//! 4. **Execute commands**: Send to target aggregates (no retry here)
 //!
 //! PM event persistence is retried but command execution is not — commands may
 //! succeed/fail independently, and the PM can observe outcomes via Notifications.
@@ -75,27 +74,17 @@ pub struct ProcessManagerHandleResult {
 /// and storage. The runtime triggers PM logic when matching events arrive on the bus,
 /// persists PM events to the PM's aggregate domain, and executes resulting commands.
 ///
-/// # Two-Phase Protocol
-///
-/// Phase 1 (`prepare`): PM examines trigger event + its own state, declares
-/// additional destination aggregates it needs. Return empty if PM only uses its own state.
-///
-/// Phase 2 (`handle`): PM receives trigger + PM state + fetched destinations,
-/// returns commands to issue and PM events to persist.
+/// PMs translate trigger events + their own state into commands/facts. They do not
+/// rebuild destination aggregate state — destination_sequences (provided by the
+/// coordinator) carry the next-sequence values needed for command stamping.
 pub trait ProcessManagerHandler: Send + Sync + 'static {
-    /// Phase 1: Declare additional destinations needed beyond trigger + PM state.
-    ///
-    /// Returns destinations to fetch. Most PMs return empty (only need PM state).
-    fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover>;
-
-    /// Phase 2: Produce commands, PM events, and facts given trigger, PM state, and destinations.
+    /// Produce commands, PM events, and facts given trigger and PM state.
     ///
     /// Returns commands to execute, optional PM events to persist, and facts to inject.
     fn handle(
         &self,
         trigger: &EventBook,
         process_state: Option<&EventBook>,
-        destinations: &[EventBook],
     ) -> ProcessManagerHandleResult;
 
     /// Handle a revocation notification for a rejected command.
@@ -113,12 +102,6 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
     }
 }
 
-/// Response from a process manager's prepare phase.
-pub struct PmPrepareResponse {
-    /// Additional aggregates needed beyond trigger.
-    pub destinations: Vec<Cover>,
-}
-
 /// Response from a process manager's handle phase.
 pub struct PmHandleResponse {
     /// Commands to execute on aggregates.
@@ -131,25 +114,16 @@ pub struct PmHandleResponse {
 
 /// PM-specific operations abstracted over transport.
 ///
-/// Implementations provide prepare/handle via in-process handler (local)
-/// or gRPC client (distributed). PM event persistence differs significantly:
-/// local writes to event store + re-reads + publishes; gRPC routes through
-/// CommandExecutor.
+/// Implementations provide handle via in-process handler (local) or gRPC client
+/// (distributed). PM event persistence differs significantly: local writes to
+/// event store + re-reads + publishes; gRPC routes through CommandExecutor.
 #[async_trait]
 pub trait ProcessManagerContext: Send + Sync {
-    /// Phase 1: PM declares additional destinations needed beyond trigger + PM state.
-    async fn prepare(
-        &self,
-        trigger: &EventBook,
-        pm_state: Option<&EventBook>,
-    ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>>;
-
-    /// Phase 2: PM produces commands + process events given trigger, PM state, and destinations.
+    /// PM produces commands + process events given trigger and PM state.
     async fn handle(
         &self,
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
-        destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Persist PM events to the PM's own domain.
@@ -230,12 +204,10 @@ pub trait PMContextFactory: Send + Sync {
 /// # Flow Summary
 ///
 /// 1. Fetch PM state by correlation_id (PM root = correlation_id by design)
-/// 2. Prepare: PM declares additional destinations needed
-/// 3. Fetch destination event books
-/// 4. Handle: PM produces commands + PM events + facts
-/// 5. Persist PM events (retries on sequence conflict)
-/// 6. Execute commands with angzarr_deferred stamped for compensation routing
-/// 7. Inject facts into target aggregates
+/// 2. Handle: PM produces commands + PM events + facts
+/// 3. Persist PM events (retries on sequence conflict)
+/// 4. Execute commands with angzarr_deferred stamped for compensation routing
+/// 5. Inject facts into target aggregates
 ///
 /// `sync_mode` controls how commands are executed:
 /// - `Cascade`: Sync execution, no bus publishing
@@ -285,28 +257,11 @@ pub async fn orchestrate_pm(
             debug!("No existing PM state (new workflow)");
         }
 
-        // Phase 1: Prepare — get additional destination covers
-        let prepare_response = ctx
-            .prepare(trigger, pm_state.as_ref())
-            .await
-            .map_err(|e| BusError::Publish(e.to_string()))?;
-
-        let destination_covers = prepare_response.destinations;
-
-        debug!(
-            destinations = destination_covers.len(),
-            "ProcessManager.Prepare returned destinations"
-        );
-
-        // Fetch additional destinations
-        let destinations =
-            super::shared::fetch_destinations(fetcher, &destination_covers, correlation_id).await;
-
-        // Phase 2: Handle — produce commands + PM events
-        // Use original trigger (from bus) so PM sees the actual triggering event pages
-        // PM state provides workflow context; destinations provide aggregate state
+        // Handle — produce commands + PM events + facts
+        // Use original trigger (from bus) so PM sees the actual triggering event pages.
+        // PM state provides workflow context; PMs do not rebuild destination state.
         let response = ctx
-            .handle(trigger, pm_state.as_ref(), &destinations)
+            .handle(trigger, pm_state.as_ref())
             .await
             .map_err(|e| BusError::Publish(e.to_string()))?;
 

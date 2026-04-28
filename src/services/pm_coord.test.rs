@@ -71,24 +71,10 @@ struct MockPmContext {
 
 #[async_trait::async_trait]
 impl crate::orchestration::process_manager::ProcessManagerContext for MockPmContext {
-    async fn prepare(
-        &self,
-        _trigger: &EventBook,
-        _pm_state: Option<&EventBook>,
-    ) -> Result<
-        crate::orchestration::process_manager::PmPrepareResponse,
-        Box<dyn std::error::Error + Send + Sync>,
-    > {
-        Ok(crate::orchestration::process_manager::PmPrepareResponse {
-            destinations: vec![],
-        })
-    }
-
     async fn handle(
         &self,
         _trigger: &EventBook,
         _pm_state: Option<&EventBook>,
-        _destinations: &[EventBook],
     ) -> Result<
         crate::orchestration::process_manager::PmHandleResponse,
         Box<dyn std::error::Error + Send + Sync>,

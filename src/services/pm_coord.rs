@@ -22,7 +22,7 @@ use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::orchestration::FactExecutor;
 use crate::proto::{
-    process_manager_coordinator_service_server::ProcessManagerCoordinatorService, EventBook,
+    process_manager_coordinator_service_server::ProcessManagerCoordinatorService,
     ProcessManagerCoordinatorRequest, ProcessManagerHandleResponse, SpeculatePmRequest, SyncMode,
 };
 use crate::proto_ext::CoverExt;
@@ -195,48 +195,11 @@ impl ProcessManagerCoordinatorService for PmCoord {
         // Gap-fill EventBook if incomplete
         let trigger = super::fill_gaps_if_needed(self.gap_filler.as_ref(), trigger).await?;
 
-        // Create context and call prepare + handle directly (no command delivery)
+        // Create context and call handle directly (no command delivery)
         let ctx = self.factory.create();
 
-        // Phase 1: Prepare
-        let _prepare_response = ctx
-            .prepare(&trigger, req.process_state.as_ref())
-            .await
-            .map_err(|e| Status::internal(format!("PM prepare failed: {}", e)))?;
-
-        // Note: For speculative, we skip destination fetching and use provided sequences
-        // Convert sequences to stub EventBooks for internal context
-        let destinations: Vec<EventBook> = req
-            .destination_sequences
-            .into_iter()
-            .map(|(domain, next_seq)| {
-                use crate::proto::{page_header::SequenceType, Cover, EventPage, PageHeader};
-
-                // Create stub EventBook with just the domain and sequence info
-                let mut pages = Vec::new();
-                if next_seq > 1 {
-                    // Represent max sequence as next_seq - 1
-                    pages.push(EventPage {
-                        header: Some(PageHeader {
-                            sequence_type: Some(SequenceType::Sequence(next_seq - 1)),
-                        }),
-                        ..Default::default()
-                    });
-                }
-                EventBook {
-                    cover: Some(Cover {
-                        domain,
-                        ..Default::default()
-                    }),
-                    pages,
-                    ..Default::default()
-                }
-            })
-            .collect();
-
-        // Phase 2: Handle (no persistence or command execution)
         let response = ctx
-            .handle(&trigger, req.process_state.as_ref(), &destinations)
+            .handle(&trigger, req.process_state.as_ref())
             .await
             .map_err(|e| Status::internal(format!("PM handle failed: {}", e)))?;
 

@@ -1,6 +1,6 @@
 //! Local (in-process) process manager context.
 //!
-//! Delegates prepare/handle to in-process `ProcessManagerHandler`.
+//! Delegates handle to in-process `ProcessManagerHandler`.
 //! Persists PM events directly to the event store and publishes to the bus.
 //! PM events bypass the command pipeline, so this module passes the default
 //! edition directly to storage.
@@ -16,10 +16,7 @@ use crate::proto::{CommandBook, CommandResponse, EventBook};
 use crate::proto_ext::CoverExt;
 use crate::storage::DomainStorage;
 
-use super::{
-    PMContextFactory, PmHandleResponse, PmPrepareResponse, ProcessManagerContext,
-    ProcessManagerHandler,
-};
+use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext, ProcessManagerHandler};
 
 /// Local PM context that calls in-process handler and persists to event store.
 pub struct LocalPMContext {
@@ -48,30 +45,13 @@ impl LocalPMContext {
 
 #[async_trait]
 impl ProcessManagerContext for LocalPMContext {
-    async fn prepare(
-        &self,
-        trigger: &EventBook,
-        pm_state: Option<&EventBook>,
-    ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = trigger.edition().unwrap_or_default().to_string();
-        let mut covers = self.handler.prepare(trigger, pm_state);
-
-        for cover in &mut covers {
-            cover.stamp_edition_if_empty(&edition);
-        }
-        Ok(PmPrepareResponse {
-            destinations: covers,
-        })
-    }
-
     async fn handle(
         &self,
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
-        destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = trigger.edition().unwrap_or_default().to_string();
-        let result = self.handler.handle(trigger, pm_state, destinations);
+        let result = self.handler.handle(trigger, pm_state);
 
         let mut commands = result.commands;
         for cmd in &mut commands {

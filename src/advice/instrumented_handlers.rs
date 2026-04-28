@@ -12,7 +12,7 @@ use tonic::Status;
 use crate::orchestration::process_manager::{ProcessManagerHandleResult, ProcessManagerHandler};
 use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 use crate::orchestration::saga::SagaHandler;
-use crate::proto::{Cover, EventBook, Notification, Projection, RevocationResponse, SagaResponse};
+use crate::proto::{EventBook, Notification, Projection, RevocationResponse, SagaResponse};
 
 #[cfg(feature = "otel")]
 use super::metrics::{
@@ -186,16 +186,10 @@ impl<T> InstrumentedPMHandler<T> {
 }
 
 impl<T: ProcessManagerHandler> ProcessManagerHandler for InstrumentedPMHandler<T> {
-    fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover> {
-        // Prepare is typically fast, no metrics needed
-        self.inner.prepare(trigger, process_state)
-    }
-
     fn handle(
         &self,
         trigger: &EventBook,
         process_state: Option<&EventBook>,
-        destinations: &[EventBook],
     ) -> ProcessManagerHandleResult {
         let start = Instant::now();
         let domain = trigger
@@ -204,7 +198,7 @@ impl<T: ProcessManagerHandler> ProcessManagerHandler for InstrumentedPMHandler<T
             .map(|c| c.domain.as_str())
             .unwrap_or("unknown");
 
-        let result = self.inner.handle(trigger, process_state, destinations);
+        let result = self.inner.handle(trigger, process_state);
 
         #[cfg(feature = "otel")]
         {
