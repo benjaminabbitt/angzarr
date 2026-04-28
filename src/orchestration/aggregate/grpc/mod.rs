@@ -572,6 +572,11 @@ impl AggregateContext for GrpcAggregateContext {
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
+        if should_skip_post_persist(self.sync_mode) {
+            // ISOLATED mode short-circuit. See `should_skip_post_persist`.
+            return Ok(vec![]);
+        }
+
         // Publish FIRST — ensures events reach the bus even if sync calls below fail.
         // Without this ordering, a sync projector/saga/PM failure would leave events
         // persisted in PostgreSQL but never published to the bus.
@@ -588,7 +593,8 @@ impl AggregateContext for GrpcAggregateContext {
                 self.call_sync_projectors(events, self.sync_mode.unwrap())
                     .await?
             }
-            // ASYNC or None: skip sync projectors
+            // ASYNC, DECISION, ISOLATED, or None: skip sync projectors.
+            // (ISOLATED short-circuits above.)
             _ => vec![],
         };
 
@@ -823,3 +829,20 @@ impl AggregateContextFactory for GrpcAggregateContextFactory {
         self.client_logic.clone()
     }
 }
+
+/// Should the `post_persist` callback short-circuit (skip bus publish +
+/// sync projector / saga / PM invocation)?
+///
+/// Returns `true` only for [`SyncMode::Isolated`] — the mode whose
+/// purpose is "persist + return without touching downstream." Replay /
+/// migration / recovery writes call this with `Isolated` so historical
+/// events don't trigger reactions. Every other mode (including
+/// [`SyncMode::Async`] and [`SyncMode::Decision`], which both let
+/// downstream run asynchronously via the bus) returns `false`.
+fn should_skip_post_persist(sync_mode: Option<crate::proto::SyncMode>) -> bool {
+    sync_mode == Some(crate::proto::SyncMode::Isolated)
+}
+
+#[cfg(test)]
+#[path = "mod.test.rs"]
+mod tests;

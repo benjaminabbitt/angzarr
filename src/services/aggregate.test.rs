@@ -570,6 +570,21 @@ async fn test_create_context_for_sync_mode_cascade() {
     let _ctx = service.create_context_for_sync_mode(SyncMode::Cascade as i32);
 }
 
+/// create_context_for_sync_mode with Isolated int creates sync context.
+///
+/// ISOLATED is "wait for accept/reject + persist; no downstream" — it
+/// behaves synchronously from the caller's perspective (the
+/// CommandResponse is returned after persistence completes), so the
+/// helper routes it through the sync-context branch like SIMPLE /
+/// CASCADE / DECISION. The "no downstream" semantic is honored later
+/// in `post_persist` (see orchestration/aggregate/grpc/mod.rs).
+#[tokio::test]
+async fn test_create_context_for_sync_mode_isolated() {
+    let (service, _) = create_test_service().await;
+    // SyncMode::Isolated = 4
+    let _ctx = service.create_context_for_sync_mode(SyncMode::Isolated as i32);
+}
+
 /// create_context_for_sync_mode with invalid int defaults to async.
 ///
 /// Invalid/unknown sync mode values should safely default to async mode
