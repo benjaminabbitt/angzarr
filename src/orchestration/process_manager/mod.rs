@@ -58,12 +58,18 @@ use super::FactExecutor;
 /// Result of process manager handle phase.
 ///
 /// Contains commands, PM events, and facts to inject to other aggregates.
+///
+/// Audit #92 (2026-04-29): `process_events` is `Vec<EventBook>` —
+/// PMs can emit multiple PM-domain books per trigger; the coordinator
+/// merges / persists with full information rather than the client
+/// applying a first-non-empty-cover-wins reduction pre-emit.
 #[derive(Debug, Clone, Default)]
 pub struct ProcessManagerHandleResult {
     /// Commands to send to other aggregates.
     pub commands: Vec<CommandBook>,
-    /// Events to persist to the PM's own domain.
-    pub process_events: Option<EventBook>,
+    /// Events to persist to the PM's own domain. Each book is a
+    /// distinct emission; the coordinator persists each separately.
+    pub process_events: Vec<EventBook>,
     /// Facts to inject to other aggregates.
     pub facts: Vec<EventBook>,
 }
@@ -103,11 +109,15 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
 }
 
 /// Response from a process manager's handle phase.
+///
+/// Audit #92: `process_events` is `Vec<EventBook>` — see
+/// `ProcessManagerHandleResult` doc.
 pub struct PmHandleResponse {
     /// Commands to execute on aggregates.
     pub commands: Vec<CommandBook>,
-    /// Optional PM events to persist to the PM's own domain.
-    pub process_events: Option<EventBook>,
+    /// PM events to persist to the PM's own domain. Each book is a
+    /// distinct emission; the coordinator persists each separately.
+    pub process_events: Vec<EventBook>,
     /// Facts to inject to other aggregates.
     pub facts: Vec<EventBook>,
 }
@@ -267,7 +277,7 @@ pub async fn orchestrate_pm(
 
         debug!(
             commands = response.commands.len(),
-            has_process_events = response.process_events.is_some(),
+            process_events_books = response.process_events.len(),
             "ProcessManager.Handle returned response"
         );
 
@@ -285,46 +295,61 @@ pub async fn orchestrate_pm(
         // level (sequences prevent duplicate application). If a command fails with
         // sequence conflict, the aggregate saw a concurrent write — the PM will
         // receive a Notification and can decide whether to retry or compensate.
-        if let Some(ref process_events) = response.process_events {
-            if !process_events.pages.is_empty() {
-                match ctx.persist_pm_events(process_events, correlation_id).await {
-                    CommandOutcome::Success(_) => {
-                        info!(
-                            events = process_events.pages.len(),
-                            "PM events persisted successfully"
+        //
+        // Audit #92: `process_events` is `Vec<EventBook>` — persist each
+        // book separately. Empty books are skipped.
+        let mut should_continue_outer = false;
+        let mut should_return_err: Option<BusError> = None;
+        for process_events in &response.process_events {
+            if process_events.pages.is_empty() {
+                continue;
+            }
+            match ctx.persist_pm_events(process_events, correlation_id).await {
+                CommandOutcome::Success(_) => {
+                    info!(
+                        events = process_events.pages.len(),
+                        "PM events persisted successfully"
+                    );
+                }
+                CommandOutcome::Retryable { reason, .. } => match delays.next() {
+                    Some(delay) => {
+                        crate::utils::retry::log_retry_attempt(
+                            &format!("pm:{pm_name}"),
+                            attempt,
+                            &reason,
+                            delay,
                         );
+                        tokio::time::sleep(delay).await;
+                        attempt += 1;
+                        should_continue_outer = true;
+                        break;
                     }
-                    CommandOutcome::Retryable { reason, .. } => match delays.next() {
-                        Some(delay) => {
-                            crate::utils::retry::log_retry_attempt(
-                                &format!("pm:{pm_name}"),
-                                attempt,
-                                &reason,
-                                delay,
-                            );
-                            tokio::time::sleep(delay).await;
-                            attempt += 1;
-                            continue;
-                        }
-                        None => {
-                            crate::utils::retry::log_retry_exhausted(
-                                &format!("pm:{pm_name}"),
-                                attempt,
-                                &reason,
-                            );
-                            return Err(BusError::Publish(reason));
-                        }
-                    },
-                    CommandOutcome::Rejected(reason) => {
-                        crate::utils::retry::log_fatal_error(
+                    None => {
+                        crate::utils::retry::log_retry_exhausted(
                             &format!("pm:{pm_name}"),
                             attempt,
                             &reason,
                         );
-                        return Err(BusError::Publish(reason));
+                        should_return_err = Some(BusError::Publish(reason));
+                        break;
                     }
+                },
+                CommandOutcome::Rejected(reason) => {
+                    crate::utils::retry::log_fatal_error(
+                        &format!("pm:{pm_name}"),
+                        attempt,
+                        &reason,
+                    );
+                    should_return_err = Some(BusError::Publish(reason));
+                    break;
                 }
             }
+        }
+        if let Some(err) = should_return_err {
+            return Err(err);
+        }
+        if should_continue_outer {
+            continue;
         }
 
         // Execute commands produced by process manager.
@@ -344,15 +369,16 @@ pub async fn orchestrate_pm(
         // 3. Compensation is the PM's mechanism for handling failures
         //
         // Compute PM source_seq for angzarr_deferred stamping:
-        // - If we just persisted process_events, use max seq from those (our current decision)
+        // - If we just persisted process_events, use the max seq across
+        //   all books (audit #92: process_events is Vec<EventBook>)
         // - Otherwise use max seq from pm_state (existing PM state)
         // - Otherwise 0 (new PM with no events yet)
         use crate::proto_ext::EventPageExt;
         let pm_source_seq = response
             .process_events
-            .as_ref()
-            .filter(|e| !e.pages.is_empty())
-            .map(|e| e.pages.iter().map(|p| p.sequence_num()).max().unwrap_or(0))
+            .iter()
+            .flat_map(|book| book.pages.iter().map(|p| p.sequence_num()))
+            .max()
             .or_else(|| {
                 pm_state
                     .as_ref()

@@ -163,7 +163,7 @@ impl ProcessManagerCoordinatorService for PmCoord {
 
         // Return empty response - commands were delivered during orchestration
         Ok(Response::new(ProcessManagerHandleResponse {
-            process_events: None,
+            process_events: vec![],
             commands: vec![],
             facts: vec![],
         }))

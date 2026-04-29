@@ -54,7 +54,6 @@ impl ProcessManagerContext for GrpcPMContext {
         pm_state: Option<&EventBook>,
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
-        let edition = trigger.edition().unwrap_or_default().to_string();
 
         tracing::info!(
             trigger_pages = trigger.pages.len(),
@@ -79,16 +78,23 @@ impl ProcessManagerContext for GrpcPMContext {
             .into_inner();
 
         let mut commands = response.commands;
-        for cmd in &mut commands {
-            if let Some(c) = &mut cmd.cover {
-                c.stamp_edition_if_empty(&edition);
-            }
-        }
+        let mut process_events = response.process_events;
+        let mut facts = response.facts;
+
+        // Audit #86 contract: same propagation logic as
+        // `LocalPMContext` — factored into a shared helper so the
+        // local + gRPC paths cannot drift.
+        super::local::propagate_trigger_edition(
+            trigger.cover.as_ref(),
+            &mut commands,
+            &mut process_events,
+            &mut facts,
+        );
 
         Ok(PmHandleResponse {
             commands,
-            process_events: response.process_events,
-            facts: response.facts,
+            process_events,
+            facts,
         })
     }
 

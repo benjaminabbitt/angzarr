@@ -85,17 +85,28 @@ impl SagaRetryContext for LocalSagaContext {
         &self,
         destination_sequences: HashMap<String, u32>,
     ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = self.source.edition().unwrap_or_default().to_string();
         let mut response = self
             .saga_handler
             .handle(&self.source, &destination_sequences)
             .await
             .map_err(box_err)?;
 
-        // Stamp edition on commands
-        for cmd in &mut response.commands {
-            if let Some(c) = &mut cmd.cover {
-                c.stamp_edition_if_empty(&edition);
+        // Audit #86 contract (coordinator-contract/edition_propagation.feature):
+        // always-override propagation of source cover's edition (full
+        // struct including divergences) onto every outgoing book —
+        // commands AND events. The handler cannot escape into a
+        // different timeline by setting its own outgoing edition;
+        // the coordinator guarantees timeline consistency.
+        if let Some(source_cover) = self.source.cover.as_ref() {
+            for cmd in &mut response.commands {
+                if let Some(c) = &mut cmd.cover {
+                    c.propagate_edition_from(source_cover);
+                }
+            }
+            for event_book in &mut response.events {
+                if let Some(c) = &mut event_book.cover {
+                    c.propagate_edition_from(source_cover);
+                }
             }
         }
         Ok(response)
@@ -247,3 +258,7 @@ impl SagaContextFactory for LocalSagaContextFactory {
         &self.name
     }
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

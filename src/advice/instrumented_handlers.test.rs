@@ -97,6 +97,6 @@ fn test_instrumented_pm_delegates() {
     let trigger = EventBook::default();
     let result = handler.handle(&trigger, None);
     assert!(result.commands.is_empty());
-    assert!(result.process_events.is_none());
+    assert!(result.process_events.is_empty());
     assert!(result.facts.is_empty());
 }

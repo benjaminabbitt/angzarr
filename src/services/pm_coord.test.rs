@@ -81,7 +81,7 @@ impl crate::orchestration::process_manager::ProcessManagerContext for MockPmCont
     > {
         Ok(crate::orchestration::process_manager::PmHandleResponse {
             commands: self.commands.clone(),
-            process_events: None,
+            process_events: vec![],
             facts: vec![],
         })
     }
