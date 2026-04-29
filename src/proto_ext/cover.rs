@@ -3,7 +3,7 @@
 //! Provides convenient accessors for domain, correlation_id, and root_id
 //! from Cover-bearing types.
 
-use crate::proto::{CommandBook, Cover, Edition, EventBook, Query};
+use crate::proto::{CommandBook, Cover, EventBook, Query};
 
 use super::constants::UNKNOWN_DOMAIN;
 
@@ -106,17 +106,21 @@ impl CoverExt for Cover {
 }
 
 impl Cover {
-    /// Stamp edition onto this cover if not already set.
+    /// Copy the `source` cover's edition (full struct, including
+    /// divergences) onto this cover, overwriting whatever was here.
     ///
-    /// Sets the edition to the given name with no divergences if the cover's
-    /// edition is None or has an empty name. Used by sagas and process managers
-    /// to propagate source edition to outgoing covers and commands.
-    pub fn stamp_edition_if_empty(&mut self, edition: &str) {
-        if self.edition.as_ref().is_none_or(|e| e.name.is_empty()) {
-            self.edition = Some(Edition {
-                name: edition.to_string(),
-                divergences: vec![],
-            });
-        }
+    /// **Always-override semantics** — the coordinator guarantees
+    /// timeline consistency on saga / PM cross-domain emissions;
+    /// handlers cannot escape into a different edition by setting
+    /// their own outgoing cover. See
+    /// `coordinator-contract/edition_propagation.feature` (audit
+    /// #86 / C-0140 / C-0145) for the contract.
+    ///
+    /// If `source` has no edition, this clears the outgoing edition
+    /// — required by the contract: a main-timeline source produces
+    /// a main-timeline outgoing cover regardless of what the handler
+    /// set.
+    pub fn propagate_edition_from(&mut self, source: &Cover) {
+        self.edition = source.edition.clone();
     }
 }

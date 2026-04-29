@@ -34,7 +34,7 @@ impl ProcessManagerContext for EmptyPm {
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         Ok(PmHandleResponse {
             commands: vec![],
-            process_events: None,
+            process_events: vec![],
             facts: vec![],
         })
     }
@@ -66,12 +66,12 @@ impl ProcessManagerContext for PmWithEvents {
         use crate::proto::EventPage;
         Ok(PmHandleResponse {
             commands: vec![],
-            process_events: Some(EventBook {
+            process_events: vec![EventBook {
                 cover: None,
                 pages: vec![EventPage::default()],
                 snapshot: None,
                 ..Default::default()
-            }),
+            }],
             facts: vec![],
         })
     }

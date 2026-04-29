@@ -50,20 +50,28 @@ impl ProcessManagerContext for LocalPMContext {
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let edition = trigger.edition().unwrap_or_default().to_string();
         let result = self.handler.handle(trigger, pm_state);
 
         let mut commands = result.commands;
-        for cmd in &mut commands {
-            if let Some(c) = &mut cmd.cover {
-                c.stamp_edition_if_empty(&edition);
-            }
-        }
+        let mut process_events = result.process_events;
+        let mut facts = result.facts;
+
+        // Audit #86 contract (coordinator-contract/edition_propagation.feature):
+        // always-override propagation of trigger cover's edition onto
+        // every outgoing book. Logic factored into the free helper
+        // `propagate_trigger_edition` so it can be unit-tested without
+        // standing up DomainStorage / EventBus.
+        propagate_trigger_edition(
+            trigger.cover.as_ref(),
+            &mut commands,
+            &mut process_events,
+            &mut facts,
+        );
 
         Ok(PmHandleResponse {
             commands,
-            process_events: result.process_events,
-            facts: result.facts,
+            process_events,
+            facts,
         })
     }
 
@@ -203,3 +211,42 @@ impl PMContextFactory for LocalPMContextFactory {
         &self.name
     }
 }
+
+/// Audit #86 contract: stamp the trigger cover's edition (full struct
+/// including divergences) onto every outgoing book — commands,
+/// process_events, and facts. Always-override: handler-set editions
+/// get overwritten so the coordinator guarantees timeline consistency
+/// across cross-domain emissions. When the trigger has no cover, no
+/// propagation runs (outgoing books keep whatever the handler set).
+///
+/// Free function so unit tests can drive it without standing up
+/// `DomainStorage` / `EventBus`. Same logic mirrored in `grpc/mod.rs`.
+pub(crate) fn propagate_trigger_edition(
+    trigger_cover: Option<&crate::proto::Cover>,
+    commands: &mut [CommandBook],
+    process_events: &mut [EventBook],
+    facts: &mut [EventBook],
+) {
+    let Some(trigger_cover) = trigger_cover else {
+        return;
+    };
+    for cmd in commands.iter_mut() {
+        if let Some(c) = &mut cmd.cover {
+            c.propagate_edition_from(trigger_cover);
+        }
+    }
+    for book in process_events.iter_mut() {
+        if let Some(c) = &mut book.cover {
+            c.propagate_edition_from(trigger_cover);
+        }
+    }
+    for book in facts.iter_mut() {
+        if let Some(c) = &mut book.cover {
+            c.propagate_edition_from(trigger_cover);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;
