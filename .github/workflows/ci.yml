@@ -39,6 +39,7 @@ jobs:
       - name: Check Rust formatting
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -62,6 +63,7 @@ jobs:
       - name: Clippy
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -70,6 +72,7 @@ jobs:
       - name: Buf lint
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/angzarr-project/proto \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -79,6 +82,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace/angzarr-project/proto \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -103,6 +107,7 @@ jobs:
       - name: Run unit tests
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -127,6 +132,7 @@ jobs:
       - name: Run SQLite storage contract tests
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -135,6 +141,7 @@ jobs:
       - name: Run config integration tests
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -143,6 +150,7 @@ jobs:
       - name: Run gRPC connection tests
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -166,6 +174,7 @@ jobs:
       - name: Run coverage (unit + contract tests)
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
@@ -205,6 +214,7 @@ jobs:
       - name: Run mutation tests
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ghcr.io/angzarr-io/angzarr-rust:latest \
