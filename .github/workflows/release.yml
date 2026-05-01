@@ -79,34 +79,13 @@ jobs:
           VERSION=${{ needs.validate.outputs.version }}
           buf push proto/ --label "$VERSION"
 
-  # Build and push base/language images first
-  build-base-images:
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Skaffold
-        run: |
-          curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
-          chmod +x skaffold
-          sudo mv skaffold /usr/local/bin/
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push base/language images
-        run: |
-          cd build/images
-          skaffold build --push
-
   # Build and push coordinator images
+  #
+  # Toolchain images (angzarr-base, angzarr-rust, ...) are published from
+  # angzarr-io/angzarr-project's build-images workflow; the previous
+  # `build-base-images` job here is retired.
   build-containers:
-    needs: [validate, build-base-images]
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -138,6 +117,14 @@ jobs:
           IMAGES=$(jq -r '.builds[].tag' build.json)
           for FULL_TAG in $IMAGES; do
             IMAGE_NAME=$(echo "$FULL_TAG" | cut -d: -f1)
+            # Toolchain images are published (and versioned) from
+            # angzarr-project; skip semver retag here.
+            case "$IMAGE_NAME" in
+              *angzarr-base|*angzarr-rust|*angzarr-python|*angzarr-go|*angzarr-java|*angzarr-csharp)
+                echo "Skipping $IMAGE_NAME (toolchain — published from angzarr-project)"
+                continue
+                ;;
+            esac
             echo "Tagging $IMAGE_NAME with semver versions"
             docker pull "$FULL_TAG"
             docker tag "$FULL_TAG" "$IMAGE_NAME:$VERSION"
