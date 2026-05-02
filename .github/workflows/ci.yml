@@ -399,23 +399,16 @@ jobs:
           done
 
   # =============================================================================
-  # STAGE 4: ACCEPTANCE TESTS (via examples repo)
+  # NOTE: Acceptance tests live in each consumer repo (examples-{lang}),
+  # which depend on core's published coordinator images. Core does NOT
+  # call into a consumer repo as its own gate — the dependency arrow runs
+  # one way: consumers depend on core, never the other direction. A core
+  # change that breaks consumers surfaces as a red bumper PR in each
+  # consumer repo, which is reviewed before merging the new digests.
   # =============================================================================
 
-  acceptance:
-    name: Acceptance Tests
-    needs: [build-push-images]
-    if: needs.build-push-images.result == 'success'
-    uses: angzarr-io/angzarr-examples-rust/.github/workflows/acceptance-callable.yml@main
-    with:
-      # Use just-built coordinator images
-      coordinator-version: ${{ needs.build-push-images.outputs.tag }}
-      # Use latest example images (or matching branch if exists)
-      example-images: '{}'
-      examples-ref: ${{ github.head_ref || 'main' }}
-
   # =============================================================================
-  # STAGE 5: PUBLISH HELM CHARTS (main branch only)
+  # STAGE 4: PUBLISH HELM CHARTS (main branch only)
   # =============================================================================
 
   publish-charts:
@@ -460,7 +453,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [build-push-images, mutation, acceptance, publish-charts]
+    needs: [build-push-images, mutation, publish-charts]
     if: always()
     steps:
       - name: Summary
@@ -471,5 +464,4 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Push Images | ${{ needs.build-push-images.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Mutation Tests | ${{ needs.mutation.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Acceptance Tests | ${{ needs.acceptance.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Publish Charts | ${{ needs.publish-charts.result }} |" >> $GITHUB_STEP_SUMMARY
