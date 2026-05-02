@@ -366,6 +366,38 @@ jobs:
             echo "| $IMAGE | $TAG |" >> $GITHUB_STEP_SUMMARY
           done
 
+      # On main: notify consumer repos that fresh coordinator images are
+      # published. Each consumer's `bump-coordinator-digests.yml` workflow
+      # listens for `repository_dispatch: types: [coordinator-images-published]`
+      # and opens a PR rotating its pinned digests. The daily schedule in
+      # those bumpers is a backstop in case this dispatch fails or the
+      # token isn't configured.
+      #
+      # Requires repo secret `CROSS_REPO_DISPATCH_TOKEN` — a PAT (or app
+      # token) with `repo` scope (or fine-grained: `actions: write` on each
+      # consumer repo). Without the secret the step is a no-op (logs warning).
+      - name: Notify consumer repos to bump pinned digests
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::CROSS_REPO_DISPATCH_TOKEN secret not set; consumer bumpers will rely on their daily schedule instead."
+            exit 0
+          fi
+          for repo in \
+            angzarr-examples-rust \
+            angzarr-examples-cpp \
+            angzarr-examples-go \
+            angzarr-examples-java \
+            angzarr-examples-csharp \
+            angzarr-examples-python; do
+            echo "Dispatching coordinator-images-published to angzarr-io/$repo..."
+            gh api "/repos/angzarr-io/$repo/dispatches" -X POST \
+              -f event_type=coordinator-images-published \
+              || echo "::warning::Dispatch to $repo failed (continuing)"
+          done
+
   # =============================================================================
   # STAGE 4: ACCEPTANCE TESTS (via examples repo)
   # =============================================================================

@@ -135,6 +135,30 @@ jobs:
             docker push "$IMAGE_NAME:$MAJOR"
           done
 
+      # Notify consumer repos that fresh semver-tagged coordinator images
+      # are published. See ci.yml for rationale; requires
+      # `CROSS_REPO_DISPATCH_TOKEN` repo secret.
+      - name: Notify consumer repos to bump pinned digests
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::CROSS_REPO_DISPATCH_TOKEN secret not set; consumer bumpers will rely on their daily schedule instead."
+            exit 0
+          fi
+          for repo in \
+            angzarr-examples-rust \
+            angzarr-examples-cpp \
+            angzarr-examples-go \
+            angzarr-examples-java \
+            angzarr-examples-csharp \
+            angzarr-examples-python; do
+            echo "Dispatching coordinator-images-published to angzarr-io/$repo..."
+            gh api "/repos/angzarr-io/$repo/dispatches" -X POST \
+              -f event_type=coordinator-images-published \
+              || echo "::warning::Dispatch to $repo failed (continuing)"
+          done
+
   # Package and publish Helm chart
   publish-helm:
     needs: [validate, build-containers]
