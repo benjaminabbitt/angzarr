@@ -366,24 +366,49 @@ jobs:
             echo "| $IMAGE | $TAG |" >> $GITHUB_STEP_SUMMARY
           done
 
+      # On main: notify consumer repos that fresh coordinator images are
+      # published. Each consumer's `bump-coordinator-digests.yml` workflow
+      # listens for `repository_dispatch: types: [coordinator-images-published]`
+      # and opens a PR rotating its pinned digests. The daily schedule in
+      # those bumpers is a backstop in case this dispatch fails or the
+      # token isn't configured.
+      #
+      # Requires repo secret `CROSS_REPO_DISPATCH_TOKEN` — a PAT (or app
+      # token) with `repo` scope (or fine-grained: `actions: write` on each
+      # consumer repo). Without the secret the step is a no-op (logs warning).
+      - name: Notify consumer repos to bump pinned digests
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::CROSS_REPO_DISPATCH_TOKEN secret not set; consumer bumpers will rely on their daily schedule instead."
+            exit 0
+          fi
+          for repo in \
+            angzarr-examples-rust \
+            angzarr-examples-cpp \
+            angzarr-examples-go \
+            angzarr-examples-java \
+            angzarr-examples-csharp \
+            angzarr-examples-python; do
+            echo "Dispatching coordinator-images-published to angzarr-io/$repo..."
+            gh api "/repos/angzarr-io/$repo/dispatches" -X POST \
+              -f event_type=coordinator-images-published \
+              || echo "::warning::Dispatch to $repo failed (continuing)"
+          done
+
   # =============================================================================
-  # STAGE 4: ACCEPTANCE TESTS (via examples repo)
+  # NOTE: Acceptance tests live in each consumer repo (examples-{lang}),
+  # which depend on core's published coordinator images. Core does NOT
+  # call into a consumer repo as its own gate — the dependency arrow runs
+  # one way: consumers depend on core, never the other direction. A core
+  # change that breaks consumers surfaces as a red bumper PR in each
+  # consumer repo, which is reviewed before merging the new digests.
   # =============================================================================
 
-  acceptance:
-    name: Acceptance Tests
-    needs: [build-push-images]
-    if: needs.build-push-images.result == 'success'
-    uses: angzarr-io/angzarr-examples-rust/.github/workflows/acceptance-callable.yml@main
-    with:
-      # Use just-built coordinator images
-      coordinator-version: ${{ needs.build-push-images.outputs.tag }}
-      # Use latest example images (or matching branch if exists)
-      example-images: '{}'
-      examples-ref: ${{ github.head_ref || 'main' }}
-
   # =============================================================================
-  # STAGE 5: PUBLISH HELM CHARTS (main branch only)
+  # STAGE 4: PUBLISH HELM CHARTS (main branch only)
   # =============================================================================
 
   publish-charts:
@@ -428,7 +453,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [build-push-images, mutation, acceptance, publish-charts]
+    needs: [build-push-images, mutation, publish-charts]
     if: always()
     steps:
       - name: Summary
@@ -439,5 +464,4 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Push Images | ${{ needs.build-push-images.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Mutation Tests | ${{ needs.mutation.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Acceptance Tests | ${{ needs.acceptance.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Publish Charts | ${{ needs.publish-charts.result }} |" >> $GITHUB_STEP_SUMMARY
