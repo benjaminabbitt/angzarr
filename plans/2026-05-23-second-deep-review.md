@@ -118,7 +118,7 @@ round-2 findings the orchestration agent reported are local-only
 edition default). These are not production bugs — they're dead-code echoes
 of bugs that may or may not exist in the gRPC sibling.
 
-**Plan.** Status: `todo`. Owner: TBD.
+**Plan.** **Status: DONE 2026-05-23** (`5bcbc76f`). All six `*/local/` subtrees deleted (`aggregate/`, `command/`, `destination/`, `fact/`, `process_manager/`, `saga/`). PM's `propagate_trigger_edition` (the one contract still live from the gRPC path) extracted into `process_manager/edition_propagation` module. ~4k LOC removed in total. Tombstone in `doc/HISTORICAL_REMOVED.md`. Steps below kept for the historical record of what was confirmed before deleting.
 
 1. Confirm dead-code claim with a wider grep including `examples/`,
    `crates/`, `gateway/`, `xtask/`, and any path-dep crates: `rg
@@ -165,7 +165,13 @@ unreachable code.
 
 **Caveat.** `advice/metrics.rs` (~319 LOC) defines metric *name constants* that may be re-exported in `lib.rs` for downstream dashboards/alerting. Verify before deleting — if metrics constants are framework public API, keep `metrics.rs` only and delete the rest.
 
-**Plan.** Status: `todo`. Verify metrics-constants public API claim. Delete the four wrapper files. Remove the alias lines in `bus/mod.rs`. Re-run `cargo check --all-features`.
+**Plan.** **Status: PARTIAL 2026-05-23** (`14a64b8a`). Decision flipped from "delete" to "wire" for the two wrappers that had clear value: `instrumented.rs` is now wrapped around all 4 storage backends (sqlite/postgres/dynamo/bigtable), `instrumented_bus.rs` around all 6 bus backends (amqp/ipc/kafka/nats/pubsub/sns-sqs), at each backend's registration site plus aggregate/PM bin construction. Lights up `angzarr.storage.*` and `angzarr.bus.*` metrics per backend with proper labels (observability was previously nominal but blind).
+
+Still dead, awaiting follow-up decisions:
+
+- `instrumented_handlers.rs` — saga/PM/projector handler wrappers; no production callers.
+- `lossy.rs` — `LossyBus` never constructed.
+- `metrics.rs` — public-API caveat still un-verified. If exported from `lib.rs` and consumed by downstream dashboards, keep; otherwise delete.
 
 ---
 
@@ -205,7 +211,7 @@ No commit landed in this session — working tree dirty for the operator's commi
 
 **Evidence.** Only `fill_correlation_id` (15 LOC) has a production caller (`process_manager/mod.rs:567`). The other two are referenced only from tests.
 
-**Plan.** Status: `todo`. Delete the two unused functions. Consider inlining `fill_correlation_id` into PM (single caller, single line of logic).
+**Plan.** **Status: DONE 2026-05-23** (`5bcbc76f`). Both `fetch_destinations` and `execute_commands` deleted. `fill_correlation_id` retained with its single PM caller (`process_manager/mod.rs`); the "consider inlining" suggestion is a deferred minor cleanup, not blocking anything.
 
 ---
 
@@ -218,6 +224,14 @@ No commit landed in this session — working tree dirty for the operator's commi
 ---
 
 ## R2-SNAPSHOT-WIRING — wire the intended snapshot abstractions
+
+**Status: DONE 2026-05-24** (`bd871ea5`). All five sub-points below landed in a single commit:
+
+- `SnapshotRepository` owns `read_enabled` + `write_enabled` and is threaded through `AggregateService`, `EventBookRepository`, `GrpcAggregateContext`, and `persist_snapshot_if_present` (signatures no longer pass `(store, flag)` pairs).
+- All three contract-violation skip paths now consult the snapshot: `aggregate/grpc:401` explicit_divergence, `EventBookRepository::get_temporal_by_sequence`, and `EventBookRepository::get_temporal_by_time`.
+- `Snapshot.created_at` added as field 5 in the proto submodule (`angzarr-project` bumped `80ce7c2` → `6643600`). Persist path stamps `created_at = now()`.
+- Snapshots without `created_at` (pre-bump persisted, or backends that haven't yet stamped it) safely fall back to full replay per the proto contract.
+- TDD throughout: `repository/event_book/mod.test.rs`, `repository/snapshot/mod.test.rs`, `services/snapshot_handler/mod.test.rs`, `aggregate/grpc/mod.test.rs`, `services/aggregate.test.rs` all grew significantly (~600 LOC of new red-then-green coverage).
 
 User-confirmed scope (2026-05-23):
 
@@ -244,7 +258,7 @@ Sub-tasks: R2-SNAP-1 through R2-SNAP-8 (see TaskList).
 
 **Evidence.** Zero non-test refs. The `EditionExt` referenced elsewhere is `proto_ext::edition::EditionExt`, not this module. Schema column-name enum and storage error variant use independent identifiers, not these types.
 
-**Plan.** Status: `todo`. Delete the module + `pub mod edition;` in `lib.rs`.
+**Plan.** **Status: DONE 2026-05-23** (`5bcbc76f`). Module deleted; `pub mod edition;` removed from `lib.rs`. The `EditionExt` consumed elsewhere is `proto_ext::edition::EditionExt` — unrelated and unaffected.
 
 ---
 
@@ -283,7 +297,9 @@ GitHub Pages is per-repo, so each goes to a distinct URL. The original "duplicat
 
 **Evidence.** Neither module's symbols are imported anywhere outside their own `.test.rs`. Documented as "Phase 0 scaffolds, intentionally landing now for future phases."
 
-**Plan.** Status: `todo`. **Decision required.** Either wire them into `bin/angzarr_status.rs` now, or delete and reintroduce when the consuming phases land. Phase-0 placeholders that never connect to a Phase-1 caller are dead weight.
+**Plan.** **Status: PARTIAL 2026-05-23** (`6a878190`). Decision for `descriptors.rs`: **wire.** The loader is now invoked from `bin/angzarr_status.rs` at startup to merge framework descriptor sets into the proto descriptor pool, with companion helpers added in `proto_reflect/`. Domain proto types are now resolvable for typed event introspection without requiring the caller to pre-load them.
+
+`metrics.rs` (~55 LOC) still has zero non-test callers — Phase-0 skeleton remains dead weight. Follow-up decision needed: wire `status::metrics` into status handlers now (per the self-observability bullet in its module doc), or delete and reintroduce when handlers need it.
 
 ---
 
@@ -1341,3 +1357,14 @@ After R2-02-LIVE lands, update or delete the memory note.
   outright. Test plan expanded from 3 config-load tests to per-handler unit
   + per-bin smoke + 4 testcontainer round-trip integration tests; Gherkin
   expanded to 2 new feature files (client/dlq.feature, operator/dlq_boot.feature).
+- 2026-05-26 Backfilled plan statuses for items already shipped on this
+  branch but never marked done in the plan: R2-DEAD (`Local*` family, all
+  six subtrees) and R2-DEAD-5 (two unused `shared.rs` fns) → DONE in
+  `5bcbc76f`; R2-DEAD-7 (`edition/mod.rs`) → DONE in same commit;
+  R2-DEAD-2 (`advice/` wrappers) → PARTIAL in `14a64b8a` (storage + bus
+  Instrumented wired; instrumented_handlers + lossy + metrics.rs still
+  pending decision); R2-DEAD-8 (`status/{descriptors,metrics}.rs`) →
+  PARTIAL in `6a878190` (descriptors wired into the status binary;
+  metrics.rs still un-wired); R2-SNAPSHOT-WIRING → DONE in `bd871ea5`
+  (all five user-confirmed sub-points). No code change in this update,
+  only plan-state catch-up.
