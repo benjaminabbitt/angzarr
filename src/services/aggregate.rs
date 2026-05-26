@@ -8,6 +8,7 @@ use tonic::{Request, Response, Status};
 use crate::bus::EventBus;
 use crate::config::ResourceLimits;
 use crate::discovery::ServiceDiscovery;
+use crate::dlq::{DeadLetterPublisher, NoopDeadLetterPublisher};
 use crate::orchestration::aggregate::grpc::GrpcAggregateContext;
 use crate::orchestration::aggregate::{
     execute_command_pipeline, execute_command_with_retry, execute_fact_pipeline,
@@ -45,6 +46,14 @@ pub struct AggregateService {
     upcaster: Option<Arc<Upcaster>>,
     /// Resource limits for validation.
     limits: ResourceLimits,
+    /// DLQ publisher threaded down to every constructed
+    /// [`GrpcAggregateContext`]. Defaults to a noop so callers that don't
+    /// care about DLQ (in-process tests, embedded mode without operator
+    /// config) stay zero-touch. The bin overrides it at startup via
+    /// `with_dlq_publisher(init_dlq_publisher(&config.dlq).await?)`
+    /// (R2-15). Hard-fail boot on init error happens at the call site,
+    /// not here.
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
 }
 
 impl AggregateService {
@@ -70,6 +79,7 @@ impl AggregateService {
             discovery,
             upcaster: None,
             limits: ResourceLimits::default(),
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
         }
     }
 
@@ -82,6 +92,15 @@ impl AggregateService {
     /// Set resource limits for validation.
     pub fn with_limits(mut self, limits: ResourceLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Set the DLQ publisher (R2-15). The bin calls this at startup with
+    /// the result of `init_dlq_publisher(&config.dlq).await?` so dead
+    /// letters from `MergeManual` sequence mismatches reach the
+    /// operator-configured backend instead of the default noop.
+    pub fn with_dlq_publisher(mut self, publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        self.dlq_publisher = publisher;
         self
     }
 
@@ -105,6 +124,7 @@ impl AggregateService {
             discovery,
             upcaster: None,
             limits: ResourceLimits::default(),
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
         }
     }
 
@@ -115,7 +135,8 @@ impl AggregateService {
             self.snapshot_repo.clone(),
             self.discovery.clone(),
             self.event_bus.clone(),
-        );
+        )
+        .with_dlq_publisher(self.dlq_publisher.clone());
         if let Some(ref upcaster) = self.upcaster {
             ctx = ctx.with_upcaster(upcaster.clone());
         }
@@ -130,7 +151,8 @@ impl AggregateService {
             self.discovery.clone(),
             self.event_bus.clone(),
         )
-        .with_sync_mode(sync_mode);
+        .with_sync_mode(sync_mode)
+        .with_dlq_publisher(self.dlq_publisher.clone());
         if let Some(ref upcaster) = self.upcaster {
             ctx = ctx.with_upcaster(upcaster.clone());
         }

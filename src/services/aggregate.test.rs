@@ -240,6 +240,46 @@ async fn test_with_write_disabled_snapshot_repo_constructs_cleanly() {
 }
 
 // ============================================================================
+// R2-15: DLQ publisher wiring on AggregateService
+// ============================================================================
+//
+// AggregateService owns the DLQ publisher and threads it down to every
+// GrpcAggregateContext it creates (async + sync paths). The default is
+// NoopDeadLetterPublisher so existing tests / callers that don't care
+// about DLQ stay green. The bin's startup overrides this via
+// `with_dlq_publisher(init_dlq_publisher(&config.dlq).await?)`.
+
+/// Default constructor wires a noop DLQ publisher so existing callers
+/// (tests, in-process embeds) don't need to think about DLQ. is_configured
+/// returns false on the noop, which downstream consumers (e.g., the status
+/// admin) can use to surface "no DLQ" to operators.
+#[tokio::test]
+async fn aggregate_service_defaults_dlq_to_noop_publisher() {
+    let (service, _) = create_test_service().await;
+    assert!(
+        !service.dlq_publisher.is_configured(),
+        "default AggregateService must have an unconfigured (noop) DLQ publisher"
+    );
+}
+
+/// `with_dlq_publisher` overrides the default. The bin calls this at
+/// startup with the publisher returned by `init_dlq_publisher(&config.dlq)`,
+/// so a misconfiguration in this builder would silently downgrade the bin
+/// to noop -- exactly the failure R2-15 is preventing.
+#[tokio::test]
+async fn aggregate_service_with_dlq_publisher_stores_it() {
+    use crate::dlq::{DeadLetterPublisher, LoggingDeadLetterPublisher};
+
+    let (service, _) = create_test_service().await;
+    let custom: Arc<dyn DeadLetterPublisher> = Arc::new(LoggingDeadLetterPublisher);
+    let service = service.with_dlq_publisher(custom);
+    assert!(
+        service.dlq_publisher.is_configured(),
+        "with_dlq_publisher must replace the default noop with the provided publisher"
+    );
+}
+
+// ============================================================================
 // handle_command Tests
 // ============================================================================
 
