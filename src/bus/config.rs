@@ -2,14 +2,30 @@
 
 use serde::Deserialize;
 
-use crate::dlq::config::DlqConfig;
-
 /// Messaging configuration.
 ///
 /// The `messaging_type` field is a string that identifies which backend to use.
 /// Each backend module checks if the type matches and handles creation.
 ///
 /// Known types: "amqp", "kafka", "channel", "ipc", "nats", "pubsub", "sns-sqs"
+///
+/// # DLQ schema (R2-15)
+///
+/// DLQ configuration is **not** carried on `MessagingConfig`. The single
+/// canonical location is the top-level `Config.dlq` field. A previous
+/// `MessagingConfig.dlq` field existed but was never read by any code path;
+/// it was removed in R2-15 to eliminate the foot-gun of operators setting
+/// `messaging.dlq:` in YAML and getting silently ignored values.
+///
+/// Compile-time guard against accidental re-introduction (runs under
+/// `cargo test --doc`):
+///
+/// ```compile_fail
+/// use angzarr::bus::config::MessagingConfig;
+/// let cfg = MessagingConfig::default();
+/// // R2-15 removed this field; touching it must not compile.
+/// let _ = cfg.dlq;
+/// ```
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct MessagingConfig {
@@ -29,8 +45,6 @@ pub struct MessagingConfig {
     pub pubsub: PubSubBusConfig,
     /// AWS SNS/SQS-specific configuration.
     pub sns_sqs: SnsSqsBusConfig,
-    /// Dead letter queue configuration.
-    pub dlq: DlqConfig,
 }
 
 impl Default for MessagingConfig {
@@ -44,7 +58,6 @@ impl Default for MessagingConfig {
             nats: NatsBusConfig::default(),
             pubsub: PubSubBusConfig::default(),
             sns_sqs: SnsSqsBusConfig::default(),
-            dlq: DlqConfig::default(),
         }
     }
 }

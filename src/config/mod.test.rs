@@ -159,3 +159,68 @@ fn test_config_default_no_saga_compensation() {
     let config = Config::default();
     assert!(config.saga_compensation.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// R2-15: DLQ schema canonicalization
+// ---------------------------------------------------------------------------
+//
+// Top-level `dlq:` is the single source of truth for DLQ configuration.
+// `dlq.audit` is a separate optional block carrying the audit-reader
+// storage (decoupled from the delivery `dlq.targets` so operators can
+// route reads/replays to a different store than writes).
+//
+// MessagingConfig.dlq was retired in this slice -- both schemas had been
+// dead in production code (no callers either way), so the deletion is
+// observationally a no-op for operators. See plans/2026-05-23-second-
+// deep-review.md R2-15 for the design decision log.
+
+/// Top-level `dlq:` YAML round-trips into Config.dlq. Pins the canonical
+/// schema location after the MessagingConfig.dlq retirement -- operators
+/// copy-paste DLQ snippets from docs and a schema-location change is the
+/// kind of silent misconfiguration that breaks DLQ entirely.
+#[test]
+fn config_dlq_at_top_level_round_trips() {
+    let yaml = r#"
+dlq:
+  targets:
+    - type: logging
+"#;
+    let config: Config = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.dlq.targets.len(), 1);
+    assert_eq!(config.dlq.targets[0].dlq_type, "logging");
+}
+
+/// `dlq.audit` is `None` when YAML omits it. The status binary's reader-
+/// side wiring uses this to choose between the noop reader (WARN at boot)
+/// and a real DatabaseDlqReader, so the default must be unambiguously
+/// "not configured" rather than an empty-but-present DatabaseDlqConfig.
+#[test]
+fn config_dlq_audit_optional_when_unset() {
+    let yaml = r#"
+dlq:
+  targets:
+    - type: logging
+"#;
+    let config: Config = serde_yaml::from_str(yaml).unwrap();
+    assert!(config.dlq.audit.is_none());
+}
+
+/// `dlq.audit: { ... }` round-trips into Config.dlq.audit as
+/// `Some(DatabaseDlqConfig { ... })`. The audit block is separate from
+/// `dlq.targets` so query/replay storage can differ from delivery
+/// targets (e.g., AMQP for fanout, Postgres for the audit trail the
+/// status binary reads).
+#[test]
+fn config_dlq_audit_round_trips_when_set() {
+    let yaml = r#"
+dlq:
+  audit:
+    storage_type: sqlite
+"#;
+    let config: Config = serde_yaml::from_str(yaml).unwrap();
+    let audit = config
+        .dlq
+        .audit
+        .expect("audit should round-trip when set in YAML");
+    assert_eq!(audit.storage_type, "sqlite");
+}

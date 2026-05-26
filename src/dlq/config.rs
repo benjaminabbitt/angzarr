@@ -40,6 +40,17 @@ pub struct DlqConfig {
     /// Priority list of DLQ targets. Each is tried in order until one succeeds.
     /// Empty list = no DLQ (noop).
     pub targets: Vec<DlqTargetConfig>,
+    /// Optional audit-reader storage for the status binary. When set, the
+    /// status binary boots with a real DatabaseDlqReader pointed at this
+    /// store; when `None`, the status binary boots with a noop reader and
+    /// logs a `WARN` at startup. Decoupled from `targets` so operators
+    /// can route reads (replays, admin listings) to a different store
+    /// than the delivery targets -- common shape is AMQP fanout for
+    /// `targets`, Postgres for `audit`.
+    ///
+    /// R2-15 introduces this field; previously the status binary always
+    /// used a noop reader regardless of config.
+    pub audit: Option<DatabaseDlqConfig>,
 }
 
 impl DlqConfig {
@@ -55,6 +66,7 @@ impl DlqConfig {
                 dlq_type: "channel".to_string(),
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 
@@ -66,6 +78,7 @@ impl DlqConfig {
                 amqp: Some(AmqpDlqConfig { url: url.into() }),
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 
@@ -80,6 +93,7 @@ impl DlqConfig {
                 }),
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 
@@ -90,6 +104,7 @@ impl DlqConfig {
                 dlq_type: "logging".to_string(),
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 
@@ -104,6 +119,7 @@ impl DlqConfig {
                 }),
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 
@@ -118,6 +134,7 @@ impl DlqConfig {
                 }),
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 }
