@@ -930,10 +930,62 @@ The status admin handler is wired to a `Noop` reader. So operators who set
   `DeadLetterPayload` enum; extend with a `SagaFailure` variant carrying
   both refs + the failure `Status`. Same shape for PM. Projector: source
   event book + projection step that failed.
+  - **RESOLVED 2026-05-26 (step 5a investigation):** No proto change
+    needed. The existing `AngzarrDeadLetter` already models the saga case:
+    `payload.rejected_command` carries the failed output command;
+    `rejection_details.event_processing_failed` (an
+    `EventProcessingFailedDetails`) carries `{error, retry_count,
+    is_transient, stack_trace}`; `source_component_type` already
+    enumerates `"saga"`. Source EventBook reference goes via
+    `cover.correlation_id` plus the metadata map. Re-use the existing
+    variants; the "SagaFailure variant" framing in the original plan
+    was premature.
 - `from_event_processing_failure(...)` already exists at `src/dlq/mod.rs:287`
   but is unused — likely the right constructor for projector failures.
   Confirm fields match the new trigger contract before re-using vs. adding a
   new constructor.
+
+**Step 5a (saga) — design findings, 2026-05-26.** Investigation while
+preparing the saga slice surfaced two complications worth recording before
+implementation:
+
+1. **Saga has TWO DLQ sites, not one.** The retry-exhausted boundary in
+   `SagaRetryBuilder::execute()` at `saga/mod.rs:340` (where
+   `run_with_retry` returns `Err`) only covers the transient-then-
+   exhausted case. The permanent-rejection case at `saga/mod.rs:239`
+   (`CommandOutcome::Rejected(reason)`) is a separate site that today
+   only triggers the compensation flow, not DLQ. Both need publication
+   to satisfy the R2-15 operator contract.
+2. **`classify_for_dlq` doesn't fit the saga's existing failure types.**
+   The framework's `CommandOutcome::Rejected(String)` is built at
+   `command/grpc/mod.rs:91` via `e.message().to_string()` — the original
+   `tonic::Code` is dropped before the saga ever sees the outcome. So
+   the saga slice can't use the trigger classifier the way the aggregate
+   does. The framework's pre-baked `Retryable` vs `Rejected` split is
+   the same semantic mapping (transient vs permanent), just done one
+   layer earlier in the pipeline.
+
+**Three paths forward for step 5a:**
+
+- **Option A (faithful to plan, bigger):** Refactor
+  `CommandOutcome::Rejected(String)` to carry `tonic::Code` (and maybe
+  the full `Status`). Touches saga + PM + projector + their test fakes.
+  Probably its own commit before step 5a proper. Lets `classify_for_dlq`
+  be used uniformly across all four handler types.
+- **Option B (defensible deviation, smaller):** Use the framework's
+  existing `Rejected`/`Retryable` classification instead of
+  `classify_for_dlq`. `Rejected` → DLQ immediately; retry-exhausted →
+  DLQ. Same operator contract, but `classify_for_dlq` is no longer the
+  "single source of truth across all four handlers" — it stays the
+  primary classifier for cases where a raw `Status` is in scope
+  (aggregate, possibly projector if its failure types preserve
+  `Status`).
+- **Option C (out of scope to pick now):** Defer the second site
+  (retry-exhausted) and ship only the immediate-rejection DLQ in 5a-1.
+  Leaves a gap.
+
+No choice has been made yet — surface this before writing code in the
+next session.
 
 **Fix plan.**
 
@@ -1357,6 +1409,19 @@ After R2-02-LIVE lands, update or delete the memory note.
   outright. Test plan expanded from 3 config-load tests to per-handler unit
   + per-bin smoke + 4 testcontainer round-trip integration tests; Gherkin
   expanded to 2 new feature files (client/dlq.feature, operator/dlq_boot.feature).
+- 2026-05-26 R2-15 implementation began. Steps 1-4 landed across four
+  commits: trigger classifier (`560abc87`), config schema canonicalization
+  (`e4dfa437`), hard-fail-init contract test (`7c4ff697`), aggregate bin
+  wiring + smoke test (`a46ab860`). Step 5a (saga) deferred to next
+  session pending the Option A vs Option B decision documented in the
+  R2-15 "design findings" block above. Also surfaced as follow-ups:
+  (1) AMQP-feature breakage in 5 pre-existing files (Cover.ext from
+  bd871ea5 missed AMQP-gated tests, CapturingHandler removed in 5bcbc76f
+  still referenced, lapin LongString API drift), (2) factory.rs:92
+  single-vs-chained branch test gap, (3) aggregate.rs:170 sync-mode
+  branch test gap, (4) aggregate.rs:288 compensation empty-events
+  branch test gap. The R2-DEAD-2 metrics.rs decision (wire vs delete)
+  is also still open. None of these block step 5a.
 - 2026-05-26 Backfilled plan statuses for items already shipped on this
   branch but never marked done in the plan: R2-DEAD (`Local*` family, all
   six subtrees) and R2-DEAD-5 (two unused `shared.rs` fns) → DONE in
