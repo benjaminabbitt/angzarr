@@ -415,13 +415,13 @@ pub async fn orchestrate_pm(
                         break;
                     }
                 },
-                CommandOutcome::Rejected(reason) => {
+                CommandOutcome::Rejected { code, message } => {
                     crate::utils::retry::log_fatal_error(
                         &format!("pm:{pm_name}"),
                         attempt,
-                        &reason,
+                        &format!("{code:?}: {message}"),
                     );
-                    should_return_err = Some(BusError::Publish(reason));
+                    should_return_err = Some(BusError::Publish(message));
                     break;
                 }
             }
@@ -701,13 +701,14 @@ async fn execute_pm_commands(
                     );
                 }
             }
-            CommandOutcome::Rejected(reason) => {
+            CommandOutcome::Rejected { code, message } => {
                 error!(
                     domain = %cmd_domain,
-                    error = %reason,
+                    ?code,
+                    error = %message,
                     "PM command rejected, invoking compensation"
                 );
-                ctx.on_command_rejected(&command_book, &reason, correlation_id)
+                ctx.on_command_rejected(&command_book, &message, correlation_id)
                     .await;
             }
         }

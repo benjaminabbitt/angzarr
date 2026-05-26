@@ -236,9 +236,9 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
                     warn!(%domain, error = %reason, "Sequence conflict, will retry with fresh state");
                     self.failed_domains.insert(domain);
                 }
-                CommandOutcome::Rejected(reason) => {
-                    error!(%domain, error = %reason, "Saga command rejected (non-retryable)");
-                    self.context.on_command_rejected(&command, &reason).await;
+                CommandOutcome::Rejected { code, message } => {
+                    error!(%domain, ?code, error = %message, "Saga command rejected (non-retryable)");
+                    self.context.on_command_rejected(&command, &message).await;
                 }
             }
         }

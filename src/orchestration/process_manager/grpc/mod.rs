@@ -125,7 +125,15 @@ impl ProcessManagerContext for GrpcPMContext {
             )
             .await
         {
-            return CommandOutcome::Rejected(e.to_string());
+            // Event-store add failures here are server-side faults
+            // (storage I/O, sequence races at the storage layer). The
+            // caller doesn't go through the saga retry loop for this
+            // path, so the Code is metadata for downstream DLQ
+            // classification rather than a live retry signal.
+            return CommandOutcome::Rejected {
+                code: tonic::Code::Internal,
+                message: e.to_string(),
+            };
         }
 
         // Re-read persisted events for publishing

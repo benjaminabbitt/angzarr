@@ -152,7 +152,10 @@ struct RejectingExecutor;
 #[async_trait]
 impl CommandExecutor for RejectingExecutor {
     async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
-        CommandOutcome::Rejected("Business rule violation".to_string())
+        CommandOutcome::Rejected {
+            code: tonic::Code::FailedPrecondition,
+            message: "Business rule violation".to_string(),
+        }
     }
 }
 
