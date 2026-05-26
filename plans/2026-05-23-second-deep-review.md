@@ -965,7 +965,7 @@ implementation:
    the same semantic mapping (transient vs permanent), just done one
    layer earlier in the pipeline.
 
-**Three paths forward for step 5a:**
+**Three paths forward for step 5a (superseded — see decision below):**
 
 - **Option A (faithful to plan, bigger):** Refactor
   `CommandOutcome::Rejected(String)` to carry `tonic::Code` (and maybe
@@ -984,8 +984,71 @@ implementation:
   (retry-exhausted) and ship only the immediate-rejection DLQ in 5a-1.
   Leaves a gap.
 
-No choice has been made yet — surface this before writing code in the
-next session.
+**Decision (locked 2026-05-26): Option A + broaden `is_retryable_status`
+globally.**
+
+Verification of the three options against the codebase changed which
+ones are actually viable:
+
+- **Option B was rejected** because the design-findings note framed the
+  framework's `Retryable`/`Rejected` split as semantically equivalent to
+  decision #2's 4xx/5xx split, but it isn't. `is_retryable_status`
+  (`src/utils/retry.rs:136`) is intentionally narrow: only
+  `FailedPrecondition` with messages starting `"Sequence mismatch:"` or
+  `"Sequence conflict:"` returns `true`. Everything else — including
+  `Unavailable`, `DeadlineExceeded`, `ResourceExhausted`, `Internal`,
+  `Unknown`, `DataLoss` — is bucketed into `CommandOutcome::Rejected`
+  at `command/grpc/mod.rs:91`. Under Option B, a saga whose outbound
+  command hits transient `Unavailable` would go straight to DLQ with
+  no retry, contradicting R2-15 decision #2's retry-then-DLQ contract
+  for 5xx-class codes.
+- **Option C was rejected** because the transient-then-exhausted site
+  (`saga/mod.rs:340`) is the operationally interesting saga failure
+  (downstream flapping). Leaving it for "later" keeps the most common
+  silent-drop bug R2-15 was opened to fix.
+- **Option A was chosen** because it preserves `classify_for_dlq` as
+  the single source of truth across all four handler types (the whole
+  point of fix-plan step 7). The refactor is mechanical: ~10–15 sites,
+  one pre-5a commit.
+
+**Sub-decision (locked 2026-05-26): broaden `is_retryable_status` to
+match R2-15 decision #2 globally** — i.e., the helper returns `true`
+for all 5xx-class codes (`Unavailable`, `DeadlineExceeded`,
+`ResourceExhausted`, `Internal`, `Unknown`, `DataLoss`), not just
+sequence-conflict `FailedPrecondition`. Same classifier used by
+aggregate, saga, PM, projector. The narrower alternative — adding a
+separate `is_retryable_for_handler` for non-aggregate paths — was
+considered and rejected: one classifier is cleaner than two.
+
+**Consequence to record:** aggregate command pipeline will now retry on
+the broadened 5xx set (today it only retries sequence conflicts). The
+existing doc-comment rationale at `retry.rs:120-135` ("sequence
+conflicts were the intentional only-retryable case") will be rewritten
+to reflect the broader contract. Aggregates will hold commands longer
+in the face of downstream blips before rejecting; operators who relied
+on the fast-reject behavior for non-sequence-conflict codes will see
+delayed rejections. This is judged acceptable per R2-15 decision #2.
+
+**Execution sequence:**
+
+1. This plan update (doc-only commit recording the decision).
+2. Pre-5a refactor commit: `CommandOutcome::Rejected(String)` →
+   `Rejected { code: tonic::Code, message: String }`, broaden
+   `is_retryable_status`, update all consumers and test fakes. Touched
+   sites identified during verification:
+   - `src/orchestration/command/mod.rs:14` (enum definition)
+   - `src/orchestration/command/grpc/mod.rs:91` (constructor)
+   - `src/orchestration/process_manager/grpc/mod.rs:128` (constructor)
+   - `src/orchestration/saga/mod.rs:239` (consumer)
+   - `src/orchestration/process_manager/mod.rs:418,704` (consumers)
+   - `src/orchestration/saga/tests.rs:155` (test fake)
+   - `src/orchestration/process_manager/tests.rs` (test fakes — multiple)
+   - `src/orchestration/command/grpc/mod.test.rs:86` (test fake)
+   - `src/utils/retry.rs:136` + `.test.rs` (broaden classifier + tests).
+3. Step 5a proper: saga DLQ surface at both sites (immediate via
+   `CommandOutcome::Rejected.code` → `classify_for_dlq`; retry-exhausted
+   from `SagaRetryBuilder::execute()` at `saga/mod.rs:340`), using the
+   unified `classify_for_dlq`.
 
 **Fix plan.**
 
@@ -1433,3 +1496,18 @@ After R2-02-LIVE lands, update or delete the memory note.
   metrics.rs still un-wired); R2-SNAPSHOT-WIRING → DONE in `bd871ea5`
   (all five user-confirmed sub-points). No code change in this update,
   only plan-state catch-up.
+- 2026-05-26 R2-15 step 5a: Option A locked, plus sub-decision to
+  broaden `is_retryable_status` globally. Option B rejected after
+  code verification (framework's `is_retryable_status` is narrow —
+  sequence-conflict `FailedPrecondition` only — so it does NOT
+  encode the 4xx/5xx split decision #2 requires; Option B would
+  send transient `Unavailable` straight to DLQ). Option C rejected
+  as a real gap (transient-then-exhausted saga failures are the
+  operationally interesting case). Sub-decision: single classifier
+  used by all four handler types, broadened to include 5xx-class
+  codes. Consequence: aggregate command pipeline will retry on
+  `Unavailable`/`DeadlineExceeded`/`ResourceExhausted`/`Internal`/
+  `Unknown`/`DataLoss` (not just sequence conflicts) — accepted.
+  Next: pre-5a refactor commit (`CommandOutcome::Rejected` carries
+  `tonic::Code`, broaden `is_retryable_status`, update consumers
+  and test fakes), then step 5a proper.
