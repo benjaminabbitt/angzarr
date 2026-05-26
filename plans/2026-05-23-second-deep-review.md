@@ -44,7 +44,7 @@ these scenarios:
 - R2-06 (cascade visibility: pre- vs post-commit)
 - R2-09, R2-10, R2-11 (event-store atomicity / cursor monotonicity contracts)
 - R2-14 (subscription parser edge cases)
-- R2-15 (DLQ configuration contract)
+- R2-15 (DLQ subsystem wiring + configuration contract)
 - R2-16 (escalation success contract)
 - R2-17 (saga retry idempotency contract)
 - R2-19 (PM destination edition contract — *if* R2-19 survives the dead-code
@@ -845,40 +845,243 @@ than silent widening.
 
 ---
 
-### R2-15 Dual DLQ config sources silently diverge
+### R2-15 DLQ subsystem exported but never wired
 
-**Files.** `src/config/mod.rs:116` (top-level `dlq`),
-`src/bus/config.rs:37` (`messaging.dlq`).
+**Files.**
 
-**Bug.** Two independent `DlqConfig` fields with independent defaults. The
-YAML example only documents `dlq:` at top level. Code paths that read
-`messaging.dlq` get the empty default when the operator only set top-level.
+- `src/config/mod.rs:113` — `Config.dlq: DlqConfig` (canonical, top-level).
+- `src/bus/config.rs:33` — `MessagingConfig.dlq: DlqConfig` (vestigial, delete).
+- `src/dlq/factory.rs:79` — `init_dlq_publisher(&DlqConfig)`: exported, zero
+  production callers (only `factory.test.rs` + a doc comment in `mod.rs:47`).
+- `src/orchestration/aggregate/grpc/mod.rs:174,813` — `with_dlq_publisher(...)`
+  builder; only called internally at `:827`. No bin call sites; default is
+  `NoopDeadLetterPublisher` (`:152`, `:796`).
+- `src/orchestration/aggregate/pipeline.rs:376` — the **only** production
+  `send_to_dlq(...)` call site (MergeManual sequence-mismatch).
+- `src/bin/angzarr_{aggregate,saga,process_manager,projector}.rs` — zero DLQ
+  references.
+- `src/bin/angzarr_status.rs:89` — `DlqAdminHandler::new(Arc::new(NoopDeadLetterReader))`;
+  read side is also stubbed.
+
+**Bug — actual scope.** The original R2 finding ("two `DlqConfig` fields silently
+diverge") is a downstream symptom. The deeper bug: the DLQ write side is fully
+implemented (13 backends, factory, chained publisher, audit writer) and the
+read side is fully implemented (database readers, `DlqAdminHandler`,
+replay), but **neither is wired in any binary**. `MergeManual` sequence
+mismatches go to a `Noop`. Saga/PM/projector have no DLQ surface at all.
+The status admin handler is wired to a `Noop` reader. So operators who set
+`dlq:` in YAML get a config field that nothing reads — under either schema.
 
 **Status.** todo.
 
-**Test plan.** Config-load tests:
+**Decisions (locked 2026-05-24).**
 
-- `top_level_dlq_config_propagates_to_messaging_dlq`
-- `messaging_dlq_config_propagates_to_top_level_dlq`
-- `mismatched_dlq_configs_surface_error_at_startup`
+1. **Scope: all four handler types.** Aggregate + saga + PM + projector all
+   get a DLQ surface. Aggregate already has the surface (just unwired);
+   saga/PM/projector need it added at the retry-exhausted boundary in their
+   respective contexts.
+2. **Trigger: 4xx-class permanent errors → DLQ; 5xx-class → retry then DLQ.**
+   Mirrors HTTP semantics; matches the R2-16 escalation pattern and C-10
+   handler-error contract. Concretely: handler returns `Status` whose
+   `code()` is in {`InvalidArgument`, `NotFound`, `FailedPrecondition`,
+   `Aborted`, `Unimplemented`, `PermissionDenied`, `Unauthenticated`,
+   `OutOfRange`} → DLQ immediately. {`Unavailable`, `DeadlineExceeded`,
+   `ResourceExhausted`, `Internal`, `Unknown`, `DataLoss`} → existing retry
+   path; on retry exhaustion, DLQ. Classification lives in a single helper
+   `dlq::classify_for_dlq(status: &Status) -> DlqTrigger` so saga/PM/projector
+   share the contract.
+3. **Boot policy: hard-fail.** `init_dlq_publisher(&config.dlq)` errors are
+   propagated as bin boot failures. Operator who configured DLQ and whose
+   broker is unreachable gets a loud failure at startup, not silent drops.
+4. **Empty default: noop + boot WARN.** `dlq.targets: []` (or omitted) keeps
+   the noop publisher for backwards compatibility, but each bin logs one
+   `WARN` line at startup: `dlq.targets empty; dead letters will be dropped`.
+5. **Reader: separate `dlq.audit` config block.** Add a dedicated
+   `dlq.audit: DatabaseDlqConfig` (optional) that the status binary reads
+   from. Decouples query/replay storage from operator-configured delivery
+   targets. If `dlq.audit` is unset, the status binary boots with a noop
+   reader and logs a `WARN`; if set but unreachable, hard-fail (mirrors
+   publisher policy).
+6. **Schema canonicalization.** Delete `MessagingConfig.dlq` outright. No
+   transition period — both sides are currently dead, so no operator can be
+   reading from `messaging.dlq` and getting non-default behavior; the schema
+   change is observationally a no-op.
 
-**Gherkin.** REQUIRED — extend `features/client/connection.feature` or
-add a config-validation feature:
+**Open sub-decisions (raise during implementation if non-obvious).**
+
+- Does the saga DLQ entry carry the source event book or the failed output
+  command book? Both, probably — `AngzarrDeadLetter` already has a
+  `DeadLetterPayload` enum; extend with a `SagaFailure` variant carrying
+  both refs + the failure `Status`. Same shape for PM. Projector: source
+  event book + projection step that failed.
+- `from_event_processing_failure(...)` already exists at `src/dlq/mod.rs:287`
+  but is unused — likely the right constructor for projector failures.
+  Confirm fields match the new trigger contract before re-using vs. adding a
+  new constructor.
+
+**Fix plan.**
+
+1. **Schema (smallest change first).** Delete `MessagingConfig.dlq`. Verify no
+   readers; `cargo check` proves it. `Config.dlq` is canonical and already
+   the only one documented in `config.example.yaml`.
+2. **Boot wiring (per-bin).** In each of `angzarr_aggregate.rs`,
+   `angzarr_saga.rs`, `angzarr_process_manager.rs`, `angzarr_projector.rs`:
+   call `init_dlq_publisher(&config.dlq).await?` once at startup; thread
+   the `Arc<dyn DeadLetterPublisher>` into the context factory.
+   - Empty `dlq.targets` → `WARN`, factory returns noop (existing behavior),
+     bin proceeds.
+   - Non-empty + init failure → propagate as boot error.
+3. **Aggregate.** Already has `with_dlq_publisher(...)`. Wire it in
+   `angzarr_aggregate.rs` when building the `GrpcAggregateContextFactory`.
+   Existing pipeline.rs:376 MergeManual call site now writes to the real
+   publisher chain.
+4. **Saga surface.** Add `dlq_publisher: Arc<dyn DeadLetterPublisher>` to
+   `SagaRetryContext` impls. In the retry framework: after retries are
+   exhausted on a 5xx, or immediately on a 4xx (per the classification
+   helper), construct a `SagaFailure`-variant `AngzarrDeadLetter` and
+   publish. Wire in `angzarr_saga.rs`.
+5. **PM surface.** Same shape as saga — `dlq_publisher` field on
+   `ProcessManagerContext`, retry-exhausted hook in `orchestrate_pm`,
+   `from_pm_failure` (or extend `from_event_processing_failure`). Wire in
+   `angzarr_process_manager.rs`.
+6. **Projector surface.** Add `dlq_publisher` to projector context.
+   `ProjectorHandler::handle` already returns `Result<Projection, Status>`;
+   classify the `Status`, DLQ permanently-failed entries via
+   `from_event_processing_failure(...)`. Wire in `angzarr_projector.rs`.
+7. **Classification helper.** Add `src/dlq/trigger.rs` with
+   `classify_for_dlq(&Status) -> DlqTrigger { Immediate | AfterRetries | Retry }`.
+   Unit-tested standalone.
+8. **Reader wiring.** Add optional `audit: Option<DatabaseDlqConfig>` to
+   `DlqConfig`. In `angzarr_status.rs`: if `config.dlq.audit` is set,
+   construct `SqliteDlqReader` or `PostgresDlqReader` from it; if unset,
+   `NoopDeadLetterReader` + `WARN`. Replace the hard-coded
+   `Arc::new(NoopDeadLetterReader)` at `bin/angzarr_status.rs:89`.
+9. **Deletion.** Remove `MessagingConfig.dlq` field and its `Default` line at
+   `src/bus/config.rs:33,47`.
+
+**Test plan.**
+
+Unit tests:
+
+- `src/dlq/trigger.test.rs`:
+  - `classify_for_dlq_4xx_status_returns_immediate` — exhaustive over the
+    8 codes listed under decision #2.
+  - `classify_for_dlq_5xx_status_returns_after_retries` — exhaustive.
+  - `classify_for_dlq_ok_status_returns_retry_unreachable` (defensive — Ok
+    shouldn't reach the helper but the arm is exercised for kill-rate).
+- `src/config/mod.test.rs`:
+  - `config_dlq_at_top_level_round_trips`
+  - `config_messaging_dlq_field_no_longer_exists_in_schema` (compile-time
+    guard via a doctest or `cargo expand` snapshot).
+  - `config_dlq_audit_optional_when_unset`
+  - `config_dlq_audit_round_trips_when_set`
+- `src/dlq/factory.test.rs` (extend existing):
+  - `init_dlq_publisher_empty_targets_returns_noop_without_error` (already
+    exists; verify WARN observable via tracing-test).
+  - `init_dlq_publisher_unreachable_amqp_returns_err` — confirms hard-fail
+    contract.
+- Per-bin smoke tests (`tests/bin_init_*.rs`) — minimum: each bin's startup
+  fn invoked with a config containing an unreachable AMQP DLQ target
+  returns Err and does not proceed to the listen loop.
+- Saga DLQ surface: `src/orchestration/saga/dlq.test.rs`:
+  - `saga_4xx_command_rejection_publishes_dead_letter_immediately`
+  - `saga_5xx_command_rejection_retries_then_publishes_dead_letter`
+  - `saga_2xx_success_does_not_publish`
+- PM DLQ surface: `src/orchestration/process_manager/dlq.test.rs`:
+  - `pm_handler_4xx_status_publishes_dead_letter_immediately`
+  - `pm_handler_5xx_status_retries_then_publishes_dead_letter`
+- Projector DLQ surface: `src/orchestration/projector/dlq.test.rs`:
+  - `projector_4xx_status_publishes_dead_letter_immediately`
+  - `projector_5xx_status_retries_then_publishes_dead_letter`
+- Status reader wiring: `src/bin/angzarr_status.test.rs` (or a new
+  integration test if bin tests aren't already a pattern):
+  - `status_bin_with_audit_config_constructs_real_reader`
+  - `status_bin_without_audit_config_warns_and_uses_noop`
+
+Integration (testcontainers, behind `--features test-utils`):
+
+- `tests/dlq_aggregate_round_trip.rs` — aggregate MergeManual → publisher
+  writes to DB → status admin lists the entry.
+- `tests/dlq_saga_round_trip.rs` — saga 4xx → DLQ → status admin lists.
+- `tests/dlq_pm_round_trip.rs` — PM 4xx → DLQ → status admin lists.
+- `tests/dlq_projector_round_trip.rs` — projector 4xx → DLQ → status admin
+  lists.
+
+**Gherkin.** REQUIRED. Extend / create:
+
+- `features/client/dlq.feature` (new):
 
 ```gherkin
-Scenario: Operator-configured DLQ is respected by all dispatch paths
-  Given the operator configures dlq.targets in config.yaml
-  When any code path looks up DLQ configuration
-  Then it sees the operator's targets
-  And not an empty default
+Feature: Dead-letter queue is operator-observable across handler types
+
+  Scenario: Aggregate sequence-mismatch under MergeManual is dead-lettered
+    Given the operator configures dlq.targets with a database backend
+    And the operator configures dlq.audit pointing at the same backend
+    When an aggregate in MergeManual mode receives a stale command
+    Then the command is rejected with Aborted
+    And the dead letter is visible via the status admin DLQ listing
+
+  Scenario: Saga handler returns a permanent error
+    Given a saga handler that returns InvalidArgument for a specific event
+    When the saga receives that event
+    Then no retry is attempted
+    And the dead letter is visible via the status admin DLQ listing
+    And the dead letter carries the source event and the rejected command
+
+  Scenario: Saga handler returns a transient error then succeeds
+    Given a saga handler that returns Unavailable on the first attempt
+    When the saga receives an event
+    Then the framework retries the handler
+    And the eventual success is not dead-lettered
+
+  Scenario: Projector handler cannot apply a poison event
+    Given a projector handler that returns FailedPrecondition for a malformed payload
+    When the projector receives that event
+    Then the dead letter is visible via the status admin DLQ listing
+    And subsequent events for the same projector continue to be processed
 ```
 
-**Fix plan.** Collapse to a single source of truth — either top-level or
-`messaging.dlq`, not both. If both must coexist for backward compat, add a
-merge step at load that fills the missing side from the populated side
-and errors if they disagree.
+- `features/operator/dlq_boot.feature` (new):
 
-**Mutants target.** ≥ 90% on the merge / single-source-of-truth code.
+```gherkin
+Feature: DLQ configuration is enforced at bin boot
+
+  Scenario: Operator-configured DLQ broker is unreachable
+    Given the operator configures dlq.targets pointing at an unreachable AMQP broker
+    When the aggregate binary starts
+    Then the binary exits with a non-zero status
+    And the operator sees an error message naming the unreachable target
+
+  Scenario: Operator omits dlq configuration entirely
+    Given the operator's config has no dlq section
+    When any binary starts
+    Then the binary logs a WARN naming the missing dlq configuration
+    And the binary proceeds to serve requests
+```
+
+**Mutants target.** ≥ 90% viable kill rate on:
+
+- `src/dlq/trigger.rs` (new classification helper — pure logic, fully
+  unit-testable, should be 100%).
+- `src/dlq/factory.rs` (already has tests; extend coverage on the empty-vs-error
+  branch).
+- Each bin's DLQ wiring is small (3-5 lines: `init_dlq_publisher(...).await?`
+  + thread + factory call). Mutants on these are framework glue per
+  CLAUDE.md ("Framework glue → verify integration path") and are covered by
+  the bin-init smoke tests + the integration round-trip tests.
+
+**Out of scope (sibling findings to file).**
+
+- DLQ replay correctness across handler types (R2-15 wires the write path
+  and the read listing only; replay was scoped under H-29/30/31 for the
+  aggregate case and may need extension for saga/PM/projector replay
+  semantics).
+- DLQ retention/cleanup policy (no scheduled deletion today; separate
+  finding).
+- Cross-bin observability: per-bin DLQ metric counters
+  (`angzarr.dlq.published.total{component_type=...}`) belong under the
+  metrics-ownership memory (see [[project_metrics_ownership]]). File as
+  follow-up.
 
 ---
 
@@ -1130,3 +1333,11 @@ After R2-02-LIVE lands, update or delete the memory note.
 - 2026-05-23 Plan created from 5 parallel agent reports. R2-DEAD gate
   identified before any test-writing. R2-02-LIVE and R2-06-LIVE verified
   live in gRPC sibling by hand.
+- 2026-05-24 R2-15 re-scoped from "collapse two `DlqConfig` fields" to
+  "wire DLQ end-to-end across all four handler types." Decisions locked:
+  (1) all four handlers, (2) 4xx/5xx classification trigger, (3) hard-fail
+  boot on init failure, (4) noop+WARN on empty config, (5) separate
+  `dlq.audit` config block for the reader, (6) delete `MessagingConfig.dlq`
+  outright. Test plan expanded from 3 config-load tests to per-handler unit
+  + per-bin smoke + 4 testcontainer round-trip integration tests; Gherkin
+  expanded to 2 new feature files (client/dlq.feature, operator/dlq_boot.feature).
