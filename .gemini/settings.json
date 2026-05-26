@@ -1,5 +1,11 @@
 {
   "mcpServers": {
+    "ctxloom": {
+      "command": "/home/babbitt/go/bin/ctxloom",
+      "args": [
+        "mcp"
+      ]
+    },
     "scm": {
       "command": "/home/babbitt/go/bin/scm",
       "args": [

@@ -66,6 +66,7 @@ pub mod filter;
 mod publishers;
 pub mod reader;
 pub mod replay;
+pub mod trigger;
 
 use std::collections::HashMap;
 

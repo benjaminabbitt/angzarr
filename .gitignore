@@ -125,3 +125,9 @@ docs/.docusaurus/
 
 # SCM memory (local session data, not shared)
 .scm/memory/
+
+# ctxloom local-only data: cached remote clones + materialized bundles
+# (regenerable via `ctxloom pull`), and ephemeral session/context files.
+# The declarative state (config.yaml, remotes.yaml, profiles/) is tracked.
+.ctxloom/cache/
+.ctxloom/ephemeral/

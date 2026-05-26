@@ -1,0 +1,8 @@
+description: 'Angzarr core project-specific bundles: CQRS-ES architecture, GitHub CI, working-context, hallucination guardrails, sequential-thinking + mcp-tasks MCP servers'
+bundles:
+    - ctxloom-default/cqrs
+    - personal/github
+    - personal/working-context
+    - ctxloom-default/reduce-hallucinations
+    - ctxloom-default/sequential-thinking
+    - ctxloom-default/mcp-tasks

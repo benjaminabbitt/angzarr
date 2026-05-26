@@ -1,0 +1,11 @@
+defaults:
+    profiles:
+        - personal/rust-developer
+        - angzarr-core
+        - personal/prototype
+    llm_plugin: claude-code
+    use_distilled: true
+llm:
+    plugins: {}
+mcp:
+    auto_register_ctxloom: true
