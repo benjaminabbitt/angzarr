@@ -773,3 +773,260 @@ async fn test_orchestrate_saga_threads_sync_mode_to_context_handle() {
         "H-17: orchestrate_saga must thread its sync_mode argument into SagaRetryContext::handle"
     );
 }
+
+// ============================================================================
+// DLQ Wiring Tests (R2-15 step 5a)
+// ============================================================================
+//
+// Saga has two DLQ sites:
+//
+// 1. Immediate-rejection: `CommandOutcome::Rejected` whose `tonic::Code`
+//    classifies as `DlqTrigger::Immediate` (4xx-class). No retry happens;
+//    DLQ entry is published from inside `try_execute`.
+//
+// 2. Retry-exhausted: `CommandOutcome::Retryable` (5xx-class transient
+//    or sequence-conflict FailedPrecondition) where the backoff budget
+//    is exhausted. DLQ entries are published from
+//    `SagaRetryBuilder::execute` for every command in the final
+//    attempt's failure set.
+//
+// The test fakes below capture published dead letters so each scenario
+// can assert exactly which entries were emitted.
+
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqError, RejectionDetails};
+use async_trait::async_trait as test_async_trait;
+
+/// Captures published dead letters for assertions.
+struct CapturingDlqPublisher {
+    captured: AsyncMutex<Vec<AngzarrDeadLetter>>,
+}
+
+impl CapturingDlqPublisher {
+    fn new() -> Self {
+        Self {
+            captured: AsyncMutex::new(Vec::new()),
+        }
+    }
+}
+
+#[test_async_trait]
+impl DeadLetterPublisher for CapturingDlqPublisher {
+    async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
+        self.captured.lock().await.push(dead_letter);
+        Ok(())
+    }
+}
+
+/// Saga context that wires a `dlq_publisher`. All other methods are
+/// minimal — handle returns empty, source_cover returns None. The
+/// DLQ-wiring tests construct commands and feed them through
+/// `SagaRetryBuilder` directly, so the saga-handle path doesn't need
+/// to do anything.
+struct DlqAwareContext {
+    publisher: Arc<dyn DeadLetterPublisher>,
+    rejection_count: AtomicU32,
+}
+
+impl DlqAwareContext {
+    fn new(publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        Self {
+            publisher,
+            rejection_count: AtomicU32::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl SagaRetryContext for DlqAwareContext {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+        _sync_mode: SyncMode,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(SagaResponse::default())
+    }
+    async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
+        self.rejection_count.fetch_add(1, Ordering::SeqCst);
+    }
+    fn source_cover(&self) -> Option<&Cover> {
+        None
+    }
+    fn source_max_sequence(&self) -> u32 {
+        0
+    }
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.publisher)
+    }
+    fn component_name(&self) -> &str {
+        "saga-test"
+    }
+}
+
+/// Executor that always rejects with a given `tonic::Code`.
+struct CodeRejectingExecutor {
+    code: tonic::Code,
+    message: String,
+}
+
+#[async_trait]
+impl CommandExecutor for CodeRejectingExecutor {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        CommandOutcome::Rejected {
+            code: self.code,
+            message: self.message.clone(),
+        }
+    }
+}
+
+/// Executor that always returns Retryable. Forces retry-exhaustion.
+struct AlwaysRetryableExecutor {
+    reason: String,
+}
+
+#[async_trait]
+impl CommandExecutor for AlwaysRetryableExecutor {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        CommandOutcome::Retryable {
+            reason: self.reason.clone(),
+            current_state: None,
+        }
+    }
+}
+
+/// 4xx-class command rejection publishes a dead letter immediately.
+///
+/// `InvalidArgument` is a permanent error per
+/// `CodeDlqExt::classify_for_dlq` → `Immediate`. The saga must publish
+/// a DLQ entry from inside `try_execute` (not wait for retry exhaustion)
+/// AND still invoke `on_command_rejected` for compensation. This is
+/// the R2-15 immediate-DLQ contract for sagas.
+#[tokio::test]
+async fn saga_4xx_command_rejection_publishes_dead_letter_immediately() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqAwareContext::new(publisher.clone());
+    let executor = CodeRejectingExecutor {
+        code: tonic::Code::InvalidArgument,
+        message: "schema mismatch".to_string(),
+    };
+    let commands = vec![CommandBook::default()];
+
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Simple)
+        .commands(commands)
+        .backoff(fast_backoff())
+        .execute()
+        .await;
+
+    // Compensation still runs (existing contract).
+    assert_eq!(
+        ctx.rejection_count.load(Ordering::SeqCst),
+        1,
+        "on_command_rejected must fire alongside the DLQ publish"
+    );
+
+    // Exactly one DLQ entry was published with the right shape.
+    let captured = publisher.captured.lock().await;
+    assert_eq!(
+        captured.len(),
+        1,
+        "expected one immediate-rejection DLQ entry"
+    );
+    let dl = &captured[0];
+    assert_eq!(dl.source_component, "saga-test");
+    assert_eq!(dl.source_component_type, "saga");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert_eq!(
+                details.retry_count, 0,
+                "immediate path: zero retries attempted"
+            );
+            assert!(!details.is_transient, "4xx is permanent");
+            assert!(details.error.contains("schema mismatch"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// 5xx-class transient failure retries until exhausted, then publishes DLQ.
+///
+/// `Unavailable` is transient per `classify_for_dlq` → `RetryThenDlq`.
+/// The framework's broadened `is_retryable_status` routes it into the
+/// retry loop. When the backoff budget is exhausted, the saga must
+/// publish a DLQ entry per failed command from
+/// `SagaRetryBuilder::execute`. This is the R2-15 retry-then-DLQ
+/// contract for sagas.
+///
+/// Note: because the gRPC `CommandExecutor` is what translates a
+/// `tonic::Status` into either `Retryable` or `Rejected` (via
+/// `is_retryable_status`), this test fakes the executor directly with
+/// `Retryable` to exercise the retry-exhausted DLQ path without
+/// spinning up a transport.
+#[tokio::test]
+async fn saga_5xx_command_rejection_retries_then_publishes_dead_letter() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqAwareContext::new(publisher.clone());
+    let executor = AlwaysRetryableExecutor {
+        reason: "Unavailable: broker down".to_string(),
+    };
+    let commands = vec![CommandBook::default()];
+
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Simple)
+        .commands(commands)
+        .backoff(fast_backoff())
+        .execute()
+        .await;
+
+    // No compensation: retries exhausted is NOT a permanent business
+    // rejection in the saga's mental model, so on_command_rejected is
+    // not invoked (only Rejected outcomes invoke it). Verify that.
+    assert_eq!(
+        ctx.rejection_count.load(Ordering::SeqCst),
+        0,
+        "retry exhaustion does not invoke on_command_rejected"
+    );
+
+    // Exactly one DLQ entry was published for the single command that
+    // failed on the final attempt.
+    let captured = publisher.captured.lock().await;
+    assert_eq!(captured.len(), 1, "expected one retry-exhausted DLQ entry");
+    let dl = &captured[0];
+    assert_eq!(dl.source_component, "saga-test");
+    assert_eq!(dl.source_component_type, "saga");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert!(
+                details.retry_count > 0,
+                "retry-exhausted path: attempts > 0, got {}",
+                details.retry_count
+            );
+            assert!(details.is_transient, "5xx is transient");
+            assert!(details.error.contains("Unavailable"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// Successful command execution publishes no dead letter.
+///
+/// Pins the "no false positives" half of the contract: the DLQ wiring
+/// must not emit entries on the happy path. Otherwise operators would
+/// be flooded by every successful saga.
+#[tokio::test]
+async fn saga_2xx_success_does_not_publish() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqAwareContext::new(publisher.clone());
+    let executor = SuccessExecutor;
+    let commands = vec![CommandBook::default()];
+
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Simple)
+        .commands(commands)
+        .backoff(fast_backoff())
+        .execute()
+        .await;
+
+    let captured = publisher.captured.lock().await;
+    assert!(
+        captured.is_empty(),
+        "success path must not publish any dead letters, got {} entries",
+        captured.len()
+    );
+}

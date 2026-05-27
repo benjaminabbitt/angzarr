@@ -318,6 +318,55 @@ impl AngzarrDeadLetter {
         }
     }
 
+    /// Create a dead letter for a saga's failed outbound command.
+    ///
+    /// Used at both saga DLQ sites:
+    ///
+    /// 1. **Immediate-rejection** (`CommandOutcome::Rejected` whose
+    ///    `tonic::Code` classifies as `DlqTrigger::Immediate`):
+    ///    `retry_count = 0`, `is_transient = false`. The saga never
+    ///    attempted a retry; the destination aggregate or the gRPC
+    ///    transport returned a permanent rejection.
+    /// 2. **Retry-exhausted** (`CommandOutcome::Retryable` whose
+    ///    `tonic::Code` classifies as transient, exhausted under the
+    ///    saga's backoff): `retry_count = attempts`, `is_transient = true`.
+    ///    The saga retried until the budget ran out.
+    ///
+    /// The payload carries the failed `CommandBook` (not events) so
+    /// operators replaying from the DLQ can re-issue the original
+    /// outbound command. `source_component_type` is `"saga"`.
+    pub fn from_saga_command_rejection(
+        command: &CommandBook,
+        error: &str,
+        retry_count: u32,
+        is_transient: bool,
+        source_component: &str,
+    ) -> Self {
+        let reason = if retry_count == 0 {
+            format!("Saga command rejected (immediate): {error}")
+        } else {
+            format!("Saga command rejected after {retry_count} attempts: {error}")
+        };
+
+        Self {
+            cover: command.cover.clone(),
+            payload: DeadLetterPayload::Command(command.clone()),
+            rejection_reason: reason,
+            rejection_details: Some(RejectionDetails::EventProcessingFailed(
+                EventProcessingFailedDetails {
+                    error: error.to_string(),
+                    retry_count,
+                    is_transient,
+                    stack_trace: Vec::new(),
+                },
+            )),
+            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            metadata: HashMap::new(),
+            source_component: source_component.to_string(),
+            source_component_type: "saga".to_string(),
+        }
+    }
+
     /// Create a dead letter from a payload retrieval failure.
     ///
     /// Used when externally stored payloads (claim check pattern) cannot be retrieved.
