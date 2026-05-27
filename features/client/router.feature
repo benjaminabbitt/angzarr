@@ -135,6 +135,23 @@ Feature: Router - Command and Event Routing
     Then the router should return the command
     And the command should preserve correlation ID
 
+  # R2-02-LIVE: after persisting the new PM events the coordinator
+  # publishes EXACTLY those new events, never re-reading the full
+  # event-store history. Pre-fix the persist path called
+  # `event_store.get(...)` after the add and republished every prior
+  # PM event on every command, fanning out O(history) on every update.
+  Scenario: PM persist publishes only the newly-emitted events
+    Given a process manager with 3 prior events persisted
+    When the PM handler emits 2 new events
+    Then the bus receives exactly 2 events
+    And the 3 prior events are NOT re-fired
+
+  Scenario: PM publish stamps the in-flight correlation ID on the cover
+    Given a process manager invoked with correlation ID "in-flight-corr"
+    And the PM handler returns events with a blank cover correlation ID
+    When the coordinator publishes the events
+    Then the published cover carries correlation ID "in-flight-corr"
+
   # ==========================================================================
   # Handler Registration
   # ==========================================================================

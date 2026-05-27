@@ -4,6 +4,10 @@
 //! Persists PM events directly to event store and publishes to event bus,
 //! bypassing the command pipeline (no aggregate sidecar for PM domain).
 
+#[cfg(test)]
+#[path = "mod.test.rs"]
+mod tests;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -78,30 +82,36 @@ pub async fn persist_pm_event_book(
         };
     }
 
-    // Re-read persisted events for publishing
-    match event_store.get(pm_domain, edition, pm_root).await {
-        Ok(pages) => {
-            let full_book = EventBook {
-                cover: process_events.cover.clone(),
-                pages,
-                snapshot: None,
-                ..Default::default()
-            };
-            if let Err(e) = event_bus.publish(Arc::new(full_book)).await {
-                error!(
-                    domain = %pm_domain,
-                    error = %e,
-                    "Failed to publish PM events"
-                );
-            }
-        }
-        Err(e) => {
-            error!(
-                domain = %pm_domain,
-                error = %e,
-                "Failed to re-read PM events for publishing"
-            );
-        }
+    // Publish exactly the events the handler just emitted. R2-02-LIVE:
+    // pre-fix this path re-read the store via
+    // `event_store.get(pm_domain, edition, pm_root)` and published the
+    // full history, fanning out O(historical pages) on every PM update.
+    // The pages we just persisted are already in scope as
+    // `process_events.pages`; publishing those directly is correct
+    // and removes a redundant storage round-trip on the hot path.
+    //
+    // Stamp the in-flight `correlation_id` onto the published cover so
+    // downstream subscribers always see the active correlation, even
+    // if the PM service returned a cover with a stale/default value.
+    let mut cover = process_events.cover.clone();
+    if let Some(c) = cover.as_mut() {
+        c.correlation_id = correlation_id.to_string();
+    }
+    // `snapshot` defaults to None via `..Default::default()` — leaving it
+    // unset rather than explicit eliminates a no-op `delete field snapshot`
+    // mutation that cargo-mutants generates but no behavioral test could
+    // ever distinguish from `Default::default()`.
+    let publish_book = EventBook {
+        cover,
+        pages: process_events.pages.clone(),
+        ..Default::default()
+    };
+    if let Err(e) = event_bus.publish(Arc::new(publish_book)).await {
+        error!(
+            domain = %pm_domain,
+            error = %e,
+            "Failed to publish PM events"
+        );
     }
 
     CommandOutcome::Success(CommandResponse::default())
@@ -207,10 +217,12 @@ impl ProcessManagerContext for GrpcPMContext {
         .await
     }
 
+    #[crate::trivial_delegation]
     fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
         Some(&self.dlq_publisher)
     }
 
+    #[crate::trivial_delegation]
     fn component_name(&self) -> &str {
         &self.component_name
     }
@@ -263,10 +275,12 @@ impl PMContextFactory for GrpcPMContextFactory {
         ))
     }
 
+    #[crate::trivial_delegation]
     fn pm_domain(&self) -> &str {
         &self.pm_domain
     }
 
+    #[crate::trivial_delegation]
     fn name(&self) -> &str {
         &self.name
     }

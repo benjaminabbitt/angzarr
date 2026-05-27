@@ -376,7 +376,39 @@ an aggregate" (`src/storage/event_store.rs:152`). The same bug exists in the
 dead `LocalPMContext` at `process_manager/local/mod.rs:111-130`; that will
 be resolved by R2-DEAD.
 
-**Status.** todo.
+**Status.** DONE 2026-05-27. `persist_pm_event_book` now publishes
+`process_events.pages` directly — no more `event_store.get(...)`
+after the add. The published cover always carries the in-flight
+`correlation_id` (stamped onto the cloned cover before publish),
+regardless of what the PM service returned. The Local PM bug is
+moot: R2-DEAD-1 deleted the Local* family at `5bcbc76f`. Tests
+landed:
+- `tests/pm_persist_event_store.rs` (+2 R2-02-LIVE regressions:
+  `pm_persist_publishes_only_new_events_not_history`,
+  `pm_persist_publishes_book_with_stamped_correlation_id`); the
+  existing `pm_persist_increments_sequence_across_two_calls` test
+  was tightened to assert per-publish page counts so a future
+  regression to re-read semantics fails immediately.
+- `src/orchestration/process_manager/grpc/mod.test.rs` (NEW; 4
+  unit tests against `MockEventStore` + `MockEventBus` so the
+  `--lib`-scoped mutants container can actually see the publish
+  contract — without this, the integration tests in `tests/` are
+  invisible to mutation testing).
+- `features/client/router.feature` extended with two scenarios
+  (publishes-only-new-events + correlation-id stamping).
+Mutation: trimmed the redundant `snapshot: None,` field (it was
+a no-op mutation that no behavioral test could distinguish from
+`Default::default()`); marked the four trait-getter accessors
+(`dlq_publisher`, `component_name`, `pm_domain`, `name`) with
+`#[trivial_delegation]` and regenerated `.cargo/mutants.toml` via
+`cargo xtask gen-mutants-exclude`. The xtask wiped a stale
+manual block ("fn default", "fn fmt", etc.) that didn't match
+anything cargo-mutants emits (cargo-mutants names methods as
+`Type::method` / `<impl Trait for Type>::method`, never `fn
+name(...)`), plus a dead `CommandClient::*` auto-generated block
+left over from a removed struct — both correctly removed. Final
+mutants run: 6 viable -> 2 caught, 0 missed, 4 unviable (100%
+kill rate, exceeds the plan's >= 90% target).
 
 **Test plan.** New test in `process_manager/grpc/tests.rs`:
 
@@ -1706,3 +1738,41 @@ After R2-02-LIVE lands, update or delete the memory note.
   skaffold so the now-current `v0.5.1-61-g2ec15ada` tag actually
   contains jq. Verified end-to-end against R2-01's outcomes.json:
   the recipe renders the 14/14 kill-rate summary.
+- 2026-05-27 R2-02-LIVE closed. `persist_pm_event_book` no longer
+  re-reads the store after the persist — pre-fix the
+  `event_store.get(pm_domain, edition, pm_root)` call returned
+  every historical PM event and republished the entire stream on
+  every PM update, fanning out O(history) per command. Now the
+  publish step ships exactly `process_events.pages` (the events
+  the handler just emitted) and stamps the in-flight
+  `correlation_id` onto the published cover so downstream
+  subscribers always see the active correlation regardless of
+  what the PM service returned on its cover.
+
+  Tests landed alongside: 2 R2-02-LIVE integration regressions in
+  `tests/pm_persist_event_store.rs` plus a tightening of the
+  existing two-call test to assert per-publish page counts, and a
+  new `src/orchestration/process_manager/grpc/mod.test.rs` with 4
+  unit tests against `MockEventStore` + `MockEventBus`. The unit
+  tests exist specifically because the mutants container runs
+  `cargo test --lib` only — integration tests in `tests/` are
+  invisible to mutation testing, so without lib-level tests the
+  cover/pages publish fields couldn't be mutation-killed.
+  `features/client/router.feature` got two scenarios documenting
+  the publishes-only-new-events and correlation-id-stamping
+  contracts.
+
+  Mutation cleanup landed in the same commit: marked the four
+  trait-getter accessors (`dlq_publisher`, `component_name`,
+  `pm_domain`, `name`) with `#[trivial_delegation]` and dropped
+  the redundant `snapshot: None` field (it was a no-op mutation
+  no test could distinguish from `Default::default()`).
+  `cargo xtask gen-mutants-exclude` regenerated
+  `.cargo/mutants.toml`, which had the side effect of cleaning
+  out a stale manual block (`fn default\(`, `fn fmt\(`, etc.
+  — those patterns matched zero things cargo-mutants emits) and
+  a dead `CommandClient::*` auto-generated block (CommandClient
+  was removed from the codebase). Final `just mutants
+  src/orchestration/process_manager/grpc/mod.rs`: 6 viable
+  mutants, 2 caught, 0 missed, 4 unviable (100% kill rate;
+  exceeds the plan's >= 90% target). Lib suite 1040 -> 1044.

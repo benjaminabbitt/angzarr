@@ -25,8 +25,12 @@
 //! - PM events are persisted under the PM's `pm_domain` argument
 //!   (not whatever the trigger's domain was).
 //! - Edition propagates from the book's cover to the store column.
-//! - After persist, the bus sees the re-read book published.
-//! - Two consecutive persist calls produce events at sequences 0, 1.
+//! - After persist, the bus sees a book carrying exactly the pages
+//!   the handler emitted (R2-02-LIVE: the publish step no longer
+//!   re-reads the store, so historical PM events are NOT re-fired).
+//! - Two consecutive persist calls produce events at sequences 0, 1
+//!   and each publish carries only its own slice (not the full
+//!   accumulated history).
 //! - A sequence conflict (re-using a sequence the store already has)
 //!   returns `CommandOutcome::Rejected { code: Internal, .. }`,
 //!   which `orchestrate_pm` classifies as immediate-Rejected per
@@ -192,18 +196,19 @@ async fn pm_persist_writes_event_book_to_store_and_bus() {
     assert_eq!(persisted.len(), 1, "expected 1 persisted PM event");
     assert_eq!(event_sequence_num(&persisted[0]), 0);
 
-    // The bus saw exactly one publish containing the re-read book.
+    // The bus saw exactly one publish carrying the page the
+    // handler just emitted.
     let bus_calls = bus_recorder.calls().await;
     assert_eq!(bus_calls.len(), 1, "expected exactly one bus publish");
     assert_eq!(
         bus_calls[0].pages.len(),
         1,
-        "published book must carry the re-read event"
+        "published book must carry the newly-emitted event"
     );
 }
 
 /// Two consecutive persist calls on the same PM root produce events
-/// at sequences 0, 1. Pins the PM-persist re-read flow against a
+/// at sequences 0, 1. Pins the PM-persist publish flow against a
 /// real store, mirroring the aggregate `pipeline_increments_sequence`
 /// test.
 #[tokio::test]
@@ -243,9 +248,131 @@ async fn pm_persist_increments_sequence_across_two_calls() {
     assert_eq!(event_sequence_num(&persisted[0]), 0);
     assert_eq!(event_sequence_num(&persisted[1]), 1);
 
-    // Two bus publishes -- one per persist.
+    // Two bus publishes -- one per persist -- and each carries
+    // exactly the slice that call emitted (R2-02-LIVE: the second
+    // publish must not re-fire the first event).
     let bus_calls = bus_recorder.calls().await;
     assert_eq!(bus_calls.len(), 2);
+    assert_eq!(
+        bus_calls[0].pages.len(),
+        1,
+        "first publish carries the 1 event that call persisted"
+    );
+    assert_eq!(event_sequence_num(&bus_calls[0].pages[0]), 0);
+    assert_eq!(
+        bus_calls[1].pages.len(),
+        1,
+        "second publish carries the 1 newly-emitted event, NOT the full 2-event history"
+    );
+    assert_eq!(event_sequence_num(&bus_calls[1].pages[0]), 1);
+}
+
+/// R2-02-LIVE regression: when prior PM events already exist in the
+/// store, a fresh persist publishes ONLY the newly-emitted pages,
+/// not the entire event-store history. Pre-fix `persist_pm_event_book`
+/// called `event_store.get(pm_domain, edition, pm_root)` after the
+/// add and re-published every historical event, fanning out
+/// O(history) on every PM update.
+#[tokio::test]
+async fn pm_persist_publishes_only_new_events_not_history() {
+    let event_store = create_sqlite_event_store().await;
+    let bus_recorder = RecordingEventBus::new();
+    let event_bus: Arc<dyn EventBus> = bus_recorder.clone();
+    let pm_root = Uuid::new_v4();
+
+    // Seed 3 prior PM events at sequences 0, 1, 2 by calling
+    // event_store.add directly so the bus recorder stays empty --
+    // we only want to observe what the post-load persist publishes.
+    let seed_pages = pm_event_book("pm-domain", pm_root, "old-corr", None, &[0, 1, 2]).pages;
+    event_store
+        .add("pm-domain", "", pm_root, seed_pages, "old-corr", None, None)
+        .await
+        .expect("seed prior PM events");
+    assert_eq!(
+        bus_recorder.calls().await.len(),
+        0,
+        "seed must not touch the bus"
+    );
+
+    // Now persist 2 NEW events at sequences 3, 4 through the
+    // production path.
+    let new_book = pm_event_book("pm-domain", pm_root, "new-corr", None, &[3, 4]);
+    let outcome = persist_pm_event_book(
+        &(event_store.clone() as Arc<dyn EventStore>),
+        &event_bus,
+        "pm-domain",
+        &new_book,
+        "new-corr",
+    )
+    .await;
+    assert!(matches!(outcome, CommandOutcome::Success(_)));
+
+    // Storage holds all 5 events (3 prior + 2 new).
+    let persisted = event_store
+        .get("pm-domain", "", pm_root)
+        .await
+        .expect("event_store.get");
+    assert_eq!(persisted.len(), 5, "store should hold all 5 events");
+
+    // Bus saw exactly ONE publish (one persist call) carrying
+    // exactly the 2 newly-emitted pages -- NOT all 5 from history.
+    let bus_calls = bus_recorder.calls().await;
+    assert_eq!(
+        bus_calls.len(),
+        1,
+        "one persist call must produce one bus publish"
+    );
+    assert_eq!(
+        bus_calls[0].pages.len(),
+        2,
+        "published book must carry only the 2 newly-persisted events, not all 5 from history"
+    );
+    let published_seqs: Vec<u32> = bus_calls[0].pages.iter().map(event_sequence_num).collect();
+    assert_eq!(
+        published_seqs,
+        vec![3, 4],
+        "published pages must be the new sequences, not the seeded 0..2"
+    );
+}
+
+/// R2-02-LIVE: the published cover's `correlation_id` always reflects
+/// the in-flight `correlation_id` parameter, even if the PM service
+/// returned a `process_events.cover` with a stale or empty value.
+/// Downstream subscribers (other PMs, sagas, projectors) rely on this
+/// to track the active cross-domain flow.
+#[tokio::test]
+async fn pm_persist_publishes_book_with_stamped_correlation_id() {
+    let event_store = create_sqlite_event_store().await;
+    let bus_recorder = RecordingEventBus::new();
+    let event_bus: Arc<dyn EventBus> = bus_recorder.clone();
+    let pm_root = Uuid::new_v4();
+
+    // Simulate the PM service returning a cover with NO correlation_id
+    // set (or whatever happened to be on the handler-built book).
+    // The coordinator passes the in-flight correlation_id separately
+    // and the publish step must stamp it onto the outgoing cover.
+    let book_with_blank_corr = pm_event_book("pm-domain", pm_root, "", None, &[0]);
+    let outcome = persist_pm_event_book(
+        &(event_store.clone() as Arc<dyn EventStore>),
+        &event_bus,
+        "pm-domain",
+        &book_with_blank_corr,
+        "in-flight-corr",
+    )
+    .await;
+    assert!(matches!(outcome, CommandOutcome::Success(_)));
+
+    let bus_calls = bus_recorder.calls().await;
+    assert_eq!(bus_calls.len(), 1);
+    let published_corr = bus_calls[0]
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.as_str())
+        .unwrap_or("");
+    assert_eq!(
+        published_corr, "in-flight-corr",
+        "published cover must carry the in-flight correlation_id, not the (blank) one the PM service returned"
+    );
 }
 
 /// PM events with `cover.edition = "branch-x"` persist under that
