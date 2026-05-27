@@ -363,6 +363,20 @@ name = "bus_sns_sqs"
 # message attributes, and visibility timeout handling work correctly with LocalStack.
 required-features = ["sns-sqs"]
 
+# --- DLQ Gherkin acceptance harness ---
+# Cucumber-rs harness against features/client/dlq.feature. `harness = false`
+# hands main() control to cucumber's runner so the standard rust test
+# harness doesn't intercept. Runs the saga/PM/projector scenarios via
+# public orchestrate_saga / orchestrate_pm / ProjectorEventHandler::handle,
+# and the aggregate scenario via publish_aggregate_sequence_mismatch_dlq.
+# Each scenario gets a fresh tempfile SQLite DLQ publisher+reader pair.
+# features/operator/dlq_boot.feature stays out of scope (needs bin spawning;
+# init_dlq_publisher/init_dlq_reader unit tests pin those contracts).
+[[test]]
+name = "dlq_features"
+harness = false
+required-features = ["test-utils"]
+
 # === Build Profiles ===
 
 # Dev profile - optimized for size to keep disk usage sane
