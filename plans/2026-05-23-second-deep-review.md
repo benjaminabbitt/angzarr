@@ -1542,3 +1542,24 @@ After R2-02-LIVE lands, update or delete the memory note.
   (Postgres + AMQP testcontainers) respectively; per CLAUDE.md
   "tests must execute" they need their own session to land
   correctly.
+- 2026-05-26 R2-15 Gherkin contracts and one DLQ round-trip
+  integration test landed (`17aee964`). New
+  `features/client/dlq.feature` covers aggregate / saga (immediate
+  + transient + retry-exhausted) / PM (persist-exhausted +
+  command-rejected + H-14 degraded) / projector (4xx-ack vs
+  5xx-propagate) scenarios. New `features/operator/dlq_boot.feature`
+  uses Scenario Outline for hard-fail-on-misconfigured-DLQ across
+  the four sidecar binaries plus the angzarr-status reader-side
+  variant. New `tests/dlq_round_trip_sqlite.rs` (3 tests, gated on
+  `test-utils`) proves publish→read end-to-end via a tempfile-backed
+  SQLite file: preserves `source_component_type` across all four
+  constructors, pushes down `source_component` filtering at the
+  storage layer, and survives the proto BLOB round-trip with
+  `EventProcessingFailedDetails` intact. Features are
+  language-neutral specs (matching
+  `features/client/compensation.feature` style) without step
+  definitions; CLAUDE.md's "step definitions implemented, runner
+  passes" rule still leaves cucumber-rs harness wiring as the
+  remaining R2-15 follow-up. Postgres/AMQP testcontainer-based
+  end-to-end tests are also still outstanding but the SQLite path
+  proves the storage contract.
