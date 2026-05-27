@@ -79,8 +79,15 @@ test-grpc:
 test-dlq-sqlite:
     cargo test --test dlq_round_trip_sqlite --features "test-utils"
 
+# Run DLQ Gherkin acceptance harness (cucumber-rs against
+# features/client/dlq.feature). Drives saga/PM/projector/aggregate
+# orchestration through real SqliteDlqPublisher+Reader; no Docker
+# needed, runs in CI.
+test-dlq-features:
+    cargo test --test dlq_features --features "test-utils"
+
 # Run all CI integration tests
-test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite
+test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features
 
 # Run coverage for CI (unit + contract tests)
 cov-ci:

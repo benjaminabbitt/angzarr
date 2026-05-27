@@ -1644,3 +1644,20 @@ After R2-02-LIVE lands, update or delete the memory note.
   See `.tasks/todos.md` for the explicit task list. The audit
   itself is logged so future readers don't accidentally re-inherit
   the gaps.
+- 2026-05-27 R2-15 cucumber harness landed (`c09e379d`) +
+  aggregate refactor (`36246fbc`). New
+  `tests/dlq_features.rs` drives the 9 scenarios in
+  `features/client/dlq.feature` end-to-end:
+  saga (3) via public `orchestrate_saga`, PM (3) via
+  `orchestrate_pm`, projector (2) via
+  `ProjectorEventHandler::handle`, aggregate (1) via the
+  newly-extracted `publish_aggregate_sequence_mismatch_dlq` free
+  fn. Each scenario uses a fresh tempfile-backed SQLite hosting
+  both `SqliteDlqPublisher` and `SqliteDlqReader` -- the same
+  publisher → reader seam production uses, exercised through real
+  orchestration code (not direct publish). 73 cucumber steps
+  pass. Wired into CI via `test-dlq-features` recipe in
+  `justfile.container` and a new step in
+  `.github/workflows/ci.yml::integration`. This closes Category A
+  of the drift-gap audit (orchestration → real publisher / reader).
+  Categories B + C remain on `.tasks/todos.md` as planned.

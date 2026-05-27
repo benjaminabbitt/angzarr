@@ -187,6 +187,15 @@ jobs:
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container test-dlq-sqlite
 
+      - name: Run DLQ Gherkin acceptance harness
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container test-dlq-features
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
