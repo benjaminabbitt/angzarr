@@ -387,6 +387,17 @@ required-features = ["test-utils"]
 name = "aggregate_pipeline_event_store"
 required-features = ["test-utils"]
 
+# --- PM persist -> EventStore integration ---
+# Runs persist_pm_event_book (extracted from
+# GrpcPMContext::persist_pm_events) against a real in-memory
+# SqliteEventStore + a recording EventBus. PM events are the part of
+# the framework that writes directly to storage without going through
+# the aggregate command pipeline; PmWithEvents in unit tests stubs the
+# outcome. Closes the second Category B drift gap from the R2-15 audit.
+[[test]]
+name = "pm_persist_event_store"
+required-features = ["test-utils"]
+
 # === Build Profiles ===
 
 # Dev profile - optimized for size to keep disk usage sane

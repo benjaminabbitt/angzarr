@@ -205,6 +205,15 @@ jobs:
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container test-aggregate-pipeline
 
+      - name: Run PM persist -> EventStore integration tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container test-pm-persist
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest

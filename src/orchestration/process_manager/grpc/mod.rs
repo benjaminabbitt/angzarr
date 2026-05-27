@@ -20,6 +20,93 @@ use crate::storage::EventStore;
 
 use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
 
+/// Persist a PM event book to the event store and publish the
+/// re-read result on the event bus.
+///
+/// Extracted from `GrpcPMContext::persist_pm_events` so tests can
+/// exercise the persist path without constructing a full
+/// `GrpcPMContext` (which requires a live
+/// `ProcessManagerServiceClient` gRPC channel even for paths that
+/// don't invoke `handle()`). Same shape as the aggregate's
+/// `publish_aggregate_sequence_mismatch_dlq` refactor.
+///
+/// Returns:
+/// - `CommandOutcome::Success` when both `event_store.add` and the
+///   subsequent `event_store.get` + `event_bus.publish` succeed.
+/// - `CommandOutcome::Rejected { code: Internal, ... }` when
+///   `event_store.add` returns Err. The caller's retry loop in
+///   `orchestrate_pm` classifies this as immediate-Rejected per
+///   R2-15 (it does NOT count toward the retry budget). The bus
+///   publish step never fails the persist outcome -- a failed
+///   publish is logged but the events ARE durably persisted.
+pub async fn persist_pm_event_book(
+    event_store: &Arc<dyn EventStore>,
+    event_bus: &Arc<dyn EventBus>,
+    pm_domain: &str,
+    process_events: &EventBook,
+    correlation_id: &str,
+) -> CommandOutcome {
+    let pm_root = process_events
+        .cover
+        .as_ref()
+        .and_then(|c| c.root.as_ref())
+        .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
+        .unwrap_or_else(uuid::Uuid::nil);
+    let edition = process_events.edition().unwrap_or_default();
+
+    // Persist directly to event store (bypasses command pipeline)
+    if let Err(e) = event_store
+        .add(
+            pm_domain,
+            edition,
+            pm_root,
+            process_events.pages.clone(),
+            correlation_id,
+            None, // No idempotency key for PM events
+            None, // No source tracking for PM events
+        )
+        .await
+    {
+        // Event-store add failures here are server-side faults
+        // (storage I/O, sequence races at the storage layer). The
+        // caller doesn't go through the saga retry loop for this
+        // path, so the Code is metadata for downstream DLQ
+        // classification rather than a live retry signal.
+        return CommandOutcome::Rejected {
+            code: tonic::Code::Internal,
+            message: e.to_string(),
+        };
+    }
+
+    // Re-read persisted events for publishing
+    match event_store.get(pm_domain, edition, pm_root).await {
+        Ok(pages) => {
+            let full_book = EventBook {
+                cover: process_events.cover.clone(),
+                pages,
+                snapshot: None,
+                ..Default::default()
+            };
+            if let Err(e) = event_bus.publish(Arc::new(full_book)).await {
+                error!(
+                    domain = %pm_domain,
+                    error = %e,
+                    "Failed to publish PM events"
+                );
+            }
+        }
+        Err(e) => {
+            error!(
+                domain = %pm_domain,
+                error = %e,
+                "Failed to re-read PM events for publishing"
+            );
+        }
+    }
+
+    CommandOutcome::Success(CommandResponse::default())
+}
+
 /// gRPC PM context that calls remote ProcessManager service.
 ///
 /// Persists PM state events directly to the event store (no aggregate sidecar).
@@ -110,70 +197,14 @@ impl ProcessManagerContext for GrpcPMContext {
         process_events: &EventBook,
         correlation_id: &str,
     ) -> CommandOutcome {
-        let pm_root = process_events
-            .cover
-            .as_ref()
-            .and_then(|c| c.root.as_ref())
-            .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
-            .unwrap_or_else(uuid::Uuid::nil);
-        let edition = process_events.edition().unwrap_or_default();
-
-        // Persist directly to event store (bypasses command pipeline)
-        if let Err(e) = self
-            .event_store
-            .add(
-                &self.pm_domain,
-                edition,
-                pm_root,
-                process_events.pages.clone(),
-                correlation_id,
-                None, // No idempotency key for PM events
-                None, // No source tracking for PM events
-            )
-            .await
-        {
-            // Event-store add failures here are server-side faults
-            // (storage I/O, sequence races at the storage layer). The
-            // caller doesn't go through the saga retry loop for this
-            // path, so the Code is metadata for downstream DLQ
-            // classification rather than a live retry signal.
-            return CommandOutcome::Rejected {
-                code: tonic::Code::Internal,
-                message: e.to_string(),
-            };
-        }
-
-        // Re-read persisted events for publishing
-        match self
-            .event_store
-            .get(&self.pm_domain, edition, pm_root)
-            .await
-        {
-            Ok(pages) => {
-                let full_book = EventBook {
-                    cover: process_events.cover.clone(),
-                    pages,
-                    snapshot: None,
-                    ..Default::default()
-                };
-                if let Err(e) = self.event_bus.publish(Arc::new(full_book)).await {
-                    error!(
-                        domain = %self.pm_domain,
-                        error = %e,
-                        "Failed to publish PM events"
-                    );
-                }
-            }
-            Err(e) => {
-                error!(
-                    domain = %self.pm_domain,
-                    error = %e,
-                    "Failed to re-read PM events for publishing"
-                );
-            }
-        }
-
-        CommandOutcome::Success(CommandResponse::default())
+        persist_pm_event_book(
+            &self.event_store,
+            &self.event_bus,
+            &self.pm_domain,
+            process_events,
+            correlation_id,
+        )
+        .await
     }
 
     fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {

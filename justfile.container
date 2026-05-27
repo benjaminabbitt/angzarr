@@ -92,8 +92,14 @@ test-dlq-features:
 test-aggregate-pipeline:
     cargo test --test aggregate_pipeline_event_store --features "test-utils"
 
+# Run the PM persist -> SqliteEventStore integration suite. Exercises
+# persist_pm_event_book (extracted from GrpcPMContext::persist_pm_events
+# for testability) against a real event store + recording bus.
+test-pm-persist:
+    cargo test --test pm_persist_event_store --features "test-utils"
+
 # Run all CI integration tests
-test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline
+test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline test-pm-persist
 
 # Run coverage for CI (unit + contract tests)
 cov-ci:
