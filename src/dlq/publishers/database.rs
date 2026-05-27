@@ -107,17 +107,22 @@ impl PostgresDlqPublisher {
         .await
         .map_err(|e| DlqError::Connection(format!("Failed to create DLQ table: {}", e)))?;
 
-        // Create indexes
-        sqlx::query(
-            r#"
-            CREATE INDEX IF NOT EXISTS idx_dlq_entries_domain ON dlq_entries(domain);
-            CREATE INDEX IF NOT EXISTS idx_dlq_entries_correlation_id ON dlq_entries(correlation_id);
-            CREATE INDEX IF NOT EXISTS idx_dlq_entries_occurred_at ON dlq_entries(occurred_at);
-            "#,
-        )
-        .execute(&pool)
-        .await
-        .map_err(|e| DlqError::Connection(format!("Failed to create DLQ indexes: {}", e)))?;
+        // Create indexes -- one statement per `sqlx::query` call.
+        // Postgres rejects multi-statement prepared queries with
+        // "cannot insert multiple commands into a prepared statement";
+        // sqlx prepares every `query(...).execute(...)` call by default.
+        // Caught by `tests/dlq_round_trip_postgres.rs`. SQLite's
+        // matching block (below) already does this correctly per
+        // statement.
+        for stmt in [
+            "CREATE INDEX IF NOT EXISTS idx_dlq_entries_domain ON dlq_entries(domain)",
+            "CREATE INDEX IF NOT EXISTS idx_dlq_entries_correlation_id ON dlq_entries(correlation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dlq_entries_occurred_at ON dlq_entries(occurred_at)",
+        ] {
+            sqlx::query(stmt).execute(&pool).await.map_err(|e| {
+                DlqError::Connection(format!("Failed to create DLQ indexes: {}", e))
+            })?;
+        }
 
         info!(uri = %uri, "PostgreSQL DLQ publisher initialized");
 
