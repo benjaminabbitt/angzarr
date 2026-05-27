@@ -318,7 +318,19 @@ fully-qualified type URLs (`type.googleapis.com/example.OrderCreated`),
 subscription accidentally fans out to every event whose name ends with that
 substring. The matcher fires on every event delivered.
 
-**Status.** todo.
+**Status.** DONE 2026-05-27. `Target::matches_type` reworked to
+token-boundary match (extracted `matches_type_token` helper); `bus::traits::target_matches`
+now delegates to `Target::matches_type`, eliminating the duplicate
+`ends_with` site. All three plan-specified unit tests added in
+`src/descriptor.test.rs` plus a `target_matches_short_name_does_not_widen`
+regression in `src/bus/mod.test.rs` pinning the delegation.
+`features/client/router.feature` extended with the plan's Gherkin
+scenario plus two companion scenarios covering the qualified-name and
+final-token cases. The pre-existing "Register handler by type URL
+suffix" scenario was reworded to "Register handler by type URL token"
+to stop documenting the buggy behavior. Lib suite 1019 → 1039 (+20
+including descriptor + bus regressions). `just mutants src/descriptor.rs`:
+14 viable mutants, 14 caught (100% kill rate; target was ≥90%).
 
 **Test plan.** Unit test in `descriptor.test.rs`:
 
@@ -1661,3 +1673,29 @@ After R2-02-LIVE lands, update or delete the memory note.
   `.github/workflows/ci.yml::integration`. This closes Category A
   of the drift-gap audit (orchestration → real publisher / reader).
   Categories B + C remain on `.tasks/todos.md` as planned.
+- 2026-05-27 R2-01 closed. `Target::matches_type` swapped from
+  `event_type.ends_with(t)` to a token-boundary helper
+  (`matches_type_token`): if the subscription type contains `.`,
+  require exact equality; otherwise split `event_type` on the last
+  `.` or `/` and compare the final token. `bus::traits::target_matches`
+  now delegates to `Target::matches_type`, removing the duplicate
+  `ends_with` site. Tests: three plan-specified scenarios added to
+  `descriptor.test.rs` (`matches_type_short_name_does_not_widen`,
+  `matches_type_full_url_still_matches`,
+  `matches_type_dotted_suffix_only_matches_token_boundary`) plus a
+  `target_matches_short_name_does_not_widen` regression in
+  `bus/mod.test.rs` pinning the delegation. Gherkin: the
+  "Register handler by type URL suffix" scenario in
+  `features/client/router.feature` was reworded to
+  "by type URL token" so the spec no longer documents the bug;
+  three new scenarios cover the short-name anti-widening case, the
+  short-name final-token match, and the fully-qualified exact-match
+  case. `just mutants src/descriptor.rs`: 14 viable mutants, 14
+  caught (100% kill rate; ≥90% target). Lib suite 1019 → 1039.
+  Found-during-this-work follow-up (NOT fixed in R2-01): `just
+  mutants-summary` recipe has a shell-escaping bug — its inlined jq
+  pipeline crashes with `syntax error near unexpected token '('`
+  because `$$(jq '[.outcomes[]...]')` lands inside the container
+  shell unquoted. cargo-mutants output is reliable, but the summary
+  recipe doesn't render. Worth a focused fix in a follow-up;
+  scope-creep for R2-01.

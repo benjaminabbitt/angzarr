@@ -139,11 +139,33 @@ Feature: Router - Command and Event Routing
   # Handler Registration
   # ==========================================================================
 
-  Scenario: Register handler by type URL suffix
+  Scenario: Register handler by type URL token
     Given a router
     When I register handler for type "OrderCreated"
-    Then events ending with "OrderCreated" should match
-    And events ending with "ItemAdded" should NOT match
+    Then events whose final dotted token is "OrderCreated" should match
+    And events whose final dotted token is "ItemAdded" should NOT match
+
+  # R2-01: short subscription names must not silently fan out to other
+  # event types that happen to end with the same substring. Matching is
+  # token-boundary (split on the last "." or "/"), not raw `ends_with`.
+  Scenario: Short event-type subscription does not match other types
+    Given a subscription to event type "Created"
+    When an event of type "OrderCreated" is published
+    Then the subscriber does NOT receive it
+
+  Scenario: Short event-type subscription matches at the final dotted token only
+    Given a subscription to event type "OrderCreated"
+    When an event of type "type.googleapis.com/example.OrderCreated" is published
+    Then the subscriber receives it
+    When an event of type "type.googleapis.com/example.MyOrderCreated" is published
+    Then the subscriber does NOT receive it
+
+  Scenario: Fully-qualified subscription type requires exact match
+    Given a subscription to event type "type.googleapis.com/example.OrderCreated"
+    When an event of type "type.googleapis.com/example.OrderCreated" is published
+    Then the subscriber receives it
+    When an event of type "type.googleapis.com/example.UserCreated" is published
+    Then the subscriber does NOT receive it
 
   Scenario: Register multiple handlers
     Given a router

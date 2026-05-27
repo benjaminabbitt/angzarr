@@ -46,12 +46,32 @@ impl Target {
     ///
     /// Returns true if:
     /// - types is empty (matches all), OR
-    /// - event_type ends with any type in the list
+    /// - any configured type matches `event_type` on a token boundary
+    ///
+    /// Matching rules per configured type `t`:
+    /// - If `t` contains `.`, require exact equality with `event_type`
+    ///   (operators writing fully-qualified names get a precise match).
+    /// - Otherwise, take the last `.`/`/`-delimited token of `event_type`
+    ///   and require equality with `t`. Short names like `"OrderCreated"`
+    ///   match `"type.googleapis.com/example.OrderCreated"` but NOT
+    ///   `"type.googleapis.com/example.MyOrderCreated"` — preventing the
+    ///   silent fan-out a bare `ends_with` produced.
     pub fn matches_type(&self, event_type: &str) -> bool {
         if self.types.is_empty() {
             return true;
         }
-        self.types.iter().any(|t| event_type.ends_with(t))
+        self.types.iter().any(|t| matches_type_token(event_type, t))
+    }
+}
+
+/// Token-boundary match between a configured subscription type and an
+/// event's `type_url`. See [`Target::matches_type`] for the rules.
+fn matches_type_token(event_type: &str, subscription_type: &str) -> bool {
+    if subscription_type.contains('.') {
+        event_type == subscription_type
+    } else {
+        let last_token = event_type.rsplit(['.', '/']).next().unwrap_or(event_type);
+        last_token == subscription_type
     }
 }
 

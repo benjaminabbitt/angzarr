@@ -139,7 +139,9 @@ pub trait EventBus: Send + Sync {
 /// - The domain matches the target's domain
 /// - AND either:
 ///   - The target has no types (matches all events from domain)
-///   - OR at least one event in the book has a type_url ending with a target type
+///   - OR at least one event in the book has a `type_url` that
+///     matches a target type per [`Target::matches_type`]
+///     (token-boundary, not substring suffix)
 ///
 /// # Example
 /// ```ignore
@@ -167,7 +169,7 @@ pub fn target_matches(book: &EventBook, target: &Target) -> bool {
     // Check if any event matches any target type
     book.pages.iter().any(|page| {
         if let Some(crate::proto::event_page::Payload::Event(event)) = &page.payload {
-            target.types.iter().any(|t| event.type_url.ends_with(t))
+            target.matches_type(&event.type_url)
         } else {
             false
         }
