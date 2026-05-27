@@ -445,29 +445,137 @@ carries the right correlation_id — if not, stamp it before publish.
 
 **Bug.** Both sync paths call `connections.into_iter().next()`, taking only
 the head of the registered projector list. The async `handle` correctly
-iterates all. Docstring promises fan-out to all registered projectors.
+iterates all. Struct docstring (`projector_coord.rs:32`) promises
+"Distributes events to all registered projectors."
 
-**Status.** todo.
+**Status.** in progress 2026-05-27. Design locked as **Option C**
+(proto change to return `repeated Projection`); see "Design
+findings" below for why the plan's original "swap
+`.into_iter().next()` for `try_join_all`" sketch doesn't fit the
+existing type.
 
-**Test plan.** Unit test:
+**Design findings, 2026-05-27 (locked).**
 
-- `handle_sync_dispatches_to_all_registered_projectors` — register 3
-  projectors, invoke `handle_sync`, assert all 3 received the call.
-- `handle_speculative_dispatches_to_all` — same shape for the speculative path.
+The plan's "parallel dispatch via `try_join_all`" sketch glosses
+over the fact that both RPCs return a single `Projection`, not a
+list. Just calling all projectors but returning the first
+response loses N-1 projections silently — the same shape of bug,
+moved one layer in. Four candidates considered:
 
-**Gherkin.** REQUIRED — add to
-`features/examples/unit/projector.feature`:
+| | Behavior | Return | Cost |
+| --- | --- | --- | --- |
+| A | Run all in parallel, return first success | `Projection` | Keeps API; payload semantics unclear when N projectors ran |
+| B | Run all in parallel, fail-fast, return aggregate | `Projection` | Loses individual payloads |
+| C | Proto change to `repeated Projection` | `Projections{ projections }` | Cleanest semantics; proto-breaking |
+| D | Accept "first wins, single sync projector per domain", correct docstring | `Projection` | Smallest; admits sync is single-projector |
+
+**Locked: C.** Sync/speculative mode genuinely means "wait for
+every registered projector to confirm." A single-Projection
+return for an N-projector fan-out is the wrong shape; A/B/D
+either lose payloads or paper over the bug. Proto breakage is
+acceptable in this prototype (CLAUDE.md "Fix What You Find") and
+client-repo regen is the documented downstream cost.
+
+**Wire shape.** New wrapper message:
+```proto
+message Projections {
+  repeated Projection projections = 1;
+}
+```
+Both `HandleSync` and `HandleSpeculative` on
+`ProjectorCoordinatorService` return `Projections` instead of
+`Projection`. Per-projector RPCs on `ProjectorService` keep
+returning single `Projection` (one projector, one projection).
+
+**Blast radius.**
+
+- Proto: `angzarr-project/proto/angzarr_client/proto/angzarr/v1/projector.proto`
+  (submodule — needs a commit in the submodule plus a
+  parent-repo submodule-pointer bump).
+- Proto message addition: `Projections` wrapper in
+  `types.proto` (or inline in `projector.proto`; decision below).
+- Rust coordinator: `src/services/projector_coord.rs` — both
+  paths fan out in parallel via `futures::future::join_all`
+  (collect results, don't fail-fast — log per-projector errors
+  but return whatever succeeded so partial outages don't blow
+  up the aggregate's sync wait). Aggregate over an empty result
+  set returns `Projections{ projections: [] }`.
+- Aggregate caller: `src/orchestration/aggregate/grpc/mod.rs:343`
+  unwraps the new wrapper and flattens its inner vec into the
+  existing outer `Vec<Projection>`. Per-coordinator NotFound /
+  Unavailable / Internal handling unchanged.
+- Tests: existing
+  `src/services/projector_coord.test.rs::test_handle_sync_with_no_projectors_returns_empty_projection`
+  needs its assertion updated to the new wrapper. New tests
+  below.
+- Cross-language clients: angzarr-client-{python,go,java,csharp,cpp}
+  regenerate from the submodule proto in their own repos. Out
+  of scope here; follow-up tracked separately.
+
+**Sub-decision: Projections wrapper lives in `projector.proto`,
+NOT `types.proto`.** It's a service-shaped message (only the
+projector coordinator RPCs return it). `types.proto` carries
+cross-service shared types; mixing service-shaped wrappers in
+there muddies that line.
+
+**Test plan.**
+
+Unit tests in `src/services/projector_coord.test.rs`:
+
+- `handle_sync_dispatches_to_all_registered_projectors` —
+  register 3 projectors, invoke `handle_sync`, assert all 3
+  received the call AND the returned `Projections.projections`
+  has 3 entries.
+- `handle_speculative_dispatches_to_all` — same shape for
+  speculative.
+- `handle_sync_partial_failure_returns_successes` —
+  register 3 projectors, fail one mid-fanout, assert the
+  returned `Projections.projections` carries the 2 successes
+  and the failure is logged (not propagated).
+- `handle_sync_with_zero_projectors_returns_empty_projections` —
+  preserved + updated for new return shape.
+
+**Gherkin.** REQUIRED. Adding to `features/client/router.feature`
+("Sync Projector Dispatch" section) rather than the plan's
+original `features/examples/unit/projector.feature` pointer —
+this is framework-level coordinator semantics (matches the
+location used for R2-01, R2-02-LIVE).
 
 ```gherkin
-Scenario: Sync mode fans out to every registered projector
-  Given 3 projectors are registered for the "order" domain
+Scenario: Sync projector coordinator fans out to every registered projector
+  Given 3 projectors are registered with the sync coordinator
   When an aggregate completes a command in sync mode
   Then all 3 projectors are invoked exactly once
+  And the response carries 3 projections
+
+Scenario: Sync coordinator returns the projections it could collect on partial failure
+  Given 3 projectors are registered with the sync coordinator
+  And one of them is unreachable
+  When an aggregate completes a command in sync mode
+  Then the response carries projections from the 2 reachable projectors
+  And the unreachable projector's failure is logged
 ```
 
-**Fix plan.** Replace `.into_iter().next()` with `.into_iter()` driving
-parallel dispatch (e.g., `futures::future::try_join_all`). Match the async
-path's fan-out shape.
+**Fix plan (executable).**
+
+1. Submodule edit `projector.proto`: add `Projections` message,
+   change both RPC returns to `Projections`. Commit on a branch
+   in the submodule.
+2. Parent: `cargo build` regenerates Rust bindings. Update
+   `ProjectorCoord::handle_sync` + `handle_speculative` to
+   `futures::future::join_all` the projector calls, collect
+   `Vec<Projection>`, wrap in `Projections`, return.
+3. Update `GrpcAggregateContext::handle_sync_speculative`
+   (`src/orchestration/aggregate/grpc/mod.rs:343-355`) to
+   unwrap the new `Projections` wrapper and extend the outer
+   `projections` vec with `response.projections`.
+4. Update `projector_coord.test.rs` for the new shape; add the
+   three new tests. Update `aggregate.test.rs` mocks if any
+   reference the old single-`Projection` return.
+5. Gherkin additions to `router.feature`.
+6. `just mutants src/services/projector_coord.rs` — target
+   >= 90%.
+7. Parent-repo commit bumps the submodule pointer.
 
 **Mutants target.** ≥ 90%.
 
