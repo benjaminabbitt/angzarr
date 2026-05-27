@@ -521,37 +521,47 @@ mutants-orchestration: gen-mutants-exclude
         -- {{MUTANTS_FEATURES}}
 
 # Show mutation testing summary
+#
+# Shebang form (not single-line `@if ... fi`) because cargo-mutants'
+# outcomes.json needs real `$(jq ...)` command substitution. just does
+# NOT escape `$$` -> `$` for the default `bash -c` shell, so the
+# previous non-shebang form shipped literal `$$(...)` to bash, which
+# parsed it as `<pid>(...)` and died with a syntax error.
 mutants-summary:
-    @if [ -f mutants.out/outcomes.json ]; then \
-        caught=$$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants.out/outcomes.json); \
-        missed=$$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants.out/outcomes.json); \
-        unviable=$$(jq '[.outcomes[] | select(.summary == "Unviable")] | length' mutants.out/outcomes.json); \
-        total=$$((caught + missed)); \
-        if [ $$total -gt 0 ]; then \
-            rate=$$((100 * caught / total)); \
-        else \
-            rate=0; \
-        fi; \
-        echo ""; \
-        echo "=== Mutation Testing Summary ==="; \
-        echo "Caught (killed): $$caught"; \
-        echo "Missed (survived): $$missed"; \
-        echo "Unviable (won't compile): $$unviable"; \
-        echo "Kill rate: $$rate% ($$caught/$$total viable)"; \
-        echo ""; \
-        if [ $$missed -gt 0 ]; then \
-            echo "=== Surviving Mutants ==="; \
-            jq -r '.outcomes[] | select(.summary == "MissedMutant") | .scenario' mutants.out/outcomes.json; \
-        fi; \
-    else \
-        echo "No mutation results found. Run 'just mutants-core' first."; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f mutants.out/outcomes.json ]; then
+        echo "No mutation results found. Run 'just mutants-core' first."
+        exit 0
+    fi
+    caught=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants.out/outcomes.json)
+    missed=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants.out/outcomes.json)
+    unviable=$(jq '[.outcomes[] | select(.summary == "Unviable")] | length' mutants.out/outcomes.json)
+    total=$((caught + missed))
+    if [ "$total" -gt 0 ]; then
+        rate=$((100 * caught / total))
+    else
+        rate=0
+    fi
+    echo ""
+    echo "=== Mutation Testing Summary ==="
+    echo "Caught (killed): $caught"
+    echo "Missed (survived): $missed"
+    echo "Unviable (won't compile): $unviable"
+    echo "Kill rate: ${rate}% (${caught}/${total} viable)"
+    if [ "$missed" -gt 0 ]; then
+        echo ""
+        echo "=== Surviving Mutants ==="
+        jq -r '.outcomes[] | select(.summary == "MissedMutant") | .scenario' mutants.out/outcomes.json
     fi
 
 # List surviving mutants (mutations not caught by tests)
 mutants-survivors:
-    @if [ -f mutants.out/outcomes.json ]; then \
-        jq -r '.outcomes[] | select(.summary == "MissedMutant") | .scenario' mutants.out/outcomes.json; \
-    else \
-        echo "No mutation results found. Run 'just mutants-core' first."; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f mutants.out/outcomes.json ]; then
+        echo "No mutation results found. Run 'just mutants-core' first."
+        exit 0
     fi
+    jq -r '.outcomes[] | select(.summary == "MissedMutant") | .scenario' mutants.out/outcomes.json
 

@@ -1692,10 +1692,17 @@ After R2-02-LIVE lands, update or delete the memory note.
   short-name final-token match, and the fully-qualified exact-match
   case. `just mutants src/descriptor.rs`: 14 viable mutants, 14
   caught (100% kill rate; ≥90% target). Lib suite 1019 → 1039.
-  Found-during-this-work follow-up (NOT fixed in R2-01): `just
-  mutants-summary` recipe has a shell-escaping bug — its inlined jq
-  pipeline crashes with `syntax error near unexpected token '('`
-  because `$$(jq '[.outcomes[]...]')` lands inside the container
-  shell unquoted. cargo-mutants output is reliable, but the summary
-  recipe doesn't render. Worth a focused fix in a follow-up;
-  scope-creep for R2-01.
+  Found-during-this-work follow-up, fixed in a separate commit:
+  `just mutants-summary` was broken on two counts — (a) the recipe
+  used `$$(jq ...)` expecting just to escape `$$` -> `$`, but just
+  doesn't with the default `bash -c` shell, so bash parsed `$$(...)`
+  as `<pid>(...)` and died with `syntax error near unexpected token
+  '('`, and (b) the locally-cached rust container image was older
+  than the base-image bump that added jq (jq has been in
+  `build/images/base/Containerfile` since `23457f15`, but the cached
+  image was built at `b3004f12`, before that commit). Reshaped
+  `mutants-summary` and `mutants-survivors` as shebang-bash recipes
+  using real `$(jq ...)` substitution, and rebuilt the images via
+  skaffold so the now-current `v0.5.1-61-g2ec15ada` tag actually
+  contains jq. Verified end-to-end against R2-01's outcomes.json:
+  the recipe renders the 14/14 kill-rate summary.
