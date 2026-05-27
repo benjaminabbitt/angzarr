@@ -98,8 +98,25 @@ test-aggregate-pipeline:
 test-pm-persist:
     cargo test --test pm_persist_event_store --features "test-utils"
 
+# Run the status DLQ admin gRPC -> Reader -> DB integration suite.
+# Drives DlqAdminService trait methods against a populated SQLite-
+# backed reader.
+test-status-dlq-admin:
+    cargo test --test status_dlq_admin_grpc --features "test-utils"
+
+# Run the aggregate pipeline -> SnapshotRepository integration suite.
+# AggregateService.handle_command + real SqliteSnapshotStore.
+test-pipeline-snapshot:
+    cargo test --test aggregate_pipeline_snapshot --features "test-utils"
+
+# Run the projector publish -> EventBus shape-verification suite.
+# Inspects the projection EventBook (domain prefix, correlation_id,
+# edition, decoded projection payload, sequence).
+test-projector-publish:
+    cargo test --test projector_publish_event_bus --features "test-utils"
+
 # Run all CI integration tests
-test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline test-pm-persist
+test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline test-pm-persist test-status-dlq-admin test-pipeline-snapshot test-projector-publish
 
 # Run coverage for CI (unit + contract tests)
 cov-ci:

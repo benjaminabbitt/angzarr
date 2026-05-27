@@ -214,6 +214,33 @@ jobs:
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container test-pm-persist
 
+      - name: Run status DLQ admin gRPC -> Reader -> DB tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container test-status-dlq-admin
+
+      - name: Run pipeline -> SnapshotRepository integration tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container test-pipeline-snapshot
+
+      - name: Run projector publish -> EventBus shape tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container test-projector-publish
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest

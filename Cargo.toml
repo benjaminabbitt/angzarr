@@ -398,6 +398,34 @@ required-features = ["test-utils"]
 name = "pm_persist_event_store"
 required-features = ["test-utils"]
 
+# --- Status DLQ admin gRPC -> Reader -> DB integration ---
+# Drives DlqAdminHandler's gRPC trait methods (list_dead_letters,
+# get_dead_letter, delete_dead_letter) against a real SqliteDlqReader
+# backed by a populated database. Closes the third Category B drift
+# gap from the R2-15 audit -- the operator-facing publisher -> reader
+# -> admin gRPC loop end-to-end.
+[[test]]
+name = "status_dlq_admin_grpc"
+required-features = ["test-utils"]
+
+# --- Aggregate pipeline -> SnapshotRepository integration ---
+# Drives AggregateService.handle_command with a real SqliteSnapshotStore
+# wired into SnapshotRepository. Catches snapshot-write policy bugs and
+# pipeline-read-snapshot drift that MockSnapshotStore can't see.
+[[test]]
+name = "aggregate_pipeline_snapshot"
+required-features = ["test-utils"]
+
+# --- Projector publish -> EventBus.publish shape verification ---
+# Closes the deep-shape-verification gap on the projector's publish
+# path. Real-broker serialization is owned by bus_*.rs testcontainer
+# suites; the unit tests only check publish_count. This test inspects
+# the published EventBook (domain prefix, correlation_id, edition,
+# decoded projection payload, sequence) via MockEventBus.
+[[test]]
+name = "projector_publish_event_bus"
+required-features = ["test-utils"]
+
 # === Build Profiles ===
 
 # Dev profile - optimized for size to keep disk usage sane
