@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::bus::EventBus;
+use crate::dlq::DeadLetterPublisher;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
 use crate::proto::{CommandResponse, EventBook, ProcessManagerHandleRequest};
@@ -27,6 +28,8 @@ pub struct GrpcPMContext {
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
     pm_domain: String,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+    component_name: String,
 }
 
 impl GrpcPMContext {
@@ -36,12 +39,16 @@ impl GrpcPMContext {
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         pm_domain: String,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
+        component_name: String,
     ) -> Self {
         Self {
             client,
             event_store,
             event_bus,
             pm_domain,
+            dlq_publisher,
+            component_name,
         }
     }
 }
@@ -168,6 +175,14 @@ impl ProcessManagerContext for GrpcPMContext {
 
         CommandOutcome::Success(CommandResponse::default())
     }
+
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.dlq_publisher)
+    }
+
+    fn component_name(&self) -> &str {
+        &self.component_name
+    }
 }
 
 /// Factory that produces `GrpcPMContext` instances for distributed mode.
@@ -180,16 +195,19 @@ pub struct GrpcPMContextFactory {
     event_bus: Arc<dyn EventBus>,
     name: String,
     pm_domain: String,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
 }
 
 impl GrpcPMContextFactory {
     /// Create a new factory with gRPC client, event store, event bus, and PM domain.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         client: Arc<Mutex<ProcessManagerServiceClient<tonic::transport::Channel>>>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         name: String,
         pm_domain: String,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
     ) -> Self {
         Self {
             client,
@@ -197,6 +215,7 @@ impl GrpcPMContextFactory {
             event_bus,
             name,
             pm_domain,
+            dlq_publisher,
         }
     }
 }
@@ -208,6 +227,8 @@ impl PMContextFactory for GrpcPMContextFactory {
             self.event_store.clone(),
             self.event_bus.clone(),
             self.pm_domain.clone(),
+            self.dlq_publisher.clone(),
+            self.name.clone(),
         ))
     }
 

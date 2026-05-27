@@ -39,13 +39,14 @@ use std::time::Duration;
 use backon::Retryable;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
 use angzarr::bus::{EventBus, EventBusMode, IpcConfig, IpcEventBus, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::descriptor::parse_subscriptions;
+use angzarr::dlq::init_dlq_publisher;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
 use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
@@ -77,6 +78,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Process manager sidecar requires 'messaging' configuration")?;
 
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
+
+    // R2-15 hard-fail boot: if the operator configured DLQ but the chosen
+    // backend cannot be reached, fail loudly here rather than silently
+    // dropping dead letters for the lifetime of the process. Runs before
+    // heavier init (storage, gRPC clients, bus subscriber) so the
+    // failure path is as cheap as possible.
+    let dlq_publisher = init_dlq_publisher(&bootstrap.config.dlq)
+        .await
+        .map_err(|e| {
+            error!("DLQ publisher init failed (boot abort): {}", e);
+            e
+        })?;
+    if bootstrap.config.dlq.targets.is_empty() {
+        warn!(
+            "dlq.targets is empty; dead letters will be discarded by the \
+             default noop publisher. Set dlq.targets in config.yaml to \
+             route PM persistence and command-rejection dead letters to a \
+             backend."
+        );
+    } else {
+        info!(
+            target_count = bootstrap.config.dlq.targets.len(),
+            "DLQ publisher initialized"
+        );
+    }
 
     // Initialize storage for direct PM state persistence
     let (event_store, snapshot_store) = init_storage(&bootstrap.config.storage).await?;
@@ -167,6 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_bus.clone(),
         bootstrap.domain.clone(), // name
         bootstrap.domain.clone(), // pm_domain
+        dlq_publisher.clone(),
     ));
 
     // Create handler with direct storage for PM state persistence
@@ -177,6 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         command_executor.clone(),
         event_store,
         event_bus,
+        dlq_publisher,
     )
     .with_fact_executor(Some(fact_executor.clone()))
     .with_targets(subscriptions);

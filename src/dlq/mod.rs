@@ -367,6 +367,88 @@ impl AngzarrDeadLetter {
         }
     }
 
+    /// Create a dead letter for a PM's failed outbound command.
+    ///
+    /// Same shape as [`from_saga_command_rejection`] but with
+    /// `source_component_type = "process_manager"`. Covers both the
+    /// immediate-rejection site (PM command returned `Rejected`) and
+    /// the H-14 Decision-mode degraded-from-Retryable site.
+    ///
+    /// [`from_saga_command_rejection`]: Self::from_saga_command_rejection
+    pub fn from_pm_command_rejection(
+        command: &CommandBook,
+        error: &str,
+        retry_count: u32,
+        is_transient: bool,
+        source_component: &str,
+    ) -> Self {
+        let reason = if retry_count == 0 {
+            format!("PM command rejected (immediate): {error}")
+        } else {
+            format!("PM command rejected after {retry_count} attempts: {error}")
+        };
+        Self {
+            cover: command.cover.clone(),
+            payload: DeadLetterPayload::Command(command.clone()),
+            rejection_reason: reason,
+            rejection_details: Some(RejectionDetails::EventProcessingFailed(
+                EventProcessingFailedDetails {
+                    error: error.to_string(),
+                    retry_count,
+                    is_transient,
+                    stack_trace: Vec::new(),
+                },
+            )),
+            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            metadata: HashMap::new(),
+            source_component: source_component.to_string(),
+            source_component_type: "process_manager".to_string(),
+        }
+    }
+
+    /// Create a dead letter for a PM's failed event-persistence attempt.
+    ///
+    /// Used at the PM persistence loop in `orchestrate_pm` for both:
+    ///
+    /// 1. **Retry-exhausted** (`CommandOutcome::Retryable` with backoff
+    ///    budget gone): `retry_count = attempt`, `is_transient = true`.
+    /// 2. **Immediate-rejection** (`CommandOutcome::Rejected`):
+    ///    `retry_count = 0`, `is_transient = false`.
+    ///
+    /// Payload carries the failed PM `EventBook` (not the trigger), so
+    /// operators replaying from the DLQ can re-attempt the PM's intended
+    /// state transition. `source_component_type = "process_manager"`.
+    pub fn from_pm_persist_failure(
+        events: &EventBook,
+        error: &str,
+        retry_count: u32,
+        is_transient: bool,
+        source_component: &str,
+    ) -> Self {
+        let reason = if retry_count == 0 {
+            format!("PM persistence rejected (immediate): {error}")
+        } else {
+            format!("PM persistence retries exhausted after {retry_count} attempts: {error}")
+        };
+        Self {
+            cover: events.cover.clone(),
+            payload: DeadLetterPayload::Events(events.clone()),
+            rejection_reason: reason,
+            rejection_details: Some(RejectionDetails::EventProcessingFailed(
+                EventProcessingFailedDetails {
+                    error: error.to_string(),
+                    retry_count,
+                    is_transient,
+                    stack_trace: Vec::new(),
+                },
+            )),
+            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            metadata: HashMap::new(),
+            source_component: source_component.to_string(),
+            source_component_type: "process_manager".to_string(),
+        }
+    }
+
     /// Create a dead letter from a payload retrieval failure.
     ///
     /// Used when externally stored payloads (claim check pattern) cannot be retrieved.

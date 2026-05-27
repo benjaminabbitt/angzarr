@@ -42,16 +42,20 @@ pub mod grpc;
 mod edition_propagation;
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
+use crate::dlq::trigger::{CodeDlqExt, DlqTrigger};
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher};
 use crate::proto::{
     page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook,
     Notification, PageHeader, RevocationResponse, SyncMode, Uuid as ProtoUuid,
 };
+use crate::proto_ext::CoverExt;
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -219,6 +223,26 @@ pub trait ProcessManagerContext: Send + Sync {
             "PM command rejected (no compensation path configured)"
         );
     }
+
+    /// Publisher for routing failed PM commands and persistence attempts
+    /// to the DLQ.
+    ///
+    /// Returns `None` to disable DLQ publication. Production impls
+    /// SHOULD return `Some(_)` so 4xx-class command rejections,
+    /// retry-exhausted persistence failures, and immediate persistence
+    /// rejections are operator-observable per R2-15. Test fakes that
+    /// don't exercise DLQ paths can keep the default.
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        None
+    }
+
+    /// Component name used as `source_component` on DLQ entries.
+    ///
+    /// Defaults to `"process_manager"`. Override on production impls to
+    /// identify the specific PM binary in DLQ tooling.
+    fn component_name(&self) -> &str {
+        "process_manager"
+    }
 }
 
 /// Factory for creating per-invocation PM contexts.
@@ -235,6 +259,75 @@ pub trait PMContextFactory: Send + Sync {
 
     /// The name of this process manager (used for metrics and tracing).
     fn name(&self) -> &str;
+}
+
+/// Publish a dead letter for a PM persistence failure.
+///
+/// Used by both `orchestrate_pm` persistence-rejection sites:
+/// retry-exhausted (`is_transient = true`, `retry_count = attempt`) and
+/// immediate-rejection (`is_transient = false`, `retry_count = 0`).
+/// Payload carries the failed PM event book so operators can re-attempt
+/// the intended state transition from DLQ replay tooling.
+async fn publish_pm_persist_dlq(
+    ctx: &dyn ProcessManagerContext,
+    events: &EventBook,
+    error: &str,
+    retry_count: u32,
+    is_transient: bool,
+) {
+    let Some(publisher) = ctx.dlq_publisher() else {
+        return;
+    };
+    let dead_letter = AngzarrDeadLetter::from_pm_persist_failure(
+        events,
+        error,
+        retry_count,
+        is_transient,
+        ctx.component_name(),
+    );
+    if let Err(e) = publisher.publish(dead_letter).await {
+        error!(error = %e, "Failed to publish PM persist DLQ entry");
+    }
+}
+
+/// Publish a dead letter for a PM command rejection at the dispatch loop.
+///
+/// Covers both the `CommandOutcome::Rejected` site (where the destination
+/// aggregate or transport returned a permanent error) and the H-14
+/// Decision-mode degraded-from-Retryable site (where the PM lost its
+/// synchronous accept/reject contract).
+///
+/// `gate_on_classify = true` defensively skips publication when the
+/// code's `classify_for_dlq` says transient — the alignment between
+/// `is_retryable_status` and `classify_for_dlq` makes that case
+/// impossible today, but the gate guards against future drift. The
+/// H-14 path passes `false` since it doesn't carry a `tonic::Code` and
+/// is unconditionally a permanent failure from the PM's perspective.
+async fn publish_pm_command_dlq(
+    ctx: &dyn ProcessManagerContext,
+    command: &CommandBook,
+    code: Option<tonic::Code>,
+    message: &str,
+) {
+    if let Some(c) = code {
+        if !matches!(c.classify_for_dlq(), DlqTrigger::Immediate(_)) {
+            return;
+        }
+    }
+    let Some(publisher) = ctx.dlq_publisher() else {
+        return;
+    };
+    let dead_letter = AngzarrDeadLetter::from_pm_command_rejection(
+        command,
+        message,
+        0,
+        false,
+        ctx.component_name(),
+    );
+    let domain = command.domain();
+    if let Err(e) = publisher.publish(dead_letter).await {
+        error!(%domain, error = %e, "Failed to publish PM command DLQ entry");
+    }
 }
 
 /// Full process manager orchestration with retry on sequence conflicts.
@@ -411,6 +504,9 @@ pub async fn orchestrate_pm(
                             attempt,
                             &reason,
                         );
+                        // R2-15: persist retry-exhausted -> DLQ the
+                        // failed PM event book so operators can replay.
+                        publish_pm_persist_dlq(ctx, process_events, &reason, attempt, true).await;
                         should_return_err = Some(BusError::Publish(reason));
                         break;
                     }
@@ -421,6 +517,10 @@ pub async fn orchestrate_pm(
                         attempt,
                         &format!("{code:?}: {message}"),
                     );
+                    // R2-15: persist immediate-rejection -> DLQ the
+                    // failed PM event book. retry_count=0 since no
+                    // attempts were spent on this rejection.
+                    publish_pm_persist_dlq(ctx, process_events, &message, 0, false).await;
                     should_return_err = Some(BusError::Publish(message));
                     break;
                 }
@@ -690,6 +790,12 @@ async fn execute_pm_commands(
                     );
                     ctx.on_command_rejected(&command_book, &degraded, correlation_id)
                         .await;
+                    // R2-15: H-14 is a permanent failure from the PM's
+                    // perspective (contract loss); DLQ unconditionally.
+                    // No tonic::Code is available here — the original
+                    // Retryable carried only a reason string — so pass
+                    // None to skip the classify gate.
+                    publish_pm_command_dlq(ctx, &command_book, None, &degraded).await;
                     if decision_retryable_failure.is_none() {
                         decision_retryable_failure = Some(degraded);
                     }
@@ -710,6 +816,11 @@ async fn execute_pm_commands(
                 );
                 ctx.on_command_rejected(&command_book, &message, correlation_id)
                     .await;
+                // R2-15: DLQ alongside compensation. Gate on
+                // classify_for_dlq for drift-protection (the alignment
+                // invariant says Rejected codes are Immediate, but the
+                // gate makes that explicit rather than implicit).
+                publish_pm_command_dlq(ctx, &command_book, Some(code), &message).await;
             }
         }
     }
