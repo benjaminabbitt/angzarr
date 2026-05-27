@@ -72,8 +72,15 @@ test-config:
 test-grpc:
     cargo test --test grpc_connection --features "test-utils"
 
+# Run DLQ publish->read round-trip against tempfile-backed SQLite.
+# Mirrors test-storage-sqlite: no Docker needed, runs in CI. The
+# Postgres+AMQP testcontainer variants stay out of CI for the same
+# reason storage_postgres does.
+test-dlq-sqlite:
+    cargo test --test dlq_round_trip_sqlite --features "test-utils"
+
 # Run all CI integration tests
-test-integration: test-storage-sqlite test-config test-grpc
+test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite
 
 # Run coverage for CI (unit + contract tests)
 cov-ci:

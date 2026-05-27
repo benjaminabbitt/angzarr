@@ -1563,3 +1563,41 @@ After R2-02-LIVE lands, update or delete the memory note.
   remaining R2-15 follow-up. Postgres/AMQP testcontainer-based
   end-to-end tests are also still outstanding but the SQLite path
   proves the storage contract.
+- 2026-05-27 R2-15 Postgres testcontainer round-trip landed
+  (`68c8b852`) + uncovered and fixed a latent Postgres boot bug.
+  `tests/dlq_round_trip_postgres.rs` mirrors the SQLite suite (3
+  tests) against a real Postgres 16 container, asserting the four
+  coordinator constructors and the `source_component` filter
+  pushdown both round-trip through Postgres's bytea+jsonb columns.
+  Bug found and fixed in same commit:
+  `PostgresDlqPublisher::new` at
+  `src/dlq/publishers/database.rs:111` packed three
+  `CREATE INDEX IF NOT EXISTS` statements into a single
+  `sqlx::query()` call. sqlx prepares every `query()` invocation
+  by default, and Postgres rejects multi-statement prepared
+  queries — so any operator who configured `dlq_type = postgres`
+  would have hit a hard-fail boot crash. Fix mirrors the SQLite
+  path (one `sqlx::query` per statement). No prior test caught
+  this because the existing AMQP-side tests went through the
+  publisher's backend-registry closure rather than `::new`
+  directly; the round-trip integration test is what exercises
+  `::new` end-to-end. SQLite DLQ round-trip wired into CI via
+  `justfile.container::test-dlq-sqlite` +
+  `.github/workflows/ci.yml`; Postgres + AMQP variants stay
+  manual-run alongside `storage_postgres` for the same Docker
+  reason.
+- 2026-05-27 R2-15 cucumber-rs harness deferred as a repo-wide
+  concern, not an R2-15-specific gap. The existing feature files
+  at `tests/acceptance/features/` and `tests/client/features/`
+  in this repo all live as specs without step definitions or a
+  runner. Adding a cucumber-rs runner just for
+  `features/client/dlq.feature` and
+  `features/operator/dlq_boot.feature` would set a precedent the
+  rest of the repo doesn't follow. The dlq.feature scenarios are
+  already pinned by unit tests
+  (`saga/tests.rs`, `process_manager/tests.rs`,
+  `projector.test.rs`, `dlq/factory.test.rs`,
+  `utils/retry.test.rs`) and the SQLite + Postgres round-trip
+  integration suites. Adding a harness is a separate scope item
+  that should land alongside a repo-wide commitment to feature
+  execution, not as a one-off here.
