@@ -86,8 +86,14 @@ test-dlq-sqlite:
 test-dlq-features:
     cargo test --test dlq_features --features "test-utils"
 
+# Run the aggregate pipeline -> SqliteEventStore integration suite.
+# Closes the Category B drift gap between MockEventStore-based unit
+# tests and storage_sqlite.rs's direct EventStore.add tests.
+test-aggregate-pipeline:
+    cargo test --test aggregate_pipeline_event_store --features "test-utils"
+
 # Run all CI integration tests
-test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features
+test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline
 
 # Run coverage for CI (unit + contract tests)
 cov-ci:

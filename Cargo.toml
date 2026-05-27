@@ -377,6 +377,16 @@ name = "dlq_features"
 harness = false
 required-features = ["test-utils"]
 
+# --- Aggregate pipeline -> EventStore integration ---
+# Runs the aggregate command pipeline (AggregateService.handle_command)
+# through a real in-memory SqliteEventStore. Catches drift between the
+# pipeline's persist logic and the production storage backend that
+# MockEventStore-based unit tests can't see. Closes the highest-leverage
+# Category B drift gap from the R2-15 audit.
+[[test]]
+name = "aggregate_pipeline_event_store"
+required-features = ["test-utils"]
+
 # === Build Profiles ===
 
 # Dev profile - optimized for size to keep disk usage sane
