@@ -733,23 +733,52 @@ impl AggregateContext for GrpcAggregateContext {
         actual_sequence: u32,
         domain: &str,
     ) {
-        let dead_letter = AngzarrDeadLetter::from_sequence_mismatch(
+        publish_aggregate_sequence_mismatch_dlq(
+            &self.dlq_publisher,
             command,
             expected_sequence,
             actual_sequence,
-            MergeStrategy::MergeManual,
+            domain,
             &self.component_name,
-        );
+        )
+        .await;
+    }
+}
 
-        if let Err(e) = self.dlq_publisher.publish(dead_letter).await {
-            tracing::error!(
-                domain = %domain,
-                expected = expected_sequence,
-                actual = actual_sequence,
-                error = %e,
-                "Failed to publish to DLQ"
-            );
-        }
+/// Publish a MergeManual sequence-mismatch dead letter.
+///
+/// Extracted from `GrpcAggregateContext::send_to_dlq` so tests can
+/// exercise the publish-to-DLQ seam without constructing a full
+/// `GrpcAggregateContext` (event_store, snapshot_repo, discovery,
+/// client_logic, ...). The aggregate cucumber scenario in
+/// `features/client/dlq.feature` drives this directly; the production
+/// path goes through `send_to_dlq`, which is a thin wrapper around
+/// this fn. Same shape as `crate::orchestration::saga::publish_*_dlq`
+/// and `crate::orchestration::process_manager::publish_pm_*_dlq`.
+pub async fn publish_aggregate_sequence_mismatch_dlq(
+    publisher: &Arc<dyn DeadLetterPublisher>,
+    command: &CommandBook,
+    expected_sequence: u32,
+    actual_sequence: u32,
+    domain: &str,
+    component_name: &str,
+) {
+    let dead_letter = AngzarrDeadLetter::from_sequence_mismatch(
+        command,
+        expected_sequence,
+        actual_sequence,
+        MergeStrategy::MergeManual,
+        component_name,
+    );
+
+    if let Err(e) = publisher.publish(dead_letter).await {
+        tracing::error!(
+            domain = %domain,
+            expected = expected_sequence,
+            actual = actual_sequence,
+            error = %e,
+            "Failed to publish to DLQ"
+        );
     }
 }
 

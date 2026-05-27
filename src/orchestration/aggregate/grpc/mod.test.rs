@@ -205,3 +205,121 @@ async fn test_load_explicit_divergence_falls_back_when_no_snapshot() {
         "fallback path must still produce events"
     );
 }
+
+// ============================================================================
+// publish_aggregate_sequence_mismatch_dlq (R2-15 step 4 seam, refactored
+// 2026-05-27 to be testable without a full GrpcAggregateContext)
+// ============================================================================
+
+use crate::dlq::{
+    AngzarrDeadLetter as DlAngzarrDeadLetter, DeadLetterPayload, DeadLetterPublisher, DlqError,
+    RejectionDetails,
+};
+use crate::proto::Cover;
+use async_trait::async_trait;
+use std::sync::atomic::{AtomicU32, Ordering};
+use tokio::sync::Mutex;
+
+/// Captures dead letters so the test can inspect the constructed
+/// shape that flows from the MergeManual sequence-mismatch path.
+#[derive(Default)]
+struct CapturingDlqPublisher {
+    captured: Mutex<Vec<DlAngzarrDeadLetter>>,
+    publish_calls: AtomicU32,
+}
+
+#[async_trait]
+impl DeadLetterPublisher for CapturingDlqPublisher {
+    async fn publish(&self, dead_letter: DlAngzarrDeadLetter) -> Result<(), DlqError> {
+        self.publish_calls.fetch_add(1, Ordering::SeqCst);
+        self.captured.lock().await.push(dead_letter);
+        Ok(())
+    }
+}
+
+fn cmd_for(domain: &str, correlation_id: &str) -> CommandBook {
+    CommandBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: None,
+            correlation_id: correlation_id.to_string(),
+            edition: None,
+            ext: None,
+        }),
+        pages: vec![],
+    }
+}
+
+/// `publish_aggregate_sequence_mismatch_dlq` constructs an
+/// `AngzarrDeadLetter` with the expected shape and forwards it to
+/// the publisher. The MergeManual contract: sequence mismatch
+/// details + Command payload + source_component_type "aggregate".
+#[tokio::test]
+async fn publish_aggregate_sequence_mismatch_dlq_builds_correct_shape() {
+    let capture = Arc::new(CapturingDlqPublisher::default());
+    let publisher: Arc<dyn DeadLetterPublisher> = capture.clone();
+
+    let command = cmd_for("orders", "corr-1");
+    publish_aggregate_sequence_mismatch_dlq(
+        &publisher,
+        &command,
+        3, // expected
+        7, // actual
+        "orders",
+        "aggregate-orders",
+    )
+    .await;
+
+    assert_eq!(
+        capture.publish_calls.load(Ordering::SeqCst),
+        1,
+        "publisher.publish must be called exactly once"
+    );
+    let entries = capture.captured.lock().await.clone();
+    assert_eq!(entries.len(), 1);
+
+    let dl = &entries[0];
+    assert_eq!(dl.source_component, "aggregate-orders");
+    assert_eq!(dl.source_component_type, "aggregate");
+    match &dl.payload {
+        DeadLetterPayload::Command(_) => {}
+        other => panic!("expected Command payload, got {other:?}"),
+    }
+    match &dl.rejection_details {
+        Some(RejectionDetails::SequenceMismatch(details)) => {
+            assert_eq!(details.expected_sequence, 3);
+            assert_eq!(details.actual_sequence, 7);
+        }
+        other => panic!("expected SequenceMismatch details, got {other:?}"),
+    }
+}
+
+/// `send_to_dlq` on the full `GrpcAggregateContext` delegates to the
+/// free fn. Same shape as the test above, but routed through the
+/// context method to pin the wrapper.
+#[tokio::test]
+async fn send_to_dlq_on_context_delegates_to_free_fn() {
+    let publisher = Arc::new(CapturingDlqPublisher::default());
+    let event_store = Arc::new(MockEventStore::new());
+    let snapshot_store: Arc<MockSnapshotStore> = Arc::new(MockSnapshotStore::default());
+    let snapshot_repo = Arc::new(SnapshotRepository::new(snapshot_store));
+    let ctx = GrpcAggregateContext::new(
+        event_store,
+        snapshot_repo,
+        Arc::new(StaticServiceDiscovery::new()),
+        Arc::new(MockEventBus::new()),
+    )
+    .with_dlq_publisher(publisher.clone())
+    .with_component_name("aggregate-orders");
+
+    use crate::orchestration::aggregate::traits::AggregateContext;
+    ctx.send_to_dlq(&cmd_for("orders", "corr-2"), 1, 4, "orders")
+        .await;
+
+    let calls = publisher.publish_calls.load(Ordering::SeqCst);
+    assert_eq!(calls, 1, "context method must forward to publisher");
+    let entries = publisher.captured.lock().await.clone();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].source_component, "aggregate-orders");
+    assert_eq!(entries[0].source_component_type, "aggregate");
+}
