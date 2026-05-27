@@ -1601,3 +1601,46 @@ After R2-02-LIVE lands, update or delete the memory note.
   integration suites. Adding a harness is a separate scope item
   that should land alongside a repo-wide commitment to feature
   execution, not as a one-off here.
+- 2026-05-27 Cucumber harness deferral revisited and overruled.
+  The prior deferral was load-shedding -- the right move is to
+  wire the harness for the saga/PM/projector/aggregate scenarios
+  in `features/client/dlq.feature`. Plan: drive saga/PM/projector
+  through public `orchestrate_saga` / `orchestrate_pm` /
+  `ProjectorEventHandler::handle` (decision 2b); refactor
+  `GrpcAggregateContext::send_to_dlq` (`grpc/mod.rs:729`) so the
+  aggregate scenario can exercise the same publish-to-DLQ seam
+  without constructing a full context (decision 1a). The
+  `features/operator/dlq_boot.feature` scenarios stay out of
+  scope -- bin-spawning is its own setup, and the publisher /
+  reader factory unit tests at `dlq/factory.test.rs` already pin
+  the hard-fail-on-misconfig contract.
+- 2026-05-27 Drift-gap audit. The cucumber-harness discussion
+  surfaced a repo-wide pattern: every orchestration → real-impl
+  seam in this codebase is uncovered. Unit tests use trait
+  mocks for downstream dependencies; integration tests exercise
+  the trait impls directly without orchestration in front of
+  them; nothing bridges the two. Categorized:
+
+  * **Category A (DLQ orchestration → real publisher/reader)** is
+    what the cucumber harness closes for saga/PM/projector and
+    the aggregate refactor closes for aggregate.
+  * **Category B (higher-leverage orchestration → real storage /
+    bus seams)** logged to local todos as focused integration
+    tests, not Gherkin: aggregate-pipeline → EventStore,
+    PM-persist → EventStore, pipeline → SnapshotRepository,
+    projector → EventBus (projection streaming), status DLQ
+    admin gRPC → Reader → DB. These are smaller than acceptance
+    tests and don't need feature-file framing -- they're
+    contract drift between a coordinator and one real downstream
+    impl.
+  * **Category C (full-stack cluster acceptance)** reframed by
+    the user: these are acceptance tests against a deployed
+    Kind cluster, not "deferred gaps." Logged to local todos as
+    tournament-shaped fixtures -- a full poker game played by
+    bots that exercises every coordinator + bus + storage path
+    end-to-end. Lives in `tests/acceptance/features/` (the
+    `end_to_end.feature` placeholder is already there).
+
+  See `.tasks/todos.md` for the explicit task list. The audit
+  itself is logged so future readers don't accidentally re-inherit
+  the gaps.
