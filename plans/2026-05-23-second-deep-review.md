@@ -1511,3 +1511,34 @@ After R2-02-LIVE lands, update or delete the memory note.
   Next: pre-5a refactor commit (`CommandOutcome::Rejected` carries
   `tonic::Code`, broaden `is_retryable_status`, update consumers
   and test fakes), then step 5a proper.
+- 2026-05-26 R2-15 steps 5a, 5b, 6, 8 all landed in a single
+  session. Pre-5a refactor (`189ccb4a`): `CommandOutcome::Rejected
+  { code, message }`, broadened `is_retryable_status` with the
+  sequence-conflict carve-out preserved, drift-protection test
+  pinning the alignment with `classify_for_dlq`. Step 5a
+  (`733c7423`): saga DLQ at immediate-rejection (gated on
+  `Immediate`) + retry-exhausted (`SagaRetryBuilder::execute`
+  reads a shared `RetryExhaustionTracker`); 3 new unit tests +
+  saga bin wiring. Step 5b (`0ce35d80`): PM DLQ at four sites —
+  persist retry-exhausted, persist immediate-Rejected, command
+  Rejected, H-14 Decision-mode degraded; 5 new unit tests + PM
+  bin wiring (both `pm_factory` for coord and the bus-subscriber
+  factory). Step 6 (`20419011`): projector DLQ at the single
+  handler-error site, with the 4xx-class-DLQ-and-ack vs
+  5xx-class-propagate split; 4 new unit tests + projector bin
+  wiring. Step 8 (`03e16449`): `init_dlq_reader` factory exported
+  alongside `init_dlq_publisher`, wired into `angzarr_status.rs`
+  to drop the hard-coded `NoopDeadLetterReader`. 3 new factory
+  tests pin the noop / sqlite-in-memory / unknown-storage-type
+  contracts. Lib test count: 1019 → 1034 (+15). All commits
+  passed the container precommit (fmt + clippy --all-targets +
+  full lib suite). Remaining R2-15 follow-ups: Gherkin features
+  (`features/client/dlq.feature`,
+  `features/operator/dlq_boot.feature`) and testcontainer
+  round-trip integration tests
+  (`tests/dlq_{aggregate,saga,pm,projector}_round_trip.rs`).
+  These were not attempted this session because they need
+  runner setup (cucumber harness) and external infrastructure
+  (Postgres + AMQP testcontainers) respectively; per CLAUDE.md
+  "tests must execute" they need their own session to land
+  correctly.
