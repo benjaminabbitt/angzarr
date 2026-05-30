@@ -187,13 +187,25 @@ pub async fn init_event_store(
                 .to_string(),
         ))),
         #[cfg(feature = "bigtable")]
-        BackendConfig::Bigtable(_) => Err(Box::new(StorageError::NotImplemented(
-            "bigtable event store not yet migrated to the registry factory".to_string(),
-        ))),
+        BackendConfig::Bigtable(c) => {
+            let store = super::bigtable::BigtableEventStore::new(
+                &c.project_id,
+                &c.instance_id,
+                &c.events_table,
+                c.emulator_host.as_deref(),
+            )
+            .await?;
+            Ok(Arc::new(crate::advice::Instrumented::new(
+                store, "bigtable",
+            )))
+        }
         #[cfg(feature = "dynamo")]
-        BackendConfig::Dynamo(_) => Err(Box::new(StorageError::NotImplemented(
-            "dynamo event store not yet migrated to the registry factory".to_string(),
-        ))),
+        BackendConfig::Dynamo(c) => {
+            let store =
+                super::dynamo::DynamoEventStore::new(&c.events_table, c.endpoint_url.as_deref())
+                    .await?;
+            Ok(Arc::new(crate::advice::Instrumented::new(store, "dynamo")))
+        }
         BackendConfig::Composite(_) => Err(Box::new(StorageError::NotImplemented(
             "composite event store (CompositeEventStore) not yet implemented".to_string(),
         ))),
@@ -243,6 +255,28 @@ pub async fn init_snapshot_store(
                 Err(Box::new(feature_disabled("redis", "redis")))
             }
         }
+        #[cfg(feature = "bigtable")]
+        BackendConfig::Bigtable(c) => {
+            let store = super::bigtable::BigtableSnapshotStore::new(
+                &c.project_id,
+                &c.instance_id,
+                &c.snapshots_table,
+                c.emulator_host.as_deref(),
+            )
+            .await?;
+            Ok(Arc::new(crate::advice::Instrumented::new(
+                store, "bigtable",
+            )))
+        }
+        #[cfg(feature = "dynamo")]
+        BackendConfig::Dynamo(c) => {
+            let store = super::dynamo::DynamoSnapshotStore::new(
+                &c.snapshots_table,
+                c.endpoint_url.as_deref(),
+            )
+            .await?;
+            Ok(Arc::new(crate::advice::Instrumented::new(store, "dynamo")))
+        }
         #[allow(unreachable_patterns)]
         other => Err(Box::new(StorageError::UnknownType(format!(
             "backend type {} cannot serve as a snapshot store",
@@ -281,6 +315,28 @@ pub async fn init_position_store_registry(
                 let _ = c;
                 Err(Box::new(feature_disabled("postgres", "postgres")))
             }
+        }
+        #[cfg(feature = "bigtable")]
+        BackendConfig::Bigtable(c) => {
+            let store = super::bigtable::BigtablePositionStore::new(
+                &c.project_id,
+                &c.instance_id,
+                &c.positions_table,
+                c.emulator_host.as_deref(),
+            )
+            .await?;
+            Ok(Arc::new(crate::advice::Instrumented::new(
+                store, "bigtable",
+            )))
+        }
+        #[cfg(feature = "dynamo")]
+        BackendConfig::Dynamo(c) => {
+            let store = super::dynamo::DynamoPositionStore::new(
+                &c.positions_table,
+                c.endpoint_url.as_deref(),
+            )
+            .await?;
+            Ok(Arc::new(crate::advice::Instrumented::new(store, "dynamo")))
         }
         #[allow(unreachable_patterns)]
         other => Err(Box::new(StorageError::UnknownType(format!(

@@ -761,6 +761,7 @@ impl EventStore for DynamoEventStore {
                         name: edition,
                         divergences: vec![],
                     }),
+                    ext: None,
                 }),
                 pages,
                 snapshot: None,

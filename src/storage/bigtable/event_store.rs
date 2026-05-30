@@ -1142,6 +1142,7 @@ impl EventStore for BigtableEventStore {
                         name: edition,
                         divergences: vec![],
                     }),
+                    ext: None,
                 }),
                 pages,
                 snapshot: None,
