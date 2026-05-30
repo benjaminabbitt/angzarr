@@ -53,7 +53,7 @@ use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::proto::process_manager_coordinator_service_server::ProcessManagerCoordinatorServiceServer;
 use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
 use angzarr::services::PmCoord;
-use angzarr::storage::init_storage;
+use angzarr::storage::{init_event_store, init_snapshot_store};
 use angzarr::transport::{connect_to_address, grpc_trace_layer, max_grpc_message_size};
 use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints};
@@ -105,7 +105,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize storage for direct PM state persistence
-    let (event_store, snapshot_store) = init_storage(&bootstrap.config.storage).await?;
+    let event_store = init_event_store(&bootstrap.config.storage).await?;
+    let snapshot_store = init_snapshot_store(&bootstrap.config.storage).await?;
     info!("PM storage initialized for direct state persistence");
 
     // Initialize event bus (publisher) for PM state events

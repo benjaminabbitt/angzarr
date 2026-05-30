@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::storage::StorageConfig;
+use crate::storage::StorageRegistryConfig;
 use crate::transport::TransportConfig;
 
 /// Server configuration.
@@ -92,7 +92,7 @@ pub struct ServiceConfig {
     /// Per-service storage configuration.
     /// If not set, falls back to the root storage config.
     #[serde(default)]
-    pub storage: Option<StorageConfig>,
+    pub storage: Option<StorageRegistryConfig>,
 }
 
 impl ServiceConfig {
@@ -141,7 +141,7 @@ pub type TargetConfig = ServiceConfig;
 pub struct ServiceConfigOverrides {
     /// Override storage configuration.
     #[serde(default)]
-    pub storage: Option<StorageConfig>,
+    pub storage: Option<StorageRegistryConfig>,
     /// Additional environment variables (merged with file's env).
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,

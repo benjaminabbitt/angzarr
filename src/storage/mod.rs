@@ -27,9 +27,15 @@ pub use position_store::PositionStore;
 pub use snapshot_store::SnapshotStore;
 
 // Re-export from submodules
-pub use config::{PostgresConfig, RedisConfig, SnapshotsEnableConfig, SqliteConfig, StorageConfig};
+pub use config::{
+    PostgresConfig, RedisConfig, SnapshotsEnableConfig, SqliteConfig, StorageConfig,
+    StorageRegistryConfig,
+};
 pub use error::{errmsg, Result, StorageError};
-pub use factory::{init_position_store, init_storage, PositionBackend, StoresBackend};
+pub use factory::{
+    init_event_store, init_position_store, init_position_store_registry, init_snapshot_store,
+    init_storage, PositionBackend, StoresBackend,
+};
 
 // Implementation modules
 #[cfg(feature = "bigtable")]

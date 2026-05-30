@@ -70,7 +70,7 @@ use angzarr::proto::{
     event_query_service_server::EventQueryServiceServer,
 };
 use angzarr::services::{AggregateService, EventQueryService, Upcaster};
-use angzarr::storage::init_storage;
+use angzarr::storage::{init_event_store, init_snapshot_store};
 use angzarr::transport::{grpc_trace_layer, max_grpc_message_size, serve_with_transport};
 
 #[tokio::main]
@@ -110,7 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let (event_store, snapshot_store) = init_storage(&config.storage).await?;
+    let event_store = init_event_store(&config.storage).await?;
+    let snapshot_store = init_snapshot_store(&config.storage).await?;
     info!("Storage initialized");
 
     let target = config

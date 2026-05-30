@@ -76,7 +76,7 @@ use crate::bus::MessagingConfig;
 use crate::dlq::DlqConfig;
 use crate::payload_store::PayloadOffloadConfig;
 use crate::services::UpcasterConfig;
-use crate::storage::StorageConfig;
+use crate::storage::StorageRegistryConfig;
 use crate::transport::TransportConfig;
 
 /// Main application configuration.
@@ -86,7 +86,7 @@ pub struct Config {
     /// Server configuration.
     pub server: ServerConfig,
     /// Storage configuration.
-    pub storage: StorageConfig,
+    pub storage: StorageRegistryConfig,
     /// Transport configuration.
     pub transport: TransportConfig,
     /// Messaging configuration (optional).
