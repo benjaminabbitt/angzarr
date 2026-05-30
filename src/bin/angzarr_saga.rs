@@ -36,7 +36,7 @@
 //! - TARGET_COMMAND: Optional command to spawn saga (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing (format: "domain=address,...")
-//! - MESSAGING_TYPE: amqp, kafka, or ipc
+//! - MESSAGING_TYPE: amqp or kafka
 //! - ANGZARR_COORDINATOR_PORT: Port for CASCADE mode coordinator (default: 1350)
 
 use std::sync::Arc;

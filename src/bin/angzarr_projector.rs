@@ -23,7 +23,7 @@
 //! - TARGET_ADDRESS: Projector gRPC address (e.g., "localhost:50051")
 //! - TARGET_COMMAND: Optional command to spawn projector (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
-//! - MESSAGING_TYPE: amqp, kafka, or ipc
+//! - MESSAGING_TYPE: amqp or kafka
 //! - STREAM_OUTPUT: Set to "true" to publish projector output (default: false)
 
 use std::path::Path;

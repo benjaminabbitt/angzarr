@@ -4,7 +4,7 @@
 //! - `EventBus` trait: Event delivery to projectors/sagas
 //! - `EventHandler` trait: For processing events
 //! - Bus configuration types
-//! - Implementations: AMQP (RabbitMQ), Kafka, Channel, IPC, NATS, Pub/Sub, SNS/SQS
+//! - Implementations: AMQP (RabbitMQ), Kafka, Channel, Pub/Sub, SNS/SQS
 
 use std::sync::Arc;
 
@@ -22,13 +22,9 @@ pub mod traits;
 #[cfg(feature = "amqp")]
 pub mod amqp;
 pub mod dispatch;
-#[cfg(unix)]
-pub mod ipc;
 #[cfg(feature = "kafka")]
 pub mod kafka;
 pub mod mock;
-#[cfg(feature = "nats")]
-pub mod nats;
 pub mod offloading;
 #[cfg(feature = "pubsub")]
 pub mod pubsub;
@@ -36,8 +32,6 @@ pub mod pubsub;
 pub mod sns_sqs;
 
 // Re-export core types from submodules
-#[cfg(unix)]
-pub use config::IpcBusConfig;
 pub use config::{
     AmqpBusConfig, EventBusMode, KafkaConfig, MessagingConfig, PubSubBusConfig, SnsSqsBusConfig,
 };
@@ -54,15 +48,9 @@ pub use traits::{
 // Re-export implementation types
 #[cfg(feature = "amqp")]
 pub use amqp::{AmqpConfig, AmqpEventBus};
-#[cfg(unix)]
-pub use ipc::{
-    IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus, SubscriberInfo, SUBSCRIBERS_ENV_VAR,
-};
 #[cfg(feature = "kafka")]
 pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
 pub use mock::MockEventBus;
-#[cfg(feature = "nats")]
-pub use nats::{NatsBusConfig, NatsEventBus};
 pub use offloading::{OffloadingConfig, OffloadingEventBus};
 #[cfg(feature = "pubsub")]
 pub use pubsub::{PubSubConfig, PubSubEventBus};

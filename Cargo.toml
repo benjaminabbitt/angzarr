@@ -71,7 +71,6 @@ aws-k8s = ["dynamo", "sns-sqs", "s3", "otel"]
 # =============================================================================
 amqp = ["dep:lapin", "dep:deadpool-lapin"]
 kafka = ["dep:rdkafka"]
-nats = ["dep:async-nats"]
 pubsub = ["dep:gcloud-pubsub", "dep:gcloud-googleapis"]
 sns-sqs = ["dep:aws-sdk-sns", "dep:aws-sdk-sqs", "dep:aws-config"]
 
@@ -184,9 +183,6 @@ redis = { version = "0.27", features = ["aio", "connection-manager", "tokio-comp
 
 # Kafka (optional)
 rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"], optional = true }
-
-# NATS JetStream (optional)
-async-nats = { version = "0.38", optional = true }
 
 # Google Pub/Sub (optional)
 # gcloud-pubsub is yoshidan's crate (was google-cloud-pubsub before name donation to Google)
@@ -314,12 +310,6 @@ name = "storage_immudb"
 required-features = ["immudb"]
 
 [[test]]
-name = "storage_nats"
-# NATS JetStream provides distributed event storage with replay. Testing ensures
-# events, snapshots, and positions persist correctly in the JetStream KV store.
-required-features = ["nats"]
-
-[[test]]
 name = "storage_sqlite"
 # SQLite provides embedded storage for local-dev mode. Testing ensures all three
 # stores (Event, Snapshot, Position) work correctly with in-memory SQLite.
@@ -332,12 +322,6 @@ name = "storage_postgres"
 required-features = ["postgres"]
 
 # --- Bus Contract Tests ---
-
-[[test]]
-name = "bus_nats"
-# NATS JetStream as event bus. Testing ensures publish/subscribe semantics,
-# consumer groups, and message acknowledgment work correctly.
-required-features = ["nats"]
 
 [[test]]
 name = "bus_amqp"

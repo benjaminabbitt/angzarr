@@ -30,7 +30,7 @@
 //! - TARGET_COMMAND: Optional command to spawn PM (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing
-//! - MESSAGING_TYPE: amqp, kafka, or ipc
+//! - MESSAGING_TYPE: amqp or kafka
 //! - ANGZARR_COORDINATOR_PORT: Port for CASCADE mode coordinator (default: 1360)
 
 use std::sync::Arc;
@@ -43,7 +43,7 @@ use tracing::{error, info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::bus::{EventBus, EventBusMode, IpcConfig, IpcEventBus, MockEventBus};
+use angzarr::bus::{EventBus, EventBusMode, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::descriptor::parse_subscriptions;
 use angzarr::dlq::init_dlq_publisher;
@@ -114,10 +114,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "amqp" => {
             let amqp_config = AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_config).await?)
-        }
-        "ipc" => {
-            let ipc_config = IpcConfig::publisher(&messaging.ipc.base_path);
-            Arc::new(IpcEventBus::new(ipc_config))
         }
         _ => {
             warn!("No messaging configured for PM event publishing, using mock");

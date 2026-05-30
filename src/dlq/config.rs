@@ -146,7 +146,7 @@ impl DlqConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct DlqTargetConfig {
-    /// DLQ backend type: "amqp", "kafka", "nats", "pubsub", "sns-sqs",
+    /// DLQ backend type: "amqp", "kafka", "pubsub", "sns-sqs",
     /// "database", "filesystem", "offload-filesystem", "offload-gcs",
     /// "offload-s3", "logging", "channel", "noop"
     #[serde(rename = "type")]
@@ -156,8 +156,6 @@ pub struct DlqTargetConfig {
     pub amqp: Option<AmqpDlqConfig>,
     /// Kafka-specific configuration.
     pub kafka: Option<KafkaDlqConfig>,
-    /// NATS-specific configuration.
-    pub nats: Option<NatsDlqConfig>,
     /// Google Pub/Sub-specific configuration.
     pub pubsub: Option<PubSubDlqConfig>,
     /// AWS SNS/SQS-specific configuration.
@@ -237,25 +235,6 @@ impl Default for KafkaDlqConfig {
             sasl_password: None,
             sasl_mechanism: None,
             security_protocol: None,
-        }
-    }
-}
-
-/// NATS-specific DLQ configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct NatsDlqConfig {
-    /// NATS server URL.
-    pub url: String,
-    /// Stream prefix for DLQ topics.
-    pub stream_prefix: String,
-}
-
-impl Default for NatsDlqConfig {
-    fn default() -> Self {
-        Self {
-            url: "nats://localhost:4222".to_string(),
-            stream_prefix: "angzarr-dlq".to_string(),
         }
     }
 }

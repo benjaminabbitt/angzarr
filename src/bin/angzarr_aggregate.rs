@@ -31,7 +31,6 @@
 //! - kafka: Kafka/Redpanda (ANGZARR__MESSAGING__BOOTSTRAP_SERVERS)
 //! - pubsub: GCP Pub/Sub (ANGZARR__MESSAGING__PROJECT_ID)
 //! - sns-sqs: AWS SNS/SQS (ANGZARR__MESSAGING__AWS_REGION)
-//! - nats: NATS JetStream (ANGZARR__MESSAGING__NATS_URL)
 //! - ipc: Unix domain sockets (local-dev mode)
 //! - channel: In-memory (testing only)
 //!
@@ -59,7 +58,7 @@ use tracing::{error, info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::AmqpEventBus;
-use angzarr::bus::{EventBus, IpcEventBus, MockEventBus};
+use angzarr::bus::{EventBus, MockEventBus};
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 #[cfg(feature = "k8s")]
 use angzarr::discovery::K8sServiceDiscovery;
@@ -163,14 +162,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             let amqp_bus_config = angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
-        }
-        Some(messaging) if messaging.messaging_type == "ipc" => {
-            info!(
-                "Using IPC for event publishing: {}",
-                messaging.ipc.base_path
-            );
-            let ipc_config = angzarr::bus::IpcConfig::publisher(&messaging.ipc.base_path);
-            Arc::new(IpcEventBus::new(ipc_config))
         }
         _ => {
             warn!("No messaging configured, using mock event bus (events not published)");

@@ -7,7 +7,7 @@ use serde::Deserialize;
 /// The `messaging_type` field is a string that identifies which backend to use.
 /// Each backend module checks if the type matches and handles creation.
 ///
-/// Known types: "amqp", "kafka", "channel", "ipc", "nats", "pubsub", "sns-sqs"
+/// Known types: "amqp", "kafka", "channel", "pubsub", "sns-sqs"
 ///
 /// # DLQ schema (R2-15)
 ///
@@ -36,11 +36,6 @@ pub struct MessagingConfig {
     pub amqp: AmqpBusConfig,
     /// Kafka-specific configuration.
     pub kafka: KafkaConfig,
-    /// IPC-specific configuration (for embedded mode).
-    #[cfg(unix)]
-    pub ipc: IpcBusConfig,
-    /// NATS-specific configuration.
-    pub nats: NatsBusConfig,
     /// Google Pub/Sub-specific configuration.
     pub pubsub: PubSubBusConfig,
     /// AWS SNS/SQS-specific configuration.
@@ -53,9 +48,6 @@ impl Default for MessagingConfig {
             messaging_type: "channel".to_string(),
             amqp: AmqpBusConfig::default(),
             kafka: KafkaConfig::default(),
-            #[cfg(unix)]
-            ipc: IpcBusConfig::default(),
-            nats: NatsBusConfig::default(),
             pubsub: PubSubBusConfig::default(),
             sns_sqs: SnsSqsBusConfig::default(),
         }
@@ -147,83 +139,6 @@ impl Default for KafkaConfig {
     }
 }
 
-/// IPC-specific configuration (for embedded mode).
-#[cfg(unix)]
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct IpcBusConfig {
-    /// Base path for pipes.
-    pub base_path: String,
-    /// Subscriber name (for subscriber mode).
-    pub subscriber_name: Option<String>,
-    /// Single domain to subscribe to (simpler env var).
-    pub domain: Option<String>,
-    /// Domains to subscribe to (for subscriber mode) - comma-separated when set via env var.
-    pub domains: Option<Vec<String>>,
-}
-
-#[cfg(unix)]
-impl IpcBusConfig {
-    /// Get domains as a Vec, preferring `domains` over `domain`.
-    pub fn get_domains(&self) -> Vec<String> {
-        self.domains
-            .clone()
-            .or_else(|| {
-                self.domain.as_ref().map(|d| {
-                    // Support comma-separated domains in the single domain field
-                    d.split(',').map(|s| s.trim().to_string()).collect()
-                })
-            })
-            .unwrap_or_default()
-    }
-}
-
-#[cfg(unix)]
-impl Default for IpcBusConfig {
-    fn default() -> Self {
-        Self {
-            base_path: "/tmp/angzarr".to_string(),
-            subscriber_name: None,
-            domain: None,
-            domains: None,
-        }
-    }
-}
-
-/// NATS JetStream-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct NatsBusConfig {
-    /// NATS server URL.
-    pub url: String,
-    /// Stream prefix for topics.
-    pub stream_prefix: String,
-    /// Consumer name for subscriptions.
-    pub consumer_name: Option<String>,
-    /// Number of stream replicas.
-    pub replicas: u32,
-    /// Retention policy: "limits", "interest", "workqueue".
-    pub retention: String,
-    /// Maximum age for messages in hours.
-    pub max_age_hours: u64,
-    /// Domains to subscribe to.
-    pub domains: Option<Vec<String>>,
-}
-
-impl Default for NatsBusConfig {
-    fn default() -> Self {
-        Self {
-            url: "nats://localhost:4222".to_string(),
-            stream_prefix: "angzarr".to_string(),
-            consumer_name: None,
-            replicas: 1,
-            retention: "limits".to_string(),
-            max_age_hours: 168, // 7 days
-            domains: None,
-        }
-    }
-}
-
 /// Google Pub/Sub-specific configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -273,7 +188,3 @@ impl Default for SnsSqsBusConfig {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "config.test.rs"]
-mod tests;
