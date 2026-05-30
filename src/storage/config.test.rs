@@ -159,6 +159,24 @@ fn test_registry_default_validates() {
     assert!(cfg.validate().is_ok());
 }
 
+/// resolve() returns the backend referenced by each role (the factory's accessor).
+#[test]
+fn test_registry_resolve_per_role() {
+    let cfg: StorageRegistryConfig = serde_yaml::from_str(FULL_REGISTRY_YAML).unwrap();
+    assert_eq!(
+        cfg.resolve(StorageRole::Event).unwrap().type_name(),
+        "postgres"
+    );
+    assert_eq!(
+        cfg.resolve(StorageRole::Snapshot).unwrap().type_name(),
+        "redis"
+    );
+    assert_eq!(
+        cfg.resolve(StorageRole::Position).unwrap().type_name(),
+        "postgres"
+    );
+}
+
 // ============================================================================
 // SqliteConfig Tests
 // ============================================================================

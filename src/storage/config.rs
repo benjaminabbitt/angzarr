@@ -329,6 +329,28 @@ impl StorageRegistryConfig {
         }
         Ok(())
     }
+
+    /// Resolve a role to its referenced backend config, re-checking capability.
+    /// The factory uses this to choose which backend to construct for a role.
+    #[allow(dead_code)]
+    pub fn resolve(&self, role: StorageRole) -> std::result::Result<&BackendConfig, String> {
+        let name = match role {
+            StorageRole::Event => &self.events.backend,
+            StorageRole::Snapshot => &self.snapshots.backend,
+            StorageRole::Position => &self.positions.backend,
+        };
+        let backend = self
+            .backends
+            .get(name)
+            .ok_or_else(|| format!("storage role references unknown backend '{name}'"))?;
+        if !backend.supports_role(role) {
+            return Err(format!(
+                "backend '{name}' (type {}) cannot serve the requested role",
+                backend.type_name()
+            ));
+        }
+        Ok(backend)
+    }
 }
 
 /// PostgreSQL-specific configuration.
