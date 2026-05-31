@@ -10,7 +10,7 @@ mod storage;
 
 use std::time::Duration;
 
-use angzarr::storage::ImmudbEventStore;
+use angzarr::storage::{AddMeta, ImmudbEventStore};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
@@ -102,6 +102,7 @@ async fn connect_and_init(connection_string: &str) -> (sqlx::PgPool, ImmudbEvent
             source_domain  VARCHAR(64),
             source_root    VARCHAR(36),
             source_seq     INTEGER,
+            ext            BLOB,
             PRIMARY KEY (domain, edition, root, sequence)
         )
     "#;
@@ -162,18 +163,16 @@ async fn test_immudb_correlation_queries() {
     let root2 = Uuid::new_v4();
 
     // Add events with same correlation ID across different aggregates.
-    // C-18 fix: trait `add()` now takes 7 args (added `external_id`,
-    // `source_info` for idempotency claims). Pass None for both — these
-    // tests don't exercise the claim paths.
     store
         .add(
             "domain_a",
             "angzarr",
             root1,
             vec![storage::event_store_tests::make_event(0, "EventA")],
-            &correlation_id,
-            None,
-            None,
+            &AddMeta {
+                correlation_id: &correlation_id,
+                ..Default::default()
+            },
         )
         .await
         .expect("add to domain_a failed");
@@ -184,9 +183,10 @@ async fn test_immudb_correlation_queries() {
             "angzarr",
             root2,
             vec![storage::event_store_tests::make_event(0, "EventB")],
-            &correlation_id,
-            None,
-            None,
+            &AddMeta {
+                correlation_id: &correlation_id,
+                ..Default::default()
+            },
         )
         .await
         .expect("add to domain_b failed");
@@ -228,16 +228,13 @@ async fn test_immudb_edition_composite_read() {
     let domain = "test_edition";
 
     // Add events to main timeline (angzarr edition).
-    // C-18 fix: trait `add()` now takes 7 args.
     store
         .add(
             domain,
             "angzarr",
             root,
             storage::event_store_tests::make_events(0, 5),
-            "",
-            None,
-            None,
+            &AddMeta::default(),
         )
         .await
         .expect("add to main timeline failed");
@@ -249,9 +246,7 @@ async fn test_immudb_edition_composite_read() {
             "feature-x",
             root,
             storage::event_store_tests::make_events(3, 3), // sequences 3, 4, 5
-            "",
-            None,
-            None,
+            &AddMeta::default(),
         )
         .await
         .expect("add to feature edition failed");
@@ -313,16 +308,13 @@ async fn test_immudb_delete_not_supported() {
     assert_eq!(next, 0, "new aggregate should have next_sequence 0");
 
     // Add some events.
-    // C-18 fix: trait `add()` now takes 7 args.
     store
         .add(
             domain,
             "test-edition",
             root,
             storage::event_store_tests::make_events(0, 3),
-            "",
-            None,
-            None,
+            &AddMeta::default(),
         )
         .await
         .expect("add should succeed");

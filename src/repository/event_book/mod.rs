@@ -374,15 +374,19 @@ impl EventBookRepository {
         source_info: Option<&crate::storage::SourceInfo>,
     ) -> Result<AddOutcome> {
         let (domain, root_uuid, correlation_id) = extract_cover(book)?;
+        let ext = book.cover.as_ref().and_then(|c| c.ext.as_ref());
         self.event_store
             .add(
                 domain,
                 edition,
                 root_uuid,
                 book.pages.clone(),
-                correlation_id,
-                external_id,
-                source_info,
+                &crate::storage::AddMeta {
+                    correlation_id,
+                    external_id,
+                    source_info,
+                    ext,
+                },
             )
             .await
     }

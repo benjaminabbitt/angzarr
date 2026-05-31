@@ -237,7 +237,10 @@ fn test_assemble_event_books_single() {
     let mut map = HashMap::new();
     map.insert(
         ("orders".to_string(), "angzarr".to_string(), root),
-        vec![make_event_with_sequence(0), make_event_with_sequence(1)],
+        BookParts {
+            pages: vec![make_event_with_sequence(0), make_event_with_sequence(1)],
+            ext: None,
+        },
     );
 
     let result = assemble_event_books(map, "corr-123");
@@ -245,6 +248,31 @@ fn test_assemble_event_books_single() {
     assert_eq!(result[0].pages.len(), 2);
     assert_eq!(result[0].cover.as_ref().unwrap().correlation_id, "corr-123");
     assert_eq!(result[0].cover.as_ref().unwrap().domain, "orders");
+}
+
+/// A book's `ext` (parent-routing cover) reconstructs from [`BookParts::ext`].
+///
+/// Guards the systemic data-loss path: before this, `assemble_event_books`
+/// hardcoded `ext: None`, dropping the routing cover on every read.
+#[test]
+fn test_assemble_event_books_preserves_ext() {
+    let root = uuid::Uuid::new_v4();
+    let ext = prost_types::Any {
+        type_url: "type.example/ParentCover".to_string(),
+        value: vec![0xCA, 0xFE],
+    };
+    let mut map = HashMap::new();
+    map.insert(
+        ("orders".to_string(), "angzarr".to_string(), root),
+        BookParts {
+            pages: vec![make_event_with_sequence(0)],
+            ext: Some(ext.clone()),
+        },
+    );
+
+    let result = assemble_event_books(map, "corr-123");
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].cover.as_ref().unwrap().ext.as_ref(), Some(&ext));
 }
 
 /// Multiple aggregates produce multiple EventBooks.
@@ -257,11 +285,17 @@ fn test_assemble_event_books_multiple() {
     let mut map = HashMap::new();
     map.insert(
         ("orders".to_string(), "angzarr".to_string(), root1),
-        vec![make_event_with_sequence(0)],
+        BookParts {
+            pages: vec![make_event_with_sequence(0)],
+            ext: None,
+        },
     );
     map.insert(
         ("inventory".to_string(), "angzarr".to_string(), root2),
-        vec![make_event_with_sequence(0)],
+        BookParts {
+            pages: vec![make_event_with_sequence(0)],
+            ext: None,
+        },
     );
 
     let result = assemble_event_books(map, "corr-456");

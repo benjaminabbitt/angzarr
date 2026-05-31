@@ -75,27 +75,14 @@ impl<T: EventStore> EventStore for Instrumented<T> {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &crate::storage::AddMeta<'_>,
     ) -> Result<AddOutcome> {
         #[cfg(feature = "otel")]
         let start = std::time::Instant::now();
         #[cfg(feature = "otel")]
         let count = events.len();
 
-        let result = self
-            .inner
-            .add(
-                domain,
-                edition,
-                root,
-                events,
-                correlation_id,
-                external_id,
-                source_info,
-            )
-            .await;
+        let result = self.inner.add(domain, edition, root, events, meta).await;
 
         #[cfg(feature = "otel")]
         {

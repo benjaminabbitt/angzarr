@@ -13,7 +13,7 @@ use crate::discovery::StaticServiceDiscovery;
 use crate::proto::Snapshot;
 use crate::repository::SnapshotRepository;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
-use crate::storage::SnapshotStore;
+use crate::storage::{AddMeta, SnapshotStore};
 use crate::test_utils::make_event_page;
 
 fn build_ctx_with_stores(
@@ -49,9 +49,12 @@ async fn test_load_standard_path_uses_snapshot_when_present() {
             edition,
             root,
             (0..5).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -112,9 +115,12 @@ async fn test_load_explicit_divergence_uses_snapshot_when_present() {
             edition,
             root,
             (0..5).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -175,9 +181,12 @@ async fn test_load_explicit_divergence_falls_back_when_no_snapshot() {
             edition,
             root,
             (0..3).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();

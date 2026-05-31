@@ -33,18 +33,35 @@ pub fn fallback_edition(edition: &str) -> &str {
     }
 }
 
+/// Reconstruction inputs for a single EventBook.
+///
+/// Groups the ordered pages of one aggregate write with its parent-routing
+/// cover (`ext`, a packed parent `Cover`). Keeping `ext` alongside `pages` in
+/// the same map entry makes it impossible to desync the two during the
+/// row-grouping loops in each backend's `get_by_correlation`.
+#[derive(Default)]
+pub struct BookParts {
+    /// Ordered event pages for the aggregate.
+    pub pages: Vec<EventPage>,
+    /// Parent-aggregate routing cover (`Cover.ext`), if the write carried one.
+    /// All pages in a write share the same `ext`; the first non-empty value
+    /// seen for the book key wins.
+    pub ext: Option<prost_types::Any>,
+}
+
 /// Assemble EventBooks from grouped events.
 ///
-/// Takes a HashMap of (domain, edition, root) -> Vec<EventPage> and
-/// converts it to Vec<EventBook>. Used by get_by_correlation implementations
-/// across all storage backends.
+/// Takes a HashMap of (domain, edition, root) -> [`BookParts`] and converts it
+/// to Vec<EventBook>. Used by get_by_correlation implementations across all
+/// storage backends. The book's `ext` is reconstructed from [`BookParts::ext`]
+/// so the parent-routing cover survives the storage round-trip.
 pub fn assemble_event_books(
-    books_map: HashMap<(String, String, Uuid), Vec<EventPage>>,
+    books_map: HashMap<(String, String, Uuid), BookParts>,
     correlation_id: &str,
 ) -> Vec<EventBook> {
     books_map
         .into_iter()
-        .map(|((domain, edition, root), pages)| EventBook {
+        .map(|((domain, edition, root), parts)| EventBook {
             cover: Some(Cover {
                 domain,
                 root: Some(ProtoUuid {
@@ -55,9 +72,9 @@ pub fn assemble_event_books(
                     name: edition,
                     divergences: vec![],
                 }),
-                ext: None,
+                ext: parts.ext,
             }),
-            pages,
+            pages: parts.pages,
             snapshot: None,
             ..Default::default()
         })

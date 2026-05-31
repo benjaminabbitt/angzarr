@@ -198,9 +198,8 @@ impl<S: EventStore + 'static> CascadeReaper<S> {
                 &participant.edition,
                 participant.root,
                 vec![page],
-                "", // No correlation_id for framework events
-                None,
-                None,
+                // Framework revocation event: no correlation_id / idempotency / ext.
+                &crate::storage::AddMeta::default(),
             )
             .await?;
 

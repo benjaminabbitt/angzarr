@@ -113,6 +113,7 @@ pub mod schema {
             source_domain  VARCHAR(64),
             source_root    VARCHAR(36),
             source_seq     INTEGER,
+            ext            BLOB,
             PRIMARY KEY (domain, edition, root, sequence)
         )
     "#;

@@ -65,9 +65,12 @@ pub async fn persist_pm_event_book(
             edition,
             pm_root,
             process_events.pages.clone(),
-            correlation_id,
-            None, // No idempotency key for PM events
-            None, // No source tracking for PM events
+            &crate::storage::AddMeta {
+                correlation_id,
+                // No idempotency key / source tracking for PM events.
+                ext: process_events.cover.as_ref().and_then(|c| c.ext.as_ref()),
+                ..Default::default()
+            },
         )
         .await
     {

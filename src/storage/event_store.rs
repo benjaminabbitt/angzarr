@@ -3,6 +3,8 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use prost_types::Any;
+
 use super::Result;
 use crate::proto::EventPage;
 
@@ -42,6 +44,25 @@ impl SourceInfo {
     pub fn is_empty(&self) -> bool {
         self.edition.is_empty() && self.domain.is_empty()
     }
+}
+
+/// Metadata bundled with an [`EventStore::add`] call.
+///
+/// Groups the book-cover fields that travel with a write so `add` keeps a small
+/// signature and new cover/metadata fields (e.g. `ext`) are additive rather than
+/// signature-breaking. Borrowed; construct with `..Default::default()` for the
+/// fields a caller doesn't set.
+#[derive(Debug, Clone, Default)]
+pub struct AddMeta<'a> {
+    /// Workflow correlation id (propagates across commands/events).
+    pub correlation_id: &'a str,
+    /// External id for fact idempotency (exactly-once), if any.
+    pub external_id: Option<&'a str>,
+    /// Saga source-event tracking for idempotency, if saga-produced.
+    pub source_info: Option<&'a SourceInfo>,
+    /// Parent-aggregate routing cover (`Cover.ext`), if present. Persisted and
+    /// reconstructed so it survives a storage round-trip.
+    pub ext: Option<&'a Any>,
 }
 
 /// Outcome of an `add()` operation.
@@ -136,16 +157,13 @@ pub trait EventStore: Send + Sync {
     /// If `source_info` is `Some(info)` where info is non-empty:
     /// - Source info is stored with each event for saga provenance tracking
     /// - Enables idempotency checking for saga-produced commands
-    #[allow(clippy::too_many_arguments)]
     async fn add(
         &self,
         domain: &str,
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome>;
 
     /// Retrieve all events for an aggregate.

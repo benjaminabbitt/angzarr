@@ -51,6 +51,47 @@ test:
 # Run all checks (build + test + lint + fmt)
 check-all: build test lint fmt
 
+# === Code complexity (lizard) ===
+# lizard is a multi-language per-function cyclomatic complexity analyzer,
+# installed in the angzarr-rust image. Generated proto code, build output, and
+# the vendored container cargo cache are excluded so the numbers reflect
+# hand-written source. Globs are single-quoted so the host shell doesn't expand
+# them before lizard sees them.
+# Generated code excluded so the numbers reflect hand-written source:
+# Rust prost output (*.pb.rs and prost's src/gen/ dirs, e.g. sererr-proto),
+# Go gateway gRPC/gw output (*.pb.go / *.pb.gw.go), proto/generated dirs, and
+# build / vendored-cargo output.
+LIZARD_EXCLUDES := "-x '*.pb.rs' -x '*.pb.go' -x '*.pb.gw.go' -x '*/proto/*' -x '*/gen/*' -x '*/generated/*' -x '*/target/*' -x '*/.cargo-container/*'"
+
+# Default scan scope: the Rust framework (src, crates) and the Go gRPC gateway.
+# The sererr submodule is intentionally excluded — it's a separate repo with its
+# own tooling. Pass it explicitly (`just complexity sererr`) to scan it.
+COMPLEXITY_PATHS := "src crates gateway"
+
+# Per-function cyclomatic complexity as a human-readable table + warnings.
+# Defaults to COMPLEXITY_PATHS; pass paths/flags to scope. Leading `-` ignores
+# lizard's non-zero exit when functions exceed the threshold, so this stays a
+# report rather than a gate.
+complexity *ARGS:
+    -lizard {{LIZARD_EXCLUDES}} {{ if ARGS == "" { COMPLEXITY_PATHS } else { ARGS } }}
+
+# Per-function complexity as CSV (header prepended) for LLM/tooling ingest.
+# Columns: nloc,ccn,tokens,params,length,location,file,function,long_name,start,end
+complexity-csv *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo "nloc,ccn,tokens,params,length,location,file,function,long_name,start,end"
+    lizard {{LIZARD_EXCLUDES}} --csv {{ if ARGS == "" { COMPLEXITY_PATHS } else { ARGS } }} || true
+
+# Per-function COGNITIVE complexity (clippy). This is the authoritative Rust
+# complexity gate: unlike lizard's cyclomatic count it does not penalize the `?`
+# operator, so it tracks the complexity a reader actually experiences. Threshold
+# lives in clippy.toml. The lint is nursery/allow-by-default, enabled here
+# explicitly. Leading `-` keeps this a report — it does NOT fail the build (that
+# is deferred to a future enforcement phase; see doc/complexity-remediation.md).
+cognitive:
+    -cargo clippy --all-targets --features test-utils -- -A clippy::all -W clippy::cognitive_complexity
+
 # Pre-commit gate: fmt-check + lint + test in a SINGLE container/cargo
 # invocation. Avoids the inter-container `.cargo-lock` race that bites
 # when lefthook runs `just fmt`, `just lint`, `just test` as three

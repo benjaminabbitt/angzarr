@@ -51,7 +51,7 @@ use angzarr::orchestration::process_manager::grpc::persist_pm_event_book;
 use angzarr::proto::{
     event_page, page_header, Cover, Edition, EventBook, EventPage, PageHeader, Uuid as ProtoUuid,
 };
-use angzarr::storage::{EventStore, SqliteEventStore};
+use angzarr::storage::{AddMeta, EventStore, SqliteEventStore};
 use async_trait::async_trait;
 
 // ============================================================================
@@ -285,7 +285,18 @@ async fn pm_persist_publishes_only_new_events_not_history() {
     // we only want to observe what the post-load persist publishes.
     let seed_pages = pm_event_book("pm-domain", pm_root, "old-corr", None, &[0, 1, 2]).pages;
     event_store
-        .add("pm-domain", "", pm_root, seed_pages, "old-corr", None, None)
+        .add(
+            "pm-domain",
+            "",
+            pm_root,
+            seed_pages,
+            &AddMeta {
+                correlation_id: "old-corr",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .expect("seed prior PM events");
     assert_eq!(

@@ -39,6 +39,9 @@ pub enum Events {
     Committed,
     #[iden = "cascade_id"]
     CascadeId,
+    // Parent-aggregate routing cover (Cover.ext), serialized google.protobuf.Any.
+    #[iden = "ext"]
+    Ext,
 }
 
 /// Snapshots table schema.

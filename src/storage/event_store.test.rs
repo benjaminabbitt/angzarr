@@ -2,7 +2,7 @@
 //!
 //! These are pure data structures with simple methods - no async, no I/O.
 
-use super::{AddOutcome, CascadeParticipant, EventStore, SourceInfo};
+use super::{AddMeta, AddOutcome, CascadeParticipant, EventStore, SourceInfo};
 use crate::proto::{EventBook, EventPage};
 use crate::storage::{Result, StorageError};
 use async_trait::async_trait;
@@ -179,9 +179,7 @@ impl EventStore for DefaultImplStub {
         _edition: &str,
         _root: Uuid,
         _events: Vec<EventPage>,
-        _correlation_id: &str,
-        _external_id: Option<&str>,
-        _source_info: Option<&SourceInfo>,
+        _meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
         unimplemented!("not exercised in this test")
     }

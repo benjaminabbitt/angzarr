@@ -3,7 +3,9 @@ remotes:
         name: ""
         url: https://github.com/ctxloom/ctxloom-default
         version: v1
+        trust_bundles: true
     personal:
         name: ""
         url: https://github.com/benjaminabbitt/ctxloom-personal
         version: v1
+        trust_bundles: true

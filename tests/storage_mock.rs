@@ -35,5 +35,8 @@ async fn test_mock_event_store_sequence_rejection() {
     test_add_rejects_duplicate_sequences(&store).await;
     println!("  test_add_rejects_duplicate_sequences: PASSED");
 
+    test_cover_ext_round_trips(&store).await;
+    println!("  test_cover_ext_round_trips: PASSED");
+
     println!("=== Mock EventStore Sequence-Rejection Tests PASSED ===");
 }

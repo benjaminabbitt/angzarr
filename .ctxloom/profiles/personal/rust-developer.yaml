@@ -10,12 +10,12 @@ parents:
 
 bundles:
   # Personal practices
-  - core-practices
-  - developer-mindset
+  - personal/core-practices
+  - personal/developer-mindset
 
   # Rust patterns
-  - rust-test-support-pattern
+  - personal/rust-test-support-pattern
 
   # Personal tooling preferences
-  - just
-  - containers
+  - personal/just
+  - personal/containers

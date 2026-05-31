@@ -14,7 +14,8 @@ use crate::proto::{Cover, Edition, EventBook, EventPage, PageHeader, Snapshot, U
 use crate::proto_ext::EventPageExt;
 use crate::repository::EventBookRepository;
 use crate::storage::{
-    AddOutcome, CascadeParticipant, EventStore, Result as StorageResult, SnapshotStore, SourceInfo,
+    AddMeta, AddOutcome, CascadeParticipant, EventStore, Result as StorageResult, SnapshotStore,
+    SourceInfo,
 };
 
 use super::*;
@@ -91,9 +92,7 @@ impl EventStore for MockEventStore {
         _edition: &str,
         _root: Uuid,
         _pages: Vec<EventPage>,
-        _correlation_id: &str,
-        _external_id: Option<&str>,
-        _source_info: Option<&SourceInfo>,
+        _meta: &AddMeta<'_>,
     ) -> StorageResult<AddOutcome> {
         unimplemented!("Not needed for gap-fill tests")
     }

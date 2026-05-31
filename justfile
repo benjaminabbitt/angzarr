@@ -415,6 +415,30 @@ fmt:
 lint:
     just _container lint
 
+# === Code complexity (lizard, in container) ===
+# lizard is a multi-language per-function complexity analyzer baked into the
+# angzarr-rust image. These targets delegate into it (implementations live in
+# justfile.container), so no host install is needed.
+
+# Per-function cyclomatic complexity as a human-readable table + warnings.
+# Defaults to the Rust framework (src, crates) + Go gateway; pass paths/flags to
+# scope, e.g.
+#   just complexity src/bus
+#   just complexity -C 15 src         (warn on functions over CCN 15)
+complexity *ARGS:
+    just _container complexity {{ARGS}}
+
+# Same per-function analysis as CSV (header prepended) for LLM/tooling ingest.
+# Columns: nloc,ccn,tokens,params,length,location,file,function,long_name,start,end
+complexity-csv *ARGS:
+    just _container complexity-csv {{ARGS}}
+
+# Per-function COGNITIVE complexity (clippy) — the authoritative Rust gate.
+# Unlike `complexity` (lizard cyclomatic, which counts every `?`), this tracks
+# reader burden. Threshold in clippy.toml. Reports only; never fails the build.
+cognitive:
+    just _container cognitive
+
 # Run unit tests
 test:
     just _container test

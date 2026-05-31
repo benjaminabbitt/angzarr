@@ -17,7 +17,7 @@ use crate::proto::{event_page, page_header, EventPage, PageHeader, Snapshot, Sna
 use crate::proto_ext::EventPageExt;
 use crate::repository::SnapshotRepository;
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
-use crate::storage::SnapshotStore;
+use crate::storage::{AddMeta, SnapshotStore};
 use crate::test_utils::{make_event_book_with_root, make_event_page};
 
 /// Build an EventBookRepository wrapping the snapshot store in a
@@ -109,9 +109,12 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
             "test",
             root,
             (0..5).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -159,9 +162,12 @@ async fn test_get_from_to_returns_range() {
             "test",
             root,
             (0..10).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -301,9 +307,12 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
             "test",
             root,
             (0..5).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -347,9 +356,12 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
             "test",
             root,
             (0..5).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -397,9 +409,12 @@ async fn test_with_config_defaults_match_new_constructor() {
             "test",
             root,
             (0..3).map(make_event_page).collect(),
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -530,9 +545,12 @@ mod mock_integration {
                     test_event(3, "Event3"),
                     test_event(4, "Event4"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -593,9 +611,12 @@ mod mock_integration {
                     test_event(1, "Event1"),
                     test_event(2, "Event2"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -651,9 +672,12 @@ mod mock_integration {
                     test_event(3, "Event3"),
                     test_event(4, "Event4"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -700,9 +724,12 @@ mod mock_integration {
                     test_event(3, "Event3"),
                     test_event(4, "Event4"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -758,9 +785,12 @@ mod mock_integration {
                     test_event(1, "Event1"),
                     test_event(2, "Event2"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -811,9 +841,12 @@ mod mock_integration {
                     test_event(3, "Event3"),
                     test_event(4, "Event4"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -852,9 +885,12 @@ mod mock_integration {
                 "test",
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -894,9 +930,12 @@ mod mock_integration {
                     test_event(3, "Event3"),
                     test_event(4, "Event4"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -933,9 +972,12 @@ mod mock_integration {
                     test_event(3, "Event3"),
                     test_event(4, "Event4"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -967,9 +1009,12 @@ mod mock_integration {
                 "test",
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -999,9 +1044,12 @@ mod mock_integration {
                     test_event(1, "Event1"),
                     test_event(2, "Event2"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -1031,9 +1079,12 @@ mod mock_integration {
                 "test",
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();
@@ -1069,9 +1120,12 @@ mod mock_integration {
                     test_event(2, "Event2"),
                     test_event(3, "Event3"),
                 ],
-                "",
-                None,
-                None,
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
             )
             .await
             .unwrap();

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::CascadeReaper;
 use crate::proto::{EventPage, PageHeader};
-use crate::storage::{EventStore, MockEventStore};
+use crate::storage::{AddMeta, EventStore, MockEventStore};
 
 /// Create a test event with the given cascade tracking fields.
 fn make_test_event(
@@ -51,7 +51,18 @@ async fn test_no_stale_cascades_when_all_committed() {
     // Add committed events (no cascade_id)
     let event = make_test_event(0, false, None, Utc::now());
     store
-        .add("test", "angzarr", root, vec![event], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -71,7 +82,18 @@ async fn test_fresh_uncommitted_events_not_revoked() {
     // Add uncommitted event that was just created
     let event = make_test_event(0, true, Some(cascade_id), Utc::now());
     store
-        .add("test", "angzarr", root, vec![event], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -93,7 +115,18 @@ async fn test_stale_uncommitted_events_revoked() {
     let old_time = Utc::now() - chrono::Duration::hours(2);
     let event = make_test_event(0, true, Some(cascade_id), old_time);
     store
-        .add("test", "angzarr", root, vec![event], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -131,14 +164,36 @@ async fn test_resolved_cascades_not_revoked() {
     let old_time = Utc::now() - chrono::Duration::hours(2);
     let uncommitted = make_test_event(0, true, Some(cascade_id), old_time);
     store
-        .add("test", "angzarr", root, vec![uncommitted], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![uncommitted],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
     // Add a committed event with same cascade_id (simulates Confirmation/Revocation)
     let confirmation = make_test_event(1, false, Some(cascade_id), Utc::now());
     store
-        .add("test", "angzarr", root, vec![confirmation], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![confirmation],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -164,11 +219,33 @@ async fn test_multiple_participants_revoked() {
     let event2 = make_test_event(0, true, Some(cascade_id), old_time);
 
     store
-        .add("test", "angzarr", root1, vec![event1], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root1,
+            vec![event1],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
     store
-        .add("test", "angzarr", root2, vec![event2], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root2,
+            vec![event2],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -194,11 +271,33 @@ async fn test_multiple_stale_cascades() {
     let event2 = make_test_event(0, true, Some(cascade2), old_time);
 
     store
-        .add("test", "angzarr", root1, vec![event1], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root1,
+            vec![event1],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
     store
-        .add("test", "angzarr", root2, vec![event2], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root2,
+            vec![event2],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -218,7 +317,18 @@ async fn test_zero_timeout_revokes_all() {
     // Add uncommitted event that was just created
     let event = make_test_event(0, true, Some(cascade_id), Utc::now());
     store
-        .add("test", "angzarr", root, vec![event], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -248,9 +358,12 @@ async fn test_regular_committed_events_ignored() {
             "angzarr",
             root,
             vec![event1, event2],
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -307,7 +420,18 @@ async fn test_reaper_revocation_recognized_by_two_phase_transform() {
     let old_time = Utc::now() - chrono::Duration::hours(2);
     let stale_event = make_test_event(0, true, Some(cascade_id), old_time);
     store
-        .add("test", "angzarr", root, vec![stale_event], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![stale_event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -377,7 +501,18 @@ async fn test_reaper_revocation_uses_canonical_type_url() {
     let old_time = Utc::now() - chrono::Duration::hours(2);
     let stale_event = make_test_event(0, true, Some(cascade_id), old_time);
     store
-        .add("test", "angzarr", root, vec![stale_event], "", None, None)
+        .add(
+            "test",
+            "angzarr",
+            root,
+            vec![stale_event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -446,9 +581,7 @@ impl EventStore for FailingAddStore {
         edition: &str,
         root: Uuid,
         events: Vec<crate::proto::EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&crate::storage::SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> crate::storage::Result<crate::storage::AddOutcome> {
         // Detect whether this add carries a Revocation page.
         let has_revocation = events.iter().any(|page| match &page.payload {
@@ -471,17 +604,7 @@ impl EventStore for FailingAddStore {
             }
         }
 
-        self.inner
-            .add(
-                domain,
-                edition,
-                root,
-                events,
-                correlation_id,
-                external_id,
-                source_info,
-            )
-            .await
+        self.inner.add(domain, edition, root, events, meta).await
     }
 
     async fn get(
@@ -660,7 +783,18 @@ async fn test_reaper_recovers_after_partial_failure() {
     for root in &roots {
         let event = make_test_event(0, true, Some(cascade_id), old_time);
         inner
-            .add("test", "angzarr", *root, vec![event], "", None, None)
+            .add(
+                "test",
+                "angzarr",
+                *root,
+                vec![event],
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
+            )
             .await
             .unwrap();
     }
@@ -726,7 +860,18 @@ async fn test_reaper_second_run_is_noop_on_clean_cascade() {
     for root in &roots {
         let event = make_test_event(0, true, Some(cascade_id), old_time);
         store
-            .add("test", "angzarr", *root, vec![event], "", None, None)
+            .add(
+                "test",
+                "angzarr",
+                *root,
+                vec![event],
+                &AddMeta {
+                    correlation_id: "",
+                    external_id: None,
+                    source_info: None,
+                    ext: None,
+                },
+            )
             .await
             .unwrap();
     }
