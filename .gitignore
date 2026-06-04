@@ -16,6 +16,10 @@
 .plan/
 .tasks/
 
+# llm-tool-killer: config.yaml is tracked (hand-maintained rules); state.json
+# is the ephemeral confirm-window state written by the PreToolUse hook.
+.ltk/state.json
+
 # Secrets - never commit
 .env
 *.tfvars
