@@ -190,3 +190,36 @@ rules:
     match: { command: [cargo, publish] }
     message: "Publishing is part of the versionator/GitHub release flow, not a manual cargo publish."
     suggest: "versionator release push"
+  # Submodule-state mutations → confirm. These advance/remove/repoint the
+  # pinned submodule and break the check-submodules-clean precommit invariant.
+  # `git submodule status` and a plain `git submodule update` (restore to the
+  # pinned commit) are NOT matched — only the state-changing subcommands.
+  - id: submodule-mutation-via-confirm
+    match: { command: [git, submodule], args_any: ["--remote", "deinit", "sync", "set-url", "set-branch", "foreach", "absorbgitdirs"] }
+    mode: confirm
+    message: "This mutates submodule state (re-pins / removes / repoints) and can break the check-submodules-clean precommit gate. Make submodule changes in the submodule's own repo, then bump the pointer deliberately."
+
+  # ─── File-edit guards (match.path → Edit/Write/MultiEdit/NotebookEdit) ──────
+  # These fire only because the PreToolUse matcher was broadened beyond
+  # Bash|PowerShell to include the edit tools. Firm (no mode): repeating a
+  # hand-edit does not make it correct — the file is owned by a generator.
+  - id: no-hand-edit-version
+    match: { path: ["VERSION", "**/VERSION"] }
+    message: "VERSION is owned by versionator — a hand-edit desyncs the tag/branch/release flow. Bump it through versionator."
+    suggest: "versionator release push    # see /versionator-release"
+  - id: no-hand-edit-generated-proto
+    match: { path: ["**/*.pb.rs", "**/*.pb.go", "**/*_pb2.py", "**/*_pb2_grpc.py", "**/*_pb.js", "**/*_pb.d.ts"] }
+    message: "This is generated proto code — any hand-edit is overwritten on the next regen. Change the .proto source, then regenerate."
+    suggest: "just gateway-gen    # or: just proto / just buf-build"
+  - id: no-hand-edit-generated-dirs
+    match: { path: ["gateway/gen/"] }
+    message: "gateway/gen/ holds generated bindings — edits are lost on regen. Change the .proto source and regenerate."
+    suggest: "just gateway-gen"
+  # Edits inside a submodule (angzarr-project, sererr) belong in that
+  # submodule's own repo/PR, not this superproject. confirm (not firm): the
+  # proto source-of-truth lives in angzarr-project and IS edited here, so this
+  # is a speed bump — repeat to confirm you mean to edit in place.
+  - id: submodule-edit-confirm
+    match: { path: ["@submodules"] }
+    mode: confirm
+    message: "This file is inside a git submodule — its changes are committed in the submodule's own repo, not the superproject. Repeat to confirm an intentional in-place edit (e.g. proto source)."

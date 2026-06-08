@@ -2,20 +2,22 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "TodoWrite",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "ctxloom tasks capture --stdin"
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
             "command": "ctxloom tasks stamp-plan"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ltk evaluate --config .ltk/config.yaml"
           }
         ]
       }
@@ -26,46 +28,6 @@
           {
             "type": "command",
             "command": "ctxloom session bind"
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 1 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 2 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 3 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 4 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 5 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 6 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 7 --of 8 86d418f13dffbd1c",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "ctxloom hook inject-context --project '/home/babbitt/workspace/angzarr/core/main' --part 8 --of 8 86d418f13dffbd1c",
-            "timeout": 60
           }
         ]
       }
