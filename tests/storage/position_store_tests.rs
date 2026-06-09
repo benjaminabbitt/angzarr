@@ -61,6 +61,40 @@ pub async fn test_put_update<S: PositionStore>(store: &S) {
     assert_eq!(result, 25, "should return updated sequence");
 }
 
+/// S1 regression: repeated puts on the MAIN TIMELINE (sentinel editions,
+/// stored as SQL NULL since C-15) must UPSERT, not insert duplicate rows.
+///
+/// SQLite treats NULLs as DISTINCT in unique constraints, so after the 0006
+/// nullable-edition rebuild the positions upsert's
+/// `ON CONFLICT (handler, edition, domain, root)` can NEVER fire for
+/// main-timeline rows: every put inserts a fresh row, `get` returns an
+/// arbitrary one, and projector checkpoints freeze or regress. Postgres
+/// avoided this via `UNIQUE NULLS NOT DISTINCT`. The named-edition tests
+/// above never exercise this path — "test" is non-NULL — which is exactly
+/// how the bug stayed green.
+pub async fn test_put_update_main_timeline<S: PositionStore>(store: &S) {
+    let handler = "test_pos_update_main";
+    let domain = "test_domain";
+    let root = b"root_s1_main";
+
+    // "" is a main-timeline sentinel (stored as SQL NULL).
+    store.put(handler, domain, "", root, 10).await.unwrap();
+    store.put(handler, domain, "", root, 25).await.unwrap();
+    let result = store.get(handler, domain, "", root).await.unwrap().unwrap();
+    assert_eq!(
+        result, 25,
+        "main-timeline checkpoint must advance via upsert, not pile up duplicate rows"
+    );
+
+    // C-17 × S1: the monotonic guard must also hold on the main timeline.
+    store.put(handler, domain, "", root, 5).await.unwrap();
+    let result = store.get(handler, domain, "", root).await.unwrap().unwrap();
+    assert_eq!(
+        result, 25,
+        "stale main-timeline put must not regress (or duplicate) the checkpoint"
+    );
+}
+
 /// C-17 regression: `put` must never let the stored sequence move backwards.
 ///
 /// PositionStore is a checkpoint: projectors and sagas resume from the last
@@ -320,6 +354,9 @@ macro_rules! run_position_store_tests {
 
         test_put_update($store).await;
         println!("  test_put_update: PASSED");
+
+        test_put_update_main_timeline($store).await;
+        println!("  test_put_update_main_timeline: PASSED");
 
         test_put_monotonic_no_regression($store).await;
         println!("  test_put_monotonic_no_regression: PASSED");

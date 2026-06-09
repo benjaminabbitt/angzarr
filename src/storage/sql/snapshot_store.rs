@@ -185,7 +185,7 @@ macro_rules! impl_snapshot_store {
                 snapshot: crate::proto::Snapshot,
             ) -> crate::storage::Result<()> {
                 use prost::Message;
-                use sea_query::{Expr, OnConflict, Query};
+                use sea_query::{Expr, Query};
 
                 use crate::proto::SnapshotRetention;
                 use crate::storage::schema::Snapshots;
@@ -222,18 +222,18 @@ macro_rules! impl_snapshot_store {
                         created_at.into(),
                     ])
                     .on_conflict(
-                        OnConflict::columns([
-                            Snapshots::Edition,
-                            Snapshots::Domain,
-                            Snapshots::Root,
-                            Snapshots::Sequence,
-                        ])
-                        .update_columns([
-                            Snapshots::StateData,
-                            Snapshots::Retention,
-                            Snapshots::CreatedAt,
-                        ])
-                        .to_owned(),
+                        // S1: backend-specific conflict target — see
+                        // SqlDatabase::snapshots_conflict_target. SQLite's
+                        // NULL-distinct PK never fires for main-timeline
+                        // rows; a same-sequence re-put duplicated the row
+                        // and reads picked arbitrarily among duplicates.
+                        <$db_type>::snapshots_conflict_target()
+                            .update_columns([
+                                Snapshots::StateData,
+                                Snapshots::Retention,
+                                Snapshots::CreatedAt,
+                            ])
+                            .to_owned(),
                     )
                     .to_owned();
 
