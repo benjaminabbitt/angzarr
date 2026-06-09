@@ -19,7 +19,7 @@ use lapin::{
 };
 use prost::Message;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 
 use super::config::EventBusMode;
 use super::error::{BusError, Result};
@@ -738,18 +738,48 @@ impl EventBus for AmqpEventBus {
                 .basic_publish(
                     &self.config.exchange,
                     &routing_key,
-                    BasicPublishOptions::default(),
+                    // B2: `mandatory` makes the broker RETURN unroutable
+                    // messages instead of silently discarding them. Without
+                    // it, a publish that routes to ZERO queues (no subscriber
+                    // queue bound yet — first deploy, binding race) is
+                    // confirmed as success and the event vanishes.
+                    BasicPublishOptions {
+                        mandatory: true,
+                        ..Default::default()
+                    },
                     &payload,
                     properties,
                 )
                 .await
             {
                 Ok(confirm) => match confirm.await {
-                    Ok(Confirmation::Ack(_)) => {
+                    Ok(Confirmation::Ack(None)) => {
                         debug!(
                             exchange = %self.config.exchange,
                             routing_key = %routing_key,
                             "Published event book"
+                        );
+                        return Ok(PublishResult::default());
+                    }
+                    Ok(Confirmation::Ack(Some(returned))) => {
+                        // B2: broker accepted the publish but routed it to
+                        // ZERO queues (basic.return + ack). Publishing into
+                        // the void is a legitimate topology state (an
+                        // aggregate with no downstream subscriber — the
+                        // `test_publish_only` contract), so this is NOT an
+                        // error — but it must never be SILENT: if a
+                        // subscriber was expected, this warn is the only
+                        // trace the event ever existed. Durable subscriber
+                        // queues keep messages routable across consumer
+                        // restarts; this fires only when no queue is bound
+                        // at all.
+                        warn!(
+                            exchange = %self.config.exchange,
+                            routing_key = %routing_key,
+                            reply_code = returned.reply_code,
+                            reply_text = %returned.reply_text,
+                            "Publish UNROUTABLE: no queue bound — event was \
+                             not delivered to any subscriber (B2)"
                         );
                         return Ok(PublishResult::default());
                     }

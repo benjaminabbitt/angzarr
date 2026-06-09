@@ -133,6 +133,13 @@ impl KafkaEventBusConfig {
         config.set("bootstrap.servers", &self.bootstrap_servers);
         config.set("enable.auto.commit", "false");
         config.set("auto.offset.reset", "earliest");
+        // SubscriberAll uses a regex subscription, and librdkafka only
+        // discovers NEWLY CREATED matching topics on metadata refresh —
+        // default 5 MINUTES. A domain that publishes its first event after
+        // the consumer attached would be invisible for that long (contract:
+        // test_multi_domain_subscription). 5s bounds discovery latency at
+        // negligible metadata cost for this consumer count.
+        config.set("topic.metadata.refresh.interval.ms", "5000");
 
         if let Some(ref group_id) = self.group_id {
             config.set("group.id", group_id);

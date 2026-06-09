@@ -202,9 +202,6 @@ impl KafkaEventBus {
                                 .await;
 
                                 // Only commit offset after successful handler dispatch.
-                                // If handlers fail, don't commit - Kafka will redeliver.
-                                // Existing idempotency (sequence numbers, external_id)
-                                // handles duplicates from async commit failures.
                                 if all_succeeded {
                                     if let Err(e) = consumer.commit_message(
                                         &message,
@@ -213,12 +210,44 @@ impl KafkaEventBus {
                                         error!(error = %e, "Failed to commit offset");
                                     }
                                 } else {
+                                    // B3: merely skipping the commit is NOT
+                                    // redelivery — continuing the loop lets a
+                                    // LATER message's commit implicitly commit
+                                    // past this failure, silently losing it
+                                    // (at-most-once behind an at-least-once
+                                    // trait). Seek the partition back to the
+                                    // failed offset so the stream redelivers
+                                    // it; the failed message blocks its
+                                    // partition until the handler succeeds —
+                                    // which per-root ordering requires anyway.
                                     warn!(
                                         topic = %message.topic(),
                                         partition = message.partition(),
                                         offset = message.offset(),
-                                        "Handler failed, not committing offset for redelivery"
+                                        "Handler failed; seeking back for in-place redelivery"
                                     );
+                                    if let Err(e) = consumer.seek(
+                                        message.topic(),
+                                        message.partition(),
+                                        rdkafka::Offset::Offset(message.offset()),
+                                        Duration::from_secs(5),
+                                    ) {
+                                        // Seek failure (e.g. rebalance mid-
+                                        // flight) leaves the uncommitted
+                                        // offset as the only recovery path —
+                                        // redelivery then happens on the next
+                                        // rebalance/restart instead of now.
+                                        error!(
+                                            error = %e,
+                                            topic = %message.topic(),
+                                            partition = message.partition(),
+                                            offset = message.offset(),
+                                            "Seek-back failed; redelivery deferred to next rebalance"
+                                        );
+                                    }
+                                    // Backoff so a deterministically failing
+                                    // handler doesn't hot-loop the partition.
+                                    tokio::time::sleep(Duration::from_millis(500)).await;
                                 }
                             }
                             Err(e) => {

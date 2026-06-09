@@ -467,24 +467,42 @@ pub async fn test_multi_domain_subscription<B: EventBus>(
         .await
         .expect("Failed to publish to domain2");
 
-    // Should receive both events
-    let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
-        .await
-        .expect("Timed out")
-        .expect("Channel closed");
-
-    let second = tokio::time::timeout(Duration::from_secs(2), rx.recv())
-        .await
-        .expect("Timed out")
-        .expect("Channel closed");
-
-    let domains: Vec<_> = [&first, &second]
-        .iter()
-        .map(|b| b.cover.as_ref().unwrap().domain.as_str())
-        .collect();
-
-    assert!(domains.contains(&domain1), "should receive from domain1");
-    assert!(domains.contains(&domain2), "should receive from domain2");
+    // Contract: the unfiltered subscriber observes BOTH domains' events.
+    // Two backend behaviors make "the first two messages are ours" wrong:
+    //   - topic DISCOVERY: an all-domains Kafka subscriber sees topics
+    //     created after attach only on metadata refresh (bounded at 5s by
+    //     consumer config) — hence the generous deadline;
+    //   - HISTORY REPLAY: log-retaining backends (Kafka + earliest reset)
+    //     deliver events persisted by EARLIER tests on the same broker
+    //     before ours — ignore foreign domains, don't assert on ordering.
+    // AMQP/Pub/Sub bind wildcards up front and deliver only the two new
+    // events in ms; the deadline is an upper bound, not a wait.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let (mut seen1, mut seen2) = (false, false);
+    while !(seen1 && seen2) {
+        let remaining = deadline
+            .checked_duration_since(std::time::Instant::now())
+            .unwrap_or_else(|| {
+                panic!(
+                    "timed out waiting for events from both domains \
+                     (saw {domain1}: {seen1}, {domain2}: {seen2})"
+                )
+            });
+        let book = tokio::time::timeout(remaining, rx.recv())
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "timed out waiting for events from both domains \
+                     (saw {domain1}: {seen1}, {domain2}: {seen2})"
+                )
+            })
+            .expect("Channel closed");
+        match book.cover.as_ref().unwrap().domain.as_str() {
+            d if d == domain1 => seen1 = true,
+            d if d == domain2 => seen2 = true,
+            _ => {} // replayed history from another test's domain
+        }
+    }
 }
 
 /// Test multiple independent handlers on same event.
@@ -538,9 +556,18 @@ pub async fn test_multiple_handlers_independent<B: EventBus>(
         .await
         .expect("Failed to publish");
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // T10: poll to a deadline instead of a flat 500ms sleep — consumer
+    // attach is broker-dependent (Kafka group join + partition assignment
+    // takes seconds; AMQP attaches in ms). The deadline is an upper bound.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    while std::time::Instant::now() < deadline {
+        if count1.load(Ordering::SeqCst) >= 1 && count2.load(Ordering::SeqCst) >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
-    // Both handlers should receive the same event independently
+    // Both handlers must observe the event independently...
     assert_eq!(
         count1.load(Ordering::SeqCst),
         1,
@@ -550,6 +577,20 @@ pub async fn test_multiple_handlers_independent<B: EventBus>(
         count2.load(Ordering::SeqCst),
         1,
         "subscriber2 should receive 1 event"
+    );
+
+    // ...and exactly once: a short settle window catches duplicates that
+    // would arrive right behind the first delivery.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        count1.load(Ordering::SeqCst),
+        1,
+        "subscriber1 must not receive duplicates"
+    );
+    assert_eq!(
+        count2.load(Ordering::SeqCst),
+        1,
+        "subscriber2 must not receive duplicates"
     );
 }
 

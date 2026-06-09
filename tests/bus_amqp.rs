@@ -286,3 +286,71 @@ async fn test_decode_failure_routes_to_dead_letter_queue() {
         payload.len()
     );
 }
+
+/// D1 regression: a dead letter published through the AMQP DLQ target must
+/// be RETAINED by the broker even when no per-domain consumer queue exists.
+///
+/// Baseline (pre-D1): `AmqpDeadLetterPublisher` declared only the topic
+/// exchange — no queue, no binding, no publisher confirms, no `mandatory`
+/// flag. A topic exchange DISCARDS unroutable messages, so every dead
+/// letter "published successfully" into the void: the chained-publisher
+/// fallback never fired and the capture was simply gone.
+///
+/// After D1: init declares the durable catch-all queue (`#` binding),
+/// publishes with confirms + mandatory, and this test proves the dead
+/// letter is actually sitting in the queue, byte-decodable, after publish.
+#[tokio::test]
+async fn test_dlq_publisher_retains_dead_letter_in_catchall_queue() {
+    use lapin::options::BasicGetOptions;
+    use lapin::{Connection, ConnectionProperties};
+    use prost::Message;
+
+    println!("=== AMQP D1 DLQ-retention test ===");
+    let (_container, url) = start_rabbitmq().await;
+
+    // Exercise the same factory + publish path production uses. The shared
+    // helper publishes one dead letter with reason "Handler threw an
+    // exception" to domain "orders".
+    let dlq_config = angzarr::dlq::DlqConfig::amqp(url.clone());
+    bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
+
+    // Side-channel: read the catch-all queue directly and prove retention.
+    let conn = Connection::connect(&url, ConnectionProperties::default())
+        .await
+        .expect("raw lapin connect");
+    let channel = conn.create_channel().await.expect("raw channel");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut got: Option<Vec<u8>> = None;
+    while std::time::Instant::now() < deadline {
+        match channel
+            .basic_get(
+                angzarr::dlq::AmqpDeadLetterPublisher::DLQ_CATCHALL_QUEUE,
+                BasicGetOptions { no_ack: true },
+            )
+            .await
+        {
+            Ok(Some(delivery)) => {
+                got = Some(delivery.data.clone());
+                break;
+            }
+            Ok(None) => {}
+            Err(e) => panic!("basic_get on DLQ catch-all failed: {}", e),
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    let payload = got.expect(
+        "dead letter must be retained in the catch-all queue; an empty \
+         queue means the broker discarded it (pre-D1 silent-loss behavior)",
+    );
+
+    let decoded = angzarr::proto::AngzarrDeadLetter::decode(payload.as_slice())
+        .expect("retained dead letter must decode as proto AngzarrDeadLetter");
+    assert_eq!(
+        decoded.rejection_reason, "Handler threw an exception",
+        "decoded dead letter must round-trip the rejection reason"
+    );
+
+    println!("=== D1 DLQ-retention: PASSED (dead letter retained + decoded) ===");
+}

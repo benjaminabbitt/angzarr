@@ -164,14 +164,24 @@ impl EventHandler for ProjectorEventHandler {
                                     &component_name,
                                     "projector",
                                 );
-                                if let Err(e) = dlq.publish(dead_letter).await {
-                                    error!(
-                                        projector = %component_name,
-                                        error = %e,
-                                        "Failed to publish projector DLQ entry"
-                                    );
+                                match dlq.publish(dead_letter).await {
+                                    Ok(()) => return Ok(()),
+                                    Err(e) => {
+                                        // D2: do NOT ack when the DLQ write
+                                        // itself failed — acking here loses
+                                        // the event AND its dead letter
+                                        // (double fault → total loss).
+                                        // Propagate Err so the bus redelivers
+                                        // and a later attempt can capture it.
+                                        error!(
+                                            projector = %component_name,
+                                            error = %e,
+                                            "Failed to publish projector DLQ entry; \
+                                             propagating Err so the bus redelivers"
+                                        );
+                                        return Err(BusError::Grpc(status));
+                                    }
                                 }
-                                return Ok(());
                             }
                         }
                         return Err(BusError::Grpc(status));

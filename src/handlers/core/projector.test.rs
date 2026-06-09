@@ -850,6 +850,42 @@ async fn projector_5xx_status_propagates_err_without_dlq() {
 }
 
 /// Without a `dlq_publisher` wired, ALL failures (4xx and 5xx) propagate
+/// DLQ publisher that always fails — drives the D2 double-fault test.
+struct FailingDlqPublisher;
+
+#[async_trait::async_trait]
+impl DeadLetterPublisher for FailingDlqPublisher {
+    async fn publish(&self, _dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
+        Err(DlqError::PublishFailed("all DLQ targets down".to_string()))
+    }
+}
+
+/// D2 regression: when the DLQ write ITSELF fails on the immediate path,
+/// the handler must NOT ack — acking loses both the event and its dead
+/// letter (double fault → total, silent loss). Propagating Err lets the
+/// bus redeliver so a later attempt can capture the failure.
+///
+/// Baseline (pre-D2) logged the DLQ error and returned Ok unconditionally.
+#[tokio::test]
+async fn projector_4xx_with_failing_dlq_publisher_propagates_err() {
+    let failing = Arc::new(FailingProjectorHandler {
+        code: tonic::Code::InvalidArgument,
+        message: "schema mismatch".to_string(),
+    });
+    let handler = ProjectorEventHandler::from_handler(failing, "test-projector".to_string())
+        .with_dlq_publisher(Arc::new(FailingDlqPublisher));
+
+    let book = Arc::new(make_event_book("orders"));
+    let result = handler.handle(book).await;
+
+    assert!(
+        result.is_err(),
+        "a failed DLQ write must NOT be acked — the event would be lost \
+         with no dead letter (D2); got Ok"
+    );
+}
+
+/// Without a `dlq_publisher` wired, ALL failures (4xx and 5xx) propagate
 /// as Err — preserves pre-R2-15 behavior so unwired projectors keep
 /// their current contract instead of silently acking permanent failures.
 #[tokio::test]
