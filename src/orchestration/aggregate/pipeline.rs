@@ -365,6 +365,13 @@ fn resolve_command_persist_outcome(outcome: PersistOutcome) -> Result<(EventBook
     }
 }
 
+/// Attempts at post_persist for a successfully persisted book before
+/// capturing to the DLQ (B1). The bus backends retry internally per attempt,
+/// so this multiplies into roughly a dozen broker tries.
+pub(crate) const POST_PERSIST_ATTEMPTS: u32 = 3;
+/// Base backoff between post_persist attempts (multiplied by attempt number).
+const POST_PERSIST_BACKOFF_MS: u64 = 200;
+
 /// Publish persisted events and run sync projectors, unless this was a NoOp.
 ///
 /// H-16: a `PersistOutcome::NoOp` book has `pages: vec![]`; publishing it would
@@ -373,6 +380,18 @@ fn resolve_command_persist_outcome(outcome: PersistOutcome) -> Result<(EventBook
 /// so "command ran, nothing changed" stays observable. (The saga-redelivery
 /// republish path is separate — its book carries pages and is dispatched in
 /// `try_deferred_idempotency_replay`.)
+///
+/// B1 (the standing "persisted but never published" interleave bug): once
+/// persist has SUCCEEDED, a post_persist failure must NOT propagate as a
+/// retryable Status. The whole-pipeline retry would re-execute against state
+/// that now CONTAINS these events, classify the attempt as NoOp, skip publish
+/// per H-16, and return success — events durably stored, never on the bus.
+/// Instead, retry post_persist IN PLACE with the exact persisted book
+/// (downstream sequence/idempotency dedup makes a republish after a partially
+/// failed post_persist safe — the deferred replay path already republishes
+/// the same way). On exhaustion, capture the book to the DLQ for operator
+/// replay and return success: the command DID apply, and an error here would
+/// invite a duplicate business-level retry of an already-applied command.
 async fn publish_unless_noop(
     ctx: &dyn AggregateContext,
     persisted: &EventBook,
@@ -384,7 +403,39 @@ async fn publish_unless_noop(
         );
         return Ok(vec![]);
     }
-    ctx.post_persist(persisted).await
+
+    let mut last_err: Option<Status> = None;
+    for attempt in 1..=POST_PERSIST_ATTEMPTS {
+        match ctx.post_persist(persisted).await {
+            Ok(projections) => return Ok(projections),
+            Err(e) => {
+                tracing::warn!(
+                    attempt,
+                    max_attempts = POST_PERSIST_ATTEMPTS,
+                    error = %e,
+                    "post_persist failed for PERSISTED events; retrying in \
+                     place (B1: a pipeline-level retry would mask this as NoOp)"
+                );
+                last_err = Some(e);
+                if attempt < POST_PERSIST_ATTEMPTS {
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        POST_PERSIST_BACKOFF_MS * u64::from(attempt),
+                    ))
+                    .await;
+                }
+            }
+        }
+    }
+
+    let reason = last_err
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "unknown post_persist failure".to_string());
+    tracing::error!(
+        reason = %reason,
+        "post_persist retries exhausted for persisted events; capturing to DLQ"
+    );
+    ctx.dead_letter_unpublished(persisted, &reason).await;
+    Ok(vec![])
 }
 
 /// Execute an aggregate command in normal (non-speculative) mode.

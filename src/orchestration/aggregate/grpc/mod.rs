@@ -743,6 +743,29 @@ impl AggregateContext for GrpcAggregateContext {
         )
         .await;
     }
+
+    /// B1: capture a persisted-but-unpublishable EventBook so operators can
+    /// replay it once the bus recovers. `is_transient: true` — the events
+    /// are valid; only delivery failed.
+    async fn dead_letter_unpublished(&self, events: &EventBook, reason: &str) {
+        let dead_letter = crate::dlq::AngzarrDeadLetter::from_event_processing_failure(
+            events,
+            reason,
+            super::pipeline::POST_PERSIST_ATTEMPTS,
+            true, // transient: bus outage, not bad data
+            Vec::new(),
+            &self.component_name,
+            "aggregate",
+        );
+        if let Err(e) = self.dlq_publisher.publish(dead_letter).await {
+            tracing::error!(
+                error = %e,
+                reason = %reason,
+                "CRITICAL: persisted-but-unpublished events ALSO failed DLQ \
+                 capture — recovery now requires manual event-store inspection"
+            );
+        }
+    }
 }
 
 /// Publish a MergeManual sequence-mismatch dead letter.

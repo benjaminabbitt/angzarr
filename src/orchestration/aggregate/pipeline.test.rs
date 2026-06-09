@@ -136,6 +136,10 @@ struct TestCtx {
     /// Value returned by `post_persist`.
     post_persist_return: Vec<Projection>,
     post_persist_calls: Arc<AtomicUsize>,
+    /// B1: fail the first N `post_persist` calls with Unavailable.
+    post_persist_fail_times: usize,
+    /// B1: count of `dead_letter_unpublished` captures.
+    unpublished_dlq_calls: Arc<AtomicUsize>,
     dlq_calls: Arc<AtomicUsize>,
 }
 
@@ -171,8 +175,15 @@ impl AggregateContext for TestCtx {
     }
 
     async fn post_persist(&self, _events: &EventBook) -> Result<Vec<Projection>, Status> {
-        self.post_persist_calls.fetch_add(1, Ordering::SeqCst);
+        let call = self.post_persist_calls.fetch_add(1, Ordering::SeqCst);
+        if call < self.post_persist_fail_times {
+            return Err(Status::unavailable("bus down (synthetic B1 failure)"));
+        }
         Ok(self.post_persist_return.clone())
+    }
+
+    async fn dead_letter_unpublished(&self, _events: &EventBook, _reason: &str) {
+        self.unpublished_dlq_calls.fetch_add(1, Ordering::SeqCst);
     }
 
     fn cascade_id(&self) -> Option<&str> {
@@ -421,6 +432,75 @@ async fn test_publish_unless_noop_publishes_when_not_noop() {
         "projections from post_persist returned"
     );
     assert_eq!(calls.load(Ordering::SeqCst), 1, "post_persist called once");
+}
+
+/// B1 regression (the standing "persisted but never published" interleave
+/// bug): a transient post_persist failure after a SUCCESSFUL persist must be
+/// retried IN PLACE with the same book — not propagated as a retryable
+/// Status. Propagating re-runs the whole pipeline, which then sees the
+/// persisted events in prior state, classifies the attempt as NoOp, skips
+/// publish (H-16), and reports success — silent event loss.
+#[tokio::test]
+async fn test_publish_failure_retries_in_place_and_succeeds() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let unpublished = Arc::new(AtomicUsize::new(0));
+    let ctx = TestCtx {
+        post_persist_calls: calls.clone(),
+        post_persist_fail_times: 1, // fail first attempt, succeed on retry
+        post_persist_return: vec![Projection::default()],
+        unpublished_dlq_calls: unpublished.clone(),
+        ..Default::default()
+    };
+    let book = book_with_domain("orders", "c1");
+
+    let projections = publish_unless_noop(&ctx, &book, false)
+        .await
+        .expect("transient publish failure must not surface as an error");
+
+    assert_eq!(projections.len(), 1, "retry must return real projections");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        2,
+        "post_persist must be retried in place with the persisted book"
+    );
+    assert_eq!(
+        unpublished.load(Ordering::SeqCst),
+        0,
+        "no DLQ capture when a retry succeeds"
+    );
+}
+
+/// B1 exhaustion: when every post_persist attempt fails, the persisted book
+/// is captured via `dead_letter_unpublished` (operator replay path) and the
+/// command still reports success — the events ARE durable, and an error
+/// would invite a duplicate business-level retry of an applied command.
+#[tokio::test]
+async fn test_publish_exhaustion_captures_unpublished_to_dlq() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let unpublished = Arc::new(AtomicUsize::new(0));
+    let ctx = TestCtx {
+        post_persist_calls: calls.clone(),
+        post_persist_fail_times: usize::MAX, // bus is down hard
+        unpublished_dlq_calls: unpublished.clone(),
+        ..Default::default()
+    };
+    let book = book_with_domain("orders", "c1");
+
+    let projections = publish_unless_noop(&ctx, &book, false)
+        .await
+        .expect("exhausted publish must not fail the already-applied command");
+
+    assert!(projections.is_empty());
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        POST_PERSIST_ATTEMPTS as usize,
+        "all in-place attempts must be made before giving up"
+    );
+    assert_eq!(
+        unpublished.load(Ordering::SeqCst),
+        1,
+        "the persisted-but-unpublished book must be captured to the DLQ"
+    );
 }
 
 // ============================================================================

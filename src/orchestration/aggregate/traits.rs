@@ -142,6 +142,20 @@ pub trait AggregateContext: Send + Sync {
         );
     }
 
+    /// Optional: capture events that were durably PERSISTED but could not be
+    /// PUBLISHED after exhausting in-place retries (B1 — the
+    /// persisted-but-unpublished class). Production contexts override this to
+    /// publish an events dead letter so operators can replay; the default
+    /// only logs, loudly.
+    async fn dead_letter_unpublished(&self, _events: &EventBook, reason: &str) {
+        tracing::error!(
+            reason = %reason,
+            "Persisted events could not be published and no DLQ capture is \
+             wired — downstream consumers will not see them until replay or \
+             projector gap-fill"
+        );
+    }
+
     /// Get the cascade ID for 2PC atomic execution, if set.
     ///
     /// When a cascade_id is active, events are persisted with `no_commit=true`
