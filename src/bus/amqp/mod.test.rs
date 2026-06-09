@@ -32,6 +32,7 @@ fn test_routing_key_generation() {
             }),
             correlation_id: String::new(),
             edition: None,
+            ..Default::default()
         }),
         pages: vec![],
         snapshot: None,
@@ -113,7 +114,7 @@ fn test_build_queue_args_includes_dlx_when_provided() {
         .get(&dlx_key)
         .expect("x-dead-letter-exchange must be set on the queue args (H-06)");
     match dlx_value {
-        AMQPValue::LongString(s) => assert_eq!(s.as_str(), "orders.dlx"),
+        AMQPValue::LongString(s) => assert_eq!(s.as_bytes(), b"orders.dlx"),
         other => panic!(
             "x-dead-letter-exchange must be a LongString carrying the DLX \
              exchange name; got {:?} (H-06)",

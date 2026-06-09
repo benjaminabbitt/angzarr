@@ -407,6 +407,11 @@ check:
 check-full:
     just _container check-full
 
+# Compile-check every test target (incl. feature-gated contract suites).
+# Catches test-binary rot that `just test` never compiles.
+check-tests:
+    just _container check-tests
+
 # Format code
 fmt:
     just _container fmt
@@ -513,7 +518,6 @@ mutants-purge-cache:
 #   just storage postgres test     # PostgreSQL only (testcontainers)
 #   just storage redis test        # Redis only (testcontainers)
 #   just storage immudb test       # ImmuDB only (testcontainers)
-#   just storage nats test         # NATS JetStream only (testcontainers)
 # =============================================================================
 
 # Storage contract tests - run all backends or a specific one
@@ -543,12 +547,12 @@ storage *ARGS:
 #
 # Usage:
 #   just bus test                  # All backends
-#   just bus channel test          # Channel only (no containers)
 #   just bus amqp test             # RabbitMQ only (testcontainers)
 #   just bus kafka test            # Kafka only (testcontainers)
 #   just bus pubsub test           # GCP Pub/Sub only (testcontainers)
 #   just bus sns-sqs test          # AWS SNS/SQS only (testcontainers)
-#   just bus nats test             # NATS JetStream only (testcontainers)
+# NOTE: the in-memory channel backend was removed (b1eb2416); every
+# remaining bus backend needs testcontainers.
 # =============================================================================
 
 # Bus contract tests - run all backends or a specific one
@@ -559,11 +563,8 @@ bus *ARGS:
     if [[ "$args" == "test" ]] || [[ -z "$args" ]]; then
         # All backends - needs dind for testcontainers
         just _container-dind bus test
-    elif [[ "$args" == "channel test" ]]; then
-        # Channel doesn't need containers
-        just _container bus channel test
     else
-        # Other backends need testcontainers
+        # All bus backends need testcontainers
         just _container-dind bus $args
     fi
 
@@ -577,7 +578,9 @@ test-contract:
 # Run all local tests (no running K8s cluster required)
 # =============================================================================
 # Fast validation suite using in-memory backends (no containers needed).
-# Includes: unit tests, storage (SQLite), bus (channel).
+# Includes: test-target compile gate, unit tests, storage (SQLite).
+# (The in-memory channel bus was removed; all bus backends now need
+# testcontainers — run `just bus test` / `just test-contract` for those.)
 #
 # NOTE: Client and example tests are now in their respective repos:
 #   - angzarr-client-{lang}: just test
@@ -587,6 +590,11 @@ test-contract:
 # =============================================================================
 test-local:
     @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Test-Target Compile Gate ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just check-tests
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== Core Unit Tests ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just test
@@ -595,11 +603,6 @@ test-local:
     @echo "=== Storage Contract Tests (SQLite) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just storage sqlite test
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Bus Contract Tests (Channel) ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    just bus channel test
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== All Local Tests Complete ==="

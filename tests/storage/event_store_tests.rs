@@ -3145,9 +3145,15 @@ where
 // Test runner macro
 // =============================================================================
 
-/// Run all EventStore interface tests against a store implementation.
+/// Run the CORE EventStore interface tests — everything except the
+/// `delete_edition_events` and 2PC-cascade groups, which are split into
+/// `run_event_store_delete_tests!` / `run_event_store_cascade_tests!`
+/// because some backends legitimately do not implement them (ImmuDB is
+/// append-only and has no cascade columns; it asserts NotImplemented in
+/// its own suite instead). Fully-featured backends should invoke
+/// `run_event_store_tests!`, which composes all three groups (T4).
 #[macro_export]
-macro_rules! run_event_store_tests {
+macro_rules! run_event_store_core_tests {
     ($store:expr) => {
         use $crate::storage::event_store_tests::*;
 
@@ -3297,9 +3303,6 @@ macro_rules! run_event_store_tests {
         test_main_timeline_external_id_sentinel_polarity($store).await;
         println!("  test_main_timeline_external_id_sentinel_polarity: PASSED");
 
-        test_delete_edition_events_rejects_main_timeline_sentinels($store).await;
-        println!("  test_delete_edition_events_rejects_main_timeline_sentinels: PASSED");
-
         // idempotency tests
         test_add_with_external_id_returns_duplicate($store).await;
         println!("  test_add_with_external_id_returns_duplicate: PASSED");
@@ -3321,13 +3324,6 @@ macro_rules! run_event_store_tests {
         test_large_aggregate_10k($store).await;
         println!("  test_large_aggregate_10k: PASSED");
 
-        // delete_edition_events tests
-        test_delete_edition_events_removes_all($store).await;
-        println!("  test_delete_edition_events_removes_all: PASSED");
-
-        test_delete_edition_events_scoped($store).await;
-        println!("  test_delete_edition_events_scoped: PASSED");
-
         // find_by_source tests
         test_find_by_source_returns_match($store).await;
         println!("  test_find_by_source_returns_match: PASSED");
@@ -3348,8 +3344,42 @@ macro_rules! run_event_store_tests {
 
         test_find_by_external_id_empty_returns_none($store).await;
         println!("  test_find_by_external_id_empty_returns_none: PASSED");
+    };
+}
 
-        // cascade tests
+/// `delete_edition_events` group — only for backends with hard-delete
+/// support. ImmuDB is append-only: its suite asserts NotImplemented via
+/// `test_immudb_delete_not_supported` instead of running these.
+#[macro_export]
+macro_rules! run_event_store_delete_tests {
+    ($store:expr) => {
+        // Redundant (but harmless) when composed after the core macro's
+        // glob import; needed when this group is invoked standalone.
+        #[allow(unused_imports)]
+        use $crate::storage::event_store_tests::*;
+
+        test_delete_edition_events_rejects_main_timeline_sentinels($store).await;
+        println!("  test_delete_edition_events_rejects_main_timeline_sentinels: PASSED");
+
+        test_delete_edition_events_removes_all($store).await;
+        println!("  test_delete_edition_events_removes_all: PASSED");
+
+        test_delete_edition_events_scoped($store).await;
+        println!("  test_delete_edition_events_scoped: PASSED");
+    };
+}
+
+/// 2PC cascade-reaper query group — only for backends that persist the
+/// `committed`/`cascade_id` columns. ImmuDB lacks them and returns
+/// NotImplemented from the reaper queries.
+#[macro_export]
+macro_rules! run_event_store_cascade_tests {
+    ($store:expr) => {
+        // Redundant (but harmless) when composed after the core macro's
+        // glob import; needed when this group is invoked standalone.
+        #[allow(unused_imports)]
+        use $crate::storage::event_store_tests::*;
+
         test_query_stale_cascades_finds_old_uncommitted($store).await;
         println!("  test_query_stale_cascades_finds_old_uncommitted: PASSED");
 
@@ -3367,6 +3397,17 @@ macro_rules! run_event_store_tests {
 
         test_query_cascade_participants_multiple_aggregates($store).await;
         println!("  test_query_cascade_participants_multiple_aggregates: PASSED");
+    };
+}
+
+/// Run ALL EventStore interface tests (core + delete + cascade) — the
+/// full contract for fully-featured backends (SQLite, Postgres).
+#[macro_export]
+macro_rules! run_event_store_tests {
+    ($store:expr) => {
+        $crate::run_event_store_core_tests!($store);
+        $crate::run_event_store_delete_tests!($store);
+        $crate::run_event_store_cascade_tests!($store);
     };
 }
 

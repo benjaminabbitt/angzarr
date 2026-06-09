@@ -195,7 +195,8 @@ impl KafkaEventBus {
 
                                 let book = Arc::new(book);
                                 let all_succeeded = async {
-                                    crate::bus::dispatch_to_handlers(&handlers, &book).await
+                                    crate::bus::dispatch::dispatch_to_handlers(&handlers, &book)
+                                        .await
                                 }
                                 .instrument(consume_span)
                                 .await;

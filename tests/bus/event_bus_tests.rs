@@ -10,8 +10,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::bus::EventBus;
+use angzarr::dlq::{
+    init_dlq_publisher, AngzarrDeadLetter, DeadLetterPayload, DlqConfig,
+    EventProcessingFailedDetails, RejectionDetails, SequenceMismatchDetails,
+};
 use angzarr::proto::{
-    event_page, page_header::SequenceType, Cover, EventBook, EventPage, PageHeader, Uuid,
+    event_page, page_header::SequenceType, CommandBook, Cover, EventBook, EventPage, MergeStrategy,
+    PageHeader, Uuid,
 };
 #[cfg(feature = "test-utils")]
 use angzarr::test_utils::CapturingHandler;
@@ -28,6 +33,7 @@ pub fn make_event_book(domain: &str) -> EventBook {
             }),
             correlation_id: format!("test-{}", uuid::Uuid::new_v4()),
             edition: None,
+            ..Default::default()
         }),
         pages: vec![EventPage {
             header: Some(PageHeader {
@@ -44,6 +50,100 @@ pub fn make_event_book(domain: &str) -> EventBook {
         snapshot: None,
         ..Default::default()
     }
+}
+
+/// Create a test CommandBook for DLQ tests.
+#[allow(dead_code)] // not every bus binary runs the DLQ suite
+pub fn make_command_book(domain: &str) -> CommandBook {
+    CommandBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(Uuid {
+                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
+            }),
+            correlation_id: format!("txn-{}", uuid::Uuid::new_v4()),
+            edition: None,
+            ..Default::default()
+        }),
+        pages: vec![],
+        ..Default::default()
+    }
+}
+
+// =============================================================================
+// DLQ publisher contract tests
+// =============================================================================
+// Restored after the macro-consolidation refactor (effffc28) deleted them
+// while bus_kafka.rs / bus_sns_sqs.rs kept calling them, leaving those test
+// binaries uncompilable (review finding T1).
+
+/// Contract: publishing a saga/projector-failure dead letter through a real
+/// broker-backed DLQ target succeeds end-to-end — factory init, topic/queue
+/// provisioning, serialization, and broker acknowledgment.
+///
+/// TODO(plan T7): consume the DLQ destination and assert the payload
+/// round-trips byte-exact, mirroring bus_amqp's H-06 coverage.
+#[allow(dead_code)]
+pub async fn test_dlq_publish(dlq_config: &DlqConfig) {
+    let dlq_publisher = init_dlq_publisher(dlq_config)
+        .await
+        .expect("Failed to create DLQ publisher");
+
+    let book = make_event_book("orders");
+    let dead_letter = AngzarrDeadLetter {
+        cover: book.cover.clone(),
+        payload: DeadLetterPayload::Events(book),
+        rejection_reason: "Handler threw an exception".to_string(),
+        rejection_details: Some(RejectionDetails::EventProcessingFailed(
+            EventProcessingFailedDetails {
+                error: "Connection refused".to_string(),
+                retry_count: 3,
+                is_transient: false,
+                stack_trace: vec![],
+            },
+        )),
+        source_component: "saga-order-fulfillment".to_string(),
+        source_component_type: "saga".to_string(),
+        occurred_at: None,
+        metadata: std::collections::HashMap::new(),
+    };
+
+    dlq_publisher
+        .publish(dead_letter)
+        .await
+        .expect("DLQ publish should succeed");
+}
+
+/// Contract: a MERGE_MANUAL sequence-mismatch dead letter (command payload)
+/// publishes successfully with its structured rejection details intact.
+#[allow(dead_code)]
+pub async fn test_dlq_sequence_mismatch(dlq_config: &DlqConfig) {
+    let dlq_publisher = init_dlq_publisher(dlq_config)
+        .await
+        .expect("Failed to create DLQ publisher");
+
+    let command_book = make_command_book("inventory");
+    let dead_letter = AngzarrDeadLetter {
+        cover: command_book.cover.clone(),
+        payload: DeadLetterPayload::Command(command_book),
+        rejection_reason: "Sequence mismatch".to_string(),
+        rejection_details: Some(RejectionDetails::SequenceMismatch(
+            SequenceMismatchDetails {
+                expected_sequence: 0,
+                actual_sequence: 5,
+                merge_strategy: MergeStrategy::MergeManual,
+            },
+        )),
+        source_component: "aggregate-inventory".to_string(),
+        source_component_type: "aggregate".to_string(),
+        occurred_at: None,
+        metadata: std::collections::HashMap::new(),
+    };
+
+    dlq_publisher
+        .publish(dead_letter)
+        .await
+        .expect("DLQ publish should succeed");
 }
 
 // =============================================================================
@@ -433,6 +533,7 @@ pub async fn test_payload_bytes_exact<B: EventBus>(
             }),
             correlation_id: "test".to_string(),
             edition: None,
+            ..Default::default()
         }),
         pages: vec![EventPage {
             header: Some(PageHeader {
@@ -503,6 +604,7 @@ fn make_event_book_with_root_and_seq(domain: &str, root: uuid::Uuid, seq: u32) -
             }),
             correlation_id: format!("test-{}-{}", root, seq),
             edition: None,
+            ..Default::default()
         }),
         pages: vec![EventPage {
             header: Some(PageHeader {

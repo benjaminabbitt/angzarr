@@ -327,25 +327,25 @@ required-features = ["postgres"]
 name = "bus_amqp"
 # RabbitMQ/AMQP as event bus. Testing ensures exchange/queue bindings,
 # message routing, acknowledgment, and dead-letter queue handling work correctly.
-required-features = ["amqp"]
+required-features = ["amqp", "test-utils"]
 
 [[test]]
 name = "bus_kafka"
 # Apache Kafka as event bus. Testing ensures topic partitioning, consumer groups,
 # offset management, and at-least-once delivery semantics work correctly.
-required-features = ["kafka"]
+required-features = ["kafka", "test-utils"]
 
 [[test]]
 name = "bus_pubsub"
 # Google Cloud Pub/Sub as event bus. Testing ensures topic/subscription management,
 # message ordering, and acknowledgment deadlines work correctly with the emulator.
-required-features = ["pubsub"]
+required-features = ["pubsub", "test-utils"]
 
 [[test]]
 name = "bus_sns_sqs"
 # AWS SNS/SQS as event bus. Testing ensures SNS fan-out to SQS queues,
 # message attributes, and visibility timeout handling work correctly with LocalStack.
-required-features = ["sns-sqs"]
+required-features = ["sns-sqs", "test-utils"]
 
 # --- DLQ Gherkin acceptance harness ---
 # Cucumber-rs harness against features/client/dlq.feature. `harness = false`

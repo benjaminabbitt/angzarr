@@ -137,10 +137,15 @@ async fn test_immudb_event_store() {
     let (_container, connection_string) = start_immudb().await;
     let (_pool, store) = connect_and_init(&connection_string).await;
 
-    println!("Running EventStore tests...");
-    run_event_store_tests!(&store);
+    println!("Running EventStore tests (core suite)...");
+    // T4: core suite only. ImmuDB is append-only (delete_edition_events →
+    // NotImplemented, asserted by test_immudb_delete_not_supported below)
+    // and has no committed/cascade_id columns (reaper queries →
+    // NotImplemented). Running the full suite here was self-contradictory:
+    // it asserted both that delete succeeds AND that delete is unsupported.
+    run_event_store_core_tests!(&store);
 
-    println!("=== All ImmuDB EventStore tests PASSED ===");
+    println!("=== All ImmuDB EventStore (core) tests PASSED ===");
     // Container is dropped here, stopping immudb
 }
 

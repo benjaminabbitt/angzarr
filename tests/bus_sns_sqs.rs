@@ -133,9 +133,17 @@ async fn test_sns_sqs_dlq() {
     std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
     std::env::set_var("AWS_DEFAULT_REGION", "us-east-1");
 
-    let dlq_config = DlqConfig::sns_sqs()
-        .with_aws_region("us-east-1")
-        .with_aws_endpoint(&endpoint_url);
+    // Point the SNS/SQS DLQ target at the Floci emulator. The old
+    // `.with_aws_region/.with_aws_endpoint` builders no longer exist;
+    // region rides the constructor and the endpoint is set on the target.
+    let mut dlq_config = DlqConfig::sns_sqs("us-east-1");
+    if let Some(sns) = dlq_config
+        .targets
+        .first_mut()
+        .and_then(|t| t.sns_sqs.as_mut())
+    {
+        sns.endpoint_url = Some(endpoint_url.clone());
+    }
 
     bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
     println!("  test_dlq_publish: PASSED");

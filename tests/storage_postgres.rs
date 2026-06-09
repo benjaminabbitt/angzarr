@@ -86,6 +86,26 @@ async fn test_postgres_event_store() {
 }
 
 // =============================================================================
+// EventStore Concurrent-Write Tests (C-19)
+// =============================================================================
+
+/// T6: the concurrent-write contract previously ran ONLY against SQLite,
+/// leaving Postgres's transactional fencing under concurrent add() — the
+/// production write path — unverified.
+#[tokio::test]
+async fn test_postgres_event_store_concurrent() {
+    println!("=== PostgreSQL EventStore Concurrent-Write Tests ===");
+    println!("Starting PostgreSQL container...");
+
+    let (_container, pool) = start_postgres().await;
+    let store = std::sync::Arc::new(PostgresEventStore::new(pool));
+
+    run_event_store_concurrent_tests!(store);
+
+    println!("=== PostgreSQL EventStore Concurrent-Write Tests PASSED ===");
+}
+
+// =============================================================================
 // SnapshotStore Tests
 // =============================================================================
 

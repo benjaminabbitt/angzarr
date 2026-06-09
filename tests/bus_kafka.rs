@@ -133,7 +133,7 @@ async fn test_kafka_dlq() {
 
     let (_container, bootstrap_servers) = start_kafka().await;
 
-    let dlq_config = DlqConfig::kafka(&bootstrap_servers);
+    let dlq_config = DlqConfig::kafka(bootstrap_servers);
 
     bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
     println!("  test_dlq_publish: PASSED");

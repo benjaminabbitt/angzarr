@@ -1,5 +1,4 @@
 use super::*;
-use crate::proto::{Cover, Uuid};
 
 // Test fixtures - not real credentials
 // lgtm[rust/hardcoded-credentials]
@@ -7,25 +6,10 @@ const TEST_USER: &str = "test-user"; // codeql[rust/hard-coded-credentials]
                                      // lgtm[rust/hardcoded-credentials]
 const TEST_PASSWORD: &str = "test-password"; // codeql[rust/hard-coded-credentials]
 
-#[test]
-fn test_message_key_generation() {
-    let book = EventBook {
-        cover: Some(Cover {
-            domain: "orders".to_string(),
-            root: Some(Uuid {
-                value: b"test-123".to_vec(),
-            }),
-        }),
-        pages: vec![],
-        snapshot: None,
-        correlation_id: String::new(),
-    };
-
-    assert_eq!(
-        KafkaEventBus::message_key(&book),
-        Some("746573742d313233".to_string())
-    );
-}
+// NOTE: the old `test_message_key_generation` / `test_extract_domain*`
+// tests were deleted: `KafkaEventBus::message_key` / `extract_domain`
+// no longer exist. The partition-key boundary is now `validate_publish_key`,
+// covered by the H-10 regression suite in bus.test.rs.
 
 #[test]
 fn test_topic_for_domain() {
@@ -79,31 +63,4 @@ fn test_ssl_config() {
         .with_ssl_ca("/path/to/ca.crt");
     assert_eq!(config.security_protocol, Some("SSL".to_string()));
     assert_eq!(config.ssl_ca_location, Some("/path/to/ca.crt".to_string()));
-}
-
-#[test]
-fn test_extract_domain() {
-    let book = EventBook {
-        cover: Some(Cover {
-            domain: "orders".to_string(),
-            root: None,
-        }),
-        pages: vec![],
-        snapshot: None,
-        correlation_id: String::new(),
-    };
-
-    assert_eq!(KafkaEventBus::extract_domain(&book), Some("orders"));
-}
-
-#[test]
-fn test_extract_domain_missing_cover() {
-    let book = EventBook {
-        cover: None,
-        pages: vec![],
-        snapshot: None,
-        correlation_id: String::new(),
-    };
-
-    assert_eq!(KafkaEventBus::extract_domain(&book), None);
 }

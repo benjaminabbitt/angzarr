@@ -134,6 +134,97 @@ jobs:
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container test
 
+  # T1/T3 (review remediation): compile EVERY test target, including the
+  # feature-gated contract suites no other job builds. `cargo test` alone
+  # never compiles those, which is how the Kafka/SNS bus suites rotted to
+  # uncompilable without any CI signal.
+  test-compile:
+    name: Test-Target Compile Gate
+    runs-on: ubuntu-latest
+    needs: [submodules]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compile-check all test targets (all backend features)
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container check-tests
+
+  # T3 (review remediation): run real-backend contract suites, not just the
+  # SQLite slice. The docker socket is mounted so testcontainers can spawn
+  # sibling containers; --group-add grants the non-root user socket access;
+  # --network=host lets the inner client reach host-mapped container ports.
+  contract:
+    name: Contract Tests (Postgres + AMQP)
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run PostgreSQL storage contract tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+            --network=host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            -e DOCKER_HOST=unix:///var/run/docker.sock \
+            -e TESTCONTAINERS_RYUK_DISABLED=true \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container storage postgres test
+
+      - name: Run AMQP bus contract tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+            --network=host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            -e DOCKER_HOST=unix:///var/run/docker.sock \
+            -e TESTCONTAINERS_RYUK_DISABLED=true \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container bus amqp test
+
+      - name: Run DLQ Postgres round-trip tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+            --network=host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            -e DOCKER_HOST=unix:///var/run/docker.sock \
+            -e TESTCONTAINERS_RYUK_DISABLED=true \
+            ghcr.io/angzarr-io/angzarr-rust:latest \
+            just -f justfile.container test-dlq-postgres
+
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
