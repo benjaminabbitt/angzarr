@@ -231,9 +231,12 @@ _storage-sqlite:
 # Private: PostgreSQL storage tests (testcontainers)
 # WHY: Production-grade RDBMS. Tests verify SQL schema correctness,
 # transaction isolation, and ACID guarantees via the macro contract suite.
+# NOTE: --test-threads=1 — each test starts its own Postgres container;
+# running four in parallel under rootless docker port-forwarding starves
+# connections (PoolTimedOut). Same rationale as the bus suites.
 _storage-postgres:
     @echo "=== Storage: PostgreSQL (macro contract tests) ==="
-    cargo test --test storage_postgres --features "postgres test-utils" -- --nocapture
+    cargo test --test storage_postgres --features "postgres test-utils" -- --test-threads=1 --nocapture
 
 # DLQ round-trip against real Postgres (testcontainers). Companion to
 # test-dlq-sqlite; exercised by the CI contract job.

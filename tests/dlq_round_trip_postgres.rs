@@ -62,7 +62,16 @@ async fn start_postgres() -> (testcontainers::ContainerAsync<GenericImage>, Stri
         .get_host_port_ipv4(5432)
         .await
         .expect("Failed to get port");
-    let host = container.get_host().await.expect("Failed to get host");
+    // See storage_postgres.rs: dind wrapper sets TESTCONTAINERS_HOST because
+    // the bridge-gateway fallback is unreachable under rootless docker.
+    let host = match std::env::var("TESTCONTAINERS_HOST") {
+        Ok(h) => h,
+        Err(_) => container
+            .get_host()
+            .await
+            .expect("Failed to get host")
+            .to_string(),
+    };
 
     let uri = format!("postgres://dlquser:dlqpass@{}:{}/dlqdb", host, host_port);
     println!("Postgres DLQ test backend: {}", uri);

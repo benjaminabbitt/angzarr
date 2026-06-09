@@ -147,6 +147,106 @@ pub async fn test_dlq_sequence_mismatch(dlq_config: &DlqConfig) {
 }
 
 // =============================================================================
+// Handler-failure redelivery contract (C-10 class)
+// =============================================================================
+
+/// Handler that fails its first N invocations and succeeds afterwards.
+///
+/// Drives the redelivery contract test: after the broker re-delivers a
+/// failed message, the next invocation must succeed and the call count
+/// must reach N+1 (proving redelivery actually happened).
+#[allow(dead_code)]
+pub struct FlakyHandler {
+    pub fail_until: usize,
+    pub calls: Arc<AtomicUsize>,
+}
+
+impl angzarr::bus::EventHandler for FlakyHandler {
+    fn handle(
+        &self,
+        _book: Arc<EventBook>,
+    ) -> futures::future::BoxFuture<'static, Result<(), angzarr::bus::BusError>> {
+        let fail_until = self.fail_until;
+        let calls = self.calls.clone();
+        Box::pin(async move {
+            let attempt = calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if attempt <= fail_until {
+                Err(angzarr::bus::BusError::ProjectorFailed {
+                    name: "c10-flaky".to_string(),
+                    message: format!("synthetic failure (attempt {})", attempt),
+                })
+            } else {
+                Ok(())
+            }
+        })
+    }
+}
+
+/// Contract (C-10 class): when a handler returns `Err`, the bus must NOT
+/// treat the message as consumed — the broker must re-deliver until the
+/// handler succeeds (or the broker's own retry/DLQ policy intervenes).
+/// A consumer that acks/commits on handler failure silently loses the
+/// event, exactly once, with no operator signal.
+///
+/// `redelivery_deadline` is per-broker: AMQP requeues nacked messages in
+/// milliseconds; SQS waits out the visibility timeout; Kafka redelivery
+/// latency depends on the consumer's seek/retry strategy.
+///
+/// T7 (review remediation): previously this contract was pinned on AMQP
+/// only — the other brokers could commit-past-failure and stay green.
+#[allow(dead_code)]
+pub async fn test_handler_err_triggers_redelivery<B: EventBus>(
+    publisher: &B,
+    domain: &str,
+    subscriber_name: &str,
+    redelivery_deadline: Duration,
+) {
+    let subscriber = publisher
+        .create_subscriber(subscriber_name, Some(domain))
+        .await
+        .expect("Failed to create subscriber");
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    subscriber
+        .subscribe(Box::new(FlakyHandler {
+            fail_until: 1,
+            calls: calls.clone(),
+        }))
+        .await
+        .expect("Failed to subscribe FlakyHandler");
+
+    subscriber
+        .start_consuming()
+        .await
+        .expect("Failed to start consuming");
+
+    // Let the consumer attach.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    publisher
+        .publish(Arc::new(make_event_book(domain)))
+        .await
+        .expect("Failed to publish event");
+
+    // Poll up to the broker-appropriate deadline for the second delivery.
+    let deadline = std::time::Instant::now() + redelivery_deadline;
+    while std::time::Instant::now() < deadline {
+        if calls.load(Ordering::SeqCst) >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let observed = calls.load(Ordering::SeqCst);
+    assert!(
+        observed >= 2,
+        "expected handler to observe >= 2 invocations after failing the \
+         first delivery (got {observed}): the bus acked/committed a FAILED \
+         message — that event is silently lost (C-10 class)",
+    );
+}
+
+// =============================================================================
 // EventBus publish/subscribe tests
 // =============================================================================
 

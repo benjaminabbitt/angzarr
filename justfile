@@ -169,6 +169,7 @@ _container-dind +ARGS: _build-images
             -e CARGO_HOME=/workspace/.cargo-container \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e TESTCONTAINERS_RYUK_DISABLED=true \
+            -e TESTCONTAINERS_HOST=127.0.0.1 \
             "$IMAGE" just {{ARGS}}
     fi
 

@@ -9,8 +9,6 @@
 
 mod bus;
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use angzarr::bus::kafka::{KafkaEventBus, KafkaEventBusConfig};
@@ -21,19 +19,21 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 
-/// Generates a unique port in the ephemeral range for testing.
-/// Uses a simple hash of the current thread ID and time to get variety.
+/// Reserve a free port by binding port 0 and reading the OS assignment.
+///
+/// T13: the previous hash-of-thread-id-and-time scheme could collide
+/// across parallel just/CI invocations (it never consulted the OS). A
+/// bind probe asks the kernel for a genuinely free port. The tiny window
+/// between drop and the container binding it is theoretically racy but
+/// far narrower than a 1-in-1000 hash collision.
 fn generate_test_port() -> u16 {
-    let mut hasher = DefaultHasher::new();
-    std::thread::current().id().hash(&mut hasher);
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos()
-        .hash(&mut hasher);
-
-    // Use ports in 29000-29999 range (less likely to conflict)
-    29000 + (hasher.finish() % 1000) as u16
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind probe socket");
+    let port = listener
+        .local_addr()
+        .expect("probe socket has no local addr")
+        .port();
+    drop(listener);
+    port
 }
 
 /// Start Kafka container using Redpanda with proper listener configuration.
@@ -124,6 +124,39 @@ async fn test_kafka_event_bus() {
     run_per_root_ordering_test!(bus_arc, &prefix);
 
     println!("=== All Kafka EventBus tests PASSED ===");
+}
+
+/// C-10 contract on Kafka: a failed handler must lead to redelivery.
+///
+/// T7 (review remediation): EXPECTED RED until finding B3 lands — the
+/// current consumer skips the commit for a failed message but continues
+/// the loop, and the next successful commit implicitly commits PAST the
+/// failure, so the failed message is never redelivered (silent loss,
+/// at-most-once behind an at-least-once trait). This test pins the
+/// contract the fix must satisfy (seek-back / pause-retry / retry topic).
+#[tokio::test]
+async fn test_kafka_handler_failure_redelivery() {
+    println!("=== Kafka handler-failure redelivery test (C-10/B3) ===");
+    let (_container, bootstrap_servers) = start_kafka().await;
+    let prefix = test_prefix();
+    let domain = format!("{}-c10-domain", prefix);
+    let group = format!("{}-c10-group", prefix);
+
+    let publisher = KafkaEventBus::new(KafkaEventBusConfig::publisher(&bootstrap_servers))
+        .await
+        .expect("Failed to create Kafka publisher");
+
+    bus::event_bus_tests::test_handler_err_triggers_redelivery(
+        &publisher,
+        &domain,
+        &group,
+        // Kafka redelivery latency depends on the fix's strategy
+        // (seek-back is immediate; retry topics add a hop) — generous.
+        Duration::from_secs(15),
+    )
+    .await;
+
+    println!("=== Kafka handler-failure redelivery: PASSED ===");
 }
 
 #[tokio::test]

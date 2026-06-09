@@ -194,6 +194,7 @@ jobs:
             -w /workspace \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e TESTCONTAINERS_RYUK_DISABLED=true \
+            -e TESTCONTAINERS_HOST=127.0.0.1 \
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container storage postgres test
 
@@ -208,6 +209,7 @@ jobs:
             -w /workspace \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e TESTCONTAINERS_RYUK_DISABLED=true \
+            -e TESTCONTAINERS_HOST=127.0.0.1 \
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container bus amqp test
 
@@ -222,6 +224,7 @@ jobs:
             -w /workspace \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e TESTCONTAINERS_RYUK_DISABLED=true \
+            -e TESTCONTAINERS_HOST=127.0.0.1 \
             ghcr.io/angzarr-io/angzarr-rust:latest \
             just -f justfile.container test-dlq-postgres
 

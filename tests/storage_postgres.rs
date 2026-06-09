@@ -46,7 +46,18 @@ async fn start_postgres() -> (testcontainers::ContainerAsync<GenericImage>, sqlx
         .await
         .expect("Failed to get port");
 
-    let host = container.get_host().await.expect("Failed to get host");
+    // TESTCONTAINERS_HOST is set by `just _container-dind` (--network=host ⇒
+    // published ports are on loopback). Without it, testcontainers detects
+    // /.dockerenv and returns the bridge gateway — which has no port
+    // forwards under ROOTLESS docker, hanging until PoolTimedOut.
+    let host = match std::env::var("TESTCONTAINERS_HOST") {
+        Ok(h) => h,
+        Err(_) => container
+            .get_host()
+            .await
+            .expect("Failed to get host")
+            .to_string(),
+    };
 
     let connection_string = format!("postgres://testuser:testpass@{}:{}/testdb", host, host_port);
 
