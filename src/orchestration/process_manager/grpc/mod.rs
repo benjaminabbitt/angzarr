@@ -37,12 +37,16 @@ use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
 /// Returns:
 /// - `CommandOutcome::Success` when both `event_store.add` and the
 ///   subsequent `event_store.get` + `event_bus.publish` succeed.
-/// - `CommandOutcome::Rejected { code: Internal, ... }` when
-///   `event_store.add` returns Err. The caller's retry loop in
-///   `orchestrate_pm` classifies this as immediate-Rejected per
-///   R2-15 (it does NOT count toward the retry budget). The bus
-///   publish step never fails the persist outcome -- a failed
-///   publish is logged but the events ARE durably persisted.
+/// - `CommandOutcome::Retryable` when `event_store.add` returns a
+///   `SequenceConflict` (O3): another PM instance or a replay advanced
+///   this workflow concurrently. The caller's refetch-and-retry loop in
+///   `orchestrate_pm` re-fetches PM state and re-runs the handler.
+/// - `CommandOutcome::Rejected { code: Internal, ... }` for all other
+///   `event_store.add` errors (storage I/O, serialization). The caller
+///   classifies this as immediate-Rejected per R2-15 (it does NOT count
+///   toward the retry budget). The bus publish step never fails the
+///   persist outcome -- a failed publish is logged but the events ARE
+///   durably persisted.
 pub async fn persist_pm_event_book(
     event_store: &Arc<dyn EventStore>,
     event_bus: &Arc<dyn EventBus>,
@@ -74,10 +78,22 @@ pub async fn persist_pm_event_book(
         )
         .await
     {
-        // Event-store add failures here are server-side faults
-        // (storage I/O, sequence races at the storage layer). The
-        // caller doesn't go through the saga retry loop for this
-        // path, so the Code is metadata for downstream DLQ
+        // O3: a sequence conflict means another PM instance (or a replay)
+        // advanced this workflow concurrently — exactly the case
+        // orchestrate_pm's documented refetch-and-retry loop exists for.
+        // That loop only fires on `Retryable`; mapping conflicts to
+        // `Rejected` made it dead code and DLQ'd healthy concurrency.
+        if let crate::storage::StorageError::SequenceConflict { expected, actual } = e {
+            return CommandOutcome::Retryable {
+                reason: format!(
+                    "PM sequence conflict: expected {expected}, actual {actual} \
+                     (concurrent workflow update; refetch and retry)"
+                ),
+                current_state: None,
+            };
+        }
+        // Remaining add failures are server-side faults (storage I/O,
+        // serialization). The Code is metadata for downstream DLQ
         // classification rather than a live retry signal.
         return CommandOutcome::Rejected {
             code: tonic::Code::Internal,

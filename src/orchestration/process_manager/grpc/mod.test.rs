@@ -82,6 +82,39 @@ async fn persist_publishes_pages_from_process_events() {
     );
 }
 
+/// O3 regression: a sequence conflict from `event_store.add` must map to
+/// `CommandOutcome::Retryable` — not `Rejected` — so `orchestrate_pm`'s
+/// documented refetch-and-retry loop actually fires. Pre-fix, ALL add
+/// errors mapped to `Rejected { Internal }`, making that loop dead code
+/// and DLQ'ing healthy concurrent workflow updates.
+#[tokio::test]
+async fn persist_sequence_conflict_maps_to_retryable() {
+    let store: Arc<dyn EventStore> = Arc::new(MockEventStore::new());
+    let bus = Arc::new(MockEventBus::new());
+    let bus_dyn: Arc<dyn EventBus> = bus.clone();
+    let pm_root = Uuid::new_v4();
+
+    // First persist claims sequence 0.
+    let first = pm_book("pm", pm_root, "corr", &[0]);
+    assert!(matches!(
+        persist_pm_event_book(&store, &bus_dyn, "pm", &first, "corr").await,
+        CommandOutcome::Success(_)
+    ));
+
+    // A "concurrent PM instance" persists at the same sequence.
+    let conflicting = pm_book("pm", pm_root, "corr", &[0]);
+    let outcome = persist_pm_event_book(&store, &bus_dyn, "pm", &conflicting, "corr").await;
+    match outcome {
+        CommandOutcome::Retryable { reason, .. } => {
+            assert!(
+                reason.to_lowercase().contains("sequence"),
+                "reason should name the conflict, got: {reason}"
+            );
+        }
+        other => panic!("a sequence conflict must be Retryable (refetch-and-retry), got {other:?}"),
+    }
+}
+
 /// R2-02-LIVE: the publish step preserves the cover from
 /// `process_events`. Mutating away the `cover` field would send a
 /// book with no cover to the bus, breaking routing-key resolution.
