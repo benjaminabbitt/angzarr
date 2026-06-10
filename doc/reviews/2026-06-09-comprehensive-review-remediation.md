@@ -25,7 +25,7 @@ The 2026-04-07 bug "HandleEvent+HandleCommand interleave drops AMQP publish on s
 
 The interleaved HandleEvent fact manufactures the retry (steals seq 2 / races publish). The v0.4.1 replay fix requires an `AngzarrDeferred` header with full source provenance; the fact pipeline persists `source_info: None`, so it never applies. H-16 conflated "nothing persisted" with "persisted previously but unpublished." Compounding: AMQP `basic_publish` without `mandatory` — routing to zero queues confirmed as success.
 
-**FIX (B1, `c2fa2beb`):** in-place post_persist retry with the exact persisted book + `dead_letter_unpublished` capture hook on exhaustion. **Remaining: end-to-end verification in the full-sail poker scenario, then delete the bug memory.**
+**FIX (B1, `c2fa2beb`):** in-place post_persist retry with the exact persisted book + `dead_letter_unpublished` capture hook on exhaustion. **VERIFIED e2e 2026-06-10 (`6ae3530a`)** — core-level instead of full-sail (that app is mid-migration; decided with Ben): tests/interleave_publish_amqp.rs drives the REAL pipeline + SQLite store + RabbitMQ with (1) deterministic injected first-publish failure → subscriber still receives via in-place retry, and (2) 10 rounds of the original fact/command race → full persisted-vs-published parity. Bug memory deleted. Side-finding filed (`terse-amber`): fact path lacks in-pipeline conflict retry — concurrent same-root writes surface FailedPrecondition to fact callers.
 
 ---
 
