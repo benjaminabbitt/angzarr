@@ -3142,230 +3142,132 @@ where
 }
 
 // =============================================================================
-// Test runner macro
+// Test generator macros (T11)
 // =============================================================================
+//
+// One `#[tokio::test]` is generated PER contract fn, so a failure in one
+// contract surfaces individually instead of fail-fasting the rest of the
+// suite inside a single mega-test. `$fixture` is an async fn returning a
+// fresh store handle; each generated test calls it once. Backends with
+// expensive setup share a container behind the fixture (see
+// storage_postgres.rs / storage_immudb.rs); SQLite builds a fresh
+// in-memory store per test.
 
-/// Run the CORE EventStore interface tests — everything except the
+/// Emit one `#[tokio::test]` per listed contract fn.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __gen_event_store_tests {
+    ($fixture:path, $($name:ident),+ $(,)?) => {
+        $(
+            #[tokio::test]
+            async fn $name() {
+                let store = $fixture().await;
+                $crate::storage::event_store_tests::$name(&store).await;
+            }
+        )+
+    };
+}
+
+/// Generate the CORE EventStore contract tests — everything except the
 /// `delete_edition_events` and 2PC-cascade groups, which are split into
-/// `run_event_store_delete_tests!` / `run_event_store_cascade_tests!`
+/// `generate_event_store_delete_tests!` / `generate_event_store_cascade_tests!`
 /// because some backends legitimately do not implement them (ImmuDB is
 /// append-only and has no cascade columns; it asserts NotImplemented in
 /// its own suite instead). Fully-featured backends should invoke
-/// `run_event_store_tests!`, which composes all three groups (T4).
+/// `generate_event_store_tests!`, which composes all three groups (T4).
 #[macro_export]
-macro_rules! run_event_store_core_tests {
-    ($store:expr) => {
-        use $crate::storage::event_store_tests::*;
-
-        // add tests
-        test_add_single_event($store).await;
-        println!("  test_add_single_event: PASSED");
-
-        test_add_multiple_events($store).await;
-        println!("  test_add_multiple_events: PASSED");
-
-        test_add_empty_events($store).await;
-        println!("  test_add_empty_events: PASSED");
-
-        test_add_sequential_batches($store).await;
-        println!("  test_add_sequential_batches: PASSED");
-
-        test_add_sequence_conflict($store).await;
-        println!("  test_add_sequence_conflict: PASSED");
-
-        test_add_duplicate_sequence($store).await;
-        println!("  test_add_duplicate_sequence: PASSED");
-
-        test_add_rejects_duplicate_sequences($store).await;
-        println!("  test_add_rejects_duplicate_sequences: PASSED");
-
-        // get tests
-        test_get_all_events($store).await;
-        println!("  test_get_all_events: PASSED");
-
-        test_get_empty_aggregate($store).await;
-        println!("  test_get_empty_aggregate: PASSED");
-
-        test_get_preserves_event_data($store).await;
-        println!("  test_get_preserves_event_data: PASSED");
-
-        // get_from tests
-        test_get_from_zero($store).await;
-        println!("  test_get_from_zero: PASSED");
-
-        test_get_from_middle($store).await;
-        println!("  test_get_from_middle: PASSED");
-
-        test_get_from_end($store).await;
-        println!("  test_get_from_end: PASSED");
-
-        test_get_from_last($store).await;
-        println!("  test_get_from_last: PASSED");
-
-        // get_from_to tests
-        test_get_from_to_full_range($store).await;
-        println!("  test_get_from_to_full_range: PASSED");
-
-        test_get_from_to_partial($store).await;
-        println!("  test_get_from_to_partial: PASSED");
-
-        test_get_from_to_single($store).await;
-        println!("  test_get_from_to_single: PASSED");
-
-        test_get_from_to_empty($store).await;
-        println!("  test_get_from_to_empty: PASSED");
-
-        test_get_from_to_zero_to($store).await;
-        println!("  test_get_from_to_zero_to: PASSED");
-
-        // list_roots tests
-        test_list_roots_single($store).await;
-        println!("  test_list_roots_single: PASSED");
-
-        test_list_roots_multiple($store).await;
-        println!("  test_list_roots_multiple: PASSED");
-
-        test_list_roots_empty_domain($store).await;
-        println!("  test_list_roots_empty_domain: PASSED");
-
-        test_list_roots_domain_isolation($store).await;
-        println!("  test_list_roots_domain_isolation: PASSED");
-
-        // list_domains tests
-        test_list_domains_contains($store).await;
-        println!("  test_list_domains_contains: PASSED");
-
-        test_list_domains_multiple($store).await;
-        println!("  test_list_domains_multiple: PASSED");
-
-        // get_next_sequence tests
-        test_get_next_sequence_empty($store).await;
-        println!("  test_get_next_sequence_empty: PASSED");
-
-        test_get_next_sequence_after_events($store).await;
-        println!("  test_get_next_sequence_after_events: PASSED");
-
-        test_get_next_sequence_increments($store).await;
-        println!("  test_get_next_sequence_increments: PASSED");
-
-        // integration tests
-        test_aggregate_isolation($store).await;
-        println!("  test_aggregate_isolation: PASSED");
-
-        test_large_batch($store).await;
-        println!("  test_large_batch: PASSED");
-
-        // correlation_id tests
-        test_correlation_id_query($store).await;
-        println!("  test_correlation_id_query: PASSED");
-
-        test_correlation_id_empty_query($store).await;
-        println!("  test_correlation_id_empty_query: PASSED");
-
-        test_correlation_id_query_main_timeline_null_edition($store).await;
-        println!("  test_correlation_id_query_main_timeline_null_edition: PASSED");
-
-        test_correlation_id_preserved($store).await;
-        println!("  test_correlation_id_preserved: PASSED");
-
-        test_cover_ext_round_trips($store).await;
-        println!("  test_cover_ext_round_trips: PASSED");
-
-        // edition tests
-        test_edition_isolation($store).await;
-        println!("  test_edition_isolation: PASSED");
-
-        test_edition_sequences_independent($store).await;
-        println!("  test_edition_sequences_independent: PASSED");
-
-        test_edition_divergence_read($store).await;
-        println!("  test_edition_divergence_read: PASSED");
-
-        test_edition_divergence_from_middle($store).await;
-        println!("  test_edition_divergence_from_middle: PASSED");
-
-        test_edition_divergence_get_from($store).await;
-        println!("  test_edition_divergence_get_from: PASSED");
-
-        test_edition_filtered_roots($store).await;
-        println!("  test_edition_filtered_roots: PASSED");
-
-        test_edition_explicit_divergence_new_branch($store).await;
-        println!("  test_edition_explicit_divergence_new_branch: PASSED");
-
-        // main-timeline sentinel polarity tests (C-15)
-        test_main_timeline_sentinel_write_empty_read_both($store).await;
-        println!("  test_main_timeline_sentinel_write_empty_read_both: PASSED");
-
-        test_main_timeline_sentinel_write_angzarr_read_both($store).await;
-        println!("  test_main_timeline_sentinel_write_angzarr_read_both: PASSED");
-
-        test_main_timeline_external_id_sentinel_polarity($store).await;
-        println!("  test_main_timeline_external_id_sentinel_polarity: PASSED");
-
-        // idempotency tests
-        test_add_with_external_id_returns_duplicate($store).await;
-        println!("  test_add_with_external_id_returns_duplicate: PASSED");
-
-        test_add_different_external_ids_allowed($store).await;
-        println!("  test_add_different_external_ids_allowed: PASSED");
-
-        // timestamp tests
-        test_get_until_timestamp_filters($store).await;
-        println!("  test_get_until_timestamp_filters: PASSED");
-
-        test_get_until_timestamp_returns_all_when_recent($store).await;
-        println!("  test_get_until_timestamp_returns_all_when_recent: PASSED");
-
-        test_timestamp_preservation($store).await;
-        println!("  test_timestamp_preservation: PASSED");
-
-        // large scale tests
-        test_large_aggregate_10k($store).await;
-        println!("  test_large_aggregate_10k: PASSED");
-
-        // find_by_source tests
-        test_find_by_source_returns_match($store).await;
-        println!("  test_find_by_source_returns_match: PASSED");
-
-        test_find_by_source_no_match($store).await;
-        println!("  test_find_by_source_no_match: PASSED");
-
-        // C-18: round-trip tests for external_id + source_info. These pin the
-        // claim-survives-add() contract that several backends silently violated.
-        test_find_by_source_round_trip($store).await;
-        println!("  test_find_by_source_round_trip: PASSED");
-
-        test_find_by_external_id_round_trip($store).await;
-        println!("  test_find_by_external_id_round_trip: PASSED");
-
-        test_find_by_external_id_no_match($store).await;
-        println!("  test_find_by_external_id_no_match: PASSED");
-
-        test_find_by_external_id_empty_returns_none($store).await;
-        println!("  test_find_by_external_id_empty_returns_none: PASSED");
+macro_rules! generate_event_store_core_tests {
+    ($fixture:path) => {
+        $crate::__gen_event_store_tests!(
+            $fixture,
+            // add tests
+            test_add_single_event,
+            test_add_multiple_events,
+            test_add_empty_events,
+            test_add_sequential_batches,
+            test_add_sequence_conflict,
+            test_add_duplicate_sequence,
+            test_add_rejects_duplicate_sequences,
+            // get tests
+            test_get_all_events,
+            test_get_empty_aggregate,
+            test_get_preserves_event_data,
+            // get_from tests
+            test_get_from_zero,
+            test_get_from_middle,
+            test_get_from_end,
+            test_get_from_last,
+            // get_from_to tests
+            test_get_from_to_full_range,
+            test_get_from_to_partial,
+            test_get_from_to_single,
+            test_get_from_to_empty,
+            test_get_from_to_zero_to,
+            // list_roots tests
+            test_list_roots_single,
+            test_list_roots_multiple,
+            test_list_roots_empty_domain,
+            test_list_roots_domain_isolation,
+            // list_domains tests
+            test_list_domains_contains,
+            test_list_domains_multiple,
+            // get_next_sequence tests
+            test_get_next_sequence_empty,
+            test_get_next_sequence_after_events,
+            test_get_next_sequence_increments,
+            // integration tests
+            test_aggregate_isolation,
+            test_large_batch,
+            // correlation_id tests
+            test_correlation_id_query,
+            test_correlation_id_empty_query,
+            test_correlation_id_query_main_timeline_null_edition,
+            test_correlation_id_preserved,
+            test_cover_ext_round_trips,
+            // edition tests
+            test_edition_isolation,
+            test_edition_sequences_independent,
+            test_edition_divergence_read,
+            test_edition_divergence_from_middle,
+            test_edition_divergence_get_from,
+            test_edition_filtered_roots,
+            test_edition_explicit_divergence_new_branch,
+            // main-timeline sentinel polarity tests (C-15)
+            test_main_timeline_sentinel_write_empty_read_both,
+            test_main_timeline_sentinel_write_angzarr_read_both,
+            test_main_timeline_external_id_sentinel_polarity,
+            // idempotency tests
+            test_add_with_external_id_returns_duplicate,
+            test_add_different_external_ids_allowed,
+            // timestamp tests
+            test_get_until_timestamp_filters,
+            test_get_until_timestamp_returns_all_when_recent,
+            test_timestamp_preservation,
+            // large scale tests
+            test_large_aggregate_10k,
+            // find_by_source / find_by_external_id tests (C-18 round trips)
+            test_find_by_source_returns_match,
+            test_find_by_source_no_match,
+            test_find_by_source_round_trip,
+            test_find_by_external_id_round_trip,
+            test_find_by_external_id_no_match,
+            test_find_by_external_id_empty_returns_none,
+        );
     };
 }
 
 /// `delete_edition_events` group — only for backends with hard-delete
 /// support. ImmuDB is append-only: its suite asserts NotImplemented via
-/// `test_immudb_delete_not_supported` instead of running these.
+/// `test_immudb_delete_not_supported` instead of generating these.
 #[macro_export]
-macro_rules! run_event_store_delete_tests {
-    ($store:expr) => {
-        // Redundant (but harmless) when composed after the core macro's
-        // glob import; needed when this group is invoked standalone.
-        #[allow(unused_imports)]
-        use $crate::storage::event_store_tests::*;
-
-        test_delete_edition_events_rejects_main_timeline_sentinels($store).await;
-        println!("  test_delete_edition_events_rejects_main_timeline_sentinels: PASSED");
-
-        test_delete_edition_events_removes_all($store).await;
-        println!("  test_delete_edition_events_removes_all: PASSED");
-
-        test_delete_edition_events_scoped($store).await;
-        println!("  test_delete_edition_events_scoped: PASSED");
+macro_rules! generate_event_store_delete_tests {
+    ($fixture:path) => {
+        $crate::__gen_event_store_tests!(
+            $fixture,
+            test_delete_edition_events_rejects_main_timeline_sentinels,
+            test_delete_edition_events_removes_all,
+            test_delete_edition_events_scoped,
+        );
     };
 }
 
@@ -3373,41 +3275,28 @@ macro_rules! run_event_store_delete_tests {
 /// `committed`/`cascade_id` columns. ImmuDB lacks them and returns
 /// NotImplemented from the reaper queries.
 #[macro_export]
-macro_rules! run_event_store_cascade_tests {
-    ($store:expr) => {
-        // Redundant (but harmless) when composed after the core macro's
-        // glob import; needed when this group is invoked standalone.
-        #[allow(unused_imports)]
-        use $crate::storage::event_store_tests::*;
-
-        test_query_stale_cascades_finds_old_uncommitted($store).await;
-        println!("  test_query_stale_cascades_finds_old_uncommitted: PASSED");
-
-        test_query_stale_cascades_ignores_resolved($store).await;
-        println!("  test_query_stale_cascades_ignores_resolved: PASSED");
-
-        test_query_stale_cascades_ignores_fresh($store).await;
-        println!("  test_query_stale_cascades_ignores_fresh: PASSED");
-
-        test_query_cascade_participants_finds_uncommitted($store).await;
-        println!("  test_query_cascade_participants_finds_uncommitted: PASSED");
-
-        test_query_cascade_participants_ignores_committed($store).await;
-        println!("  test_query_cascade_participants_ignores_committed: PASSED");
-
-        test_query_cascade_participants_multiple_aggregates($store).await;
-        println!("  test_query_cascade_participants_multiple_aggregates: PASSED");
+macro_rules! generate_event_store_cascade_tests {
+    ($fixture:path) => {
+        $crate::__gen_event_store_tests!(
+            $fixture,
+            test_query_stale_cascades_finds_old_uncommitted,
+            test_query_stale_cascades_ignores_resolved,
+            test_query_stale_cascades_ignores_fresh,
+            test_query_cascade_participants_finds_uncommitted,
+            test_query_cascade_participants_ignores_committed,
+            test_query_cascade_participants_multiple_aggregates,
+        );
     };
 }
 
-/// Run ALL EventStore interface tests (core + delete + cascade) — the
+/// Generate ALL EventStore contract tests (core + delete + cascade) — the
 /// full contract for fully-featured backends (SQLite, Postgres).
 #[macro_export]
-macro_rules! run_event_store_tests {
-    ($store:expr) => {
-        $crate::run_event_store_core_tests!($store);
-        $crate::run_event_store_delete_tests!($store);
-        $crate::run_event_store_cascade_tests!($store);
+macro_rules! generate_event_store_tests {
+    ($fixture:path) => {
+        $crate::generate_event_store_core_tests!($fixture);
+        $crate::generate_event_store_delete_tests!($fixture);
+        $crate::generate_event_store_cascade_tests!($fixture);
     };
 }
 

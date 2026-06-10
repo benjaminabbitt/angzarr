@@ -33,16 +33,18 @@ async fn create_pool() -> sqlx::SqlitePool {
 // EventStore Tests
 // =============================================================================
 
-#[tokio::test]
-async fn test_sqlite_event_store() {
-    println!("=== SQLite EventStore Tests ===");
+/// T11: one generated `#[tokio::test]` per EventStore contract fn — a
+/// failing contract surfaces individually instead of fail-fasting the
+/// rest of the suite. Each test gets its own in-memory store, so the
+/// group is also parallel-safe.
+mod event_store_contract {
+    use angzarr::storage::SqliteEventStore;
 
-    let pool = create_pool().await;
-    let store = SqliteEventStore::new(pool);
+    async fn fixture() -> SqliteEventStore {
+        SqliteEventStore::new(super::create_pool().await)
+    }
 
-    run_event_store_tests!(&store);
-
-    println!("=== All SQLite EventStore tests PASSED ===");
+    crate::generate_event_store_tests!(fixture);
 }
 
 // T11: the standalone C-18 round-trip runner was deleted — it existed only

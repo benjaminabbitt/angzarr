@@ -135,24 +135,42 @@ async fn connect_and_init(connection_string: &str) -> (sqlx::PgPool, ImmudbEvent
     (pool, store)
 }
 
-#[tokio::test]
-async fn test_immudb_event_store() {
-    println!("=== ImmuDB EventStore Tests ===");
-    println!("Starting immudb container...");
+/// Shared container for the per-contract-fn tests (T11). The static holds
+/// the container handle (alive until process exit; ryuk reaps it) plus the
+/// connection string; each generated test opens its own connection since a
+/// pool created inside one `#[tokio::test]` runtime dies with that runtime.
+static IMMUDB: tokio::sync::OnceCell<(testcontainers::ContainerAsync<GenericImage>, String)> =
+    tokio::sync::OnceCell::const_new();
 
-    let (_container, connection_string) = start_immudb().await;
-    let (_pool, store) = connect_and_init(&connection_string).await;
+async fn shared_immudb_url() -> String {
+    let (_container, url) = IMMUDB
+        .get_or_init(|| async {
+            let (container, url) = start_immudb().await;
+            (container, url)
+        })
+        .await;
+    url.clone()
+}
 
-    println!("Running EventStore tests (core suite)...");
-    // T4: core suite only. ImmuDB is append-only (delete_edition_events →
-    // NotImplemented, asserted by test_immudb_delete_not_supported below)
-    // and has no committed/cascade_id columns (reaper queries →
-    // NotImplemented). Running the full suite here was self-contradictory:
-    // it asserted both that delete succeeds AND that delete is unsupported.
-    run_event_store_core_tests!(&store);
+/// T4: core suite only. ImmuDB is append-only (delete_edition_events →
+/// NotImplemented, asserted by test_immudb_delete_not_supported below)
+/// and has no committed/cascade_id columns (reaper queries →
+/// NotImplemented). Running the full suite was self-contradictory:
+/// it asserted both that delete succeeds AND that delete is unsupported.
+///
+/// T11: one generated `#[tokio::test]` per core contract fn. The known
+/// S2 sentinel failures now surface as individual red tests rather than
+/// one opaque mega-test failure.
+mod event_store_contract {
+    use angzarr::storage::ImmudbEventStore;
 
-    println!("=== All ImmuDB EventStore (core) tests PASSED ===");
-    // Container is dropped here, stopping immudb
+    async fn fixture() -> ImmudbEventStore {
+        let url = super::shared_immudb_url().await;
+        let (_pool, store) = super::connect_and_init(&url).await;
+        store
+    }
+
+    crate::generate_event_store_core_tests!(fixture);
 }
 
 // =============================================================================
