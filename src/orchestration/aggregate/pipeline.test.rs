@@ -503,6 +503,32 @@ async fn test_publish_exhaustion_captures_unpublished_to_dlq() {
     );
 }
 
+/// B1 retry pacing: linear backoff BETWEEN attempts (200ms, then 400ms) and
+/// no sleep after the final attempt. Paused tokio time makes the assertion
+/// exact and instant — this is what kills the mutants on the backoff
+/// arithmetic (`* attempt` → `+`/`/`) and the last-attempt sleep guard
+/// (`attempt < POST_PERSIST_ATTEMPTS` → `==`/`>`/`<=`), which are invisible
+/// to the outcome-only tests above.
+#[tokio::test(start_paused = true)]
+async fn test_publish_exhaustion_backoff_pacing() {
+    let ctx = TestCtx {
+        post_persist_fail_times: usize::MAX,
+        ..Default::default()
+    };
+    let book = book_with_domain("orders", "c1");
+
+    let start = tokio::time::Instant::now();
+    let _ = publish_unless_noop(&ctx, &book, false).await;
+    let elapsed = start.elapsed();
+
+    assert_eq!(
+        elapsed,
+        std::time::Duration::from_millis(600),
+        "exhaustion must sleep exactly 200ms + 400ms (linear backoff between \
+         the 3 attempts, none after the last); got {elapsed:?}"
+    );
+}
+
 // ============================================================================
 // try_deferred_idempotency_replay
 // ============================================================================
