@@ -7,6 +7,8 @@
 //! only invokes the subset of contract tests its implementation actually
 //! supports (e.g. the mock backend skips cascade-query tests).
 
+// Each backend binary compiles only the subset it runs; the inventory
+// test at the bottom of this file (T12) guards against silent unwiring.
 #![allow(dead_code)]
 
 use prost_types::Any;
@@ -3316,4 +3318,22 @@ macro_rules! run_event_store_concurrent_tests {
         test_add_concurrent_writes_unique_sequences($arc_store).await;
         println!("  test_add_concurrent_writes_unique_sequences: PASSED");
     };
+}
+
+/// T12: every contract fn in this module must be wired somewhere — see
+/// `crate::storage::assert_contract_inventory`.
+#[test]
+fn event_store_contract_inventory_is_fully_wired() {
+    crate::storage::assert_contract_inventory(
+        include_str!("event_store_tests.rs"),
+        "// Test generator macros (T11)",
+        &[
+            include_str!("../storage_sqlite.rs"),
+            include_str!("../storage_postgres.rs"),
+            include_str!("../storage_immudb.rs"),
+            include_str!("../storage_redis.rs"),
+            include_str!("../storage_mock.rs"),
+        ],
+        &[],
+    );
 }

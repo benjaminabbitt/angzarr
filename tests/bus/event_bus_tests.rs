@@ -1015,3 +1015,24 @@ macro_rules! run_per_root_ordering_test {
         println!("  test_per_root_ordering_under_concurrent_publish: PASSED");
     };
 }
+
+/// T12: every contract fn in this module must be wired somewhere — see
+/// `crate::bus::assert_contract_inventory`. The per-fn
+/// `#[allow(dead_code)]` markers above exist because each broker binary
+/// runs only the subset its transport supports; this inventory test
+/// guards against a fn losing its LAST caller silently (the T1 rot class
+/// that left phantom DLQ helpers uncompiled for months).
+#[test]
+fn event_bus_contract_inventory_is_fully_wired() {
+    crate::bus::assert_contract_inventory(
+        include_str!("event_bus_tests.rs"),
+        "// Test runner macro",
+        &[
+            include_str!("../bus_amqp.rs"),
+            include_str!("../bus_kafka.rs"),
+            include_str!("../bus_pubsub.rs"),
+            include_str!("../bus_sns_sqs.rs"),
+        ],
+        &[],
+    );
+}

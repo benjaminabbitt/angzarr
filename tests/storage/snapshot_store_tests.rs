@@ -6,6 +6,8 @@
 //! `#![allow(dead_code)]` because each backend's integration-test binary
 //! only invokes the subset of contract tests its implementation supports.
 
+// Each backend binary compiles only the subset it runs; the inventory
+// test at the bottom of this file (T12) guards against silent unwiring.
 #![allow(dead_code)]
 
 use prost_types::Any;
@@ -687,4 +689,22 @@ macro_rules! run_snapshot_store_tests {
         test_large_state_100kb($store).await;
         println!("  test_large_state_100kb: PASSED");
     };
+}
+
+/// T12: every contract fn in this module must be wired somewhere — see
+/// `crate::storage::assert_contract_inventory`.
+#[test]
+fn snapshot_store_contract_inventory_is_fully_wired() {
+    crate::storage::assert_contract_inventory(
+        include_str!("snapshot_store_tests.rs"),
+        "macro_rules! run_snapshot_store_tests",
+        &[
+            include_str!("../storage_sqlite.rs"),
+            include_str!("../storage_postgres.rs"),
+            include_str!("../storage_immudb.rs"),
+            include_str!("../storage_redis.rs"),
+            include_str!("../storage_mock.rs"),
+        ],
+        &[],
+    );
 }
