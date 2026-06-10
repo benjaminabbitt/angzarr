@@ -163,8 +163,19 @@ test-pipeline-snapshot:
 test-projector-publish:
     cargo test --test projector_publish_event_bus --features "test-utils"
 
+# Run the deployed-cluster acceptance harness (T14). Opt-in: the binary
+# exits 0 with a notice unless ANGZARR_ACCEPTANCE=1 and a deployed
+# angzarr system is reachable, so this is safe in CI and `test-integration`.
+test-acceptance:
+    cargo test --test acceptance_features --features "test-utils"
+
+# Live variant: requires a deployed angzarr system (just kind up + skaffold)
+# reachable from the container (--network=host => localhost NodePort works).
+test-acceptance-live:
+    ANGZARR_ACCEPTANCE=1 cargo test --test acceptance_features --features "test-utils"
+
 # Run all CI integration tests
-test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline test-pm-persist test-status-dlq-admin test-pipeline-snapshot test-projector-publish
+test-integration: test-storage-sqlite test-config test-grpc test-dlq-sqlite test-dlq-features test-aggregate-pipeline test-pm-persist test-status-dlq-admin test-pipeline-snapshot test-projector-publish test-acceptance
 
 # Run coverage for CI (unit + contract tests)
 cov-ci:

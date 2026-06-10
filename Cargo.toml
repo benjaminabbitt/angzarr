@@ -361,6 +361,17 @@ name = "dlq_features"
 harness = false
 required-features = ["test-utils"]
 
+# --- Deployed-cluster acceptance harness (T14) ---
+# Cucumber-rs harness against features/acceptance/end_to_end.feature, driving
+# a DEPLOYED angzarr system (kind + skaffold poker examples) through the
+# public gRPC surface via the tests/common fixture layer. Opt-in: exits 0
+# unless ANGZARR_ACCEPTANCE=1 so plain `cargo test` needs no cluster. The
+# compensation_* features still need harness coverage (saga topology).
+[[test]]
+name = "acceptance_features"
+harness = false
+required-features = ["test-utils"]
+
 # --- Aggregate pipeline -> EventStore integration ---
 # Runs the aggregate command pipeline (AggregateService.handle_command)
 # through a real in-memory SqliteEventStore. Catches drift between the
