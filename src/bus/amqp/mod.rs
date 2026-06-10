@@ -303,7 +303,9 @@ impl AmqpEventBus {
         let message_ttl_ms = self.config.message_ttl_ms;
         let max_queue_length = self.config.max_queue_length;
 
-        // Spawn consumer task with reconnection loop
+        // Spawn consumer task with reconnection loop. The oneshot reports
+        // the FIRST successful consumer setup back to this call.
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
             Self::consume_with_reconnect(
                 pool,
@@ -313,14 +315,27 @@ impl AmqpEventBus {
                 handlers,
                 message_ttl_ms,
                 max_queue_length,
+                ready_tx,
             )
             .await;
         });
+
+        // T10: `start_consuming` contract — the consumer is ESTABLISHED when
+        // this returns. Without this, queue declare + bind happen inside the
+        // spawned task, and a publish issued right after start_consuming()
+        // could be dropped for lack of a bound queue (silent loss in any
+        // service that publishes immediately after starting its subscriber).
+        // If the broker is unreachable, this waits through the reconnect
+        // backoff until the first successful attach.
+        ready_rx.await.map_err(|_| {
+            BusError::Subscribe("consumer task exited before establishing".to_string())
+        })?;
 
         Ok(())
     }
 
     /// Consumer loop with automatic reconnection and exponential backoff with jitter.
+    #[allow(clippy::too_many_arguments)]
     async fn consume_with_reconnect(
         pool: Pool,
         exchange: String,
@@ -329,9 +344,14 @@ impl AmqpEventBus {
         handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
         message_ttl_ms: Option<i32>,
         max_queue_length: Option<i32>,
+        ready_tx: tokio::sync::oneshot::Sender<()>,
     ) {
         use futures::StreamExt;
         use std::time::Duration;
+
+        // Signals the FIRST successful setup back to start_consuming (T10
+        // readiness contract). Subsequent reconnects have no one to notify.
+        let mut ready_tx = Some(ready_tx);
 
         // Exponential backoff with jitter to prevent thundering herd
         let backoff_builder = ExponentialBuilder::default()
@@ -359,6 +379,11 @@ impl AmqpEventBus {
                         routing_key = %routing_key,
                         "Consumer connected, processing messages"
                     );
+                    if let Some(tx) = ready_tx.take() {
+                        // Receiver may have been dropped (caller gave up);
+                        // consuming proceeds either way.
+                        let _ = tx.send(());
+                    }
                     // H-07: do NOT reset backoff on `setup_consumer` success
                     // — only after the stream has actually produced at
                     // least one delivery. A consumer that handshakes and

@@ -220,9 +220,6 @@ pub async fn test_handler_err_triggers_redelivery<B: EventBus>(
         .await
         .expect("Failed to start consuming");
 
-    // Let the consumer attach.
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
     publisher
         .publish(Arc::new(make_event_book(domain)))
         .await
@@ -273,9 +270,6 @@ pub async fn test_publish_subscribe_roundtrip<B: EventBus>(
         .start_consuming()
         .await
         .expect("Failed to start consuming");
-
-    // Give consumer time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Publish event
     let book = make_event_book(domain);
@@ -338,8 +332,6 @@ pub async fn test_multiple_messages<B: EventBus>(
         .await
         .expect("Failed to start consuming");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // Publish multiple messages
     for _ in 0..message_count {
         let book = make_event_book(domain);
@@ -388,8 +380,6 @@ pub async fn test_domain_filtering<B: EventBus>(
         .start_consuming()
         .await
         .expect("Failed to start consuming");
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Publish to target domain - should be received
     publisher
@@ -452,8 +442,6 @@ pub async fn test_multi_domain_subscription<B: EventBus>(
         .start_consuming()
         .await
         .expect("Failed to start consuming");
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Publish to domain1
     publisher
@@ -548,8 +536,6 @@ pub async fn test_multiple_handlers_independent<B: EventBus>(
         .await
         .expect("Failed to start");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // Publish single event
     publisher
         .publish(Arc::new(make_event_book(domain)))
@@ -618,8 +604,6 @@ pub async fn test_routing_metadata_preserved<B: EventBus>(
 
     subscriber.start_consuming().await.expect("Failed to start");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // Create event with specific correlation_id
     let correlation_id = format!("corr-{}", uuid::Uuid::new_v4());
     let mut book = make_event_book(domain);
@@ -661,8 +645,6 @@ pub async fn test_payload_bytes_exact<B: EventBus>(
         .expect("Failed to subscribe");
 
     subscriber.start_consuming().await.expect("Failed to start");
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Create event with specific binary payload
     let payload_bytes: Vec<u8> = (0..256).map(|i| i as u8).collect();
@@ -811,9 +793,6 @@ pub async fn test_per_root_ordering_under_concurrent_publish(
         .expect("Failed to subscribe");
 
     subscriber.start_consuming().await.expect("Failed to start");
-
-    // Give the consumer time to wire up before we start firing.
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Allocate roots up-front so producers don't race the test on UUID
     // generation.
