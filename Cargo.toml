@@ -372,6 +372,15 @@ name = "acceptance_features"
 harness = false
 required-features = ["test-utils"]
 
+# --- B1 e2e: persisted events ALWAYS reach the bus ---
+# Real aggregate pipeline + real SQLite store + real RabbitMQ. Pins the
+# persisted-but-never-published class (the 2026-04-07 full-sail interleave
+# bug, fixed in c2fa2beb) with deterministic publish-failure injection and
+# the original fact/command race shape.
+[[test]]
+name = "interleave_publish_amqp"
+required-features = ["amqp", "test-utils"]
+
 # --- Aggregate pipeline -> EventStore integration ---
 # Runs the aggregate command pipeline (AggregateService.handle_command)
 # through a real in-memory SqliteEventStore. Catches drift between the

@@ -315,6 +315,8 @@ _bus-all: _bus-amqp clean-containers _bus-kafka clean-containers _bus-pubsub cle
 _bus-amqp:
     @echo "=== Bus: AMQP/RabbitMQ (direct contract tests) ==="
     cargo test --test bus_amqp --features "amqp test-utils" -- --test-threads=1
+    @echo "=== Bus: AMQP B1 interleave-publish e2e ==="
+    cargo test --test interleave_publish_amqp --features "amqp test-utils" -- --test-threads=1
 
 # Private: Kafka bus tests (testcontainers)
 # WHY: High-throughput partitioned streaming. Tests verify topic creation,
