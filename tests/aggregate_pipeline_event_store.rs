@@ -43,9 +43,10 @@ use angzarr::discovery::StaticServiceDiscovery;
 use angzarr::orchestration::aggregate::{ClientLogic, FactContext};
 use angzarr::proto::command_handler_coordinator_service_server::CommandHandlerCoordinatorService;
 use angzarr::proto::{
-    business_response, command_page, event_page, page_header, BusinessResponse, CascadeErrorMode,
-    CommandBook, CommandPage, CommandRequest, ContextualCommand, Cover, Edition, EventBook,
-    EventPage, MergeStrategy, PageHeader, SyncMode, Uuid as ProtoUuid,
+    business_response, command_page, event_page, page_header, AngzarrDeferredSequence,
+    BusinessResponse, CascadeErrorMode, CommandBook, CommandPage, CommandRequest,
+    ContextualCommand, Cover, Edition, EventBook, EventPage, MergeStrategy, PageHeader, SyncMode,
+    Uuid as ProtoUuid,
 };
 use angzarr::repository::SnapshotRepository;
 use angzarr::services::AggregateService;
@@ -96,6 +97,19 @@ impl ClientLogic for QueuedClientLogic {
             .await
             .pop_front()
             .unwrap_or(ctx.facts))
+    }
+
+    /// Constant empty state: the COMMUTATIVE post-exec field-overlap check
+    /// replays prior vs prior+received and diffs the two states. A constant
+    /// state diffs to "no fields touched", so commutative-merge commands
+    /// pass the gate — without this the trait-default `replay`
+    /// (Unimplemented) degrades the gate to STRICT and rejects any deferred
+    /// command against an aggregate with prior history.
+    async fn replay(&self, _events: &EventBook) -> Result<Any, tonic::Status> {
+        Ok(Any {
+            type_url: "test.State".to_string(),
+            value: vec![],
+        })
     }
 }
 
@@ -381,4 +395,207 @@ async fn pipeline_propagates_edition_to_event_store_writes() {
         "default-edition read must NOT see branch events; got {}",
         default.len()
     );
+}
+
+// ============================================================================
+// O1: deferred-idempotency key must distinguish commands of one invocation
+// ============================================================================
+
+/// Build a saga-produced command: `AngzarrDeferred` header carrying full
+/// source provenance (source cover + seq + producing component + the
+/// command's position in the invocation's emitted list).
+fn deferred_command_book(
+    domain: &str,
+    root: Uuid,
+    source_domain: &str,
+    source_root: Uuid,
+    source_seq: u32,
+    source_component: &str,
+    command_index: u32,
+) -> CommandBook {
+    CommandBook {
+        cover: Some(cover(domain, root, None)),
+        pages: vec![CommandPage {
+            header: Some(PageHeader {
+                sync_mode: None,
+                sequence_type: Some(page_header::SequenceType::AngzarrDeferred(
+                    AngzarrDeferredSequence {
+                        source: Some(cover(source_domain, source_root, None)),
+                        source_seq,
+                        source_component: source_component.to_string(),
+                        command_index,
+                    },
+                )),
+            }),
+            payload: Some(command_page::Payload::Command(Any {
+                type_url: "test.Command".to_string(),
+                value: vec![],
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+        }],
+    }
+}
+
+/// O1 collision regression: ONE saga/PM invocation emits TWO commands at the
+/// same destination root. Both must execute.
+///
+/// Pre-fix, the deferred-idempotency key was only (source cover, source_seq)
+/// — identical for every command of the invocation. The second command's
+/// idempotency lookup matched the FIRST command's persisted events, so the
+/// pipeline returned them as a cached duplicate and the second command was
+/// silently lost in normal operation. command_index now disambiguates.
+#[tokio::test]
+async fn pipeline_executes_all_commands_of_one_invocation() {
+    let (service, business, store) = create_service_with_sqlite().await;
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    business
+        .enqueue(event_book("inventory", root, None, vec![event_page(0)]))
+        .await;
+    business
+        .enqueue(event_book("inventory", root, None, vec![event_page(1)]))
+        .await;
+
+    let first = service
+        .handle_command(send(deferred_command_book(
+            "inventory",
+            root,
+            "orders",
+            source_root,
+            7,
+            "saga-orders-inventory",
+            0,
+        )))
+        .await;
+    assert!(first.is_ok(), "first command failed: {:?}", first.err());
+
+    let second = service
+        .handle_command(send(deferred_command_book(
+            "inventory",
+            root,
+            "orders",
+            source_root,
+            7,
+            "saga-orders-inventory",
+            1,
+        )))
+        .await;
+    assert!(second.is_ok(), "second command failed: {:?}", second.err());
+
+    let invocations = business.invocations.lock().await.len();
+    assert_eq!(
+        invocations, 2,
+        "second command of the invocation was swallowed by the deferred-idempotency \
+         check instead of reaching the handler (O1 collision)"
+    );
+
+    let persisted = store.get("inventory", "", root).await.expect("get");
+    assert_eq!(
+        persisted.len(),
+        2,
+        "both commands of the invocation must persist their events; got {}",
+        persisted.len()
+    );
+}
+
+/// O1 companion: two DISTINCT components react to the same source event and
+/// each sends a command to the same destination root. Both must execute —
+/// the producing component's name is part of the idempotency key.
+#[tokio::test]
+async fn pipeline_executes_commands_from_distinct_components_on_same_trigger() {
+    let (service, business, store) = create_service_with_sqlite().await;
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    business
+        .enqueue(event_book("inventory", root, None, vec![event_page(0)]))
+        .await;
+    business
+        .enqueue(event_book("inventory", root, None, vec![event_page(1)]))
+        .await;
+
+    let from_saga = service
+        .handle_command(send(deferred_command_book(
+            "inventory",
+            root,
+            "orders",
+            source_root,
+            7,
+            "saga-orders-inventory",
+            0,
+        )))
+        .await;
+    assert!(
+        from_saga.is_ok(),
+        "saga command failed: {:?}",
+        from_saga.err()
+    );
+
+    let from_pm = service
+        .handle_command(send(deferred_command_book(
+            "inventory",
+            root,
+            "orders",
+            source_root,
+            7,
+            "pm-fulfillment",
+            0,
+        )))
+        .await;
+    assert!(from_pm.is_ok(), "PM command failed: {:?}", from_pm.err());
+
+    let invocations = business.invocations.lock().await.len();
+    assert_eq!(
+        invocations, 2,
+        "a second component's command was swallowed by the first component's \
+         idempotency claim (O1 collision)"
+    );
+
+    let persisted = store.get("inventory", "", root).await.expect("get");
+    assert_eq!(persisted.len(), 2);
+}
+
+/// The point of the deferred-idempotency check, re-pinned with the widened
+/// key: an exact redelivery (same source, seq, component, AND index) must
+/// still be deduplicated — cached events returned, handler NOT re-invoked.
+#[tokio::test]
+async fn pipeline_dedupes_exact_redelivery_of_deferred_command() {
+    let (service, business, store) = create_service_with_sqlite().await;
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    business
+        .enqueue(event_book("inventory", root, None, vec![event_page(0)]))
+        .await;
+
+    let delivery = deferred_command_book(
+        "inventory",
+        root,
+        "orders",
+        source_root,
+        7,
+        "saga-orders-inventory",
+        0,
+    );
+
+    let first = service.handle_command(send(delivery.clone())).await;
+    assert!(first.is_ok(), "first delivery failed: {:?}", first.err());
+
+    let redelivery = service.handle_command(send(delivery)).await;
+    assert!(
+        redelivery.is_ok(),
+        "redelivery must succeed with cached events: {:?}",
+        redelivery.err()
+    );
+
+    let invocations = business.invocations.lock().await.len();
+    assert_eq!(
+        invocations, 1,
+        "exact redelivery must be served from the idempotency cache, not re-invoke \
+         the handler"
+    );
+
+    let persisted = store.get("inventory", "", root).await.expect("get");
+    assert_eq!(persisted.len(), 1, "redelivery must not double-write");
 }

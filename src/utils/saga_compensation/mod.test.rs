@@ -37,6 +37,8 @@ fn make_angzarr_deferred() -> AngzarrDeferredSequence {
             ext: None,
         }),
         source_seq: 5,
+        source_component: "saga-orders-customer".to_string(),
+        command_index: 2,
     }
 }
 

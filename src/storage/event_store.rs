@@ -12,6 +12,12 @@ use crate::proto::EventPage;
 ///
 /// Used for idempotency: if events exist with matching source info,
 /// the saga command was already processed.
+///
+/// The full key is (edition, domain, root, seq, component, command_index).
+/// The first four identify only the triggering event; component and
+/// command_index identify which emission of that trigger this is — one
+/// invocation emitting several commands at the same destination (or two
+/// components reacting to the same event) must not share a key (O1).
 #[derive(Debug, Clone, Default)]
 pub struct SourceInfo {
     /// Source edition (usually "angzarr")
@@ -22,6 +28,11 @@ pub struct SourceInfo {
     pub root: Uuid,
     /// Source event sequence that triggered the saga
     pub seq: u32,
+    /// Registered name of the producing component (saga/PM).
+    /// Empty on pre-upgrade rows/messages.
+    pub component: String,
+    /// Position of the command within the invocation's emitted command list.
+    pub command_index: u32,
 }
 
 impl SourceInfo {
@@ -31,12 +42,16 @@ impl SourceInfo {
         domain: impl Into<String>,
         root: Uuid,
         seq: u32,
+        component: impl Into<String>,
+        command_index: u32,
     ) -> Self {
         Self {
             edition: edition.into(),
             domain: domain.into(),
             root,
             seq,
+            component: component.into(),
+            command_index,
         }
     }
 

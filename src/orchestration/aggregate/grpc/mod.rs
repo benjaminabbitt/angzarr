@@ -63,6 +63,8 @@ fn deferred_to_source_info(
         source.domain.as_str(),
         source_root,
         deferred.source_seq,
+        deferred.source_component.as_str(),
+        deferred.command_index,
     )))
 }
 
@@ -680,8 +682,11 @@ impl AggregateContext for GrpcAggregateContext {
     /// aggregate already persisted the resulting events. The destination
     /// must return the cached EventBook rather than re-execute the
     /// command, which would double-write. `find_by_source` looks up by
-    /// the source aggregate's `(domain, root, seq)` triple stamped into
-    /// the deferred header.
+    /// the full provenance stamped into the deferred header: the source
+    /// aggregate's `(domain, root, seq)` plus the producing component and
+    /// the command's index within its invocation (O1 — without the last
+    /// two, every command of one invocation shared a key and all but the
+    /// first were swallowed as duplicates).
     async fn check_deferred_idempotency(
         &self,
         domain: &str,

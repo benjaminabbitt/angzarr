@@ -456,6 +456,7 @@ impl SagaRetryContext for SagaWithExistingDeferredAndSyncMode {
             sequence_type: Some(SequenceType::AngzarrDeferred(AngzarrDeferredSequence {
                 source: None,
                 source_seq: 7,
+                ..Default::default()
             })),
         };
         let page = CommandPage {
@@ -1028,5 +1029,316 @@ async fn saga_2xx_success_does_not_publish() {
         captured.is_empty(),
         "success path must not publish any dead letters, got {} entries",
         captured.len()
+    );
+}
+
+// ============================================================================
+// O1 + D-5/O13: provenance stamping (component + command_index) and
+// honoring handler-stamped explicit sequences
+// ============================================================================
+
+/// Saga context that emits one command per entry in `headers`, all to the
+/// same destination, so tests can drive each arm of the stamping rewrite.
+struct SagaEmittingHeaders {
+    headers: Vec<Option<PageHeader>>,
+    source: Option<Cover>,
+}
+
+#[async_trait]
+impl SagaRetryContext for SagaEmittingHeaders {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+        _sync_mode: SyncMode,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let commands = self
+            .headers
+            .iter()
+            .map(|header| CommandBook {
+                cover: Some(Cover {
+                    domain: "inventory".to_string(),
+                    correlation_id: "corr-1".to_string(),
+                    ..Default::default()
+                }),
+                pages: vec![CommandPage {
+                    header: header.clone(),
+                    merge_strategy: MergeStrategy::MergeCommutative as i32,
+                    payload: Some(CmdPayload::Command(prost_types::Any {
+                        type_url: "test.SagaCommand".to_string(),
+                        value: vec![],
+                    })),
+                }],
+            })
+            .collect();
+        Ok(SagaResponse {
+            commands,
+            events: vec![],
+        })
+    }
+    async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+    fn source_cover(&self) -> Option<&Cover> {
+        self.source.as_ref()
+    }
+    fn source_max_sequence(&self) -> u32 {
+        4
+    }
+}
+
+fn orders_source_cover() -> Cover {
+    Cover {
+        domain: "orders".to_string(),
+        root: Some(crate::proto::Uuid {
+            value: uuid::Uuid::new_v4().as_bytes().to_vec(),
+        }),
+        correlation_id: "corr-1".to_string(),
+        ..Default::default()
+    }
+}
+
+fn captured_deferred(book: &CommandBook) -> &AngzarrDeferredSequence {
+    match book
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+    {
+        Some(SequenceType::AngzarrDeferred(d)) => d,
+        other => panic!("expected AngzarrDeferred header, got {other:?}"),
+    }
+}
+
+/// O1: every command of one invocation gets the framework-stamped
+/// provenance — the saga's registered name and its position in the emitted
+/// command list. Without these, all commands of the invocation share one
+/// deferred-idempotency key and the destination swallows all but the first.
+#[tokio::test]
+async fn test_saga_stamps_component_and_command_index() {
+    let source = orders_source_cover();
+    let ctx = SagaEmittingHeaders {
+        headers: vec![None, None],
+        source: Some(source.clone()),
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        None,
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = executor.seen.lock().await;
+    assert_eq!(captured.len(), 2, "expected both commands through executor");
+    for (i, book) in captured.iter().enumerate() {
+        let deferred = captured_deferred(book);
+        assert_eq!(
+            deferred.source_component, "saga-orders-inventory",
+            "command {i} must carry the saga's registered name"
+        );
+        assert_eq!(
+            deferred.command_index, i as u32,
+            "command {i} must carry its position in the invocation's output"
+        );
+        assert_eq!(
+            deferred.source_seq, 4,
+            "default arm must stamp source_max_sequence"
+        );
+        assert_eq!(
+            deferred.source.as_ref(),
+            Some(&source),
+            "default arm must stamp the triggering aggregate's cover"
+        );
+    }
+}
+
+/// O1: a handler-set angzarr_deferred keeps its source_seq, but component +
+/// command_index are framework provenance and are stamped regardless — a
+/// handler cannot opt back into the colliding key.
+#[tokio::test]
+async fn test_saga_stamps_component_and_index_on_handler_set_deferred() {
+    let source = orders_source_cover();
+    let ctx = SagaEmittingHeaders {
+        headers: vec![Some(PageHeader {
+            sync_mode: None,
+            sequence_type: Some(SequenceType::AngzarrDeferred(AngzarrDeferredSequence {
+                source: None,
+                source_seq: 7,
+                ..Default::default()
+            })),
+        })],
+        source: Some(source.clone()),
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        None,
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = executor.seen.lock().await;
+    let deferred = captured_deferred(&captured[0]);
+    assert_eq!(
+        deferred.source_seq, 7,
+        "handler-set source_seq must be preserved"
+    );
+    assert_eq!(deferred.source_component, "saga-orders-inventory");
+    assert_eq!(deferred.command_index, 0);
+    assert_eq!(
+        deferred.source.as_ref(),
+        Some(&source),
+        "missing source must be filled in from the triggering cover"
+    );
+}
+
+/// D-5/O13: a handler-stamped explicit destination sequence is HONORED —
+/// the rewrite must not overwrite it with AngzarrDeferred. The command
+/// travels as a plain sequenced command; the destination's
+/// optimistic-concurrency gate validates it and rejects on mismatch.
+/// Pre-fix the default match arm clobbered `Sequence(n)` silently.
+#[tokio::test]
+async fn test_saga_honors_handler_stamped_explicit_sequence() {
+    let ctx = SagaEmittingHeaders {
+        headers: vec![Some(PageHeader {
+            sync_mode: Some(SyncMode::Decision as i32),
+            sequence_type: Some(SequenceType::Sequence(12)),
+        })],
+        source: None,
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        None,
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = executor.seen.lock().await;
+    let header = captured[0]
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .expect("page should keep its header");
+    assert_eq!(
+        header.sequence_type,
+        Some(SequenceType::Sequence(12)),
+        "handler-stamped explicit sequence must travel to the destination untouched (D-5)"
+    );
+    assert_eq!(
+        header.sync_mode,
+        Some(SyncMode::Decision as i32),
+        "untouched header keeps its sync_mode override too"
+    );
+}
+
+/// The Phase-1 destination-sequence fetch gate: when the saga declares
+/// output_domains, the orchestrator must fetch each destination's
+/// next_sequence (by correlation) and hand the populated map to handle().
+/// D-5 made this fetch load-bearing — handler-stamped explicit sequences
+/// are now honored at the destination, and they come from this map.
+/// Kills the `delete !` mutant on the `!output_domains.is_empty()` gate
+/// (inverted, the fetch only runs when there is nothing to fetch).
+#[tokio::test]
+async fn test_saga_fetches_destination_sequences_for_output_domains() {
+    struct CapturingSequencesSaga {
+        domains: Vec<String>,
+        seen: Arc<std::sync::Mutex<Option<HashMap<String, u32>>>>,
+    }
+
+    #[async_trait]
+    impl SagaRetryContext for CapturingSequencesSaga {
+        async fn handle(
+            &self,
+            destination_sequences: HashMap<String, u32>,
+            _sync_mode: SyncMode,
+        ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+            *self.seen.lock().unwrap() = Some(destination_sequences);
+            Ok(SagaResponse::default())
+        }
+        async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+        fn source_cover(&self) -> Option<&Cover> {
+            None
+        }
+        fn source_max_sequence(&self) -> u32 {
+            0
+        }
+        fn output_domains(&self) -> &[String] {
+            &self.domains
+        }
+    }
+
+    struct SequenceFetcher;
+
+    #[async_trait]
+    impl crate::orchestration::destination::DestinationFetcher for SequenceFetcher {
+        async fn fetch(&self, _cover: &Cover) -> Option<EventBook> {
+            None
+        }
+        async fn fetch_by_correlation(
+            &self,
+            domain: &str,
+            _correlation_id: &str,
+        ) -> Option<EventBook> {
+            assert_eq!(domain, "inventory");
+            Some(EventBook {
+                next_sequence: 5,
+                ..Default::default()
+            })
+        }
+    }
+
+    let seen = Arc::new(std::sync::Mutex::new(None));
+    let ctx = CapturingSequencesSaga {
+        domains: vec!["inventory".to_string()],
+        seen: seen.clone(),
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        Some(&SequenceFetcher),
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = seen.lock().unwrap().clone();
+    assert_eq!(
+        captured,
+        Some(HashMap::from([("inventory".to_string(), 5)])),
+        "handle() must receive the fetched destination sequence for every output domain"
     );
 }

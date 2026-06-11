@@ -34,6 +34,10 @@ pub enum Events {
     SourceRoot,
     #[iden = "source_seq"]
     SourceSeq,
+    #[iden = "source_component"]
+    SourceComponent,
+    #[iden = "source_command_index"]
+    SourceCommandIndex,
     // Cascade tracking for 2PC (Phase 5)
     #[iden = "committed"]
     Committed,

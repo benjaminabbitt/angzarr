@@ -448,26 +448,36 @@ impl EventStore for ImmudbEventStore {
                 Some(any) => format!("x'{}'", hex::encode(prost::Message::encode_to_vec(any))),
                 None => "NULL".to_string(),
             };
-            let (source_edition_lit, source_domain_lit, source_root_lit, source_seq_lit) =
-                if let Some(info) = source_info.filter(|s| !s.is_empty()) {
-                    (
-                        format!("'{}'", info.edition.replace('\'', "''")),
-                        format!("'{}'", info.domain.replace('\'', "''")),
-                        format!("'{}'", info.root),
-                        info.seq.to_string(),
-                    )
-                } else {
-                    (
-                        "NULL".to_string(),
-                        "NULL".to_string(),
-                        "NULL".to_string(),
-                        "NULL".to_string(),
-                    )
-                };
+            let (
+                source_edition_lit,
+                source_domain_lit,
+                source_root_lit,
+                source_seq_lit,
+                source_component_lit,
+                source_command_index_lit,
+            ) = if let Some(info) = source_info.filter(|s| !s.is_empty()) {
+                (
+                    format!("'{}'", info.edition.replace('\'', "''")),
+                    format!("'{}'", info.domain.replace('\'', "''")),
+                    format!("'{}'", info.root),
+                    info.seq.to_string(),
+                    format!("'{}'", info.component.replace('\'', "''")),
+                    info.command_index.to_string(),
+                )
+            } else {
+                (
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                )
+            };
 
             let query = format!(
-                "INSERT INTO events (edition, domain, root, sequence, created_at, event_data, correlation_id, external_id, source_edition, source_domain, source_root, source_seq, ext) \
-                 VALUES ('{}', '{}', '{}', {}, CAST('{}' AS TIMESTAMP), {}, '{}', {}, {}, {}, {}, {}, {})",
+                "INSERT INTO events (edition, domain, root, sequence, created_at, event_data, correlation_id, external_id, source_edition, source_domain, source_root, source_seq, source_component, source_command_index, ext) \
+                 VALUES ('{}', '{}', '{}', {}, CAST('{}' AS TIMESTAMP), {}, '{}', {}, {}, {}, {}, {}, {}, {}, {})",
                 edition.replace('\'', "''"),
                 domain.replace('\'', "''"),
                 root_str.replace('\'', "''"),
@@ -480,6 +490,8 @@ impl EventStore for ImmudbEventStore {
                 source_domain_lit,
                 source_root_lit,
                 source_seq_lit,
+                source_component_lit,
+                source_command_index_lit,
                 cover_ext_lit,
             );
 
@@ -743,6 +755,8 @@ impl EventStore for ImmudbEventStore {
             .and_where(Expr::col(Events::SourceDomain).eq(source_info.domain.as_str()))
             .and_where(Expr::col(Events::SourceRoot).eq(source_info.root.to_string()))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .and_where(Expr::col(Events::SourceComponent).eq(source_info.component.as_str()))
+            .and_where(Expr::col(Events::SourceCommandIndex).eq(source_info.command_index as i32))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 

@@ -451,6 +451,11 @@ pub fn build_notification_command_book(context: &CompensationContext) -> Result<
                     // (compensation loops back to source)
                     source: Some(source_aggregate.clone()),
                     source_seq: context.source.source_seq,
+                    // Propagate the rejected command's full provenance: two
+                    // rejected commands of one invocation must not produce
+                    // colliding compensation notifications (O1 class).
+                    source_component: context.source.source_component.clone(),
+                    command_index: context.source.command_index,
                 })),
             }),
             payload: Some(crate::proto::command_page::Payload::Command(

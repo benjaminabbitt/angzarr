@@ -281,6 +281,8 @@ impl SqliteEventStore {
         let source_domain = source_info.map(|s| s.domain.as_str()).unwrap_or("");
         let source_root = source_info.map(|s| s.root.to_string()).unwrap_or_default();
         let source_seq = source_info.map(|s| s.seq as i32);
+        let source_component = source_info.map(|s| s.component.as_str()).unwrap_or("");
+        let source_command_index = source_info.map(|s| s.command_index as i32).unwrap_or(0);
 
         for event in events {
             let event_data = event.encode_to_vec();
@@ -303,7 +305,15 @@ impl SqliteEventStore {
             let edition_value = edition_to_db(edition);
             let source_edition_value = edition_to_db(source_edition);
 
-            let query = if source_info.is_some() && !source_edition.is_empty() {
+            // Persist the source claim whenever SourceInfo is non-empty —
+            // gated on the same `is_empty()` the read side uses (and the
+            // Postgres write side mirrors). The previous gate
+            // (`!source_edition.is_empty()`) was C-15-class polarity on the
+            // write side: main-timeline source covers spell the edition ""
+            // so every main-timeline deferred-idempotency claim was silently
+            // dropped, and saga-command redeliveries re-executed instead of
+            // hitting the cache.
+            let query = if source_info.is_some_and(|s| !s.is_empty()) {
                 Query::insert()
                     .into_table(Events::Table)
                     .columns([
@@ -319,6 +329,8 @@ impl SqliteEventStore {
                         Events::SourceDomain,
                         Events::SourceRoot,
                         Events::SourceSeq,
+                        Events::SourceComponent,
+                        Events::SourceCommandIndex,
                         Events::Committed,
                         Events::CascadeId,
                         Events::Ext,
@@ -336,6 +348,8 @@ impl SqliteEventStore {
                         source_domain.into(),
                         source_root.clone().into(),
                         source_seq.into(),
+                        source_component.into(),
+                        source_command_index.into(),
                         committed.into(),
                         cascade_id.clone().into(),
                         ext_bytes.clone().into(),
@@ -769,6 +783,8 @@ impl EventStore for SqliteEventStore {
             .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
             .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .and_where(Expr::col(Events::SourceComponent).eq(&source_info.component))
+            .and_where(Expr::col(Events::SourceCommandIndex).eq(source_info.command_index as i32))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(SqliteQueryBuilder);
 

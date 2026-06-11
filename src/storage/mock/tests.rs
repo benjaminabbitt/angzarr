@@ -880,6 +880,8 @@ async fn test_find_by_source_returns_matching_events() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let event = EventPage {
@@ -932,6 +934,8 @@ async fn test_find_by_source_returns_none_for_mismatch() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let event = EventPage {
@@ -969,6 +973,8 @@ async fn test_find_by_source_returns_none_for_mismatch() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 99, // Different sequence
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let result = store
@@ -989,6 +995,8 @@ async fn test_find_by_source_empty_source_returns_none() {
         edition: String::new(),
         root: Uuid::nil(),
         seq: 0,
+        component: String::new(),
+        command_index: 0,
     };
 
     let result = store
@@ -998,7 +1006,8 @@ async fn test_find_by_source_empty_source_returns_none() {
     assert!(result.is_none());
 }
 
-/// find_by_source checks all source fields (domain, edition, root, seq).
+/// find_by_source checks all source fields (domain, edition, root, seq,
+/// component, command_index).
 #[tokio::test]
 async fn test_find_by_source_checks_all_fields() {
     let store = MockEventStore::new();
@@ -1010,6 +1019,8 @@ async fn test_find_by_source_checks_all_fields() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let event = EventPage {
@@ -1044,9 +1055,7 @@ async fn test_find_by_source_checks_all_fields() {
     // Wrong domain
     let wrong_domain = crate::storage::SourceInfo {
         domain: "WRONG".to_string(),
-        edition: "angzarr".to_string(),
-        root: source_root,
-        seq: 5,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_domain)
@@ -1056,10 +1065,8 @@ async fn test_find_by_source_checks_all_fields() {
 
     // Wrong edition
     let wrong_edition = crate::storage::SourceInfo {
-        domain: "orders".to_string(),
         edition: "WRONG".to_string(),
-        root: source_root,
-        seq: 5,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_edition)
@@ -1069,10 +1076,8 @@ async fn test_find_by_source_checks_all_fields() {
 
     // Wrong root
     let wrong_root = crate::storage::SourceInfo {
-        domain: "orders".to_string(),
-        edition: "angzarr".to_string(),
         root: Uuid::new_v4(),
-        seq: 5,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_root)
@@ -1082,13 +1087,35 @@ async fn test_find_by_source_checks_all_fields() {
 
     // Wrong seq
     let wrong_seq = crate::storage::SourceInfo {
-        domain: "orders".to_string(),
-        edition: "angzarr".to_string(),
-        root: source_root,
         seq: 999,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_seq)
+        .await
+        .unwrap()
+        .is_none());
+
+    // Wrong component (O1: a different saga reacting to the same source
+    // event must not match this command's idempotency claim)
+    let wrong_component = crate::storage::SourceInfo {
+        component: "saga-orders-shipping".to_string(),
+        ..source_info.clone()
+    };
+    assert!(store
+        .find_by_source("inventory", "angzarr", root, &wrong_component)
+        .await
+        .unwrap()
+        .is_none());
+
+    // Wrong command_index (O1: a different command of the same invocation
+    // must not match this command's idempotency claim)
+    let wrong_index = crate::storage::SourceInfo {
+        command_index: 2,
+        ..source_info.clone()
+    };
+    assert!(store
+        .find_by_source("inventory", "angzarr", root, &wrong_index)
         .await
         .unwrap()
         .is_none());

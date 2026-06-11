@@ -552,17 +552,28 @@ pub async fn orchestrate_saga(
     //
     // 2. **Traceability**: Links the command to its triggering event for debugging/audit.
     //
-    // 3. **Idempotency**: The source + source_seq form the idempotency key for
-    //    saga-produced commands, preventing duplicate processing on retry.
+    // 3. **Idempotency**: (source, source_seq, source_component, command_index)
+    //    form the idempotency key for saga-produced commands, preventing
+    //    duplicate processing on retry. source + source_seq alone identify
+    //    only the triggering event — every command of one invocation shared
+    //    the key and all but the first were swallowed as duplicates (O1).
     //
     // Stamping strategy (per spec):
-    // - Saga already set angzarr_deferred with source_seq → preserve it entirely
-    // - Saga set angzarr_deferred but source is None → fill in source Cover, keep source_seq
+    // - Saga stamped an explicit destination sequence → honor it untouched
+    //   (D-5): the command travels as a plain sequenced command and the
+    //   destination's optimistic-concurrency gate validates it, rejecting
+    //   on mismatch. The Phase-1 destination-sequence fetch is what makes
+    //   handler stamping meaningful.
+    // - Saga set angzarr_deferred → preserve its source/source_seq (fill in
+    //   source Cover if missing)
     // - Saga didn't set angzarr_deferred → use source Cover + source_max_sequence
+    // - source_component + command_index are framework provenance (the
+    //   component's registered name and the command's position in this
+    //   invocation's output) — always stamped, never handler data.
     let source_cover = ctx.source_cover().cloned();
     let source_max_seq = ctx.source_max_sequence();
 
-    for cmd in &mut commands {
+    for (command_index, cmd) in commands.iter_mut().enumerate() {
         for page in &mut cmd.pages {
             // Preserve any per-command sync_mode the saga handler set on the
             // header before we rewrite the sequence_type for angzarr_deferred
@@ -570,20 +581,21 @@ pub async fn orchestrate_saga(
             // PM canonical pattern at process_manager/mod.rs:487.
             let preserved_sync_mode = page.header.as_ref().and_then(|h| h.sync_mode);
             match page.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+                // D-5/O13: handler-stamped explicit destination sequence —
+                // honor it; the destination validates and rejects on mismatch.
+                Some(SequenceType::Sequence(_)) => {}
                 Some(SequenceType::AngzarrDeferred(existing)) => {
-                    // Saga set angzarr_deferred - fill in source if missing, preserve source_seq
-                    if existing.source.is_none() {
-                        page.header = Some(PageHeader {
-                            sync_mode: preserved_sync_mode,
-                            sequence_type: Some(SequenceType::AngzarrDeferred(
-                                AngzarrDeferredSequence {
-                                    source: source_cover.clone(),
-                                    source_seq: existing.source_seq,
-                                },
-                            )),
-                        });
-                    }
-                    // else: saga set everything, don't touch
+                    page.header = Some(PageHeader {
+                        sync_mode: preserved_sync_mode,
+                        sequence_type: Some(SequenceType::AngzarrDeferred(
+                            AngzarrDeferredSequence {
+                                source: existing.source.clone().or_else(|| source_cover.clone()),
+                                source_seq: existing.source_seq,
+                                source_component: saga_name.to_string(),
+                                command_index: command_index as u32,
+                            },
+                        )),
+                    });
                 }
                 _ => {
                     // Saga didn't set angzarr_deferred - use defaults
@@ -593,6 +605,8 @@ pub async fn orchestrate_saga(
                             AngzarrDeferredSequence {
                                 source: source_cover.clone(),
                                 source_seq: source_max_seq,
+                                source_component: saga_name.to_string(),
+                                command_index: command_index as u32,
                             },
                         )),
                     });

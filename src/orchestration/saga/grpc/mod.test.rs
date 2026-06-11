@@ -132,6 +132,7 @@ fn test_compensation_context_captures_saga_source() {
                             ext: None,
                         }),
                         source_seq: 5,
+                        ..Default::default()
                     },
                 )),
             }),

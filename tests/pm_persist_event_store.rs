@@ -431,14 +431,13 @@ async fn pm_persist_propagates_edition_to_store() {
 }
 
 /// Persisting at a sequence the store already has returns
-/// `CommandOutcome::Rejected { code: Internal, .. }`. This is the
-/// classification `orchestrate_pm` reads in R2-15 step 5b -- the
-/// caller routes to immediate-DLQ (NOT retry-then-DLQ) because the
-/// underlying storage layer's sequence conflict is permanent at
-/// this layer (the PM persist path doesn't retry on conflict; the
-/// outer pm_retry loop is what handles that).
+/// `CommandOutcome::Retryable` (O3, `43dc9f1a`): a PM sequence conflict
+/// means a concurrent workflow update won the race — `orchestrate_pm`'s
+/// refetch-and-retry loop reloads fresh PM state and re-runs the handler.
+/// Pre-O3 this surfaced as `Rejected { Internal }`, routing recoverable
+/// contention to the DLQ instead of retrying.
 #[tokio::test]
-async fn pm_persist_sequence_conflict_returns_rejected_internal() {
+async fn pm_persist_sequence_conflict_returns_retryable() {
     let event_store = create_sqlite_event_store().await;
     let event_bus: Arc<dyn EventBus> = RecordingEventBus::new();
     let pm_root = Uuid::new_v4();
@@ -465,14 +464,16 @@ async fn pm_persist_sequence_conflict_returns_rejected_internal() {
     )
     .await;
     match conflict {
-        CommandOutcome::Rejected { code, message } => {
-            assert_eq!(
-                code,
-                tonic::Code::Internal,
-                "PM persist conflict must surface as Internal Rejected (immediate-DLQ classifier), got {code:?}: {message}"
+        CommandOutcome::Retryable { reason, .. } => {
+            assert!(
+                reason.contains("sequence conflict"),
+                "Retryable reason should name the sequence conflict, got: {reason}"
             );
         }
-        other => panic!("expected Rejected, got {other:?}"),
+        other => panic!(
+            "expected Retryable (O3: conflict drives orchestrate_pm's refetch-and-retry), \
+             got {other:?}"
+        ),
     }
 
     // No second event written.

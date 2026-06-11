@@ -97,6 +97,7 @@ fn deferred_command(source: Option<Cover>, source_seq: u32) -> CommandBook {
                 sequence_type: Some(SequenceType::AngzarrDeferred(AngzarrDeferredSequence {
                     source,
                     source_seq,
+                    ..Default::default()
                 })),
             }),
             payload: Some(command_page::Payload::Command(Any {

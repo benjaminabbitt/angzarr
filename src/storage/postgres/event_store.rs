@@ -247,6 +247,8 @@ impl EventStore for PostgresEventStore {
             } else {
                 (None, None, None, None)
             };
+        let source_component = source_info.map(|s| s.component.as_str()).unwrap_or("");
+        let source_command_index = source_info.map(|s| s.command_index as i32).unwrap_or(0);
 
         // Parent-routing cover, serialized once and replicated per row (mirrors
         // correlation_id). All pages of this write share the same value.
@@ -281,6 +283,8 @@ impl EventStore for PostgresEventStore {
                     Events::SourceDomain,
                     Events::SourceRoot,
                     Events::SourceSeq,
+                    Events::SourceComponent,
+                    Events::SourceCommandIndex,
                     Events::Committed,
                     Events::CascadeId,
                     Events::Ext,
@@ -298,6 +302,8 @@ impl EventStore for PostgresEventStore {
                     source_domain.clone().into(),
                     source_root.clone().into(),
                     source_seq.into(),
+                    source_component.into(),
+                    source_command_index.into(),
                     committed.into(),
                     cascade_id.into(),
                     ext_bytes.clone().into(),
@@ -625,6 +631,8 @@ impl EventStore for PostgresEventStore {
             .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
             .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .and_where(Expr::col(Events::SourceComponent).eq(&source_info.component))
+            .and_where(Expr::col(Events::SourceCommandIndex).eq(source_info.command_index as i32))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 

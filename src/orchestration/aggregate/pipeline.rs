@@ -121,7 +121,7 @@ pub async fn execute_command_with_retry(
 /// Must run before `stamp_deferred_sequences` rewrites the `angzarr_deferred`
 /// header into an explicit Sequence. Persist passes this to storage so a future
 /// redelivery's `check_deferred_idempotency` lookup can find these events by
-/// `(source.domain, source.root, source_seq)`.
+/// `(source.domain, source.root, source_seq, source_component, command_index)`.
 fn extract_source_info(command_book: &CommandBook) -> Option<crate::storage::SourceInfo> {
     let deferred = extract_angzarr_deferred(command_book)?;
     let source = deferred.source.as_ref()?;
@@ -140,6 +140,8 @@ fn extract_source_info(command_book: &CommandBook) -> Option<crate::storage::Sou
         source.domain.as_str(),
         source_root,
         deferred.source_seq,
+        deferred.source_component.as_str(),
+        deferred.command_index,
     ))
 }
 

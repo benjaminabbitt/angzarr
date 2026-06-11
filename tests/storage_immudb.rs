@@ -88,45 +88,28 @@ async fn connect_and_init(connection_string: &str) -> (sqlx::PgPool, ImmudbEvent
         .await
         .expect("Failed to connect to immudb");
 
-    // Initialize schema using raw_sql (simple query mode for immudb compatibility)
-    // immudb doesn't support extended query protocol (prepared statements)
-    // Note: Using VARCHAR for root instead of BLOB[16] because the implementation
-    // stores UUIDs as strings (root.to_string())
-    // immudb has a 256 byte limit for indexed columns
-    // Keep VARCHAR sizes conservative to stay within limits
-    let create_table = r#"
-        CREATE TABLE IF NOT EXISTS events (
-            domain         VARCHAR(64) NOT NULL,
-            edition        VARCHAR(32) NOT NULL,
-            root           VARCHAR(36) NOT NULL,
-            sequence       INTEGER NOT NULL,
-            created_at     TIMESTAMP NOT NULL,
-            event_data     BLOB NOT NULL,
-            correlation_id VARCHAR(128),
-            external_id    VARCHAR(128),
-            source_edition VARCHAR(32),
-            source_domain  VARCHAR(64),
-            source_root    VARCHAR(36),
-            source_seq     INTEGER,
-            ext            BLOB,
-            PRIMARY KEY (domain, edition, root, sequence)
-        )
-    "#;
-
-    pool.execute(sqlx::raw_sql(create_table))
-        .await
-        .expect("Failed to create events table");
+    // Initialize schema using raw_sql (simple query mode for immudb
+    // compatibility — immudb doesn't support the extended query protocol).
+    // The DDL is the production constant, NOT a local copy: a duplicated
+    // literal here silently drifted when the events table gained the
+    // source_component/source_command_index columns (O1) and every add()
+    // failed with "column does not exist".
+    pool.execute(sqlx::raw_sql(
+        angzarr::storage::immudb::schema::CREATE_EVENTS_TABLE,
+    ))
+    .await
+    .expect("Failed to create events table");
 
     // Create indexes (may fail if table already has data - immudb limitation)
     let _ = pool
         .execute(sqlx::raw_sql(
-            "CREATE INDEX IF NOT EXISTS ON events(correlation_id)",
+            angzarr::storage::immudb::schema::CREATE_CORRELATION_INDEX,
         ))
         .await;
 
     let _ = pool
         .execute(sqlx::raw_sql(
-            "CREATE INDEX IF NOT EXISTS ON events(domain, root, sequence)",
+            angzarr::storage::immudb::schema::CREATE_DOMAIN_ROOT_INDEX,
         ))
         .await;
 

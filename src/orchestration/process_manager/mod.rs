@@ -659,7 +659,7 @@ async fn execute_pm_commands(
     executor: &dyn CommandExecutor,
     mut commands: Vec<CommandBook>,
     correlation_id: &str,
-    _pm_name: &str,
+    pm_name: &str,
     pm_domain: &str,
     pm_source_seq: u32,
     sync_mode: SyncMode,
@@ -684,31 +684,44 @@ async fn execute_pm_commands(
 
     // Stamp angzarr_deferred on commands for provenance and compensation routing.
     //
+    // (source, source_seq, source_component, command_index) form the
+    // idempotency key. source + source_seq alone identify only the PM state
+    // that produced the commands — every command of one invocation shared
+    // the key and all but the first were swallowed as duplicates (O1).
+    //
     // Stamping strategy (per spec):
-    // - PM handler already set angzarr_deferred with source_seq → preserve it entirely
-    // - PM handler set angzarr_deferred but source is None → fill in PM cover, keep source_seq
+    // - PM handler stamped an explicit destination sequence → honor it
+    //   untouched (D-5): the command travels as a plain sequenced command
+    //   and the destination's optimistic-concurrency gate validates it,
+    //   rejecting on mismatch.
+    // - PM handler set angzarr_deferred → preserve its source/source_seq
+    //   (fill in PM cover if missing)
     // - PM handler didn't set angzarr_deferred → use PM cover + pm_source_seq
-    for cmd in &mut commands {
+    // - source_component + command_index are framework provenance (the
+    //   PM's registered name and the command's position in this
+    //   invocation's output) — always stamped, never handler data.
+    for (command_index, cmd) in commands.iter_mut().enumerate() {
         for page in &mut cmd.pages {
             // Preserve any per-command sync_mode the PM set on the header
             // before we rewrite the sequence_type for angzarr_deferred
             // stamping — the override would otherwise be lost.
             let preserved_sync_mode = page.header.as_ref().and_then(|h| h.sync_mode);
             match page.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+                // D-5/O13: handler-stamped explicit destination sequence —
+                // honor it; the destination validates and rejects on mismatch.
+                Some(SequenceType::Sequence(_)) => {}
                 Some(SequenceType::AngzarrDeferred(existing)) => {
-                    // PM handler set angzarr_deferred - fill in source if missing, preserve source_seq
-                    if existing.source.is_none() {
-                        page.header = Some(PageHeader {
-                            sync_mode: preserved_sync_mode,
-                            sequence_type: Some(SequenceType::AngzarrDeferred(
-                                AngzarrDeferredSequence {
-                                    source: Some(pm_cover.clone()),
-                                    source_seq: existing.source_seq,
-                                },
-                            )),
-                        });
-                    }
-                    // else: PM handler set everything, don't touch
+                    page.header = Some(PageHeader {
+                        sync_mode: preserved_sync_mode,
+                        sequence_type: Some(SequenceType::AngzarrDeferred(
+                            AngzarrDeferredSequence {
+                                source: existing.source.clone().or_else(|| Some(pm_cover.clone())),
+                                source_seq: existing.source_seq,
+                                source_component: pm_name.to_string(),
+                                command_index: command_index as u32,
+                            },
+                        )),
+                    });
                 }
                 _ => {
                     // PM handler didn't set angzarr_deferred - use defaults
@@ -718,6 +731,8 @@ async fn execute_pm_commands(
                             AngzarrDeferredSequence {
                                 source: Some(pm_cover.clone()),
                                 source_seq: pm_source_seq,
+                                source_component: pm_name.to_string(),
+                                command_index: command_index as u32,
                             },
                         )),
                     });

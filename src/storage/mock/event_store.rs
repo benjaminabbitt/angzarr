@@ -419,6 +419,8 @@ impl EventStore for MockEventStore {
                             && stored_source.domain == source_info.domain
                             && stored_source.root == source_info.root
                             && stored_source.seq == source_info.seq
+                            && stored_source.component == source_info.component
+                            && stored_source.command_index == source_info.command_index
                     } else {
                         false
                     }

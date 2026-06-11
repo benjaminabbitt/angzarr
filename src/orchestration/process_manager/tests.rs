@@ -1241,3 +1241,188 @@ async fn test_orchestrate_pm_refuses_facts_without_fact_executor() {
         );
     }
 }
+
+// ============================================================================
+// O1 + D-5/O13: provenance stamping (component + command_index) and
+// honoring handler-stamped explicit sequences
+// ============================================================================
+
+use crate::proto::{
+    command_page::Payload as CmdPayload, page_header::SequenceType, AngzarrDeferredSequence,
+    CommandPage, MergeStrategy, PageHeader,
+};
+
+/// Executor that captures each CommandBook so tests can inspect the
+/// rewritten page headers `execute_pm_commands` produced.
+struct BookCapturingExecutor {
+    seen: tokio::sync::Mutex<Vec<CommandBook>>,
+}
+
+impl BookCapturingExecutor {
+    fn new() -> Self {
+        Self {
+            seen: tokio::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl CommandExecutor for BookCapturingExecutor {
+    async fn execute(&self, command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        self.seen.lock().await.push(command);
+        CommandOutcome::Success(CommandResponse::default())
+    }
+}
+
+/// PM context that emits one command per entry in `headers`, all to the
+/// same destination, so tests can drive each arm of the stamping rewrite.
+struct PmEmittingHeaders {
+    headers: Vec<Option<PageHeader>>,
+}
+
+#[async_trait]
+impl ProcessManagerContext for PmEmittingHeaders {
+    async fn handle(
+        &self,
+        _trigger: &EventBook,
+        _pm_state: Option<&EventBook>,
+    ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let commands = self
+            .headers
+            .iter()
+            .map(|header| CommandBook {
+                cover: Some(Cover {
+                    domain: "fulfillment".to_string(),
+                    root: None,
+                    correlation_id: "corr-1".to_string(),
+                    edition: None,
+                    ext: None,
+                }),
+                pages: vec![CommandPage {
+                    header: header.clone(),
+                    merge_strategy: MergeStrategy::MergeCommutative as i32,
+                    payload: Some(CmdPayload::Command(prost_types::Any {
+                        type_url: "test.PmCommand".to_string(),
+                        value: vec![],
+                    })),
+                }],
+            })
+            .collect();
+        Ok(PmHandleResponse {
+            commands,
+            process_events: vec![],
+            facts: vec![],
+        })
+    }
+    async fn persist_pm_events(
+        &self,
+        _process_events: &EventBook,
+        _correlation_id: &str,
+    ) -> CommandOutcome {
+        CommandOutcome::Success(CommandResponse::default())
+    }
+}
+
+fn captured_deferred(book: &CommandBook) -> &AngzarrDeferredSequence {
+    match book
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+    {
+        Some(SequenceType::AngzarrDeferred(d)) => d,
+        other => panic!("expected AngzarrDeferred header, got {other:?}"),
+    }
+}
+
+/// O1: every command of one PM invocation gets the framework-stamped
+/// provenance — the PM's registered name and its position in the emitted
+/// command list. Without these, all commands of the invocation share one
+/// deferred-idempotency key and the destination swallows all but the first.
+#[tokio::test]
+async fn test_pm_stamps_component_and_command_index() {
+    let ctx = PmEmittingHeaders {
+        headers: vec![None, None],
+    };
+    let executor = BookCapturingExecutor::new();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &executor,
+        None,
+        &trigger_event(),
+        "pmg-fulfillment",
+        "fulfillment-pm",
+        "corr-1",
+        SyncMode::Async,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_pm should succeed");
+
+    let captured = executor.seen.lock().await;
+    assert_eq!(captured.len(), 2, "expected both commands through executor");
+    for (i, book) in captured.iter().enumerate() {
+        let deferred = captured_deferred(book);
+        assert_eq!(
+            deferred.source_component, "pmg-fulfillment",
+            "command {i} must carry the PM's registered name"
+        );
+        assert_eq!(
+            deferred.command_index, i as u32,
+            "command {i} must carry its position in the invocation's output"
+        );
+        let source = deferred
+            .source
+            .as_ref()
+            .expect("default arm must stamp the PM's own cover for rejection routing");
+        assert_eq!(
+            source.domain, "fulfillment-pm",
+            "rejections route back to the PM's domain"
+        );
+    }
+}
+
+/// D-5/O13: a handler-stamped explicit destination sequence is HONORED —
+/// the rewrite must not overwrite it with AngzarrDeferred. The command
+/// travels as a plain sequenced command; the destination's
+/// optimistic-concurrency gate validates it and rejects on mismatch.
+/// Pre-fix the default match arm clobbered `Sequence(n)` silently.
+#[tokio::test]
+async fn test_pm_honors_handler_stamped_explicit_sequence() {
+    let ctx = PmEmittingHeaders {
+        headers: vec![Some(PageHeader {
+            sync_mode: None,
+            sequence_type: Some(SequenceType::Sequence(9)),
+        })],
+    };
+    let executor = BookCapturingExecutor::new();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &executor,
+        None,
+        &trigger_event(),
+        "pmg-fulfillment",
+        "fulfillment-pm",
+        "corr-1",
+        SyncMode::Async,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_pm should succeed");
+
+    let captured = executor.seen.lock().await;
+    let header = captured[0]
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .expect("page should keep its header");
+    assert_eq!(
+        header.sequence_type,
+        Some(SequenceType::Sequence(9)),
+        "handler-stamped explicit sequence must travel to the destination untouched (D-5)"
+    );
+}

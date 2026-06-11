@@ -2405,6 +2405,8 @@ pub async fn test_find_by_source_returns_match<S: EventStore>(store: &S) {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-test".to_string(),
+        command_index: 0,
     };
 
     store
@@ -2442,6 +2444,8 @@ pub async fn test_find_by_source_no_match<S: EventStore>(store: &S) {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-test".to_string(),
+        command_index: 0,
     };
 
     store
@@ -2586,7 +2590,7 @@ pub async fn test_find_by_external_id_empty_returns_none<S: EventStore>(store: &
 //
 // Distinct from `test_find_by_source_returns_match` above: this variant pins
 // the **multi-field** round trip — every field of `SourceInfo` (edition,
-// domain, root, seq) must survive `add()` and be matched on by
+// domain, root, seq, component, command_index) must survive `add()` and be matched on by
 // `find_by_source`. Backends that drop `_source_info` at add() time pass
 // `test_find_by_source_no_match` (None is correctly returned for a
 // non-existent claim) but fail this test (the claim that SHOULD have been
@@ -2604,6 +2608,8 @@ pub async fn test_find_by_source_round_trip<S: EventStore>(store: &S) {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 42,
+        component: "saga-orders-test".to_string(),
+        command_index: 1,
     };
 
     store
@@ -2646,6 +2652,165 @@ pub async fn test_find_by_source_round_trip<S: EventStore>(store: &S) {
     assert!(
         result_wrong.is_none(),
         "different source seq must not match — backend isn't storing seq correctly"
+    );
+
+    // O1: mismatch on component must NOT match — a different component
+    // reacting to the same source event is a distinct idempotency claim.
+    let mismatched_component = angzarr::storage::SourceInfo {
+        component: "saga-orders-other".to_string(),
+        ..source_info.clone()
+    };
+    let result_wrong = store
+        .find_by_source(domain, "angzarr", root, &mismatched_component)
+        .await
+        .expect("find_by_source should succeed");
+    assert!(
+        result_wrong.is_none(),
+        "different source component must not match — backend isn't storing component correctly"
+    );
+
+    // O1: mismatch on command_index must NOT match — a different command of
+    // the same invocation is a distinct idempotency claim.
+    let mismatched_index = angzarr::storage::SourceInfo {
+        command_index: source_info.command_index + 1,
+        ..source_info.clone()
+    };
+    let result_wrong = store
+        .find_by_source(domain, "angzarr", root, &mismatched_index)
+        .await
+        .expect("find_by_source should succeed");
+    assert!(
+        result_wrong.is_none(),
+        "different command_index must not match — backend isn't storing command_index correctly"
+    );
+}
+
+/// Main-timeline source round trip: a claim whose source cover spells the
+/// main timeline as `""` (how covers actually arrive — `Cover.edition` is
+/// `None` on the main timeline) must persist and be found again. Pins the
+/// write-side polarity: SQLite's insert used to gate the source columns on
+/// `!source_edition.is_empty()`, silently dropping every main-timeline
+/// claim while the `"angzarr"`-spelled tests above kept passing (C-15 class).
+pub async fn test_find_by_source_round_trip_main_timeline_source<S: EventStore>(store: &S) {
+    let domain = "test_find_src_main_tl";
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    let source_info = angzarr::storage::SourceInfo {
+        domain: "orders".to_string(),
+        edition: String::new(),
+        root: source_root,
+        seq: 3,
+        component: "saga-orders-test".to_string(),
+        command_index: 0,
+    };
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(0, "MainTimelineSourced")],
+            &AddMeta {
+                source_info: Some(&source_info),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("add with main-timeline source_info should succeed");
+
+    let result = store
+        .find_by_source(domain, "angzarr", root, &source_info)
+        .await
+        .expect("find_by_source should succeed");
+    assert!(
+        result.is_some(),
+        "main-timeline (\"\") source claim was dropped at add() time — \
+         write-side edition polarity bug"
+    );
+}
+
+/// O1 collision regression at the storage contract level: two commands of ONE
+/// invocation — identical (source edition/domain/root/seq), differing only in
+/// command_index — persist as DISTINCT idempotency claims and each lookup
+/// returns only its own events. Pre-fix the key excluded command_index, so the
+/// second command's lookup matched the first's events and the pipeline
+/// swallowed the second command as an already-processed duplicate.
+pub async fn test_find_by_source_distinguishes_invocation_commands<S: EventStore>(store: &S) {
+    let domain = "test_find_src_o1";
+    let root = Uuid::new_v4();
+    let source_root = Uuid::new_v4();
+
+    let claim_first = angzarr::storage::SourceInfo {
+        domain: "orders".to_string(),
+        edition: "angzarr".to_string(),
+        root: source_root,
+        seq: 7,
+        component: "pm-fulfillment".to_string(),
+        command_index: 0,
+    };
+    let claim_second = angzarr::storage::SourceInfo {
+        command_index: 1,
+        ..claim_first.clone()
+    };
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(0, "FirstCommandEvent")],
+            &AddMeta {
+                source_info: Some(&claim_first),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("first command's events should persist");
+
+    // Before the second command executes, its idempotency lookup must MISS:
+    // this is exactly the lookup that pre-fix returned the first command's
+    // events and silently dropped the second command.
+    let premature = store
+        .find_by_source(domain, "angzarr", root, &claim_second)
+        .await
+        .expect("find_by_source should succeed");
+    assert!(
+        premature.is_none(),
+        "second command of the invocation matched the FIRST command's claim — \
+         command_index is not part of the idempotency key (O1 collision)"
+    );
+
+    store
+        .add(
+            domain,
+            "angzarr",
+            root,
+            vec![make_event(1, "SecondCommandEvent")],
+            &AddMeta {
+                source_info: Some(&claim_second),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("second command's events should persist");
+
+    // Each claim now resolves to exactly its own single event.
+    let first = store
+        .find_by_source(domain, "angzarr", root, &claim_first)
+        .await
+        .expect("find_by_source should succeed")
+        .expect("first claim should be found");
+    let second = store
+        .find_by_source(domain, "angzarr", root, &claim_second)
+        .await
+        .expect("find_by_source should succeed")
+        .expect("second claim should be found");
+    assert_eq!(first.len(), 1, "first claim must return only its own event");
+    assert_eq!(
+        second.len(),
+        1,
+        "second claim must return only its own event"
     );
 }
 
@@ -3251,6 +3416,8 @@ macro_rules! generate_event_store_core_tests {
             test_find_by_source_returns_match,
             test_find_by_source_no_match,
             test_find_by_source_round_trip,
+            test_find_by_source_round_trip_main_timeline_source,
+            test_find_by_source_distinguishes_invocation_commands,
             test_find_by_external_id_round_trip,
             test_find_by_external_id_no_match,
             test_find_by_external_id_empty_returns_none,

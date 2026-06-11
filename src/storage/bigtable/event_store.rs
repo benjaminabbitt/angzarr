@@ -55,6 +55,8 @@ const COL_SOURCE_EDITION: &[u8] = b"source_edition";
 const COL_SOURCE_DOMAIN: &[u8] = b"source_domain";
 const COL_SOURCE_ROOT: &[u8] = b"source_root";
 const COL_SOURCE_SEQ: &[u8] = b"source_seq";
+const COL_SOURCE_COMPONENT: &[u8] = b"source_component";
+const COL_SOURCE_COMMAND_INDEX: &[u8] = b"source_command_index";
 
 /// Column family for cascade index table.
 const CASCADE_INDEX_FAMILY: &str = "ref";
@@ -299,6 +301,16 @@ impl BigtableEventStore {
                 COLUMN_FAMILY,
                 COL_SOURCE_SEQ,
                 info.seq.to_string().as_bytes(),
+            ));
+            mutations.push(Self::build_set_cell(
+                COLUMN_FAMILY,
+                COL_SOURCE_COMPONENT,
+                info.component.as_bytes(),
+            ));
+            mutations.push(Self::build_set_cell(
+                COLUMN_FAMILY,
+                COL_SOURCE_COMMAND_INDEX,
+                info.command_index.to_string().as_bytes(),
             ));
         }
 
@@ -1279,7 +1291,12 @@ impl EventStore for BigtableEventStore {
         let mut events: Vec<EventPage> = Vec::new();
         let target_root = source_info.root.to_string();
         let target_seq = source_info.seq.to_string();
+        let target_index = source_info.command_index.to_string();
         for (_seq, cells) in &rows {
+            // Component/index cells: rows written before these columns
+            // existed have no backfill (unlike the SQL backends' NOT NULL
+            // DEFAULT), so a lookup carrying the pre-upgrade defaults
+            // (""/0) must also accept cell-absent rows.
             let matches = cells
                 .get::<[u8]>(COL_SOURCE_EDITION)
                 .map(|v| v.as_slice() == source_info.edition.as_bytes())
@@ -1295,7 +1312,15 @@ impl EventStore for BigtableEventStore {
                 && cells
                     .get::<[u8]>(COL_SOURCE_SEQ)
                     .map(|v| v.as_slice() == target_seq.as_bytes())
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                && cells
+                    .get::<[u8]>(COL_SOURCE_COMPONENT)
+                    .map(|v| v.as_slice() == source_info.component.as_bytes())
+                    .unwrap_or(source_info.component.is_empty())
+                && cells
+                    .get::<[u8]>(COL_SOURCE_COMMAND_INDEX)
+                    .map(|v| v.as_slice() == target_index.as_bytes())
+                    .unwrap_or(source_info.command_index == 0);
             if !matches {
                 continue;
             }

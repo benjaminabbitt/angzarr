@@ -401,6 +401,14 @@ impl EventStore for DynamoEventStore {
                     "source_seq".to_string(),
                     AttributeValue::N(info.seq.to_string()),
                 );
+                item.insert(
+                    "source_component".to_string(),
+                    AttributeValue::S(info.component.clone()),
+                );
+                item.insert(
+                    "source_command_index".to_string(),
+                    AttributeValue::N(info.command_index.to_string()),
+                );
             }
 
             // Cascade tracking: extract from EventPage for GSI queries
@@ -859,20 +867,41 @@ impl EventStore for DynamoEventStore {
         }
 
         let pk = Self::pk(domain, edition, root);
+        // Component/index clauses: rows written before these attributes
+        // existed have no backfill (unlike the SQL backends' NOT NULL
+        // DEFAULT), so a lookup carrying the pre-upgrade defaults (""/0)
+        // must also accept attribute-absent rows.
+        let component_clause = if source_info.component.is_empty() {
+            "(attribute_not_exists(source_component) OR source_component = :scomp)"
+        } else {
+            "source_component = :scomp"
+        };
+        let index_clause = if source_info.command_index == 0 {
+            "(attribute_not_exists(source_command_index) OR source_command_index = :sidx)"
+        } else {
+            "source_command_index = :sidx"
+        };
+        let filter = format!(
+            "source_edition = :sed AND source_domain = :sdo \
+             AND source_root = :sro AND source_seq = :sseq \
+             AND {component_clause} AND {index_clause}"
+        );
         let result = self
             .client
             .query()
             .table_name(&self.table_name)
             .key_condition_expression("pk = :pk")
-            .filter_expression(
-                "source_edition = :sed AND source_domain = :sdo \
-                 AND source_root = :sro AND source_seq = :sseq",
-            )
+            .filter_expression(filter)
             .expression_attribute_values(":pk", AttributeValue::S(pk))
             .expression_attribute_values(":sed", AttributeValue::S(source_info.edition.clone()))
             .expression_attribute_values(":sdo", AttributeValue::S(source_info.domain.clone()))
             .expression_attribute_values(":sro", AttributeValue::S(source_info.root.to_string()))
             .expression_attribute_values(":sseq", AttributeValue::N(source_info.seq.to_string()))
+            .expression_attribute_values(":scomp", AttributeValue::S(source_info.component.clone()))
+            .expression_attribute_values(
+                ":sidx",
+                AttributeValue::N(source_info.command_index.to_string()),
+            )
             .send()
             .await
             .map_err(|e| {
