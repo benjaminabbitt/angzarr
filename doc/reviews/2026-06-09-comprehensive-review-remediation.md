@@ -57,7 +57,7 @@ The interleaved HandleEvent fact manufactures the retry (steals seq 2 / races pu
 - [x] **D2 HIGH** (`e91a87d7`) failed DLQ publish on immediate path propagates Err (bus redelivers); regression test.
 
 ### Phase 2 — Core correctness contracts — **IN PROGRESS**
-- [ ] **O1 CRITICAL** — deferred-idempotency key collision. **IMPLEMENTATION SPEC (sized 2026-06-09; one dedicated session — multi-repo, no partial landing per no-leaf-dodges):**
+- [x] **O1 CRITICAL** — **DONE 2026-06-10 (`dbcf6bcf`)** (with O13/D-5, same session; proto `c228b01` on angzarr-project feat/deferred-provenance). Implemented exactly per the spec below: AngzarrDeferredSequence += source_component/command_index (additive); migrations sqlite 0010 + postgres 0012 (`NOT NULL DEFAULT ''/0`, no backfill — the pre-upgrade in-flight window is documented in the migration headers); SourceInfo += component/command_index; write paths + find_by_source across sqlite/postgres/mock/immudb/dynamo/bigtable (dynamo/bigtable lookups treat attribute-absent as the pre-upgrade default — they have no SQL DEFAULT backfill); saga + PM stamping from enumerate() with component = registered name, stamped unconditionally (framework provenance, never handler data); compensation notifications propagate the rejected command's component/index (same collision class). Verified: 1027 unit, sqlite 74/74, postgres 74/74 vs real container, immudb find_by_source group green (S2 reds unchanged), aggregate-pipeline integration 7/7 incl. three new end-to-end regressions (two-commands-one-invocation, two-components-one-trigger, exact-redelivery-dedup). SIDE FINDINGS FIXED IN-SCOPE: (1) sqlite write path dropped EVERY main-timeline deferred-idempotency claim (`!source_edition.is_empty()` gate — C-15-class write-side polarity; main-timeline covers spell edition "", so saga redeliveries always re-executed on sqlite); fixed to match postgres `is_empty()` + pinned by new contract test test_find_by_source_round_trip_main_timeline_source. (2) tests/storage_immudb.rs duplicated the events-table DDL and had drifted; now uses storage::immudb::schema constants. (3) tests/pm_persist_event_store.rs still pinned pre-O3 Rejected-on-conflict; updated to pin O3's Retryable. ORIGINAL SPEC FOLLOWS (kept for reference):
   1. PROTO (in the angzarr-project SUBMODULE — branch + commit there, then bump pointer; check-submodules-clean requires clean tree): add to AngzarrDeferredSequence: `string source_component = 3;` (producing saga/PM name) and `uint32 command_index = 4;` (position within the invocation's command list). Wire-compatible additive change.
   2. STORAGE SCHEMA: events gain `source_component TEXT NOT NULL DEFAULT ''` + `source_command_index INTEGER NOT NULL DEFAULT 0`. Migrations: sqlite 0010, postgres (next number; check dir). Update idx_events_source to include both. No backfill — old rows keep defaults; a pre-upgrade in-flight redelivery re-executes once, caught by the sequence fence (NoOp). Document that window.
   3. SourceInfo (src/storage/event_store.rs:16) gains component + command_index; builders at aggregate/grpc/mod.rs:61 + pipeline.rs:138.
@@ -76,7 +76,7 @@ The interleaved HandleEvent fact manufactures the retry (steals seq 2 / races pu
 - [ ] O10 MED facts never get workflow correlation_id backfilled (commands do); downstream PMs skip empty-correlation events (C-04 class on primary fact path).
 - [ ] O11 MED saga retry re-executes already-succeeded commands → idempotency replay republishes destination events every attempt (duplicate event storms; cyclic topologies self-sustain). Drop succeeded from retry set. Interacts with O1/D-5.
 - [ ] O12 MED PM persistence lacks idempotency metadata (redelivered trigger re-runs handler); publish failure after persist only logged. Stamp trigger provenance into AddMeta.source_info; surface publish failure. (Partially mitigated by B1-style capture? — assess during O1 work.)
-- [ ] O13 MED handler-stamped explicit sequences silently overwritten with AngzarrDeferred. **DECIDED D-5: HONOR** — preserve Some(Sequence(n)) to destination, validate there (reject on mismatch); destination-sequence fetch becomes load-bearing. Implement WITH O1.
+- [x] O13 MED **DONE 2026-06-10 (`dbcf6bcf`)** (with O1, same match arms per D-5): saga + PM stamping now has an explicit `Some(SequenceType::Sequence(_)) => {}` arm — handler-stamped sequences travel to the destination untouched, where the existing optimistic-concurrency gate validates and rejects on mismatch (no new destination code needed). Unit tests pin both sides (test_{saga,pm}_honors_handler_stamped_explicit_sequence). ExternalDeferred headers keep prior behavior (overwritten by the default arm) — out of D-5's scope.
 - [ ] O14 MED cascade reaper revocation races in-flight confirmation (revoked-wins ⇒ split-brain on threshold race); partial revocation on mid-loop failure. Per-cascade atomic claim; all-or-retry-all.
 - [ ] O15 LOW two_phase.rs is_noop exact type_url equality vs prefix-agnostic framework matching (H-40/41). Suffix-match fix.
 
@@ -181,6 +181,32 @@ The interleaved HandleEvent fact manufactures the retry (steals seq 2 / races pu
 - **D-13 G3 route_to_handler → invert to `bool skip_handler`** so the proto3 zero-value is the safe documented default; bundle with the D-4 enum-renumber wire break in angzarr-project pre-v0.1.0. (Rejected: RoutingMode enum.)
 - **D-14 D7 retention → WIRE max_files (file backends) + age/size knobs (SQL backends), default UNLIMITED.** Deletion is explicit opt-in — DLQ is failure evidence, audit is compliance-shaped. (Rejected: retention-on defaults; delete-config-and-document.)
 
+## Mutation results — O1/O13 touched files (2026-06-10)
+- saga orchestrate_saga (targeted `--re`): **6/6 caught** after adding
+  test_saga_fetches_destination_sequences_for_output_domains for the one
+  initial miss (`delete !` on the destination-fetch gate — D-5 made that
+  fetch load-bearing, so it earned a dedicated test).
+- PM execute_pm_commands (targeted): **4/4 caught**.
+- sqlite insert_events + find_by_source (targeted): 11/11 MISSED — but this
+  is a harness blind spot, not a coverage gap: `.cargo/mutants.toml` scopes
+  mutants to `--lib` (bin strip=true link-failure workaround), so the
+  storage CONTRACT suite (tests/storage_*.rs) never runs per-mutant. Every
+  one of the 11 directly contradicts a green contract test (e.g.
+  find_by_source → Ok(None) vs test_find_by_source_returns_match). Accepted
+  per the CLAUDE.md integration-coverage rule; structural fix filed as task
+  `scaly-nag` (add `--test storage_sqlite` to the mutants test args vs
+  accept-and-document).
+- saga/mod.rs full file (pre-fix baseline): 13 missed / 10 caught / 5
+  unviable. Known pre-existing misses outside O1 scope: SagaOperation::name
+  xyzzy (228), try_execute `==`→`!=` (259), prepare_for_retry → Ok(()) (310).
+  The other 9 miss records were lost to the outcomes-copy bug (ephemeral
+  runner skipped the outcomes.json copy whenever mutants survived — FIXED
+  this session in justfile `_container-ephemeral`, which also gained
+  `just mutants FILE [--re fn]` flag forwarding); re-run post-O2 for the
+  complete inventory.
+- Also surfaced: env-var race in config tests flaking mutants baselines
+  (task `timid-cleft`).
+
 ## Mutation backlog (from `just mutants pipeline.rs`, 2026-06-09 — 29/40 viable caught)
 B1's five survivors killed by the paused-clock pacing test (`ccb923df`). Pre-existing survivors, unrelated to the review fixes:
 - pipeline.rs:45 execute_command_pipeline → Ok(Default::default()) survives (no lib-level end-to-end test)
@@ -231,10 +257,32 @@ sqlite 0010 + next postgres migration, SourceInfo fields, find_by_source ×7,
 stamping, collision regression tests. After O1: O2 CRITICAL (no_commit
 publish suppression + revocation publishing), then remaining P2 in order.
 
+## Execution log — session 3 (2026-06-10, dull-firm-grout continued)
+
+O1 + O13 landed together per D-5 (see the [x] O1/O13 entries above for the
+full record: implementation, verification matrix, and the three in-scope
+side findings — sqlite main-timeline claim drop, immudb test-DDL drift,
+stale pre-O3 PM-conflict test). Proto change committed in the STANDALONE
+angzarr-project clone (~/workspace/angzarr/angzarr-project,
+feat/deferred-provenance `c228b01`, stacked on spec/promote-router-feature)
+— the submodule pre-commit hook correctly refuses in-submodule commits;
+fetched locally into the core submodule and pointer bumped.
+
+New findings filed as tasks during execution:
+- `blue-cone`: buf-docs generator image unpinned (:latest) → wholesale
+  layout churn on regen; proto docs page stale w.r.t. the two new fields.
+
+### Next: O2 CRITICAL (no_commit publish suppression + revocation
+publishing — aggregate/grpc/mod.rs post_persist + cascade/reaper.rs), then
+O5 verify-and-close, O6 (D-7), O7 (D-11), O8, remaining P2 MEDs in order.
+Check `terse-amber` (fact-path conflict retry) for synergy while in the
+pipeline code.
+
 ### Unpushed-branch inventory (push before sharing anything)
-- core feat/snapshot-temporal-wiring: ~60 commits ahead of origin
-- angzarr-project spec/promote-router-feature: 2 commits (28e66c4, f9b6bfc) —
-  client-go + core submodules point at it via LOCAL fetches
+- core feat/snapshot-temporal-wiring: ~60 commits ahead of origin (+ this session's)
+- angzarr-project spec/promote-router-feature: 2 commits (28e66c4, f9b6bfc);
+  feat/deferred-provenance: `c228b01` (stacked on spec/promote-router-feature) —
+  core submodule points at c228b01 via LOCAL fetch; push angzarr-project FIRST
 - client-go feat/cross-language-unification: `5f83f5f` (+ pre-existing in-flight work)
 
 ## Commits landed (feat/snapshot-temporal-wiring, 2026-06-09→10)
@@ -250,7 +298,8 @@ publish suppression + revocation publishing), then remaining P2 in order.
 - `35f5eee4` doc: recover review corpus · `b9fd1544` spec: promote router.feature
 - `0f70c2e9`→amended: see b9fd1544 · `1769a22a` T10 · `718b323a` T11 · `f00e959f` T12
 - `4720038a` T14 · `6ae3530a` B1 e2e (+ doc commits per task)
-Branch ~60 commits ahead of origin, UNPUSHED.
+- `dbcf6bcf` Phase 2 O1 + O13/D-5 (+ angzarr-project `c228b01`) · `6eda17ce` mutants tooling
+Branch UNPUSHED (push angzarr-project first — submodule pointer).
 
 ## Reviewer agent IDs (were continuable within the original session only)
 storage a76636bcccb95aa55 · orchestration ad98ce5972a11d916 · bus aa5b435525319e024 · dlq/status a4f3349e204022bf2 · services aceb0a66b303eedc3 · utils acfc9f75cb10015a3 · gateway af095e3467f62525d · tests ade7ebd5b4be0ff62
