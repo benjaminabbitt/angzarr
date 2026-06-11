@@ -242,13 +242,20 @@ _container-ephemeral +ARGS: _build-images
             # it (the original /src is read-only, but /work is writable).
             cp /etc/angzarr-justfile /work/justfile
             cd /work
-            just {{ARGS}}
+            # cargo mutants exits non-zero when mutants survive — that is a
+            # RESULT, not a tooling failure. Capture the exit code so the
+            # outcomes copy below still runs; `just mutants-summary` /
+            # `mutants-survivors` read the copied outcomes.json and were
+            # blind to every run that actually had survivors before this.
+            rc=0
+            just {{ARGS}} || rc=$?
             # Persist ONLY outcomes.json back to host. Mutated source trees
             # and intermediate working dirs die with the container.
             if [ -f /work/mutants.out/outcomes.json ]; then
                 cp /work/mutants.out/outcomes.json /out/outcomes.json
                 echo "[ephemeral] outcomes.json copied to host mutants.out/"
             fi
+            exit $rc
         '
 
 default:
@@ -471,9 +478,11 @@ gen-mutants-exclude:
 # and so are routed through the regular `_container` (no source mutation).
 # =============================================================================
 
-# Run mutation tests on a specific file (ephemeral; no source touches host)
-mutants FILE:
-    just _container-ephemeral mutants {{FILE}}
+# Run mutation tests on a specific file (ephemeral; no source touches host).
+# EXTRA forwards additional cargo-mutants flags, e.g. a function filter:
+#   just mutants src/orchestration/saga/mod.rs --re orchestrate_saga
+mutants FILE *EXTRA:
+    just _container-ephemeral mutants {{FILE}} {{EXTRA}}
 
 # Run mutation tests on handlers/core (aggregate, projector, saga, PM)
 mutants-core:

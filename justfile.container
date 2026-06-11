@@ -538,11 +538,14 @@ gen-mutants-exclude:
     cargo xtask gen-mutants-exclude
 
 # Run mutation tests on a specific file
-mutants FILE: gen-mutants-exclude
+# EXTRA forwards additional cargo-mutants flags (e.g. `--re <fn-regex>`
+# to scope a run to specific functions within the file).
+mutants FILE *EXTRA: gen-mutants-exclude
     cargo mutants \
         --in-place \
         --timeout {{MUTANTS_TIMEOUT}} \
         -f {{FILE}} \
+        {{EXTRA}} \
         -- {{MUTANTS_FEATURES}}
 
 # Run mutation tests on handlers/core (aggregate, projector, saga, PM)
