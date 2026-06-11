@@ -31,7 +31,7 @@ The interleaved HandleEvent fact manufactures the retry (steals seq 2 / races pu
 
 ## Remediation phases (triage order)
 
-### Phase 0 — Make the test surface real — **SUBSTANTIALLY COMPLETE**
+### Phase 0 — Make the test surface real — **COMPLETE 2026-06-10** (T5 deferred to Phase 3 per D-1)
 **T1-T4+T6 in `3c87335f`; T7/T8/T11(partial)/T13 + rootless-dind fix in `8ea42461` (2026-06-09).** Run-verified: full Postgres contract suite GREEN (first time ever), full AMQP suite green, Kafka suite 3/3 green (first ever, after Phase 1's B3), 1016+ unit tests, SQLite suite. KEY ENVIRONMENTAL FIX: testcontainers' bridge-gateway fallback (172.17.0.1) unreachable under rootless docker — tests honor TESTCONTAINERS_HOST=127.0.0.1, set by `just _container-dind` + CI contract job; Postgres recipe serialized (--test-threads=1).
 - [x] **T1 CRITICAL** restored phantom DLQ helpers (test_dlq_publish/test_dlq_sequence_mismatch + make_command_book), adapted to init_dlq_publisher + stack_trace; fixed DlqConfig::sns_sqs builder drift. **Gate also exposed: the `kafka` FEATURE didn't compile at lib level** (dispatch_to_handlers path, rdkafka 0.36 get_as Result, inventory-closure lifetime) + 4 unit .test.rs files broken by Cover.ext/lapin drift — all fixed; stale kafka mod.test.rs tests for deleted message_key/extract_domain removed (superseded by H-10 validate_publish_key suite).
 - [x] **T2 CRITICAL** recipes repointed to real targets; `--features sqlite` ghosts purged (incl. entire cov section); nats/channel recipes deleted; bus recipes + Cargo.toml required-features gained test-utils; `check-tests` compile gate added (host+container); test-dlq-postgres recipe; test-local = gate→unit→sqlite contracts.
@@ -48,9 +48,9 @@ The interleaved HandleEvent fact manufactures the retry (steals seq 2 / races pu
 - [x] T13 LOW (`8ea42461`) bind-port-0 probe replaces hash-of-time.
 - [x] **T14 DONE 2026-06-10 (`4720038a`, per D-10)**: tests/common/mod.rs de-orphaned — pre-v1 client names (aggregate_coordinator_service_client no longer exists), stale Cover/CommandPage literals, and moved sequence field all fixed; now the fixture layer of tests/acceptance_features.rs (cucumber, harness=false) driving features/acceptance/end_to_end.feature against a deployed cluster. Opt-in via ANGZARR_ACCEPTANCE=1 (test-acceptance in test-integration; test-acceptance-live for cluster runs). All steps verified matching; green run pairs with B1's cluster verification. compensation_* features (36 scenarios) still need harness coverage.
 
-### Phase 1 — Data-loss champions — **COMPLETE 2026-06-09** (`e91a87d7`, `c2fa2beb`, `3e710240`)
+### Phase 1 — Data-loss champions — **COMPLETE & E2E-VERIFIED 2026-06-10** (`e91a87d7`, `c2fa2beb`, `3e710240`, `6ae3530a`)
 - [x] **S1 CRITICAL** (`3e710240`) EMPIRICALLY PROVEN first (new contract test test_put_update_main_timeline red: put(10);put(25);get→10 — frozen checkpoint). Fix: sqlite migration **0009** (dedupe + UNIQUE indexes on COALESCE(edition,'') for positions/snapshots/events; note: numbered 0009 because 0007/0008 already existed) + SqlDatabase::positions/snapshots_conflict_target() — column-list default for Postgres (NULLS NOT DISTINCT), COALESCE-expression override for SQLite, per D-1 layering (divergence at the SqlDatabase seam; shared macros stay agnostic). Red→green SQLite 4/4; Postgres 4/4 incl. new test. 0006's wrong comment left untouched (sqlx checksums); 0009 header documents the correction.
-- [x] **B1 HIGH (the AMQP bug)** (`c2fa2beb`) publish_unless_noop retries post_persist IN PLACE (3 attempts, linear backoff) instead of propagating retryable; exhaustion → new AggregateContext::dead_letter_unpublished hook (grpc ctx publishes events dead letter, is_transient=true). Regression tests: retry, exhaustion, and paused-clock pacing (`ccb923df`, kills backoff mutants). REMAINING: poker-scenario e2e verify, then delete bug memory.
+- [x] **B1 HIGH (the AMQP bug)** (`c2fa2beb`) publish_unless_noop retries post_persist IN PLACE (3 attempts, linear backoff) instead of propagating retryable; exhaustion → new AggregateContext::dead_letter_unpublished hook (grpc ctx publishes events dead letter, is_transient=true). Regression tests: retry, exhaustion, and paused-clock pacing (`ccb923df`, kills backoff mutants). E2E-VERIFIED 2026-06-10 (`6ae3530a`, see headline); bug memory deleted.
 - [x] **B2 HIGH** (`e91a87d7`) mandatory publish + Ack(Some(returned)) WARN-logged with reply code/text. Non-fatal by design: no-subscriber publish is legitimate topology (test_publish_only contract); durable queues cover the restart window; residual exposure = first-deploy ordering only.
 - [x] **B3 CRITICAL** (`e91a87d7`) Kafka seek-back to failed offset for in-place redelivery + 500ms backoff; seek failure defers to next rebalance via uncommitted offset. T7 Kafka test GREEN vs real Redpanda. Bonus from first-ever full Kafka run: consumer topic.metadata.refresh.interval.ms=5000 (regex SubscriberAll discovered new topics only at librdkafka's 5-MINUTE default); multi-domain test made retention-tolerant; multiple-handlers test deadline-polled. Kafka suite 3/3 green.
 - [x] **D1 CRITICAL** (`e91a87d7`) durable catch-all queue (angzarr.dlq.catchall, bound '#') at init; confirm_select + mandatory on publish; unroutable/nack/NotRequested → PublishFailed (chained fallback fires). Integration test proves retention + byte-decodability. AMQP suite 5/5.
@@ -201,6 +201,42 @@ Per CLAUDE.md: unit-testable pure-logic → "add test". Still owed: mutants over
 ## Notable non-findings (verified good)
 R2-15 genuinely resolved w/ compile-fail guard · no embedded HTTP servers in Rust bins (status delegates to envoy transcoder) · advice/status metrics separation clean · DLQ read path paginated/parameterized/keyset · trivial_delegation usages all legit (6, single-line getters) · DLQ_PUBLISH_TOTAL counted after success · mock stores hardened to SQL semantics (H-24/C-17) · gateway runtime image distroless/nonroot.
 
+## Execution log — session 2 (2026-06-10, dull-firm-grout)
+
+Review corpus recovered after the ctxloom wipe (original plan replayed from
+transcript edit history; 8 raw reviewer reports extracted — all in this
+directory, committed `35f5eee4`). Decisions D-8..D-14 resolved with Ben.
+All ~90 open findings tracked as ctxloom tasks (`[review:P#]` prefix,
+project third-inept-thing); each task carries its decided resolution.
+
+Landed this session (each verified vs real brokers/stores, all hooks green):
+- T9  `b9fd1544` core + `28e66c4`/`f9b6bfc` angzarr-project + `5f83f5f` client-go
+- T10 `1769a22a` start_consuming readiness contract (production fix, not test-only)
+- T11 `718b323a` per-contract-fn storage tests (sqlite 69/69 ~1s; postgres 69/69 one container)
+- T12 `f00e959f` contract-fn inventory guards (storage ×3 + bus)
+- T14 `4720038a` acceptance harness + tests/common de-orphaned
+- B1  `6ae3530a` interleave-publish e2e: injected-failure pin + 10-round race parity
+
+New findings filed as tasks during execution:
+- `terse-amber`: fact path lacks in-pipeline conflict retry (FailedPrecondition
+  surfaces to fact callers under concurrent same-root writes) — O3-style fix.
+- `taut-heave`: 9 never-promoted features in core features/client/ (T9 follow-up);
+  client-rust runner references some of them; java embeds stale copies.
+- CI mutation task (diff-scope PR/release + weekly full) moved from ltk store.
+
+### Next session: O1 (dedicated, multi-repo — per the spec in Phase 2 below)
+O1 + O13 together (same saga/pm match arms, decided D-5). Spec in the O1
+bullet: proto additive change in angzarr-project (branch there, bump pointer),
+sqlite 0010 + next postgres migration, SourceInfo fields, find_by_source ×7,
+stamping, collision regression tests. After O1: O2 CRITICAL (no_commit
+publish suppression + revocation publishing), then remaining P2 in order.
+
+### Unpushed-branch inventory (push before sharing anything)
+- core feat/snapshot-temporal-wiring: ~60 commits ahead of origin
+- angzarr-project spec/promote-router-feature: 2 commits (28e66c4, f9b6bfc) —
+  client-go + core submodules point at it via LOCAL fetches
+- client-go feat/cross-language-unification: `5f83f5f` (+ pre-existing in-flight work)
+
 ## Commits landed (feat/snapshot-temporal-wiring, 2026-06-09→10)
 - `1e0fca62` ltk: gate manual commands with just-target equivalents
 - `931bf389` ltk: file-edit guards + submodule gates
@@ -211,7 +247,10 @@ R2-15 genuinely resolved w/ compile-fail guard · no embedded HTTP servers in Ru
 - `3e710240` Phase 1 S1 (SQLite frozen checkpoints)
 - `43dc9f1a` Phase 2 O3 + O4/D-3
 - `ccb923df` B1 backoff mutant kills (paused clock)
-Branch ~48 commits ahead of origin, UNPUSHED.
+- `35f5eee4` doc: recover review corpus · `b9fd1544` spec: promote router.feature
+- `0f70c2e9`→amended: see b9fd1544 · `1769a22a` T10 · `718b323a` T11 · `f00e959f` T12
+- `4720038a` T14 · `6ae3530a` B1 e2e (+ doc commits per task)
+Branch ~60 commits ahead of origin, UNPUSHED.
 
 ## Reviewer agent IDs (were continuable within the original session only)
 storage a76636bcccb95aa55 · orchestration ad98ce5972a11d916 · bus aa5b435525319e024 · dlq/status a4f3349e204022bf2 · services aceb0a66b303eedc3 · utils acfc9f75cb10015a3 · gateway af095e3467f62525d · tests ade7ebd5b4be0ff62
