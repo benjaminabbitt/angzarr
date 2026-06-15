@@ -390,12 +390,12 @@ fn test_reaper_builder_pattern() {
 ///
 /// The reaper packs Revocation into a `prost_types::Any`. The 2PC visibility
 /// transform (`transform_for_two_phase`) decodes framework events by matching
-/// `any.type_url == type_url::REVOCATION` (which is the canonical
-/// `"type.angzarr.io/angzarr.Revocation"`). If the reaper writes a bare
-/// `"angzarr.Revocation"` (no prefix) the transform silently ignores the
-/// Revocation — the stale `no_commit` page remains "visible" to its own
-/// cascade's handler context instead of being NoOp-replaced. This is data
-/// corruption.
+/// the FQN of `any.type_url` against `io.angzarr.v1.Revocation` (the canonical
+/// `type_url::REVOCATION` is the bare `"/io.angzarr.v1.Revocation"`). If the
+/// reaper writes a wrong or short name like `"angzarr.Revocation"` the
+/// transform silently ignores the Revocation — the stale `no_commit` page
+/// remains "visible" to its own cascade's handler context instead of being
+/// NoOp-replaced. This is data corruption.
 ///
 /// We use `TwoPhaseContext::for_handler(cascade_id)` to isolate the bug: in
 /// that mode, uncommitted pages with the matching cascade_id pass through by

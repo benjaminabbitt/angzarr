@@ -11,16 +11,16 @@ use prost::Name;
 
 /// Extract the message-name suffix from a protobuf `Any.type_url`.
 ///
-/// Three shapes appear in the wild:
+/// Two shapes appear in the wild:
 ///   - `type.googleapis.com/{full_name}` — the well-known default
 ///     emitted by `Any.Pack()` in every language SDK.
-///   - `/{full_name}` — prost's `prost::Name::type_url()` default; bare
-///     leading slash, no domain (proto3's canonical form).
-///   - `type.angzarr.io/{full_name}` — angzarr's framework prefix used
-///     for Confirmation / Revocation / Compensate / NoOp / Notification.
+///   - `/{full_name}` — prost's `prost::Name::type_url()` default (bare
+///     leading slash, no domain); also angzarr's canonical form for its
+///     own framework messages (Confirmation / Revocation / Compensate /
+///     NoOp / Notification / CommandBook).
 ///
-/// Stripping everything up to and including the LAST `/` collapses all
-/// three to `{full_name}`. Strings without a `/` fall back to the whole
+/// Stripping everything up to and including the LAST `/` collapses both
+/// to `{full_name}`. Strings without a `/` fall back to the whole
 /// value (permissive — same posture as prost's `Any.type_url`-relaxed
 /// decode).
 ///
@@ -145,8 +145,7 @@ impl EventPageExt for EventPage {
             _ => return None,
         };
         // H-41: compare the message-name SUFFIX, not the full URL. Accepts
-        // `type.googleapis.com/{name}`, `/{name}` (prost default), and
-        // `type.angzarr.io/{name}`.
+        // `type.googleapis.com/{name}` and `/{name}`
         if type_url_suffix(&event.type_url) != M::full_name() {
             return None;
         }
@@ -225,8 +224,7 @@ impl CommandPageExt for CommandPage {
             _ => return None,
         };
         // H-41: compare the message-name SUFFIX, not the full URL. Accepts
-        // `type.googleapis.com/{name}`, `/{name}` (prost default), and
-        // `type.angzarr.io/{name}`.
+        // `type.googleapis.com/{name}` and `/{name}`
         if type_url_suffix(&command.type_url) != M::full_name() {
             return None;
         }

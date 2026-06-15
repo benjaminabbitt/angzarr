@@ -12,7 +12,10 @@ pub const UNKNOWN_DOMAIN: &str = "unknown";
 pub const PROJECTION_DOMAIN_PREFIX: &str = "_projection";
 
 /// Protobuf type URL for serialized Projection messages in synthetic event books.
-pub const PROJECTION_TYPE_URL: &str = "angzarr.Projection";
+///
+/// Canonical bare form (`/` + FQN); produced and matched by the
+/// projector path, so an exact comparison is sufficient.
+pub const PROJECTION_TYPE_URL: &str = "/io.angzarr.v1.Projection";
 
 /// Wildcard domain for catch-all routing (matches any domain).
 pub const WILDCARD_DOMAIN: &str = "*";

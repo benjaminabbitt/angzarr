@@ -35,7 +35,7 @@ struct RegisterPlayer {
 }
 
 const PLAYER_DOMAIN: &str = "player";
-const REGISTER_PLAYER_TYPE: &str = "angzarr_client.proto.examples.v1.RegisterPlayer";
+const REGISTER_PLAYER_TYPE: &str = "io.angzarr.examples.v1.RegisterPlayer";
 
 #[derive(Debug, Default, World)]
 struct AcceptanceWorld {

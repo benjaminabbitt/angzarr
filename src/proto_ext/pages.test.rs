@@ -9,10 +9,11 @@
 //!
 //! Behavior we pin:
 //! - `type.googleapis.com/{full_name}` decodes (existing happy path).
-//! - `/{full_name}` decodes (prost `Name::type_url()` default — the bug).
-//! - `type.angzarr.io/{full_name}` decodes (angzarr canonical prefix; not
-//!   the original H-41 ask but stripping "everything up to the last /" gives
-//!   it for free and matches the H-40 cross-prefix tolerance).
+//! - `/{full_name}` decodes (prost `Name::type_url()` default — also
+//!   angzarr's bare canonical form; the original H-41 bug).
+//! - an arbitrary resolver host (`type.angzarr.io/{full_name}`) decodes —
+//!   stripping "everything up to the last /" gives it for free and matches
+//!   the H-40 cross-prefix tolerance.
 //! - Wrong message type still returns None.
 //! - Empty payload returns None.
 //!
@@ -123,11 +124,11 @@ fn event_decode_typed_accepts_prost_name_type_url_shape() {
     );
 }
 
-/// `type.angzarr.io/...` is the angzarr canonical prefix (used by
-/// reaper-stamped Revocations, NoOp markers, framework Notifications).
-/// The "strip everything up to and including the last `/`" rule covers it
-/// for free; we pin it explicitly so a regression doesn't silently break
-/// cross-pipe decode by Confirmation/Revocation receivers.
+/// An arbitrary resolver host (here `type.angzarr.io/...`) still decodes:
+/// the "strip everything up to and including the last `/`" rule is
+/// prefix-agnostic. We pin it explicitly so a regression doesn't silently
+/// break cross-pipe decode of Confirmation/Revocation receivers that see
+/// an unexpected resolver prefix.
 #[test]
 fn event_decode_typed_accepts_angzarr_io_prefix() {
     let conf = sample_confirmation();

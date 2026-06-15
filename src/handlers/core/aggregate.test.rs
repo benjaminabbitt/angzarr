@@ -89,9 +89,10 @@ fn test_wrap_command_creates_single_page() {
     assert_eq!(wrapped.pages.len(), 1, "Should have exactly one page");
 }
 
-/// Wrapped command page has correct type_url for CommandBook.
+/// Wrapped command page carries the canonical CommandBook type_url.
 ///
-/// The type_url must end with "angzarr.CommandBook" for extraction to recognize it.
+/// The type_url must be exactly `/io.angzarr.v1.CommandBook` — the bare
+/// canonical form extraction matches against (no resolver host).
 #[test]
 fn test_wrap_command_has_correct_type_url() {
     let command = make_command_book("player", Uuid::new_v4(), "test.Command", vec![]);
@@ -100,14 +101,9 @@ fn test_wrap_command_has_correct_type_url() {
 
     let page = &wrapped.pages[0];
     if let Some(event_page::Payload::Event(any)) = &page.payload {
-        assert!(
-            any.type_url.ends_with("angzarr.CommandBook"),
-            "Type URL should end with angzarr.CommandBook, got: {}",
-            any.type_url
-        );
         assert_eq!(
-            any.type_url, "type.googleapis.com/angzarr.CommandBook",
-            "Full type URL should match expected format"
+            any.type_url, "/io.angzarr.v1.CommandBook",
+            "Wrapped command must carry the bare canonical type URL"
         );
     } else {
         panic!("Expected Event payload");
@@ -169,7 +165,7 @@ fn test_extract_command_empty_book_returns_none() {
 /// Extract returns None for regular event (not a wrapped command).
 ///
 /// Normal events have different type_urls (like "test.PlayerCreated").
-/// Only wrapped commands have type_url ending in "angzarr.CommandBook".
+/// Only wrapped commands carry the canonical `/io.angzarr.v1.CommandBook`.
 #[test]
 fn test_extract_command_regular_event_returns_none() {
     let regular_event = EventBook {
@@ -230,7 +226,7 @@ fn test_extract_command_invalid_protobuf_returns_none() {
             }),
             created_at: None,
             payload: Some(event_page::Payload::Event(Any {
-                type_url: "type.googleapis.com/angzarr.CommandBook".to_string(),
+                type_url: "/io.angzarr.v1.CommandBook".to_string(),
                 value: vec![0xFF, 0xFF, 0xFF], // Invalid protobuf
             })),
             ..Default::default()
@@ -241,6 +237,42 @@ fn test_extract_command_invalid_protobuf_returns_none() {
     let result = extract_command_from_event_book(&invalid);
 
     assert!(result.is_none(), "Invalid protobuf should return None");
+}
+
+/// Extract requires the EXACT canonical type_url, not just a matching FQN
+/// under some other resolver host.
+///
+/// The wrapper is produced and consumed by the Rust coordinator, so it
+/// only ever carries the bare `/io.angzarr.v1.CommandBook`. A
+/// resolver-prefixed variant (`type.googleapis.com/...`) is not a shape
+/// this path emits, and recognizing it would re-introduce the loose
+/// suffix matching this change removed.
+#[test]
+fn test_extract_command_non_canonical_prefix_returns_none() {
+    let valid = make_command_book("player", Uuid::new_v4(), "test.Command", vec![1, 2, 3]);
+    let mismatched = EventBook {
+        cover: Some(make_cover("player", Uuid::new_v4(), "corr-123")),
+        pages: vec![EventPage {
+            header: Some(PageHeader {
+                sync_mode: None,
+                sequence_type: Some(page_header::SequenceType::Sequence(1)),
+            }),
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/io.angzarr.v1.CommandBook".to_string(),
+                value: valid.encode_to_vec(),
+            })),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let result = extract_command_from_event_book(&mismatched);
+
+    assert!(
+        result.is_none(),
+        "Resolver-prefixed CommandBook must not extract (exact match only)"
+    );
 }
 
 /// Extract preserves command data through round-trip.

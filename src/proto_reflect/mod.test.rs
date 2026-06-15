@@ -41,7 +41,7 @@ fn test_extract_type_name_googleapis() {
 fn test_extract_type_name_angzarr() {
     use crate::proto_ext::type_url;
     let result = extract_type_name(type_url::SAGA_COMPENSATION_FAILED).unwrap();
-    assert_eq!(result, "angzarr.SagaCompensationFailed");
+    assert_eq!(result, "io.angzarr.v1.SagaCompensationFailed");
 }
 
 /// Edge case: bare type name without prefix still works.
@@ -224,10 +224,7 @@ fn decode_to_json_unknown_type_returns_empty() {
 #[test]
 fn decode_to_json_garbage_bytes_returns_empty() {
     let _ = ensure_initialized();
-    let result = decode_to_json(
-        "angzarr_client.proto.angzarr.v1.AngzarrDeadLetter",
-        &[0xff, 0xff, 0xff, 0xff],
-    );
+    let result = decode_to_json("io.angzarr.v1.AngzarrDeadLetter", &[0xff, 0xff, 0xff, 0xff]);
     assert_eq!(result, "");
 }
 
@@ -251,7 +248,7 @@ fn decode_to_json_roundtrip_angzarr_dead_letter() {
         ..Default::default()
     };
     let bytes = dl.encode_to_vec();
-    let json = decode_to_json("angzarr_client.proto.angzarr.v1.AngzarrDeadLetter", &bytes);
+    let json = decode_to_json("io.angzarr.v1.AngzarrDeadLetter", &bytes);
 
     assert!(!json.is_empty(), "json must be non-empty on happy path");
     // Field-name spot checks against the proto3 JSON encoding.
@@ -310,7 +307,7 @@ fn decode_any_to_json_roundtrip_known_type() {
         ext: None,
     };
     let any = Any {
-        type_url: "type.googleapis.com/angzarr_client.proto.angzarr.v1.Cover".to_string(),
+        type_url: "type.googleapis.com/io.angzarr.v1.Cover".to_string(),
         value: cover.encode_to_vec(),
     };
     let json = decode_any_to_json(&any);
@@ -341,7 +338,7 @@ fn decode_any_to_json_garbage_bytes_returns_empty() {
     use prost_types::Any;
     let _ = ensure_initialized();
     let any = Any {
-        type_url: "type.googleapis.com/angzarr_client.proto.angzarr.v1.Cover".to_string(),
+        type_url: "type.googleapis.com/io.angzarr.v1.Cover".to_string(),
         value: vec![0xff; 16],
     };
     assert_eq!(decode_any_to_json(&any), "");
@@ -364,9 +361,9 @@ fn decode_any_to_json_matches_decode_to_json() {
         ext: None,
     };
     let bytes = cover.encode_to_vec();
-    let from_bytes = decode_to_json("angzarr_client.proto.angzarr.v1.Cover", &bytes);
+    let from_bytes = decode_to_json("io.angzarr.v1.Cover", &bytes);
     let from_any = decode_any_to_json(&Any {
-        type_url: "type.googleapis.com/angzarr_client.proto.angzarr.v1.Cover".to_string(),
+        type_url: "type.googleapis.com/io.angzarr.v1.Cover".to_string(),
         value: bytes,
     });
     assert!(!from_bytes.is_empty());
@@ -410,7 +407,9 @@ fn public_files() -> Vec<String> {
 fn h33_public_descriptor_includes_dlq_admin() {
     let files = public_files();
     assert!(
-        files.iter().any(|f| f == "angzarr/status/dlq_admin.proto"),
+        files
+            .iter()
+            .any(|f| f == "io/angzarr/status/v1/dlq_admin.proto"),
         "Public descriptor must include dlq_admin.proto. Got: {:?}",
         files
     );
@@ -426,14 +425,14 @@ fn h33_public_descriptor_excludes_framework_internals() {
     // These proto files declare internal types or services that we
     // don't advertise via reflection.
     const INTERNAL_PROTOS: &[&str] = &[
-        "angzarr_client/proto/angzarr/types.proto",
-        "angzarr_client/proto/angzarr/command_handler.proto",
-        "angzarr_client/proto/angzarr/process_manager.proto",
-        "angzarr_client/proto/angzarr/saga.proto",
-        "angzarr_client/proto/angzarr/projector.proto",
-        "angzarr_client/proto/angzarr/query.proto",
-        "angzarr_client/proto/angzarr/stream.proto",
-        "angzarr_client/proto/angzarr/upcaster.proto",
+        "io/angzarr/v1/types.proto",
+        "io/angzarr/v1/command_handler.proto",
+        "io/angzarr/v1/process_manager.proto",
+        "io/angzarr/v1/saga.proto",
+        "io/angzarr/v1/projector.proto",
+        "io/angzarr/v1/query.proto",
+        "io/angzarr/v1/stream.proto",
+        "io/angzarr/v1/upcaster.proto",
     ];
 
     for internal in INTERNAL_PROTOS {
@@ -457,9 +456,7 @@ fn h33_full_descriptor_still_contains_internals() {
         .expect("EMBEDDED_DESCRIPTOR must remain a valid FileDescriptorSet");
     let files: Vec<String> = set.file.iter().map(|f| f.name().to_string()).collect();
     assert!(
-        files
-            .iter()
-            .any(|f| f == "angzarr_client/proto/angzarr/v1/types.proto"),
+        files.iter().any(|f| f == "io/angzarr/v1/types.proto"),
         "Full descriptor pool source must retain types.proto for in-process \
          payload decoding. Got: {:?}",
         files
@@ -496,8 +493,7 @@ fn build_pool_with_extras_empty_extras_contains_framework_types() {
     // Snapshot is a known framework message — its presence proves the
     // embedded set loaded successfully.
     assert!(
-        pool.get_message_by_name("angzarr_client.proto.angzarr.v1.Snapshot")
-            .is_some(),
+        pool.get_message_by_name("io.angzarr.v1.Snapshot").is_some(),
         "framework Snapshot type must be in the pool"
     );
 }
@@ -509,9 +505,7 @@ fn build_pool_with_extras_skips_malformed_bytes() {
     let pool = build_pool_with_extras(EMBEDDED_DESCRIPTOR, &extras)
         .expect("malformed extras must not abort the build");
     // Framework types still reachable.
-    assert!(pool
-        .get_message_by_name("angzarr_client.proto.angzarr.v1.Snapshot")
-        .is_some());
+    assert!(pool.get_message_by_name("io.angzarr.v1.Snapshot").is_some());
 }
 
 /// Duplicate extras (same bytes as embedded) are silently de-duped
@@ -521,7 +515,5 @@ fn build_pool_with_extras_handles_duplicate_extras() {
     let extras = vec![EMBEDDED_DESCRIPTOR.to_vec()];
     let pool = build_pool_with_extras(EMBEDDED_DESCRIPTOR, &extras)
         .expect("duplicate extras must not error");
-    assert!(pool
-        .get_message_by_name("angzarr_client.proto.angzarr.v1.Snapshot")
-        .is_some());
+    assert!(pool.get_message_by_name("io.angzarr.v1.Snapshot").is_some());
 }

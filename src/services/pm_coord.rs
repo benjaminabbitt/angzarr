@@ -166,6 +166,9 @@ impl ProcessManagerCoordinatorService for PmCoord {
             process_events: vec![],
             commands: vec![],
             facts: vec![],
+            // No escalation: this coordinator does not raise upstream
+            // escalation notifications.
+            notification: None,
         }))
     }
 
@@ -207,6 +210,7 @@ impl ProcessManagerCoordinatorService for PmCoord {
             process_events: response.process_events,
             commands: response.commands,
             facts: response.facts,
+            notification: None,
         }))
     }
 }
