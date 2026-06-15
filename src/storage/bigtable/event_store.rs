@@ -33,9 +33,9 @@ use uuid::Uuid;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::proto_ext::EventPageExt;
-use crate::storage::helpers::is_main_timeline;
+use crate::storage::helpers::{is_main_timeline, BookParts};
 use crate::storage::{
-    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+    AddMeta, AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
 };
 
 const COLUMN_FAMILY: &str = "event";
@@ -44,6 +44,8 @@ const COL_CREATED_AT: &[u8] = b"created_at";
 const COL_CORRELATION_ID: &[u8] = b"correlation_id";
 const COL_COMMITTED: &[u8] = b"committed";
 const COL_CASCADE_ID: &[u8] = b"cascade_id";
+// Parent-aggregate routing cover (Cover.ext), serialized google.protobuf.Any.
+const COL_EXT: &[u8] = b"ext";
 // C-18 columns: persist external_id + source_info on each event row so the
 // `find_by_external_id` and `find_by_source` trait contracts hold. Bigtable
 // has no secondary index — lookups are scoped to the aggregate row-key
@@ -53,6 +55,8 @@ const COL_SOURCE_EDITION: &[u8] = b"source_edition";
 const COL_SOURCE_DOMAIN: &[u8] = b"source_domain";
 const COL_SOURCE_ROOT: &[u8] = b"source_root";
 const COL_SOURCE_SEQ: &[u8] = b"source_seq";
+const COL_SOURCE_COMPONENT: &[u8] = b"source_component";
+const COL_SOURCE_COMMAND_INDEX: &[u8] = b"source_command_index";
 
 /// Column family for cascade index table.
 const CASCADE_INDEX_FAMILY: &str = "ref";
@@ -222,7 +226,7 @@ impl BigtableEventStore {
 
     /// Build mutations for an event.
     pub fn build_event_mutations(event: &EventPage, correlation_id: &str) -> Vec<Mutation> {
-        Self::build_event_mutations_full(event, correlation_id, "", None)
+        Self::build_event_mutations_full(event, correlation_id, "", None, None)
     }
 
     /// Build mutations for an event, including C-18 external_id and
@@ -239,6 +243,7 @@ impl BigtableEventStore {
         correlation_id: &str,
         external_id: &str,
         source_info: Option<&SourceInfo>,
+        ext: Option<&prost_types::Any>,
     ) -> Vec<Mutation> {
         let mut mutations = Vec::new();
 
@@ -297,6 +302,16 @@ impl BigtableEventStore {
                 COL_SOURCE_SEQ,
                 info.seq.to_string().as_bytes(),
             ));
+            mutations.push(Self::build_set_cell(
+                COLUMN_FAMILY,
+                COL_SOURCE_COMPONENT,
+                info.component.as_bytes(),
+            ));
+            mutations.push(Self::build_set_cell(
+                COLUMN_FAMILY,
+                COL_SOURCE_COMMAND_INDEX,
+                info.command_index.to_string().as_bytes(),
+            ));
         }
 
         // Cascade tracking columns
@@ -311,6 +326,16 @@ impl BigtableEventStore {
                 COLUMN_FAMILY,
                 COL_CASCADE_ID,
                 cid.as_bytes(),
+            ));
+        }
+
+        // Parent-routing cover (Cover.ext). Replicated per row to mirror
+        // correlation_id; omitted when the write carried none.
+        if let Some(any) = ext {
+            mutations.push(Self::build_set_cell(
+                COLUMN_FAMILY,
+                COL_EXT,
+                &prost::Message::encode_to_vec(any),
             ));
         }
 
@@ -740,10 +765,11 @@ impl EventStore for BigtableEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
+        let correlation_id = meta.correlation_id;
+        let external_id = meta.external_id;
+        let source_info = meta.source_info;
         if events.is_empty() {
             return Ok(AddOutcome::Added {
                 first_sequence: 0,
@@ -791,8 +817,13 @@ impl EventStore for BigtableEventStore {
         for event in &events {
             let seq = Self::get_sequence(event);
             let row_key = Self::row_key(domain, edition, root, seq);
-            let mutations =
-                Self::build_event_mutations_full(event, correlation_id, external_id, source_info);
+            let mutations = Self::build_event_mutations_full(
+                event,
+                correlation_id,
+                external_id,
+                source_info,
+                meta.ext,
+            );
 
             // C-19: CheckAndMutateRow fences the read-then-write race.
             // The predicate matches if there is ANY cell in the event
@@ -1097,17 +1128,20 @@ impl EventStore for BigtableEventStore {
             .await
             .map_err(|e| StorageError::Backend(format!("Bigtable read_rows failed: {}", e)))?;
 
-        let mut events_by_root: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
+        let mut events_by_root: HashMap<(String, String, Uuid), BookParts> = HashMap::new();
 
         for (row_key, cells) in result {
             let mut event_data: Option<Vec<u8>> = None;
             let mut row_correlation_id: Option<String> = None;
+            let mut row_ext: Option<Vec<u8>> = None;
 
             for cell in cells {
                 if cell.qualifier == COL_DATA {
                     event_data = Some(cell.value);
                 } else if cell.qualifier == COL_CORRELATION_ID {
                     row_correlation_id = String::from_utf8(cell.value).ok();
+                } else if cell.qualifier == COL_EXT {
+                    row_ext = Some(cell.value);
                 }
             }
 
@@ -1117,16 +1151,23 @@ impl EventStore for BigtableEventStore {
                 {
                     let event =
                         EventPage::decode(data.as_ref()).map_err(StorageError::ProtobufDecode)?;
-                    events_by_root
-                        .entry((domain, edition, root))
-                        .or_default()
-                        .push(event);
+                    let entry = events_by_root.entry((domain, edition, root)).or_default();
+                    entry.pages.push(event);
+                    if entry.ext.is_none() {
+                        if let Some(bytes) = row_ext {
+                            entry.ext = Some(
+                                prost_types::Any::decode(bytes.as_ref())
+                                    .map_err(StorageError::ProtobufDecode)?,
+                            );
+                        }
+                    }
                 }
             }
         }
 
         let mut books = Vec::new();
-        for ((domain, edition, root), mut pages) in events_by_root {
+        for ((domain, edition, root), parts) in events_by_root {
+            let mut pages = parts.pages;
             pages.sort_by_key(Self::get_sequence);
 
             let next_seq = pages.last().map(Self::get_sequence).unwrap_or(0) + 1;
@@ -1142,6 +1183,7 @@ impl EventStore for BigtableEventStore {
                         name: edition,
                         divergences: vec![],
                     }),
+                    ext: parts.ext,
                 }),
                 pages,
                 snapshot: None,
@@ -1249,7 +1291,12 @@ impl EventStore for BigtableEventStore {
         let mut events: Vec<EventPage> = Vec::new();
         let target_root = source_info.root.to_string();
         let target_seq = source_info.seq.to_string();
+        let target_index = source_info.command_index.to_string();
         for (_seq, cells) in &rows {
+            // Component/index cells: rows written before these columns
+            // existed have no backfill (unlike the SQL backends' NOT NULL
+            // DEFAULT), so a lookup carrying the pre-upgrade defaults
+            // (""/0) must also accept cell-absent rows.
             let matches = cells
                 .get::<[u8]>(COL_SOURCE_EDITION)
                 .map(|v| v.as_slice() == source_info.edition.as_bytes())
@@ -1265,7 +1312,15 @@ impl EventStore for BigtableEventStore {
                 && cells
                     .get::<[u8]>(COL_SOURCE_SEQ)
                     .map(|v| v.as_slice() == target_seq.as_bytes())
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                && cells
+                    .get::<[u8]>(COL_SOURCE_COMPONENT)
+                    .map(|v| v.as_slice() == source_info.component.as_bytes())
+                    .unwrap_or(source_info.component.is_empty())
+                && cells
+                    .get::<[u8]>(COL_SOURCE_COMMAND_INDEX)
+                    .map(|v| v.as_slice() == target_index.as_bytes())
+                    .unwrap_or(source_info.command_index == 0);
             if !matches {
                 continue;
             }

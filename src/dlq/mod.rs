@@ -66,6 +66,7 @@ pub mod filter;
 mod publishers;
 pub mod reader;
 pub mod replay;
+pub mod trigger;
 
 use std::collections::HashMap;
 
@@ -88,7 +89,7 @@ pub use audit::{NoopReplayAuditWriter, ReplayAuditRecord, ReplayAuditWriter, Rep
 pub use chained::ChainedDlqPublisher;
 pub use config::{DlqConfig, DlqTargetConfig};
 pub use error::{errmsg, DlqError};
-pub use factory::{init_dlq_publisher, DlqBackend};
+pub use factory::{init_dlq_publisher, init_dlq_reader, DlqBackend};
 pub use filter::parse_filter;
 pub use reader::{
     DeadLetterPage, DeadLetterReader, ListFilter, NoopDeadLetterReader, StoredDeadLetter,
@@ -314,6 +315,137 @@ impl AngzarrDeadLetter {
             metadata: HashMap::new(),
             source_component: source_component.to_string(),
             source_component_type: source_component_type.to_string(),
+        }
+    }
+
+    /// Create a dead letter for a saga's failed outbound command.
+    ///
+    /// Used at both saga DLQ sites:
+    ///
+    /// 1. **Immediate-rejection** (`CommandOutcome::Rejected` whose
+    ///    `tonic::Code` classifies as `DlqTrigger::Immediate`):
+    ///    `retry_count = 0`, `is_transient = false`. The saga never
+    ///    attempted a retry; the destination aggregate or the gRPC
+    ///    transport returned a permanent rejection.
+    /// 2. **Retry-exhausted** (`CommandOutcome::Retryable` whose
+    ///    `tonic::Code` classifies as transient, exhausted under the
+    ///    saga's backoff): `retry_count = attempts`, `is_transient = true`.
+    ///    The saga retried until the budget ran out.
+    ///
+    /// The payload carries the failed `CommandBook` (not events) so
+    /// operators replaying from the DLQ can re-issue the original
+    /// outbound command. `source_component_type` is `"saga"`.
+    pub fn from_saga_command_rejection(
+        command: &CommandBook,
+        error: &str,
+        retry_count: u32,
+        is_transient: bool,
+        source_component: &str,
+    ) -> Self {
+        let reason = if retry_count == 0 {
+            format!("Saga command rejected (immediate): {error}")
+        } else {
+            format!("Saga command rejected after {retry_count} attempts: {error}")
+        };
+
+        Self {
+            cover: command.cover.clone(),
+            payload: DeadLetterPayload::Command(command.clone()),
+            rejection_reason: reason,
+            rejection_details: Some(RejectionDetails::EventProcessingFailed(
+                EventProcessingFailedDetails {
+                    error: error.to_string(),
+                    retry_count,
+                    is_transient,
+                    stack_trace: Vec::new(),
+                },
+            )),
+            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            metadata: HashMap::new(),
+            source_component: source_component.to_string(),
+            source_component_type: "saga".to_string(),
+        }
+    }
+
+    /// Create a dead letter for a PM's failed outbound command.
+    ///
+    /// Same shape as [`from_saga_command_rejection`] but with
+    /// `source_component_type = "process_manager"`. Covers both the
+    /// immediate-rejection site (PM command returned `Rejected`) and
+    /// the H-14 Decision-mode degraded-from-Retryable site.
+    ///
+    /// [`from_saga_command_rejection`]: Self::from_saga_command_rejection
+    pub fn from_pm_command_rejection(
+        command: &CommandBook,
+        error: &str,
+        retry_count: u32,
+        is_transient: bool,
+        source_component: &str,
+    ) -> Self {
+        let reason = if retry_count == 0 {
+            format!("PM command rejected (immediate): {error}")
+        } else {
+            format!("PM command rejected after {retry_count} attempts: {error}")
+        };
+        Self {
+            cover: command.cover.clone(),
+            payload: DeadLetterPayload::Command(command.clone()),
+            rejection_reason: reason,
+            rejection_details: Some(RejectionDetails::EventProcessingFailed(
+                EventProcessingFailedDetails {
+                    error: error.to_string(),
+                    retry_count,
+                    is_transient,
+                    stack_trace: Vec::new(),
+                },
+            )),
+            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            metadata: HashMap::new(),
+            source_component: source_component.to_string(),
+            source_component_type: "process_manager".to_string(),
+        }
+    }
+
+    /// Create a dead letter for a PM's failed event-persistence attempt.
+    ///
+    /// Used at the PM persistence loop in `orchestrate_pm` for both:
+    ///
+    /// 1. **Retry-exhausted** (`CommandOutcome::Retryable` with backoff
+    ///    budget gone): `retry_count = attempt`, `is_transient = true`.
+    /// 2. **Immediate-rejection** (`CommandOutcome::Rejected`):
+    ///    `retry_count = 0`, `is_transient = false`.
+    ///
+    /// Payload carries the failed PM `EventBook` (not the trigger), so
+    /// operators replaying from the DLQ can re-attempt the PM's intended
+    /// state transition. `source_component_type = "process_manager"`.
+    pub fn from_pm_persist_failure(
+        events: &EventBook,
+        error: &str,
+        retry_count: u32,
+        is_transient: bool,
+        source_component: &str,
+    ) -> Self {
+        let reason = if retry_count == 0 {
+            format!("PM persistence rejected (immediate): {error}")
+        } else {
+            format!("PM persistence retries exhausted after {retry_count} attempts: {error}")
+        };
+        Self {
+            cover: events.cover.clone(),
+            payload: DeadLetterPayload::Events(events.clone()),
+            rejection_reason: reason,
+            rejection_details: Some(RejectionDetails::EventProcessingFailed(
+                EventProcessingFailedDetails {
+                    error: error.to_string(),
+                    retry_count,
+                    is_transient,
+                    stack_trace: Vec::new(),
+                },
+            )),
+            occurred_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            metadata: HashMap::new(),
+            source_component: source_component.to_string(),
+            source_component_type: "process_manager".to_string(),
         }
     }
 

@@ -31,7 +31,6 @@
 //! - kafka: Kafka/Redpanda (ANGZARR__MESSAGING__BOOTSTRAP_SERVERS)
 //! - pubsub: GCP Pub/Sub (ANGZARR__MESSAGING__PROJECT_ID)
 //! - sns-sqs: AWS SNS/SQS (ANGZARR__MESSAGING__AWS_REGION)
-//! - nats: NATS JetStream (ANGZARR__MESSAGING__NATS_URL)
 //! - ipc: Unix domain sockets (local-dev mode)
 //! - channel: In-memory (testing only)
 //!
@@ -59,18 +58,19 @@ use tracing::{error, info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::AmqpEventBus;
-use angzarr::bus::{EventBus, IpcEventBus, MockEventBus};
+use angzarr::bus::{EventBus, MockEventBus};
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 #[cfg(feature = "k8s")]
 use angzarr::discovery::K8sServiceDiscovery;
 use angzarr::discovery::{ServiceDiscovery, StaticServiceDiscovery};
+use angzarr::dlq::init_dlq_publisher;
 use angzarr::proto::{
     command_handler_coordinator_service_server::CommandHandlerCoordinatorServiceServer,
     command_handler_service_client::CommandHandlerServiceClient,
     event_query_service_server::EventQueryServiceServer,
 };
 use angzarr::services::{AggregateService, EventQueryService, Upcaster};
-use angzarr::storage::init_storage;
+use angzarr::storage::{init_event_store, init_snapshot_store};
 use angzarr::transport::{grpc_trace_layer, max_grpc_message_size, serve_with_transport};
 
 #[tokio::main]
@@ -88,7 +88,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting angzarr-aggregate sidecar");
 
-    let (event_store, snapshot_store) = init_storage(&config.storage).await?;
+    // R2-15 hard-fail boot: if the operator configured DLQ but the chosen
+    // backend cannot be reached, fail loudly here rather than silently
+    // dropping dead letters for the lifetime of the process. Runs before
+    // any heavier init (storage, client logic, k8s discovery) so the
+    // failure path is as cheap as possible.
+    let dlq_publisher = init_dlq_publisher(&config.dlq).await.map_err(|e| {
+        error!("DLQ publisher init failed (boot abort): {}", e);
+        e
+    })?;
+    if config.dlq.targets.is_empty() {
+        warn!(
+            "dlq.targets is empty; dead letters will be discarded by the \
+             default noop publisher. Set dlq.targets in config.yaml to \
+             route MergeManual sequence-mismatch dead letters to a backend."
+        );
+    } else {
+        info!(
+            target_count = config.dlq.targets.len(),
+            "DLQ publisher initialized"
+        );
+    }
+
+    let event_store = init_event_store(&config.storage).await?;
+    let snapshot_store = init_snapshot_store(&config.storage).await?;
     info!("Storage initialized");
 
     let target = config
@@ -140,14 +163,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             let amqp_bus_config = angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
-        }
-        Some(messaging) if messaging.messaging_type == "ipc" => {
-            info!(
-                "Using IPC for event publishing: {}",
-                messaging.ipc.base_path
-            );
-            let ipc_config = angzarr::bus::IpcConfig::publisher(&messaging.ipc.base_path);
-            Arc::new(IpcEventBus::new(ipc_config))
         }
         _ => {
             warn!("No messaging configured, using mock event bus (events not published)");
@@ -202,7 +217,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client_logic_client,
         event_bus,
         discovery,
-    );
+    )
+    .with_dlq_publisher(dlq_publisher);
 
     if let Some(upcaster) = upcaster {
         aggregate_service = aggregate_service.with_upcaster(upcaster);

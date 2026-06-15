@@ -15,6 +15,7 @@ use tracing::{debug, error, Instrument};
 
 use crate::bus::{BusError, EventBus, EventHandler};
 use crate::descriptor::Target;
+use crate::dlq::DeadLetterPublisher;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
@@ -119,7 +120,11 @@ impl ProcessManagerEventHandler {
     /// Create a new process manager event handler using gRPC client.
     ///
     /// PM state events are persisted directly to the event store and published
-    /// to the event bus, bypassing the command pipeline.
+    /// to the event bus, bypassing the command pipeline. The `dlq_publisher`
+    /// is threaded into the internally-constructed `GrpcPMContextFactory`
+    /// so persistence and command-rejection sites can publish dead letters
+    /// per R2-15.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         client: ProcessManagerServiceClient<tonic::transport::Channel>,
         process_domain: String,
@@ -127,6 +132,7 @@ impl ProcessManagerEventHandler {
         command_executor: Arc<dyn CommandExecutor>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
     ) -> Self {
         let factory = Arc::new(GrpcPMContextFactory::new(
             Arc::new(Mutex::new(client)),
@@ -134,6 +140,7 @@ impl ProcessManagerEventHandler {
             event_bus,
             process_domain.clone(),
             process_domain,
+            dlq_publisher,
         ));
         Self {
             context_factory: factory,

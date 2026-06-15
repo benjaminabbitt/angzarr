@@ -44,7 +44,7 @@ these scenarios:
 - R2-06 (cascade visibility: pre- vs post-commit)
 - R2-09, R2-10, R2-11 (event-store atomicity / cursor monotonicity contracts)
 - R2-14 (subscription parser edge cases)
-- R2-15 (DLQ configuration contract)
+- R2-15 (DLQ subsystem wiring + configuration contract)
 - R2-16 (escalation success contract)
 - R2-17 (saga retry idempotency contract)
 - R2-19 (PM destination edition contract — *if* R2-19 survives the dead-code
@@ -118,7 +118,7 @@ round-2 findings the orchestration agent reported are local-only
 edition default). These are not production bugs — they're dead-code echoes
 of bugs that may or may not exist in the gRPC sibling.
 
-**Plan.** Status: `todo`. Owner: TBD.
+**Plan.** **Status: DONE 2026-05-23** (`5bcbc76f`). All six `*/local/` subtrees deleted (`aggregate/`, `command/`, `destination/`, `fact/`, `process_manager/`, `saga/`). PM's `propagate_trigger_edition` (the one contract still live from the gRPC path) extracted into `process_manager/edition_propagation` module. ~4k LOC removed in total. Tombstone in `doc/HISTORICAL_REMOVED.md`. Steps below kept for the historical record of what was confirmed before deleting.
 
 1. Confirm dead-code claim with a wider grep including `examples/`,
    `crates/`, `gateway/`, `xtask/`, and any path-dep crates: `rg
@@ -165,7 +165,13 @@ unreachable code.
 
 **Caveat.** `advice/metrics.rs` (~319 LOC) defines metric *name constants* that may be re-exported in `lib.rs` for downstream dashboards/alerting. Verify before deleting — if metrics constants are framework public API, keep `metrics.rs` only and delete the rest.
 
-**Plan.** Status: `todo`. Verify metrics-constants public API claim. Delete the four wrapper files. Remove the alias lines in `bus/mod.rs`. Re-run `cargo check --all-features`.
+**Plan.** **Status: PARTIAL 2026-05-23** (`14a64b8a`). Decision flipped from "delete" to "wire" for the two wrappers that had clear value: `instrumented.rs` is now wrapped around all 4 storage backends (sqlite/postgres/dynamo/bigtable), `instrumented_bus.rs` around all 6 bus backends (amqp/ipc/kafka/nats/pubsub/sns-sqs), at each backend's registration site plus aggregate/PM bin construction. Lights up `angzarr.storage.*` and `angzarr.bus.*` metrics per backend with proper labels (observability was previously nominal but blind).
+
+Still dead, awaiting follow-up decisions:
+
+- `instrumented_handlers.rs` — saga/PM/projector handler wrappers; no production callers.
+- `lossy.rs` — `LossyBus` never constructed.
+- `metrics.rs` — public-API caveat still un-verified. If exported from `lib.rs` and consumed by downstream dashboards, keep; otherwise delete.
 
 ---
 
@@ -205,7 +211,7 @@ No commit landed in this session — working tree dirty for the operator's commi
 
 **Evidence.** Only `fill_correlation_id` (15 LOC) has a production caller (`process_manager/mod.rs:567`). The other two are referenced only from tests.
 
-**Plan.** Status: `todo`. Delete the two unused functions. Consider inlining `fill_correlation_id` into PM (single caller, single line of logic).
+**Plan.** **Status: DONE 2026-05-23** (`5bcbc76f`). Both `fetch_destinations` and `execute_commands` deleted. `fill_correlation_id` retained with its single PM caller (`process_manager/mod.rs`); the "consider inlining" suggestion is a deferred minor cleanup, not blocking anything.
 
 ---
 
@@ -218,6 +224,14 @@ No commit landed in this session — working tree dirty for the operator's commi
 ---
 
 ## R2-SNAPSHOT-WIRING — wire the intended snapshot abstractions
+
+**Status: DONE 2026-05-24** (`bd871ea5`). All five sub-points below landed in a single commit:
+
+- `SnapshotRepository` owns `read_enabled` + `write_enabled` and is threaded through `AggregateService`, `EventBookRepository`, `GrpcAggregateContext`, and `persist_snapshot_if_present` (signatures no longer pass `(store, flag)` pairs).
+- All three contract-violation skip paths now consult the snapshot: `aggregate/grpc:401` explicit_divergence, `EventBookRepository::get_temporal_by_sequence`, and `EventBookRepository::get_temporal_by_time`.
+- `Snapshot.created_at` added as field 5 in the proto submodule (`angzarr-project` bumped `80ce7c2` → `6643600`). Persist path stamps `created_at = now()`.
+- Snapshots without `created_at` (pre-bump persisted, or backends that haven't yet stamped it) safely fall back to full replay per the proto contract.
+- TDD throughout: `repository/event_book/mod.test.rs`, `repository/snapshot/mod.test.rs`, `services/snapshot_handler/mod.test.rs`, `aggregate/grpc/mod.test.rs`, `services/aggregate.test.rs` all grew significantly (~600 LOC of new red-then-green coverage).
 
 User-confirmed scope (2026-05-23):
 
@@ -244,7 +258,7 @@ Sub-tasks: R2-SNAP-1 through R2-SNAP-8 (see TaskList).
 
 **Evidence.** Zero non-test refs. The `EditionExt` referenced elsewhere is `proto_ext::edition::EditionExt`, not this module. Schema column-name enum and storage error variant use independent identifiers, not these types.
 
-**Plan.** Status: `todo`. Delete the module + `pub mod edition;` in `lib.rs`.
+**Plan.** **Status: DONE 2026-05-23** (`5bcbc76f`). Module deleted; `pub mod edition;` removed from `lib.rs`. The `EditionExt` consumed elsewhere is `proto_ext::edition::EditionExt` — unrelated and unaffected.
 
 ---
 
@@ -283,7 +297,9 @@ GitHub Pages is per-repo, so each goes to a distinct URL. The original "duplicat
 
 **Evidence.** Neither module's symbols are imported anywhere outside their own `.test.rs`. Documented as "Phase 0 scaffolds, intentionally landing now for future phases."
 
-**Plan.** Status: `todo`. **Decision required.** Either wire them into `bin/angzarr_status.rs` now, or delete and reintroduce when the consuming phases land. Phase-0 placeholders that never connect to a Phase-1 caller are dead weight.
+**Plan.** **Status: PARTIAL 2026-05-23** (`6a878190`). Decision for `descriptors.rs`: **wire.** The loader is now invoked from `bin/angzarr_status.rs` at startup to merge framework descriptor sets into the proto descriptor pool, with companion helpers added in `proto_reflect/`. Domain proto types are now resolvable for typed event introspection without requiring the caller to pre-load them.
+
+`metrics.rs` (~55 LOC) still has zero non-test callers — Phase-0 skeleton remains dead weight. Follow-up decision needed: wire `status::metrics` into status handlers now (per the self-observability bullet in its module doc), or delete and reintroduce when handlers need it.
 
 ---
 
@@ -302,7 +318,19 @@ fully-qualified type URLs (`type.googleapis.com/example.OrderCreated`),
 subscription accidentally fans out to every event whose name ends with that
 substring. The matcher fires on every event delivered.
 
-**Status.** todo.
+**Status.** DONE 2026-05-27. `Target::matches_type` reworked to
+token-boundary match (extracted `matches_type_token` helper); `bus::traits::target_matches`
+now delegates to `Target::matches_type`, eliminating the duplicate
+`ends_with` site. All three plan-specified unit tests added in
+`src/descriptor.test.rs` plus a `target_matches_short_name_does_not_widen`
+regression in `src/bus/mod.test.rs` pinning the delegation.
+`features/client/router.feature` extended with the plan's Gherkin
+scenario plus two companion scenarios covering the qualified-name and
+final-token cases. The pre-existing "Register handler by type URL
+suffix" scenario was reworded to "Register handler by type URL token"
+to stop documenting the buggy behavior. Lib suite 1019 → 1039 (+20
+including descriptor + bus regressions). `just mutants src/descriptor.rs`:
+14 viable mutants, 14 caught (100% kill rate; target was ≥90%).
 
 **Test plan.** Unit test in `descriptor.test.rs`:
 
@@ -348,7 +376,39 @@ an aggregate" (`src/storage/event_store.rs:152`). The same bug exists in the
 dead `LocalPMContext` at `process_manager/local/mod.rs:111-130`; that will
 be resolved by R2-DEAD.
 
-**Status.** todo.
+**Status.** DONE 2026-05-27. `persist_pm_event_book` now publishes
+`process_events.pages` directly — no more `event_store.get(...)`
+after the add. The published cover always carries the in-flight
+`correlation_id` (stamped onto the cloned cover before publish),
+regardless of what the PM service returned. The Local PM bug is
+moot: R2-DEAD-1 deleted the Local* family at `5bcbc76f`. Tests
+landed:
+- `tests/pm_persist_event_store.rs` (+2 R2-02-LIVE regressions:
+  `pm_persist_publishes_only_new_events_not_history`,
+  `pm_persist_publishes_book_with_stamped_correlation_id`); the
+  existing `pm_persist_increments_sequence_across_two_calls` test
+  was tightened to assert per-publish page counts so a future
+  regression to re-read semantics fails immediately.
+- `src/orchestration/process_manager/grpc/mod.test.rs` (NEW; 4
+  unit tests against `MockEventStore` + `MockEventBus` so the
+  `--lib`-scoped mutants container can actually see the publish
+  contract — without this, the integration tests in `tests/` are
+  invisible to mutation testing).
+- `features/client/router.feature` extended with two scenarios
+  (publishes-only-new-events + correlation-id stamping).
+Mutation: trimmed the redundant `snapshot: None,` field (it was
+a no-op mutation that no behavioral test could distinguish from
+`Default::default()`); marked the four trait-getter accessors
+(`dlq_publisher`, `component_name`, `pm_domain`, `name`) with
+`#[trivial_delegation]` and regenerated `.cargo/mutants.toml` via
+`cargo xtask gen-mutants-exclude`. The xtask wiped a stale
+manual block ("fn default", "fn fmt", etc.) that didn't match
+anything cargo-mutants emits (cargo-mutants names methods as
+`Type::method` / `<impl Trait for Type>::method`, never `fn
+name(...)`), plus a dead `CommandClient::*` auto-generated block
+left over from a removed struct — both correctly removed. Final
+mutants run: 6 viable -> 2 caught, 0 missed, 4 unviable (100%
+kill rate, exceeds the plan's >= 90% target).
 
 **Test plan.** New test in `process_manager/grpc/tests.rs`:
 
@@ -385,29 +445,137 @@ carries the right correlation_id — if not, stamp it before publish.
 
 **Bug.** Both sync paths call `connections.into_iter().next()`, taking only
 the head of the registered projector list. The async `handle` correctly
-iterates all. Docstring promises fan-out to all registered projectors.
+iterates all. Struct docstring (`projector_coord.rs:32`) promises
+"Distributes events to all registered projectors."
 
-**Status.** todo.
+**Status.** in progress 2026-05-27. Design locked as **Option C**
+(proto change to return `repeated Projection`); see "Design
+findings" below for why the plan's original "swap
+`.into_iter().next()` for `try_join_all`" sketch doesn't fit the
+existing type.
 
-**Test plan.** Unit test:
+**Design findings, 2026-05-27 (locked).**
 
-- `handle_sync_dispatches_to_all_registered_projectors` — register 3
-  projectors, invoke `handle_sync`, assert all 3 received the call.
-- `handle_speculative_dispatches_to_all` — same shape for the speculative path.
+The plan's "parallel dispatch via `try_join_all`" sketch glosses
+over the fact that both RPCs return a single `Projection`, not a
+list. Just calling all projectors but returning the first
+response loses N-1 projections silently — the same shape of bug,
+moved one layer in. Four candidates considered:
 
-**Gherkin.** REQUIRED — add to
-`features/examples/unit/projector.feature`:
+| | Behavior | Return | Cost |
+| --- | --- | --- | --- |
+| A | Run all in parallel, return first success | `Projection` | Keeps API; payload semantics unclear when N projectors ran |
+| B | Run all in parallel, fail-fast, return aggregate | `Projection` | Loses individual payloads |
+| C | Proto change to `repeated Projection` | `Projections{ projections }` | Cleanest semantics; proto-breaking |
+| D | Accept "first wins, single sync projector per domain", correct docstring | `Projection` | Smallest; admits sync is single-projector |
+
+**Locked: C.** Sync/speculative mode genuinely means "wait for
+every registered projector to confirm." A single-Projection
+return for an N-projector fan-out is the wrong shape; A/B/D
+either lose payloads or paper over the bug. Proto breakage is
+acceptable in this prototype (CLAUDE.md "Fix What You Find") and
+client-repo regen is the documented downstream cost.
+
+**Wire shape.** New wrapper message:
+```proto
+message Projections {
+  repeated Projection projections = 1;
+}
+```
+Both `HandleSync` and `HandleSpeculative` on
+`ProjectorCoordinatorService` return `Projections` instead of
+`Projection`. Per-projector RPCs on `ProjectorService` keep
+returning single `Projection` (one projector, one projection).
+
+**Blast radius.**
+
+- Proto: `angzarr-project/proto/angzarr_client/proto/angzarr/v1/projector.proto`
+  (submodule — needs a commit in the submodule plus a
+  parent-repo submodule-pointer bump).
+- Proto message addition: `Projections` wrapper in
+  `types.proto` (or inline in `projector.proto`; decision below).
+- Rust coordinator: `src/services/projector_coord.rs` — both
+  paths fan out in parallel via `futures::future::join_all`
+  (collect results, don't fail-fast — log per-projector errors
+  but return whatever succeeded so partial outages don't blow
+  up the aggregate's sync wait). Aggregate over an empty result
+  set returns `Projections{ projections: [] }`.
+- Aggregate caller: `src/orchestration/aggregate/grpc/mod.rs:343`
+  unwraps the new wrapper and flattens its inner vec into the
+  existing outer `Vec<Projection>`. Per-coordinator NotFound /
+  Unavailable / Internal handling unchanged.
+- Tests: existing
+  `src/services/projector_coord.test.rs::test_handle_sync_with_no_projectors_returns_empty_projection`
+  needs its assertion updated to the new wrapper. New tests
+  below.
+- Cross-language clients: angzarr-client-{python,go,java,csharp,cpp}
+  regenerate from the submodule proto in their own repos. Out
+  of scope here; follow-up tracked separately.
+
+**Sub-decision: Projections wrapper lives in `projector.proto`,
+NOT `types.proto`.** It's a service-shaped message (only the
+projector coordinator RPCs return it). `types.proto` carries
+cross-service shared types; mixing service-shaped wrappers in
+there muddies that line.
+
+**Test plan.**
+
+Unit tests in `src/services/projector_coord.test.rs`:
+
+- `handle_sync_dispatches_to_all_registered_projectors` —
+  register 3 projectors, invoke `handle_sync`, assert all 3
+  received the call AND the returned `Projections.projections`
+  has 3 entries.
+- `handle_speculative_dispatches_to_all` — same shape for
+  speculative.
+- `handle_sync_partial_failure_returns_successes` —
+  register 3 projectors, fail one mid-fanout, assert the
+  returned `Projections.projections` carries the 2 successes
+  and the failure is logged (not propagated).
+- `handle_sync_with_zero_projectors_returns_empty_projections` —
+  preserved + updated for new return shape.
+
+**Gherkin.** REQUIRED. Adding to `features/client/router.feature`
+("Sync Projector Dispatch" section) rather than the plan's
+original `features/examples/unit/projector.feature` pointer —
+this is framework-level coordinator semantics (matches the
+location used for R2-01, R2-02-LIVE).
 
 ```gherkin
-Scenario: Sync mode fans out to every registered projector
-  Given 3 projectors are registered for the "order" domain
+Scenario: Sync projector coordinator fans out to every registered projector
+  Given 3 projectors are registered with the sync coordinator
   When an aggregate completes a command in sync mode
   Then all 3 projectors are invoked exactly once
+  And the response carries 3 projections
+
+Scenario: Sync coordinator returns the projections it could collect on partial failure
+  Given 3 projectors are registered with the sync coordinator
+  And one of them is unreachable
+  When an aggregate completes a command in sync mode
+  Then the response carries projections from the 2 reachable projectors
+  And the unreachable projector's failure is logged
 ```
 
-**Fix plan.** Replace `.into_iter().next()` with `.into_iter()` driving
-parallel dispatch (e.g., `futures::future::try_join_all`). Match the async
-path's fan-out shape.
+**Fix plan (executable).**
+
+1. Submodule edit `projector.proto`: add `Projections` message,
+   change both RPC returns to `Projections`. Commit on a branch
+   in the submodule.
+2. Parent: `cargo build` regenerates Rust bindings. Update
+   `ProjectorCoord::handle_sync` + `handle_speculative` to
+   `futures::future::join_all` the projector calls, collect
+   `Vec<Projection>`, wrap in `Projections`, return.
+3. Update `GrpcAggregateContext::handle_sync_speculative`
+   (`src/orchestration/aggregate/grpc/mod.rs:343-355`) to
+   unwrap the new `Projections` wrapper and extend the outer
+   `projections` vec with `response.projections`.
+4. Update `projector_coord.test.rs` for the new shape; add the
+   three new tests. Update `aggregate.test.rs` mocks if any
+   reference the old single-`Projection` return.
+5. Gherkin additions to `router.feature`.
+6. `just mutants src/services/projector_coord.rs` — target
+   >= 90%.
+7. Parent-repo commit bumps the submodule pointer.
 
 **Mutants target.** ≥ 90%.
 
@@ -845,40 +1013,358 @@ than silent widening.
 
 ---
 
-### R2-15 Dual DLQ config sources silently diverge
+### R2-15 DLQ subsystem exported but never wired
 
-**Files.** `src/config/mod.rs:116` (top-level `dlq`),
-`src/bus/config.rs:37` (`messaging.dlq`).
+**Files.**
 
-**Bug.** Two independent `DlqConfig` fields with independent defaults. The
-YAML example only documents `dlq:` at top level. Code paths that read
-`messaging.dlq` get the empty default when the operator only set top-level.
+- `src/config/mod.rs:113` — `Config.dlq: DlqConfig` (canonical, top-level).
+- `src/bus/config.rs:33` — `MessagingConfig.dlq: DlqConfig` (vestigial, delete).
+- `src/dlq/factory.rs:79` — `init_dlq_publisher(&DlqConfig)`: exported, zero
+  production callers (only `factory.test.rs` + a doc comment in `mod.rs:47`).
+- `src/orchestration/aggregate/grpc/mod.rs:174,813` — `with_dlq_publisher(...)`
+  builder; only called internally at `:827`. No bin call sites; default is
+  `NoopDeadLetterPublisher` (`:152`, `:796`).
+- `src/orchestration/aggregate/pipeline.rs:376` — the **only** production
+  `send_to_dlq(...)` call site (MergeManual sequence-mismatch).
+- `src/bin/angzarr_{aggregate,saga,process_manager,projector}.rs` — zero DLQ
+  references.
+- `src/bin/angzarr_status.rs:89` — `DlqAdminHandler::new(Arc::new(NoopDeadLetterReader))`;
+  read side is also stubbed.
+
+**Bug — actual scope.** The original R2 finding ("two `DlqConfig` fields silently
+diverge") is a downstream symptom. The deeper bug: the DLQ write side is fully
+implemented (13 backends, factory, chained publisher, audit writer) and the
+read side is fully implemented (database readers, `DlqAdminHandler`,
+replay), but **neither is wired in any binary**. `MergeManual` sequence
+mismatches go to a `Noop`. Saga/PM/projector have no DLQ surface at all.
+The status admin handler is wired to a `Noop` reader. So operators who set
+`dlq:` in YAML get a config field that nothing reads — under either schema.
 
 **Status.** todo.
 
-**Test plan.** Config-load tests:
+**Decisions (locked 2026-05-24).**
 
-- `top_level_dlq_config_propagates_to_messaging_dlq`
-- `messaging_dlq_config_propagates_to_top_level_dlq`
-- `mismatched_dlq_configs_surface_error_at_startup`
+1. **Scope: all four handler types.** Aggregate + saga + PM + projector all
+   get a DLQ surface. Aggregate already has the surface (just unwired);
+   saga/PM/projector need it added at the retry-exhausted boundary in their
+   respective contexts.
+2. **Trigger: 4xx-class permanent errors → DLQ; 5xx-class → retry then DLQ.**
+   Mirrors HTTP semantics; matches the R2-16 escalation pattern and C-10
+   handler-error contract. Concretely: handler returns `Status` whose
+   `code()` is in {`InvalidArgument`, `NotFound`, `FailedPrecondition`,
+   `Aborted`, `Unimplemented`, `PermissionDenied`, `Unauthenticated`,
+   `OutOfRange`} → DLQ immediately. {`Unavailable`, `DeadlineExceeded`,
+   `ResourceExhausted`, `Internal`, `Unknown`, `DataLoss`} → existing retry
+   path; on retry exhaustion, DLQ. Classification lives in a single helper
+   `dlq::classify_for_dlq(status: &Status) -> DlqTrigger` so saga/PM/projector
+   share the contract.
+3. **Boot policy: hard-fail.** `init_dlq_publisher(&config.dlq)` errors are
+   propagated as bin boot failures. Operator who configured DLQ and whose
+   broker is unreachable gets a loud failure at startup, not silent drops.
+4. **Empty default: noop + boot WARN.** `dlq.targets: []` (or omitted) keeps
+   the noop publisher for backwards compatibility, but each bin logs one
+   `WARN` line at startup: `dlq.targets empty; dead letters will be dropped`.
+5. **Reader: separate `dlq.audit` config block.** Add a dedicated
+   `dlq.audit: DatabaseDlqConfig` (optional) that the status binary reads
+   from. Decouples query/replay storage from operator-configured delivery
+   targets. If `dlq.audit` is unset, the status binary boots with a noop
+   reader and logs a `WARN`; if set but unreachable, hard-fail (mirrors
+   publisher policy).
+6. **Schema canonicalization.** Delete `MessagingConfig.dlq` outright. No
+   transition period — both sides are currently dead, so no operator can be
+   reading from `messaging.dlq` and getting non-default behavior; the schema
+   change is observationally a no-op.
 
-**Gherkin.** REQUIRED — extend `features/client/connection.feature` or
-add a config-validation feature:
+**Open sub-decisions (raise during implementation if non-obvious).**
+
+- Does the saga DLQ entry carry the source event book or the failed output
+  command book? Both, probably — `AngzarrDeadLetter` already has a
+  `DeadLetterPayload` enum; extend with a `SagaFailure` variant carrying
+  both refs + the failure `Status`. Same shape for PM. Projector: source
+  event book + projection step that failed.
+  - **RESOLVED 2026-05-26 (step 5a investigation):** No proto change
+    needed. The existing `AngzarrDeadLetter` already models the saga case:
+    `payload.rejected_command` carries the failed output command;
+    `rejection_details.event_processing_failed` (an
+    `EventProcessingFailedDetails`) carries `{error, retry_count,
+    is_transient, stack_trace}`; `source_component_type` already
+    enumerates `"saga"`. Source EventBook reference goes via
+    `cover.correlation_id` plus the metadata map. Re-use the existing
+    variants; the "SagaFailure variant" framing in the original plan
+    was premature.
+- `from_event_processing_failure(...)` already exists at `src/dlq/mod.rs:287`
+  but is unused — likely the right constructor for projector failures.
+  Confirm fields match the new trigger contract before re-using vs. adding a
+  new constructor.
+
+**Step 5a (saga) — design findings, 2026-05-26.** Investigation while
+preparing the saga slice surfaced two complications worth recording before
+implementation:
+
+1. **Saga has TWO DLQ sites, not one.** The retry-exhausted boundary in
+   `SagaRetryBuilder::execute()` at `saga/mod.rs:340` (where
+   `run_with_retry` returns `Err`) only covers the transient-then-
+   exhausted case. The permanent-rejection case at `saga/mod.rs:239`
+   (`CommandOutcome::Rejected(reason)`) is a separate site that today
+   only triggers the compensation flow, not DLQ. Both need publication
+   to satisfy the R2-15 operator contract.
+2. **`classify_for_dlq` doesn't fit the saga's existing failure types.**
+   The framework's `CommandOutcome::Rejected(String)` is built at
+   `command/grpc/mod.rs:91` via `e.message().to_string()` — the original
+   `tonic::Code` is dropped before the saga ever sees the outcome. So
+   the saga slice can't use the trigger classifier the way the aggregate
+   does. The framework's pre-baked `Retryable` vs `Rejected` split is
+   the same semantic mapping (transient vs permanent), just done one
+   layer earlier in the pipeline.
+
+**Three paths forward for step 5a (superseded — see decision below):**
+
+- **Option A (faithful to plan, bigger):** Refactor
+  `CommandOutcome::Rejected(String)` to carry `tonic::Code` (and maybe
+  the full `Status`). Touches saga + PM + projector + their test fakes.
+  Probably its own commit before step 5a proper. Lets `classify_for_dlq`
+  be used uniformly across all four handler types.
+- **Option B (defensible deviation, smaller):** Use the framework's
+  existing `Rejected`/`Retryable` classification instead of
+  `classify_for_dlq`. `Rejected` → DLQ immediately; retry-exhausted →
+  DLQ. Same operator contract, but `classify_for_dlq` is no longer the
+  "single source of truth across all four handlers" — it stays the
+  primary classifier for cases where a raw `Status` is in scope
+  (aggregate, possibly projector if its failure types preserve
+  `Status`).
+- **Option C (out of scope to pick now):** Defer the second site
+  (retry-exhausted) and ship only the immediate-rejection DLQ in 5a-1.
+  Leaves a gap.
+
+**Decision (locked 2026-05-26): Option A + broaden `is_retryable_status`
+globally.**
+
+Verification of the three options against the codebase changed which
+ones are actually viable:
+
+- **Option B was rejected** because the design-findings note framed the
+  framework's `Retryable`/`Rejected` split as semantically equivalent to
+  decision #2's 4xx/5xx split, but it isn't. `is_retryable_status`
+  (`src/utils/retry.rs:136`) is intentionally narrow: only
+  `FailedPrecondition` with messages starting `"Sequence mismatch:"` or
+  `"Sequence conflict:"` returns `true`. Everything else — including
+  `Unavailable`, `DeadlineExceeded`, `ResourceExhausted`, `Internal`,
+  `Unknown`, `DataLoss` — is bucketed into `CommandOutcome::Rejected`
+  at `command/grpc/mod.rs:91`. Under Option B, a saga whose outbound
+  command hits transient `Unavailable` would go straight to DLQ with
+  no retry, contradicting R2-15 decision #2's retry-then-DLQ contract
+  for 5xx-class codes.
+- **Option C was rejected** because the transient-then-exhausted site
+  (`saga/mod.rs:340`) is the operationally interesting saga failure
+  (downstream flapping). Leaving it for "later" keeps the most common
+  silent-drop bug R2-15 was opened to fix.
+- **Option A was chosen** because it preserves `classify_for_dlq` as
+  the single source of truth across all four handler types (the whole
+  point of fix-plan step 7). The refactor is mechanical: ~10–15 sites,
+  one pre-5a commit.
+
+**Sub-decision (locked 2026-05-26): broaden `is_retryable_status` to
+match R2-15 decision #2 globally** — i.e., the helper returns `true`
+for all 5xx-class codes (`Unavailable`, `DeadlineExceeded`,
+`ResourceExhausted`, `Internal`, `Unknown`, `DataLoss`), not just
+sequence-conflict `FailedPrecondition`. Same classifier used by
+aggregate, saga, PM, projector. The narrower alternative — adding a
+separate `is_retryable_for_handler` for non-aggregate paths — was
+considered and rejected: one classifier is cleaner than two.
+
+**Consequence to record:** aggregate command pipeline will now retry on
+the broadened 5xx set (today it only retries sequence conflicts). The
+existing doc-comment rationale at `retry.rs:120-135` ("sequence
+conflicts were the intentional only-retryable case") will be rewritten
+to reflect the broader contract. Aggregates will hold commands longer
+in the face of downstream blips before rejecting; operators who relied
+on the fast-reject behavior for non-sequence-conflict codes will see
+delayed rejections. This is judged acceptable per R2-15 decision #2.
+
+**Execution sequence:**
+
+1. This plan update (doc-only commit recording the decision).
+2. Pre-5a refactor commit: `CommandOutcome::Rejected(String)` →
+   `Rejected { code: tonic::Code, message: String }`, broaden
+   `is_retryable_status`, update all consumers and test fakes. Touched
+   sites identified during verification:
+   - `src/orchestration/command/mod.rs:14` (enum definition)
+   - `src/orchestration/command/grpc/mod.rs:91` (constructor)
+   - `src/orchestration/process_manager/grpc/mod.rs:128` (constructor)
+   - `src/orchestration/saga/mod.rs:239` (consumer)
+   - `src/orchestration/process_manager/mod.rs:418,704` (consumers)
+   - `src/orchestration/saga/tests.rs:155` (test fake)
+   - `src/orchestration/process_manager/tests.rs` (test fakes — multiple)
+   - `src/orchestration/command/grpc/mod.test.rs:86` (test fake)
+   - `src/utils/retry.rs:136` + `.test.rs` (broaden classifier + tests).
+3. Step 5a proper: saga DLQ surface at both sites (immediate via
+   `CommandOutcome::Rejected.code` → `classify_for_dlq`; retry-exhausted
+   from `SagaRetryBuilder::execute()` at `saga/mod.rs:340`), using the
+   unified `classify_for_dlq`.
+
+**Fix plan.**
+
+1. **Schema (smallest change first).** Delete `MessagingConfig.dlq`. Verify no
+   readers; `cargo check` proves it. `Config.dlq` is canonical and already
+   the only one documented in `config.example.yaml`.
+2. **Boot wiring (per-bin).** In each of `angzarr_aggregate.rs`,
+   `angzarr_saga.rs`, `angzarr_process_manager.rs`, `angzarr_projector.rs`:
+   call `init_dlq_publisher(&config.dlq).await?` once at startup; thread
+   the `Arc<dyn DeadLetterPublisher>` into the context factory.
+   - Empty `dlq.targets` → `WARN`, factory returns noop (existing behavior),
+     bin proceeds.
+   - Non-empty + init failure → propagate as boot error.
+3. **Aggregate.** Already has `with_dlq_publisher(...)`. Wire it in
+   `angzarr_aggregate.rs` when building the `GrpcAggregateContextFactory`.
+   Existing pipeline.rs:376 MergeManual call site now writes to the real
+   publisher chain.
+4. **Saga surface.** Add `dlq_publisher: Arc<dyn DeadLetterPublisher>` to
+   `SagaRetryContext` impls. In the retry framework: after retries are
+   exhausted on a 5xx, or immediately on a 4xx (per the classification
+   helper), construct a `SagaFailure`-variant `AngzarrDeadLetter` and
+   publish. Wire in `angzarr_saga.rs`.
+5. **PM surface.** Same shape as saga — `dlq_publisher` field on
+   `ProcessManagerContext`, retry-exhausted hook in `orchestrate_pm`,
+   `from_pm_failure` (or extend `from_event_processing_failure`). Wire in
+   `angzarr_process_manager.rs`.
+6. **Projector surface.** Add `dlq_publisher` to projector context.
+   `ProjectorHandler::handle` already returns `Result<Projection, Status>`;
+   classify the `Status`, DLQ permanently-failed entries via
+   `from_event_processing_failure(...)`. Wire in `angzarr_projector.rs`.
+7. **Classification helper.** Add `src/dlq/trigger.rs` with
+   `classify_for_dlq(&Status) -> DlqTrigger { Immediate | AfterRetries | Retry }`.
+   Unit-tested standalone.
+8. **Reader wiring.** Add optional `audit: Option<DatabaseDlqConfig>` to
+   `DlqConfig`. In `angzarr_status.rs`: if `config.dlq.audit` is set,
+   construct `SqliteDlqReader` or `PostgresDlqReader` from it; if unset,
+   `NoopDeadLetterReader` + `WARN`. Replace the hard-coded
+   `Arc::new(NoopDeadLetterReader)` at `bin/angzarr_status.rs:89`.
+9. **Deletion.** Remove `MessagingConfig.dlq` field and its `Default` line at
+   `src/bus/config.rs:33,47`.
+
+**Test plan.**
+
+Unit tests:
+
+- `src/dlq/trigger.test.rs`:
+  - `classify_for_dlq_4xx_status_returns_immediate` — exhaustive over the
+    8 codes listed under decision #2.
+  - `classify_for_dlq_5xx_status_returns_after_retries` — exhaustive.
+  - `classify_for_dlq_ok_status_returns_retry_unreachable` (defensive — Ok
+    shouldn't reach the helper but the arm is exercised for kill-rate).
+- `src/config/mod.test.rs`:
+  - `config_dlq_at_top_level_round_trips`
+  - `config_messaging_dlq_field_no_longer_exists_in_schema` (compile-time
+    guard via a doctest or `cargo expand` snapshot).
+  - `config_dlq_audit_optional_when_unset`
+  - `config_dlq_audit_round_trips_when_set`
+- `src/dlq/factory.test.rs` (extend existing):
+  - `init_dlq_publisher_empty_targets_returns_noop_without_error` (already
+    exists; verify WARN observable via tracing-test).
+  - `init_dlq_publisher_unreachable_amqp_returns_err` — confirms hard-fail
+    contract.
+- Per-bin smoke tests (`tests/bin_init_*.rs`) — minimum: each bin's startup
+  fn invoked with a config containing an unreachable AMQP DLQ target
+  returns Err and does not proceed to the listen loop.
+- Saga DLQ surface: `src/orchestration/saga/dlq.test.rs`:
+  - `saga_4xx_command_rejection_publishes_dead_letter_immediately`
+  - `saga_5xx_command_rejection_retries_then_publishes_dead_letter`
+  - `saga_2xx_success_does_not_publish`
+- PM DLQ surface: `src/orchestration/process_manager/dlq.test.rs`:
+  - `pm_handler_4xx_status_publishes_dead_letter_immediately`
+  - `pm_handler_5xx_status_retries_then_publishes_dead_letter`
+- Projector DLQ surface: `src/orchestration/projector/dlq.test.rs`:
+  - `projector_4xx_status_publishes_dead_letter_immediately`
+  - `projector_5xx_status_retries_then_publishes_dead_letter`
+- Status reader wiring: `src/bin/angzarr_status.test.rs` (or a new
+  integration test if bin tests aren't already a pattern):
+  - `status_bin_with_audit_config_constructs_real_reader`
+  - `status_bin_without_audit_config_warns_and_uses_noop`
+
+Integration (testcontainers, behind `--features test-utils`):
+
+- `tests/dlq_aggregate_round_trip.rs` — aggregate MergeManual → publisher
+  writes to DB → status admin lists the entry.
+- `tests/dlq_saga_round_trip.rs` — saga 4xx → DLQ → status admin lists.
+- `tests/dlq_pm_round_trip.rs` — PM 4xx → DLQ → status admin lists.
+- `tests/dlq_projector_round_trip.rs` — projector 4xx → DLQ → status admin
+  lists.
+
+**Gherkin.** REQUIRED. Extend / create:
+
+- `features/client/dlq.feature` (new):
 
 ```gherkin
-Scenario: Operator-configured DLQ is respected by all dispatch paths
-  Given the operator configures dlq.targets in config.yaml
-  When any code path looks up DLQ configuration
-  Then it sees the operator's targets
-  And not an empty default
+Feature: Dead-letter queue is operator-observable across handler types
+
+  Scenario: Aggregate sequence-mismatch under MergeManual is dead-lettered
+    Given the operator configures dlq.targets with a database backend
+    And the operator configures dlq.audit pointing at the same backend
+    When an aggregate in MergeManual mode receives a stale command
+    Then the command is rejected with Aborted
+    And the dead letter is visible via the status admin DLQ listing
+
+  Scenario: Saga handler returns a permanent error
+    Given a saga handler that returns InvalidArgument for a specific event
+    When the saga receives that event
+    Then no retry is attempted
+    And the dead letter is visible via the status admin DLQ listing
+    And the dead letter carries the source event and the rejected command
+
+  Scenario: Saga handler returns a transient error then succeeds
+    Given a saga handler that returns Unavailable on the first attempt
+    When the saga receives an event
+    Then the framework retries the handler
+    And the eventual success is not dead-lettered
+
+  Scenario: Projector handler cannot apply a poison event
+    Given a projector handler that returns FailedPrecondition for a malformed payload
+    When the projector receives that event
+    Then the dead letter is visible via the status admin DLQ listing
+    And subsequent events for the same projector continue to be processed
 ```
 
-**Fix plan.** Collapse to a single source of truth — either top-level or
-`messaging.dlq`, not both. If both must coexist for backward compat, add a
-merge step at load that fills the missing side from the populated side
-and errors if they disagree.
+- `features/operator/dlq_boot.feature` (new):
 
-**Mutants target.** ≥ 90% on the merge / single-source-of-truth code.
+```gherkin
+Feature: DLQ configuration is enforced at bin boot
+
+  Scenario: Operator-configured DLQ broker is unreachable
+    Given the operator configures dlq.targets pointing at an unreachable AMQP broker
+    When the aggregate binary starts
+    Then the binary exits with a non-zero status
+    And the operator sees an error message naming the unreachable target
+
+  Scenario: Operator omits dlq configuration entirely
+    Given the operator's config has no dlq section
+    When any binary starts
+    Then the binary logs a WARN naming the missing dlq configuration
+    And the binary proceeds to serve requests
+```
+
+**Mutants target.** ≥ 90% viable kill rate on:
+
+- `src/dlq/trigger.rs` (new classification helper — pure logic, fully
+  unit-testable, should be 100%).
+- `src/dlq/factory.rs` (already has tests; extend coverage on the empty-vs-error
+  branch).
+- Each bin's DLQ wiring is small (3-5 lines: `init_dlq_publisher(...).await?`
+  + thread + factory call). Mutants on these are framework glue per
+  CLAUDE.md ("Framework glue → verify integration path") and are covered by
+  the bin-init smoke tests + the integration round-trip tests.
+
+**Out of scope (sibling findings to file).**
+
+- DLQ replay correctness across handler types (R2-15 wires the write path
+  and the read listing only; replay was scoped under H-29/30/31 for the
+  aggregate case and may need extension for saga/PM/projector replay
+  semantics).
+- DLQ retention/cleanup policy (no scheduled deletion today; separate
+  finding).
+- Cross-bin observability: per-bin DLQ metric counters
+  (`angzarr.dlq.published.total{component_type=...}`) belong under the
+  metrics-ownership memory (see [[project_metrics_ownership]]). File as
+  follow-up.
 
 ---
 
@@ -1130,3 +1616,271 @@ After R2-02-LIVE lands, update or delete the memory note.
 - 2026-05-23 Plan created from 5 parallel agent reports. R2-DEAD gate
   identified before any test-writing. R2-02-LIVE and R2-06-LIVE verified
   live in gRPC sibling by hand.
+- 2026-05-24 R2-15 re-scoped from "collapse two `DlqConfig` fields" to
+  "wire DLQ end-to-end across all four handler types." Decisions locked:
+  (1) all four handlers, (2) 4xx/5xx classification trigger, (3) hard-fail
+  boot on init failure, (4) noop+WARN on empty config, (5) separate
+  `dlq.audit` config block for the reader, (6) delete `MessagingConfig.dlq`
+  outright. Test plan expanded from 3 config-load tests to per-handler unit
+  + per-bin smoke + 4 testcontainer round-trip integration tests; Gherkin
+  expanded to 2 new feature files (client/dlq.feature, operator/dlq_boot.feature).
+- 2026-05-26 R2-15 implementation began. Steps 1-4 landed across four
+  commits: trigger classifier (`560abc87`), config schema canonicalization
+  (`e4dfa437`), hard-fail-init contract test (`7c4ff697`), aggregate bin
+  wiring + smoke test (`a46ab860`). Step 5a (saga) deferred to next
+  session pending the Option A vs Option B decision documented in the
+  R2-15 "design findings" block above. Also surfaced as follow-ups:
+  (1) AMQP-feature breakage in 5 pre-existing files (Cover.ext from
+  bd871ea5 missed AMQP-gated tests, CapturingHandler removed in 5bcbc76f
+  still referenced, lapin LongString API drift), (2) factory.rs:92
+  single-vs-chained branch test gap, (3) aggregate.rs:170 sync-mode
+  branch test gap, (4) aggregate.rs:288 compensation empty-events
+  branch test gap. The R2-DEAD-2 metrics.rs decision (wire vs delete)
+  is also still open. None of these block step 5a.
+- 2026-05-26 Backfilled plan statuses for items already shipped on this
+  branch but never marked done in the plan: R2-DEAD (`Local*` family, all
+  six subtrees) and R2-DEAD-5 (two unused `shared.rs` fns) → DONE in
+  `5bcbc76f`; R2-DEAD-7 (`edition/mod.rs`) → DONE in same commit;
+  R2-DEAD-2 (`advice/` wrappers) → PARTIAL in `14a64b8a` (storage + bus
+  Instrumented wired; instrumented_handlers + lossy + metrics.rs still
+  pending decision); R2-DEAD-8 (`status/{descriptors,metrics}.rs`) →
+  PARTIAL in `6a878190` (descriptors wired into the status binary;
+  metrics.rs still un-wired); R2-SNAPSHOT-WIRING → DONE in `bd871ea5`
+  (all five user-confirmed sub-points). No code change in this update,
+  only plan-state catch-up.
+- 2026-05-26 R2-15 step 5a: Option A locked, plus sub-decision to
+  broaden `is_retryable_status` globally. Option B rejected after
+  code verification (framework's `is_retryable_status` is narrow —
+  sequence-conflict `FailedPrecondition` only — so it does NOT
+  encode the 4xx/5xx split decision #2 requires; Option B would
+  send transient `Unavailable` straight to DLQ). Option C rejected
+  as a real gap (transient-then-exhausted saga failures are the
+  operationally interesting case). Sub-decision: single classifier
+  used by all four handler types, broadened to include 5xx-class
+  codes. Consequence: aggregate command pipeline will retry on
+  `Unavailable`/`DeadlineExceeded`/`ResourceExhausted`/`Internal`/
+  `Unknown`/`DataLoss` (not just sequence conflicts) — accepted.
+  Next: pre-5a refactor commit (`CommandOutcome::Rejected` carries
+  `tonic::Code`, broaden `is_retryable_status`, update consumers
+  and test fakes), then step 5a proper.
+- 2026-05-26 R2-15 steps 5a, 5b, 6, 8 all landed in a single
+  session. Pre-5a refactor (`189ccb4a`): `CommandOutcome::Rejected
+  { code, message }`, broadened `is_retryable_status` with the
+  sequence-conflict carve-out preserved, drift-protection test
+  pinning the alignment with `classify_for_dlq`. Step 5a
+  (`733c7423`): saga DLQ at immediate-rejection (gated on
+  `Immediate`) + retry-exhausted (`SagaRetryBuilder::execute`
+  reads a shared `RetryExhaustionTracker`); 3 new unit tests +
+  saga bin wiring. Step 5b (`0ce35d80`): PM DLQ at four sites —
+  persist retry-exhausted, persist immediate-Rejected, command
+  Rejected, H-14 Decision-mode degraded; 5 new unit tests + PM
+  bin wiring (both `pm_factory` for coord and the bus-subscriber
+  factory). Step 6 (`20419011`): projector DLQ at the single
+  handler-error site, with the 4xx-class-DLQ-and-ack vs
+  5xx-class-propagate split; 4 new unit tests + projector bin
+  wiring. Step 8 (`03e16449`): `init_dlq_reader` factory exported
+  alongside `init_dlq_publisher`, wired into `angzarr_status.rs`
+  to drop the hard-coded `NoopDeadLetterReader`. 3 new factory
+  tests pin the noop / sqlite-in-memory / unknown-storage-type
+  contracts. Lib test count: 1019 → 1034 (+15). All commits
+  passed the container precommit (fmt + clippy --all-targets +
+  full lib suite). Remaining R2-15 follow-ups: Gherkin features
+  (`features/client/dlq.feature`,
+  `features/operator/dlq_boot.feature`) and testcontainer
+  round-trip integration tests
+  (`tests/dlq_{aggregate,saga,pm,projector}_round_trip.rs`).
+  These were not attempted this session because they need
+  runner setup (cucumber harness) and external infrastructure
+  (Postgres + AMQP testcontainers) respectively; per CLAUDE.md
+  "tests must execute" they need their own session to land
+  correctly.
+- 2026-05-26 R2-15 Gherkin contracts and one DLQ round-trip
+  integration test landed (`17aee964`). New
+  `features/client/dlq.feature` covers aggregate / saga (immediate
+  + transient + retry-exhausted) / PM (persist-exhausted +
+  command-rejected + H-14 degraded) / projector (4xx-ack vs
+  5xx-propagate) scenarios. New `features/operator/dlq_boot.feature`
+  uses Scenario Outline for hard-fail-on-misconfigured-DLQ across
+  the four sidecar binaries plus the angzarr-status reader-side
+  variant. New `tests/dlq_round_trip_sqlite.rs` (3 tests, gated on
+  `test-utils`) proves publish→read end-to-end via a tempfile-backed
+  SQLite file: preserves `source_component_type` across all four
+  constructors, pushes down `source_component` filtering at the
+  storage layer, and survives the proto BLOB round-trip with
+  `EventProcessingFailedDetails` intact. Features are
+  language-neutral specs (matching
+  `features/client/compensation.feature` style) without step
+  definitions; CLAUDE.md's "step definitions implemented, runner
+  passes" rule still leaves cucumber-rs harness wiring as the
+  remaining R2-15 follow-up. Postgres/AMQP testcontainer-based
+  end-to-end tests are also still outstanding but the SQLite path
+  proves the storage contract.
+- 2026-05-27 R2-15 Postgres testcontainer round-trip landed
+  (`68c8b852`) + uncovered and fixed a latent Postgres boot bug.
+  `tests/dlq_round_trip_postgres.rs` mirrors the SQLite suite (3
+  tests) against a real Postgres 16 container, asserting the four
+  coordinator constructors and the `source_component` filter
+  pushdown both round-trip through Postgres's bytea+jsonb columns.
+  Bug found and fixed in same commit:
+  `PostgresDlqPublisher::new` at
+  `src/dlq/publishers/database.rs:111` packed three
+  `CREATE INDEX IF NOT EXISTS` statements into a single
+  `sqlx::query()` call. sqlx prepares every `query()` invocation
+  by default, and Postgres rejects multi-statement prepared
+  queries — so any operator who configured `dlq_type = postgres`
+  would have hit a hard-fail boot crash. Fix mirrors the SQLite
+  path (one `sqlx::query` per statement). No prior test caught
+  this because the existing AMQP-side tests went through the
+  publisher's backend-registry closure rather than `::new`
+  directly; the round-trip integration test is what exercises
+  `::new` end-to-end. SQLite DLQ round-trip wired into CI via
+  `justfile.container::test-dlq-sqlite` +
+  `.github/workflows/ci.yml`; Postgres + AMQP variants stay
+  manual-run alongside `storage_postgres` for the same Docker
+  reason.
+- 2026-05-27 R2-15 cucumber-rs harness deferred as a repo-wide
+  concern, not an R2-15-specific gap. The existing feature files
+  at `tests/acceptance/features/` and `tests/client/features/`
+  in this repo all live as specs without step definitions or a
+  runner. Adding a cucumber-rs runner just for
+  `features/client/dlq.feature` and
+  `features/operator/dlq_boot.feature` would set a precedent the
+  rest of the repo doesn't follow. The dlq.feature scenarios are
+  already pinned by unit tests
+  (`saga/tests.rs`, `process_manager/tests.rs`,
+  `projector.test.rs`, `dlq/factory.test.rs`,
+  `utils/retry.test.rs`) and the SQLite + Postgres round-trip
+  integration suites. Adding a harness is a separate scope item
+  that should land alongside a repo-wide commitment to feature
+  execution, not as a one-off here.
+- 2026-05-27 Cucumber harness deferral revisited and overruled.
+  The prior deferral was load-shedding -- the right move is to
+  wire the harness for the saga/PM/projector/aggregate scenarios
+  in `features/client/dlq.feature`. Plan: drive saga/PM/projector
+  through public `orchestrate_saga` / `orchestrate_pm` /
+  `ProjectorEventHandler::handle` (decision 2b); refactor
+  `GrpcAggregateContext::send_to_dlq` (`grpc/mod.rs:729`) so the
+  aggregate scenario can exercise the same publish-to-DLQ seam
+  without constructing a full context (decision 1a). The
+  `features/operator/dlq_boot.feature` scenarios stay out of
+  scope -- bin-spawning is its own setup, and the publisher /
+  reader factory unit tests at `dlq/factory.test.rs` already pin
+  the hard-fail-on-misconfig contract.
+- 2026-05-27 Drift-gap audit. The cucumber-harness discussion
+  surfaced a repo-wide pattern: every orchestration → real-impl
+  seam in this codebase is uncovered. Unit tests use trait
+  mocks for downstream dependencies; integration tests exercise
+  the trait impls directly without orchestration in front of
+  them; nothing bridges the two. Categorized:
+
+  * **Category A (DLQ orchestration → real publisher/reader)** is
+    what the cucumber harness closes for saga/PM/projector and
+    the aggregate refactor closes for aggregate.
+  * **Category B (higher-leverage orchestration → real storage /
+    bus seams)** logged to local todos as focused integration
+    tests, not Gherkin: aggregate-pipeline → EventStore,
+    PM-persist → EventStore, pipeline → SnapshotRepository,
+    projector → EventBus (projection streaming), status DLQ
+    admin gRPC → Reader → DB. These are smaller than acceptance
+    tests and don't need feature-file framing -- they're
+    contract drift between a coordinator and one real downstream
+    impl.
+  * **Category C (full-stack cluster acceptance)** reframed by
+    the user: these are acceptance tests against a deployed
+    Kind cluster, not "deferred gaps." Logged to local todos as
+    tournament-shaped fixtures -- a full poker game played by
+    bots that exercises every coordinator + bus + storage path
+    end-to-end. Lives in `tests/acceptance/features/` (the
+    `end_to_end.feature` placeholder is already there).
+
+  See `.tasks/todos.md` for the explicit task list. The audit
+  itself is logged so future readers don't accidentally re-inherit
+  the gaps.
+- 2026-05-27 R2-15 cucumber harness landed (`c09e379d`) +
+  aggregate refactor (`36246fbc`). New
+  `tests/dlq_features.rs` drives the 9 scenarios in
+  `features/client/dlq.feature` end-to-end:
+  saga (3) via public `orchestrate_saga`, PM (3) via
+  `orchestrate_pm`, projector (2) via
+  `ProjectorEventHandler::handle`, aggregate (1) via the
+  newly-extracted `publish_aggregate_sequence_mismatch_dlq` free
+  fn. Each scenario uses a fresh tempfile-backed SQLite hosting
+  both `SqliteDlqPublisher` and `SqliteDlqReader` -- the same
+  publisher → reader seam production uses, exercised through real
+  orchestration code (not direct publish). 73 cucumber steps
+  pass. Wired into CI via `test-dlq-features` recipe in
+  `justfile.container` and a new step in
+  `.github/workflows/ci.yml::integration`. This closes Category A
+  of the drift-gap audit (orchestration → real publisher / reader).
+  Categories B + C remain on `.tasks/todos.md` as planned.
+- 2026-05-27 R2-01 closed. `Target::matches_type` swapped from
+  `event_type.ends_with(t)` to a token-boundary helper
+  (`matches_type_token`): if the subscription type contains `.`,
+  require exact equality; otherwise split `event_type` on the last
+  `.` or `/` and compare the final token. `bus::traits::target_matches`
+  now delegates to `Target::matches_type`, removing the duplicate
+  `ends_with` site. Tests: three plan-specified scenarios added to
+  `descriptor.test.rs` (`matches_type_short_name_does_not_widen`,
+  `matches_type_full_url_still_matches`,
+  `matches_type_dotted_suffix_only_matches_token_boundary`) plus a
+  `target_matches_short_name_does_not_widen` regression in
+  `bus/mod.test.rs` pinning the delegation. Gherkin: the
+  "Register handler by type URL suffix" scenario in
+  `features/client/router.feature` was reworded to
+  "by type URL token" so the spec no longer documents the bug;
+  three new scenarios cover the short-name anti-widening case, the
+  short-name final-token match, and the fully-qualified exact-match
+  case. `just mutants src/descriptor.rs`: 14 viable mutants, 14
+  caught (100% kill rate; ≥90% target). Lib suite 1019 → 1039.
+  Found-during-this-work follow-up, fixed in a separate commit:
+  `just mutants-summary` was broken on two counts — (a) the recipe
+  used `$$(jq ...)` expecting just to escape `$$` -> `$`, but just
+  doesn't with the default `bash -c` shell, so bash parsed `$$(...)`
+  as `<pid>(...)` and died with `syntax error near unexpected token
+  '('`, and (b) the locally-cached rust container image was older
+  than the base-image bump that added jq (jq has been in
+  `build/images/base/Containerfile` since `23457f15`, but the cached
+  image was built at `b3004f12`, before that commit). Reshaped
+  `mutants-summary` and `mutants-survivors` as shebang-bash recipes
+  using real `$(jq ...)` substitution, and rebuilt the images via
+  skaffold so the now-current `v0.5.1-61-g2ec15ada` tag actually
+  contains jq. Verified end-to-end against R2-01's outcomes.json:
+  the recipe renders the 14/14 kill-rate summary.
+- 2026-05-27 R2-02-LIVE closed. `persist_pm_event_book` no longer
+  re-reads the store after the persist — pre-fix the
+  `event_store.get(pm_domain, edition, pm_root)` call returned
+  every historical PM event and republished the entire stream on
+  every PM update, fanning out O(history) per command. Now the
+  publish step ships exactly `process_events.pages` (the events
+  the handler just emitted) and stamps the in-flight
+  `correlation_id` onto the published cover so downstream
+  subscribers always see the active correlation regardless of
+  what the PM service returned on its cover.
+
+  Tests landed alongside: 2 R2-02-LIVE integration regressions in
+  `tests/pm_persist_event_store.rs` plus a tightening of the
+  existing two-call test to assert per-publish page counts, and a
+  new `src/orchestration/process_manager/grpc/mod.test.rs` with 4
+  unit tests against `MockEventStore` + `MockEventBus`. The unit
+  tests exist specifically because the mutants container runs
+  `cargo test --lib` only — integration tests in `tests/` are
+  invisible to mutation testing, so without lib-level tests the
+  cover/pages publish fields couldn't be mutation-killed.
+  `features/client/router.feature` got two scenarios documenting
+  the publishes-only-new-events and correlation-id-stamping
+  contracts.
+
+  Mutation cleanup landed in the same commit: marked the four
+  trait-getter accessors (`dlq_publisher`, `component_name`,
+  `pm_domain`, `name`) with `#[trivial_delegation]` and dropped
+  the redundant `snapshot: None` field (it was a no-op mutation
+  no test could distinguish from `Default::default()`).
+  `cargo xtask gen-mutants-exclude` regenerated
+  `.cargo/mutants.toml`, which had the side effect of cleaning
+  out a stale manual block (`fn default\(`, `fn fmt\(`, etc.
+  — those patterns matched zero things cargo-mutants emits) and
+  a dead `CommandClient::*` auto-generated block (CommandClient
+  was removed from the codebase). Final `just mutants
+  src/orchestration/process_manager/grpc/mod.rs`: 6 viable
+  mutants, 2 caught, 0 missed, 4 unviable (100% kill rate;
+  exceeds the plan's >= 90% target). Lib suite 1040 -> 1044.

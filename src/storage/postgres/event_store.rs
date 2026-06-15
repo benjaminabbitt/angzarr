@@ -11,10 +11,10 @@ use sqlx::{Acquire, PgPool, Row};
 use uuid::Uuid;
 
 use crate::proto::EventPage;
-use crate::storage::helpers::{assemble_event_books, is_main_timeline};
+use crate::storage::helpers::{assemble_event_books, is_main_timeline, BookParts};
 use crate::storage::schema::Events;
 use crate::storage::{
-    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+    AddMeta, AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
 };
 
 /// Build a WHERE predicate on an edition column that translates EITHER
@@ -164,10 +164,11 @@ impl EventStore for PostgresEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
+        let correlation_id = meta.correlation_id;
+        let external_id = meta.external_id;
+        let source_info = meta.source_info;
         if events.is_empty() {
             return Ok(AddOutcome::Added {
                 first_sequence: 0,
@@ -246,6 +247,12 @@ impl EventStore for PostgresEventStore {
             } else {
                 (None, None, None, None)
             };
+        let source_component = source_info.map(|s| s.component.as_str()).unwrap_or("");
+        let source_command_index = source_info.map(|s| s.command_index as i32).unwrap_or(0);
+
+        // Parent-routing cover, serialized once and replicated per row (mirrors
+        // correlation_id). All pages of this write share the same value.
+        let ext_bytes: Option<Vec<u8>> = meta.ext.map(prost::Message::encode_to_vec);
 
         for event in events {
             let event_data = event.encode_to_vec();
@@ -276,8 +283,11 @@ impl EventStore for PostgresEventStore {
                     Events::SourceDomain,
                     Events::SourceRoot,
                     Events::SourceSeq,
+                    Events::SourceComponent,
+                    Events::SourceCommandIndex,
                     Events::Committed,
                     Events::CascadeId,
+                    Events::Ext,
                 ])
                 .values_panic([
                     edition_to_db(edition).into(),
@@ -292,8 +302,11 @@ impl EventStore for PostgresEventStore {
                     source_domain.clone().into(),
                     source_root.clone().into(),
                     source_seq.into(),
+                    source_component.into(),
+                    source_command_index.into(),
                     committed.into(),
                     cascade_id.into(),
+                    ext_bytes.clone().into(),
                 ])
                 .to_string(PostgresQueryBuilder);
 
@@ -524,6 +537,7 @@ impl EventStore for PostgresEventStore {
                 Events::Root,
                 Events::EventData,
                 Events::Sequence,
+                Events::Ext,
             ])
             .from(Events::Table)
             .and_where(Expr::col(Events::CorrelationId).eq(correlation_id))
@@ -535,7 +549,7 @@ impl EventStore for PostgresEventStore {
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 
         // Group events by (domain, edition, root)
-        let mut books_map: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
+        let mut books_map: HashMap<(String, String, Uuid), BookParts> = HashMap::new();
 
         for row in rows {
             let domain: String = row.get("domain");
@@ -546,14 +560,18 @@ impl EventStore for PostgresEventStore {
             let edition: String = edition_from_db(row.get("edition"));
             let root_str: String = row.get("root");
             let event_data: Vec<u8> = row.get("event_data");
+            let ext_bytes: Option<Vec<u8>> = row.get("ext");
 
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map
-                .entry((domain, edition, root))
-                .or_default()
-                .push(event);
+            let entry = books_map.entry((domain, edition, root)).or_default();
+            entry.pages.push(event);
+            if entry.ext.is_none() {
+                if let Some(bytes) = ext_bytes {
+                    entry.ext = Some(prost_types::Any::decode(bytes.as_slice())?);
+                }
+            }
         }
 
         Ok(assemble_event_books(books_map, correlation_id))
@@ -613,6 +631,8 @@ impl EventStore for PostgresEventStore {
             .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
             .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .and_where(Expr::col(Events::SourceComponent).eq(&source_info.component))
+            .and_where(Expr::col(Events::SourceCommandIndex).eq(source_info.command_index as i32))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 

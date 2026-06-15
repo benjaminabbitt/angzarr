@@ -6,7 +6,7 @@
 //! - `PositionStore` trait: Handler checkpoint tracking
 //! - `DomainStorage`: Per-domain storage wrapper
 //! - Storage configuration types
-//! - Implementations: PostgreSQL, SQLite, Redis, Bigtable, DynamoDB, NATS, ImmuDB
+//! - Implementations: PostgreSQL, SQLite, Redis, Bigtable, DynamoDB, ImmuDB
 
 use std::sync::Arc;
 
@@ -22,14 +22,20 @@ mod event_store;
 mod position_store;
 mod snapshot_store;
 
-pub use event_store::{AddOutcome, CascadeParticipant, EventStore, SourceInfo};
+pub use event_store::{AddMeta, AddOutcome, CascadeParticipant, EventStore, SourceInfo};
 pub use position_store::PositionStore;
 pub use snapshot_store::SnapshotStore;
 
 // Re-export from submodules
-pub use config::{PostgresConfig, RedisConfig, SnapshotsEnableConfig, SqliteConfig, StorageConfig};
+pub use config::{
+    PostgresConfig, RedisConfig, SnapshotsEnableConfig, SqliteConfig, StorageConfig,
+    StorageRegistryConfig,
+};
 pub use error::{errmsg, Result, StorageError};
-pub use factory::{init_position_store, init_storage, PositionBackend, StoresBackend};
+pub use factory::{
+    init_event_store, init_position_store, init_position_store_registry, init_snapshot_store,
+    init_storage, PositionBackend, StoresBackend,
+};
 
 // Implementation modules
 #[cfg(feature = "bigtable")]
@@ -40,8 +46,6 @@ pub mod helpers;
 #[cfg(feature = "immudb")]
 pub mod immudb;
 pub mod mock;
-#[cfg(feature = "nats")]
-pub mod nats;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 #[cfg(feature = "redis")]
@@ -63,8 +67,6 @@ pub use dynamo::{DynamoConfig, DynamoEventStore, DynamoPositionStore, DynamoSnap
 #[cfg(feature = "immudb")]
 pub use immudb::ImmudbEventStore;
 pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
-#[cfg(feature = "nats")]
-pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
 #[cfg(feature = "redis")]

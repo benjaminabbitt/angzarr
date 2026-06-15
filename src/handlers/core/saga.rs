@@ -71,7 +71,14 @@ impl SagaEventHandler {
             fact_executor: None,
             output_domain_validator: None,
             backoff: saga_backoff(),
-            propagate_errors: false,
+            // D-3 (review decision): sagas are at-least-once by DEFAULT.
+            // The old `false` default acked transient orchestration
+            // failures (saga service blip, retry exhaustion, H-15 fact
+            // errors) and silently lost the cross-domain translation —
+            // the one job a saga has. PM and aggregate handlers already
+            // default to propagation; set `with_error_propagation(false)`
+            // explicitly to opt back into ack-on-failure.
+            propagate_errors: true,
         }
     }
 
@@ -110,15 +117,24 @@ impl SagaEventHandler {
             fact_executor,
             output_domain_validator,
             backoff,
-            propagate_errors: false,
+            // D-3 (review decision): sagas are at-least-once by DEFAULT.
+            // The old `false` default acked transient orchestration
+            // failures (saga service blip, retry exhaustion, H-15 fact
+            // errors) and silently lost the cross-domain translation —
+            // the one job a saga has. PM and aggregate handlers already
+            // default to propagation; set `with_error_propagation(false)`
+            // explicitly to opt back into ack-on-failure.
+            propagate_errors: true,
         }
     }
 
     /// Configure error propagation behavior.
     ///
-    /// When enabled, orchestration errors are returned to the caller, which
-    /// may trigger message redelivery depending on the bus implementation.
-    /// When disabled (default), errors are logged but the handler returns Ok(()).
+    /// When enabled (the DEFAULT since D-3), orchestration errors are
+    /// returned to the caller, which triggers message redelivery on the
+    /// bus — sagas are at-least-once. When disabled, errors are logged
+    /// but the handler returns Ok(()) and the source event is acked
+    /// (at-most-once; the translation is lost on any transient failure).
     pub fn with_error_propagation(mut self, propagate: bool) -> Self {
         self.propagate_errors = propagate;
         self

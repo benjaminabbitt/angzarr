@@ -169,6 +169,7 @@ _container-dind +ARGS: _build-images
             -e CARGO_HOME=/workspace/.cargo-container \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e TESTCONTAINERS_RYUK_DISABLED=true \
+            -e TESTCONTAINERS_HOST=127.0.0.1 \
             "$IMAGE" just {{ARGS}}
     fi
 
@@ -241,13 +242,20 @@ _container-ephemeral +ARGS: _build-images
             # it (the original /src is read-only, but /work is writable).
             cp /etc/angzarr-justfile /work/justfile
             cd /work
-            just {{ARGS}}
+            # cargo mutants exits non-zero when mutants survive — that is a
+            # RESULT, not a tooling failure. Capture the exit code so the
+            # outcomes copy below still runs; `just mutants-summary` /
+            # `mutants-survivors` read the copied outcomes.json and were
+            # blind to every run that actually had survivors before this.
+            rc=0
+            just {{ARGS}} || rc=$?
             # Persist ONLY outcomes.json back to host. Mutated source trees
             # and intermediate working dirs die with the container.
             if [ -f /work/mutants.out/outcomes.json ]; then
                 cp /work/mutants.out/outcomes.json /out/outcomes.json
                 echo "[ephemeral] outcomes.json copied to host mutants.out/"
             fi
+            exit $rc
         '
 
 default:
@@ -407,6 +415,11 @@ check:
 check-full:
     just _container check-full
 
+# Compile-check every test target (incl. feature-gated contract suites).
+# Catches test-binary rot that `just test` never compiles.
+check-tests:
+    just _container check-tests
+
 # Format code
 fmt:
     just _container fmt
@@ -414,6 +427,30 @@ fmt:
 # Lint code
 lint:
     just _container lint
+
+# === Code complexity (lizard, in container) ===
+# lizard is a multi-language per-function complexity analyzer baked into the
+# angzarr-rust image. These targets delegate into it (implementations live in
+# justfile.container), so no host install is needed.
+
+# Per-function cyclomatic complexity as a human-readable table + warnings.
+# Defaults to the Rust framework (src, crates) + Go gateway; pass paths/flags to
+# scope, e.g.
+#   just complexity src/bus
+#   just complexity -C 15 src         (warn on functions over CCN 15)
+complexity *ARGS:
+    just _container complexity {{ARGS}}
+
+# Same per-function analysis as CSV (header prepended) for LLM/tooling ingest.
+# Columns: nloc,ccn,tokens,params,length,location,file,function,long_name,start,end
+complexity-csv *ARGS:
+    just _container complexity-csv {{ARGS}}
+
+# Per-function COGNITIVE complexity (clippy) — the authoritative Rust gate.
+# Unlike `complexity` (lizard cyclomatic, which counts every `?`), this tracks
+# reader burden. Threshold in clippy.toml. Reports only; never fails the build.
+cognitive:
+    just _container cognitive
 
 # Run unit tests
 test:
@@ -441,9 +478,11 @@ gen-mutants-exclude:
 # and so are routed through the regular `_container` (no source mutation).
 # =============================================================================
 
-# Run mutation tests on a specific file (ephemeral; no source touches host)
-mutants FILE:
-    just _container-ephemeral mutants {{FILE}}
+# Run mutation tests on a specific file (ephemeral; no source touches host).
+# EXTRA forwards additional cargo-mutants flags, e.g. a function filter:
+#   just mutants src/orchestration/saga/mod.rs --re orchestrate_saga
+mutants FILE *EXTRA:
+    just _container-ephemeral mutants {{FILE}} {{EXTRA}}
 
 # Run mutation tests on handlers/core (aggregate, projector, saga, PM)
 mutants-core:
@@ -489,7 +528,6 @@ mutants-purge-cache:
 #   just storage postgres test     # PostgreSQL only (testcontainers)
 #   just storage redis test        # Redis only (testcontainers)
 #   just storage immudb test       # ImmuDB only (testcontainers)
-#   just storage nats test         # NATS JetStream only (testcontainers)
 # =============================================================================
 
 # Storage contract tests - run all backends or a specific one
@@ -519,12 +557,12 @@ storage *ARGS:
 #
 # Usage:
 #   just bus test                  # All backends
-#   just bus channel test          # Channel only (no containers)
 #   just bus amqp test             # RabbitMQ only (testcontainers)
 #   just bus kafka test            # Kafka only (testcontainers)
 #   just bus pubsub test           # GCP Pub/Sub only (testcontainers)
 #   just bus sns-sqs test          # AWS SNS/SQS only (testcontainers)
-#   just bus nats test             # NATS JetStream only (testcontainers)
+# NOTE: the in-memory channel backend was removed (b1eb2416); every
+# remaining bus backend needs testcontainers.
 # =============================================================================
 
 # Bus contract tests - run all backends or a specific one
@@ -535,11 +573,8 @@ bus *ARGS:
     if [[ "$args" == "test" ]] || [[ -z "$args" ]]; then
         # All backends - needs dind for testcontainers
         just _container-dind bus test
-    elif [[ "$args" == "channel test" ]]; then
-        # Channel doesn't need containers
-        just _container bus channel test
     else
-        # Other backends need testcontainers
+        # All bus backends need testcontainers
         just _container-dind bus $args
     fi
 
@@ -553,7 +588,9 @@ test-contract:
 # Run all local tests (no running K8s cluster required)
 # =============================================================================
 # Fast validation suite using in-memory backends (no containers needed).
-# Includes: unit tests, storage (SQLite), bus (channel).
+# Includes: test-target compile gate, unit tests, storage (SQLite).
+# (The in-memory channel bus was removed; all bus backends now need
+# testcontainers — run `just bus test` / `just test-contract` for those.)
 #
 # NOTE: Client and example tests are now in their respective repos:
 #   - angzarr-client-{lang}: just test
@@ -563,6 +600,11 @@ test-contract:
 # =============================================================================
 test-local:
     @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Test-Target Compile Gate ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just check-tests
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== Core Unit Tests ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just test
@@ -571,11 +613,6 @@ test-local:
     @echo "=== Storage Contract Tests (SQLite) ==="
     @echo "═══════════════════════════════════════════════════════════════════"
     just storage sqlite test
-    @echo ""
-    @echo "═══════════════════════════════════════════════════════════════════"
-    @echo "=== Bus Contract Tests (Channel) ==="
-    @echo "═══════════════════════════════════════════════════════════════════"
-    just bus channel test
     @echo ""
     @echo "═══════════════════════════════════════════════════════════════════"
     @echo "=== All Local Tests Complete ==="

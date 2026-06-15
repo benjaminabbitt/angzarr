@@ -13,6 +13,7 @@ use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
+use crate::dlq::DeadLetterPublisher;
 use crate::proto::command_handler_coordinator_service_client::CommandHandlerCoordinatorServiceClient;
 use crate::proto::saga_service_client::SagaServiceClient;
 use crate::proto::{
@@ -39,10 +40,13 @@ pub struct GrpcSagaContext {
     compensation_handler:
         Option<Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>>,
     source: EventBook,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+    component_name: String,
 }
 
 impl GrpcSagaContext {
     /// Create a new gRPC saga context for one saga invocation.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
         publisher: Arc<dyn EventBus>,
@@ -51,6 +55,8 @@ impl GrpcSagaContext {
             Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
         >,
         source: EventBook,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
+        component_name: String,
     ) -> Self {
         Self {
             saga_client,
@@ -58,6 +64,8 @@ impl GrpcSagaContext {
             compensation_config,
             compensation_handler,
             source,
+            dlq_publisher,
+            component_name,
         }
     }
 }
@@ -98,8 +106,10 @@ impl SagaRetryContext for GrpcSagaContext {
 
         // Audit #86 contract: always-override propagation of source
         // cover's edition (full struct including divergences) onto every
-        // outgoing book — commands AND events. See LocalSagaContext for
-        // rationale; same logic must run on the gRPC path.
+        // outgoing book — commands AND events. Sagas are stateless
+        // domain bridges, so the framework guarantees the source
+        // timeline carries through to every emission rather than
+        // letting handlers opt in or out per command.
         if let Some(source_cover) = self.source.cover.as_ref() {
             for cmd in &mut response.commands {
                 if let Some(c) = &mut cmd.cover {
@@ -144,6 +154,14 @@ impl SagaRetryContext for GrpcSagaContext {
         } else {
             error!(reason = %reason, "Saga command rejected (no compensation path)");
         }
+    }
+
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.dlq_publisher)
+    }
+
+    fn component_name(&self) -> &str {
+        &self.component_name
     }
 }
 
@@ -249,10 +267,12 @@ pub struct GrpcSagaContextFactory {
     compensation_handler:
         Option<Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>>,
     name: String,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
 }
 
 impl GrpcSagaContextFactory {
     /// Create a new factory with saga client and compensation configuration.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
         publisher: Arc<dyn EventBus>,
@@ -261,6 +281,7 @@ impl GrpcSagaContextFactory {
             Arc<Mutex<CommandHandlerCoordinatorServiceClient<tonic::transport::Channel>>>,
         >,
         name: String,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
     ) -> Self {
         Self {
             saga_client,
@@ -268,6 +289,7 @@ impl GrpcSagaContextFactory {
             compensation_config,
             compensation_handler,
             name,
+            dlq_publisher,
         }
     }
 }
@@ -280,6 +302,8 @@ impl SagaContextFactory for GrpcSagaContextFactory {
             self.compensation_config.clone(),
             self.compensation_handler.clone(),
             (*source).clone(),
+            self.dlq_publisher.clone(),
+            self.name.clone(),
         ))
     }
 

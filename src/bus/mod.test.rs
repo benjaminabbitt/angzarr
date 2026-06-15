@@ -12,6 +12,7 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
             }),
             correlation_id: "test-correlation".to_string(),
             edition: None,
+            ext: None,
         }),
         pages: event_types
             .iter()
@@ -79,6 +80,24 @@ fn test_target_matches_event_type_not_present() {
         types: vec!["OrderShipped".to_string()],
     };
     assert!(!target_matches(&book, &target));
+}
+
+/// R2-01: short subscription names must not widen to events that
+/// merely end with the substring (e.g., `Created` must not match
+/// `OrderCreated`). Pins `target_matches` to the token-boundary rule
+/// owned by `Target::matches_type` so this delegation cannot regress
+/// to a raw `ends_with`.
+#[test]
+fn target_matches_short_name_does_not_widen() {
+    let book = make_event_book("order", &["OrderCreated"]);
+    let target = Target {
+        domain: "order".to_string(),
+        types: vec!["Created".to_string()],
+    };
+    assert!(
+        !target_matches(&book, &target),
+        "subscription to short name \"Created\" must NOT match an OrderCreated event"
+    );
 }
 
 #[test]

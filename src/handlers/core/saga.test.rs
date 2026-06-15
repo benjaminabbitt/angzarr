@@ -145,6 +145,37 @@ fn test_from_factory_sets_default_backoff() {
     let _ = handler.backoff;
 }
 
+/// D-3 regression (review decision): sagas are at-least-once by DEFAULT.
+/// `propagate_errors` must default to true so a transient orchestration
+/// failure NACKs the source event and the bus redelivers — the old `false`
+/// default acked-and-lost the cross-domain translation, the one job a saga
+/// has. PM and aggregate handlers already defaulted to propagation.
+#[test]
+fn test_default_error_propagation_is_at_least_once() {
+    let factory: Arc<dyn SagaContextFactory> = Arc::new(MockSagaContextFactory::new("saga"));
+    let executor: Arc<dyn CommandExecutor> = Arc::new(MockCommandExecutor);
+
+    let handler = SagaEventHandler::from_factory(factory.clone(), executor.clone(), None);
+    assert!(
+        handler.propagate_errors,
+        "from_factory must default to propagate_errors=true (at-least-once, D-3)"
+    );
+
+    let handler = SagaEventHandler::from_factory_with_validator(
+        factory,
+        executor,
+        None,
+        None,
+        None,
+        None,
+        crate::utils::retry::saga_backoff(),
+    );
+    assert!(
+        handler.propagate_errors,
+        "from_factory_with_validator must default to propagate_errors=true (D-3)"
+    );
+}
+
 /// from_factory initializes optional fields to None.
 #[test]
 fn test_from_factory_optional_fields_none() {

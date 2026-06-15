@@ -13,7 +13,7 @@
 use uuid::Uuid;
 
 use crate::proto::{EventPage, PageHeader, Snapshot};
-use crate::storage::{EventStore, SnapshotStore};
+use crate::storage::{AddMeta, EventStore, SnapshotStore};
 
 use super::*;
 
@@ -44,7 +44,18 @@ async fn test_mock_event_store_add_and_get() {
     }];
 
     store
-        .add("orders", "test", root, events, "corr-123", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            events,
+            &AddMeta {
+                correlation_id: "corr-123",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -95,11 +106,33 @@ async fn test_mock_event_store_get_by_correlation() {
 
     // Add events with same correlation_id across different domains
     store
-        .add("orders", "test", root1, vec![event1], "tx-abc", None, None)
+        .add(
+            "orders",
+            "test",
+            root1,
+            vec![event1],
+            &AddMeta {
+                correlation_id: "tx-abc",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
     store
-        .add("payment", "test", root2, vec![event2], "tx-abc", None, None)
+        .add(
+            "payment",
+            "test",
+            root2,
+            vec![event2],
+            &AddMeta {
+                correlation_id: "tx-abc",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -175,7 +208,18 @@ async fn test_get_until_timestamp_filters_by_created_at() {
         },
     ];
     store
-        .add("orders", "test", root, events, "", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            events,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -231,7 +275,18 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
         ..Default::default()
     }];
     store
-        .add("orders", "test", root, events, "", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            events,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -355,9 +410,12 @@ async fn test_add_idempotency_returns_duplicate() {
             "test",
             root,
             vec![event.clone()],
-            "",
-            Some("ext-123"),
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: Some("ext-123"),
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -370,9 +428,12 @@ async fn test_add_idempotency_returns_duplicate() {
             "test",
             root,
             vec![event],
-            "",
-            Some("ext-123"),
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: Some("ext-123"),
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -428,11 +489,33 @@ async fn test_add_empty_external_id_no_idempotency() {
     };
 
     let result1 = store
-        .add("orders", "test", root, vec![event_0], "", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            vec![event_0],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
     let result2 = store
-        .add("orders", "test", root, vec![event_1], "", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            vec![event_1],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -467,7 +550,18 @@ async fn test_get_next_sequence_increments_from_max() {
         .collect();
 
     store
-        .add("orders", "angzarr", root, events, "", None, None)
+        .add(
+            "orders",
+            "angzarr",
+            root,
+            events,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -501,7 +595,18 @@ async fn test_get_next_sequence_edition_fallback() {
         .collect();
 
     store
-        .add("orders", "angzarr", root, events, "", None, None)
+        .add(
+            "orders",
+            "angzarr",
+            root,
+            events,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -536,7 +641,18 @@ async fn test_get_next_sequence_edition_with_events() {
         .collect();
 
     store
-        .add("orders", "angzarr", root, main_events, "", None, None)
+        .add(
+            "orders",
+            "angzarr",
+            root,
+            main_events,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -557,7 +673,18 @@ async fn test_get_next_sequence_edition_with_events() {
         .collect();
 
     store
-        .add("orders", "branch-1", root, branch_events, "", None, None)
+        .add(
+            "orders",
+            "branch-1",
+            root,
+            branch_events,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -613,11 +740,33 @@ async fn test_delete_edition_events_removes_and_counts() {
         .collect();
 
     store
-        .add("orders", "branch-1", root1, events1, "", None, None)
+        .add(
+            "orders",
+            "branch-1",
+            root1,
+            events1,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
     store
-        .add("orders", "branch-1", root2, events2, "", None, None)
+        .add(
+            "orders",
+            "branch-1",
+            root2,
+            events2,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -661,9 +810,12 @@ async fn test_delete_edition_events_scoped_correctly() {
             "branch-1",
             root,
             vec![event.clone()],
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -673,14 +825,28 @@ async fn test_delete_edition_events_scoped_correctly() {
             "angzarr",
             root,
             vec![event.clone()],
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .unwrap();
     store
-        .add("inventory", "branch-1", root, vec![event], "", None, None)
+        .add(
+            "inventory",
+            "branch-1",
+            root,
+            vec![event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -714,6 +880,8 @@ async fn test_find_by_source_returns_matching_events() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let event = EventPage {
@@ -735,9 +903,12 @@ async fn test_find_by_source_returns_matching_events() {
             "angzarr",
             root,
             vec![event],
-            "",
-            None,
-            Some(&source_info),
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: Some(&source_info),
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -763,6 +934,8 @@ async fn test_find_by_source_returns_none_for_mismatch() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let event = EventPage {
@@ -784,9 +957,12 @@ async fn test_find_by_source_returns_none_for_mismatch() {
             "angzarr",
             root,
             vec![event],
-            "",
-            None,
-            Some(&source_info),
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: Some(&source_info),
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -797,6 +973,8 @@ async fn test_find_by_source_returns_none_for_mismatch() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 99, // Different sequence
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let result = store
@@ -817,6 +995,8 @@ async fn test_find_by_source_empty_source_returns_none() {
         edition: String::new(),
         root: Uuid::nil(),
         seq: 0,
+        component: String::new(),
+        command_index: 0,
     };
 
     let result = store
@@ -826,7 +1006,8 @@ async fn test_find_by_source_empty_source_returns_none() {
     assert!(result.is_none());
 }
 
-/// find_by_source checks all source fields (domain, edition, root, seq).
+/// find_by_source checks all source fields (domain, edition, root, seq,
+/// component, command_index).
 #[tokio::test]
 async fn test_find_by_source_checks_all_fields() {
     let store = MockEventStore::new();
@@ -838,6 +1019,8 @@ async fn test_find_by_source_checks_all_fields() {
         edition: "angzarr".to_string(),
         root: source_root,
         seq: 5,
+        component: "saga-orders-inventory".to_string(),
+        command_index: 1,
     };
 
     let event = EventPage {
@@ -859,9 +1042,12 @@ async fn test_find_by_source_checks_all_fields() {
             "angzarr",
             root,
             vec![event],
-            "",
-            None,
-            Some(&source_info),
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: Some(&source_info),
+                ext: None,
+            },
         )
         .await
         .unwrap();
@@ -869,9 +1055,7 @@ async fn test_find_by_source_checks_all_fields() {
     // Wrong domain
     let wrong_domain = crate::storage::SourceInfo {
         domain: "WRONG".to_string(),
-        edition: "angzarr".to_string(),
-        root: source_root,
-        seq: 5,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_domain)
@@ -881,10 +1065,8 @@ async fn test_find_by_source_checks_all_fields() {
 
     // Wrong edition
     let wrong_edition = crate::storage::SourceInfo {
-        domain: "orders".to_string(),
         edition: "WRONG".to_string(),
-        root: source_root,
-        seq: 5,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_edition)
@@ -894,10 +1076,8 @@ async fn test_find_by_source_checks_all_fields() {
 
     // Wrong root
     let wrong_root = crate::storage::SourceInfo {
-        domain: "orders".to_string(),
-        edition: "angzarr".to_string(),
         root: Uuid::new_v4(),
-        seq: 5,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_root)
@@ -907,13 +1087,35 @@ async fn test_find_by_source_checks_all_fields() {
 
     // Wrong seq
     let wrong_seq = crate::storage::SourceInfo {
-        domain: "orders".to_string(),
-        edition: "angzarr".to_string(),
-        root: source_root,
         seq: 999,
+        ..source_info.clone()
     };
     assert!(store
         .find_by_source("inventory", "angzarr", root, &wrong_seq)
+        .await
+        .unwrap()
+        .is_none());
+
+    // Wrong component (O1: a different saga reacting to the same source
+    // event must not match this command's idempotency claim)
+    let wrong_component = crate::storage::SourceInfo {
+        component: "saga-orders-shipping".to_string(),
+        ..source_info.clone()
+    };
+    assert!(store
+        .find_by_source("inventory", "angzarr", root, &wrong_component)
+        .await
+        .unwrap()
+        .is_none());
+
+    // Wrong command_index (O1: a different command of the same invocation
+    // must not match this command's idempotency claim)
+    let wrong_index = crate::storage::SourceInfo {
+        command_index: 2,
+        ..source_info.clone()
+    };
+    assert!(store
+        .find_by_source("inventory", "angzarr", root, &wrong_index)
         .await
         .unwrap()
         .is_none());
@@ -959,7 +1161,18 @@ async fn test_query_stale_cascades_timestamp_boundary() {
     };
 
     store
-        .add("orders", "angzarr", root, vec![event], "", None, None)
+        .add(
+            "orders",
+            "angzarr",
+            root,
+            vec![event],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -1026,15 +1239,29 @@ async fn test_mock_rejects_duplicate_sequence_after_add() {
             "test",
             root,
             vec![h24_event(0), h24_event(1), h24_event(2)],
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .expect("first add should succeed");
 
     let result = store
-        .add("orders", "test", root, vec![h24_event(2)], "", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            vec![h24_event(2)],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await;
 
     assert!(
@@ -1062,15 +1289,29 @@ async fn test_mock_rejects_rewind_sequence() {
                 h24_event(3),
                 h24_event(4),
             ],
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await
         .expect("first add should succeed");
 
     let result = store
-        .add("orders", "test", root, vec![h24_event(1)], "", None, None)
+        .add(
+            "orders",
+            "test",
+            root,
+            vec![h24_event(1)],
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
+        )
         .await;
 
     assert!(
@@ -1092,9 +1333,12 @@ async fn test_mock_rejects_in_batch_duplicate_sequence() {
             "test",
             root,
             vec![h24_event(0), h24_event(0)],
-            "",
-            None,
-            None,
+            &AddMeta {
+                correlation_id: "",
+                external_id: None,
+                source_info: None,
+                ext: None,
+            },
         )
         .await;
 

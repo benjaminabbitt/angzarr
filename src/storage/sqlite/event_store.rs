@@ -25,10 +25,10 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
-use crate::storage::helpers::{assemble_event_books, is_main_timeline};
+use crate::storage::helpers::{assemble_event_books, is_main_timeline, BookParts};
 use crate::storage::schema::Events;
 use crate::storage::{
-    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+    AddMeta, AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
 };
 
 /// Build an `edition` column WHERE predicate. Both main-timeline sentinels
@@ -248,7 +248,11 @@ impl SqliteEventStore {
         correlation_id: &str,
         external_id: &str,
         source_info: Option<&SourceInfo>,
+        ext: Option<&prost_types::Any>,
     ) -> Result<(u32, u32)> {
+        // Parent-routing cover, serialized once and replicated per row (mirrors
+        // correlation_id). All pages of this write share the same value.
+        let ext_bytes: Option<Vec<u8>> = ext.map(prost::Message::encode_to_vec);
         let base_sequence = {
             let query = Query::select()
                 .expr(Expr::col(Events::Sequence).max())
@@ -277,6 +281,8 @@ impl SqliteEventStore {
         let source_domain = source_info.map(|s| s.domain.as_str()).unwrap_or("");
         let source_root = source_info.map(|s| s.root.to_string()).unwrap_or_default();
         let source_seq = source_info.map(|s| s.seq as i32);
+        let source_component = source_info.map(|s| s.component.as_str()).unwrap_or("");
+        let source_command_index = source_info.map(|s| s.command_index as i32).unwrap_or(0);
 
         for event in events {
             let event_data = event.encode_to_vec();
@@ -299,7 +305,15 @@ impl SqliteEventStore {
             let edition_value = edition_to_db(edition);
             let source_edition_value = edition_to_db(source_edition);
 
-            let query = if source_info.is_some() && !source_edition.is_empty() {
+            // Persist the source claim whenever SourceInfo is non-empty —
+            // gated on the same `is_empty()` the read side uses (and the
+            // Postgres write side mirrors). The previous gate
+            // (`!source_edition.is_empty()`) was C-15-class polarity on the
+            // write side: main-timeline source covers spell the edition ""
+            // so every main-timeline deferred-idempotency claim was silently
+            // dropped, and saga-command redeliveries re-executed instead of
+            // hitting the cache.
+            let query = if source_info.is_some_and(|s| !s.is_empty()) {
                 Query::insert()
                     .into_table(Events::Table)
                     .columns([
@@ -315,8 +329,11 @@ impl SqliteEventStore {
                         Events::SourceDomain,
                         Events::SourceRoot,
                         Events::SourceSeq,
+                        Events::SourceComponent,
+                        Events::SourceCommandIndex,
                         Events::Committed,
                         Events::CascadeId,
+                        Events::Ext,
                     ])
                     .values_panic([
                         edition_value.clone(),
@@ -331,8 +348,11 @@ impl SqliteEventStore {
                         source_domain.into(),
                         source_root.clone().into(),
                         source_seq.into(),
+                        source_component.into(),
+                        source_command_index.into(),
                         committed.into(),
                         cascade_id.clone().into(),
+                        ext_bytes.clone().into(),
                     ])
                     .to_string(SqliteQueryBuilder)
             } else {
@@ -349,6 +369,7 @@ impl SqliteEventStore {
                         Events::ExternalId,
                         Events::Committed,
                         Events::CascadeId,
+                        Events::Ext,
                     ])
                     .values_panic([
                         edition_value.clone(),
@@ -361,6 +382,7 @@ impl SqliteEventStore {
                         external_id.into(),
                         committed.into(),
                         cascade_id.into(),
+                        ext_bytes.clone().into(),
                     ])
                     .to_string(SqliteQueryBuilder)
             };
@@ -414,10 +436,11 @@ impl EventStore for SqliteEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
+        let correlation_id = meta.correlation_id;
+        let external_id = meta.external_id;
+        let source_info = meta.source_info;
         if events.is_empty() {
             return Ok(AddOutcome::Added {
                 first_sequence: 0,
@@ -455,6 +478,7 @@ impl EventStore for SqliteEventStore {
             correlation_id,
             external_id,
             source_info,
+            meta.ext,
         )
         .await;
 
@@ -692,6 +716,7 @@ impl EventStore for SqliteEventStore {
                 Events::Root,
                 Events::EventData,
                 Events::Sequence,
+                Events::Ext,
             ])
             .from(Events::Table)
             .and_where(Expr::col(Events::CorrelationId).eq(correlation_id))
@@ -702,7 +727,7 @@ impl EventStore for SqliteEventStore {
 
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 
-        let mut books_map: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
+        let mut books_map: HashMap<(String, String, Uuid), BookParts> = HashMap::new();
 
         for row in rows {
             let domain: String = row.get("domain");
@@ -714,14 +739,18 @@ impl EventStore for SqliteEventStore {
             let edition: String = edition_from_db(row.get("edition"));
             let root_str: String = row.get("root");
             let event_data: Vec<u8> = row.get("event_data");
+            let ext_bytes: Option<Vec<u8>> = row.get("ext");
 
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map
-                .entry((domain, edition, root))
-                .or_default()
-                .push(event);
+            let entry = books_map.entry((domain, edition, root)).or_default();
+            entry.pages.push(event);
+            if entry.ext.is_none() {
+                if let Some(bytes) = ext_bytes {
+                    entry.ext = Some(prost_types::Any::decode(bytes.as_slice())?);
+                }
+            }
         }
 
         Ok(assemble_event_books(books_map, correlation_id))
@@ -754,6 +783,8 @@ impl EventStore for SqliteEventStore {
             .and_where(Expr::col(Events::SourceDomain).eq(&source_info.domain))
             .and_where(Expr::col(Events::SourceRoot).eq(&source_root_str))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .and_where(Expr::col(Events::SourceComponent).eq(&source_info.component))
+            .and_where(Expr::col(Events::SourceCommandIndex).eq(source_info.command_index as i32))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(SqliteQueryBuilder);
 

@@ -143,6 +143,7 @@ impl<S: EventStore + 'static> CascadeReaper<S> {
                 }),
                 correlation_id: String::new(),
                 edition: None,
+                ext: None,
             }),
             sequences: participant.sequences.clone(),
             cascade_id: cascade_id.to_string(),
@@ -151,9 +152,10 @@ impl<S: EventStore + 'static> CascadeReaper<S> {
 
         // Pack into Any. MUST use the canonical `type_url::REVOCATION` constant
         // so the 2PC visibility transform (`transform_for_two_phase`) recognizes
-        // this as a Revocation. A bare `"angzarr.Revocation"` (no prefix) is
-        // silently ignored by the transform's exact-equality match, leaving the
-        // stale `no_commit` page visible to handlers as if never revoked (C-01).
+        // this as a Revocation. The transform matches the full FQN
+        // (`io.angzarr.v1.Revocation`); a wrong or short name like
+        // `"angzarr.Revocation"` does not match, leaving the stale `no_commit`
+        // page visible to handlers as if never revoked (C-01).
         let event_any = Any {
             type_url: type_url::REVOCATION.to_string(),
             value: revocation.encode_to_vec(),
@@ -197,9 +199,8 @@ impl<S: EventStore + 'static> CascadeReaper<S> {
                 &participant.edition,
                 participant.root,
                 vec![page],
-                "", // No correlation_id for framework events
-                None,
-                None,
+                // Framework revocation event: no correlation_id / idempotency / ext.
+                &crate::storage::AddMeta::default(),
             )
             .await?;
 

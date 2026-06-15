@@ -25,11 +25,8 @@ use crate::bus::{BusError, EventHandler};
 use crate::orchestration::aggregate::{execute_command_with_retry, AggregateContextFactory};
 use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 use crate::proto::{CommandBook, CommandResponse, EventBook};
-use crate::proto_ext::CoverExt;
+use crate::proto_ext::{type_url, CoverExt};
 use crate::utils::retry::saga_backoff;
-
-/// Type URL suffix for wrapped CommandBook in bus transport.
-const COMMAND_BOOK_TYPE_SUFFIX: &str = "angzarr.CommandBook";
 
 /// Sync projector entry for per-domain projector handling.
 pub struct SyncProjectorEntry {
@@ -214,14 +211,14 @@ impl EventHandler for AggregateCommandHandler {
 /// and executes the command.
 ///
 /// # Format
-/// The CommandBook is serialized as `google.protobuf.Any` with type_url
-/// `type.googleapis.com/angzarr.CommandBook`.
+/// The CommandBook is serialized as `google.protobuf.Any` with the
+/// canonical type_url `/io.angzarr.v1.CommandBook`.
 pub fn wrap_command_for_bus(command: &CommandBook) -> EventBook {
     use crate::proto::{event_page::Payload, page_header::SequenceType, EventPage, PageHeader};
     use prost_types::Any;
 
     let any = Any {
-        type_url: format!("type.googleapis.com/{}", COMMAND_BOOK_TYPE_SUFFIX),
+        type_url: type_url::COMMAND_BOOK.to_string(),
         value: command.encode_to_vec(),
     };
 
@@ -244,7 +241,12 @@ pub fn wrap_command_for_bus(command: &CommandBook) -> EventBook {
 ///
 /// Commands delivered via bus are wrapped in EventBook format for transport.
 /// The EventBook contains a single EventPage with the CommandBook serialized
-/// as a `google.protobuf.Any` with type_url ending in `angzarr.CommandBook`.
+/// as a `google.protobuf.Any` with the canonical type_url
+/// `/io.angzarr.v1.CommandBook`.
+///
+/// The wrapper is produced and consumed by the Rust coordinator
+/// ([`wrap_command_for_bus`]), so recognition is an exact match against
+/// the canonical constant rather than a prefix-agnostic FQN check.
 ///
 /// # Format
 /// ```text
@@ -252,7 +254,7 @@ pub fn wrap_command_for_bus(command: &CommandBook) -> EventBook {
 ///   cover: { domain: "player", ... },
 ///   pages: [{
 ///     event: Any {
-///       type_url: "type.googleapis.com/angzarr.CommandBook",
+///       type_url: "/io.angzarr.v1.CommandBook",
 ///       value: <serialized CommandBook>
 ///     }
 ///   }]
@@ -269,7 +271,7 @@ fn extract_command_from_event_book(book: &EventBook) -> Option<CommandBook> {
     };
 
     // Check if this is a wrapped CommandBook
-    if !event.type_url.ends_with(COMMAND_BOOK_TYPE_SUFFIX) {
+    if event.type_url != type_url::COMMAND_BOOK {
         return None;
     }
 

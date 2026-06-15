@@ -35,10 +35,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use backon::ExponentialBuilder;
+use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
 use crate::bus::BusError;
 use crate::bus::CommandBus;
+use crate::dlq::trigger::{CodeDlqExt, DlqTrigger};
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher};
 use crate::proto::{
     page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook, PageHeader,
     SagaResponse, SyncMode,
@@ -152,6 +155,38 @@ pub trait SagaRetryContext: Send + Sync {
     fn output_domains(&self) -> &[String] {
         &[] // Default: no output domains
     }
+
+    /// Publisher for routing failed outbound commands to the DLQ.
+    ///
+    /// Returns `None` to disable DLQ publication. Production impls
+    /// SHOULD return `Some(_)` so 4xx-class rejections and 5xx-class
+    /// retry-exhausted failures are operator-observable per R2-15.
+    /// Test fakes that don't exercise DLQ paths can keep the default.
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        None
+    }
+
+    /// Component name used as `source_component` on DLQ entries.
+    ///
+    /// Defaults to `"saga"`. Override on production impls to identify
+    /// the specific saga binary in DLQ tooling.
+    fn component_name(&self) -> &str {
+        "saga"
+    }
+}
+
+/// Per-attempt accumulator shared between `SagaOperation` and
+/// `SagaRetryBuilder`. The operation pushes failed commands into it on
+/// each retry pass (clearing the prior attempt's contents first); after
+/// `run_with_retry` returns Err, the builder drains the accumulator and
+/// emits one DLQ entry per failed command.
+///
+/// `attempts` is incremented at the start of each `try_execute` pass
+/// and surfaces on the DLQ entry as `retry_count`.
+#[derive(Default)]
+struct RetryExhaustionTracker {
+    failed_commands: Vec<(CommandBook, String)>,
+    attempts: u32,
 }
 
 /// State for retryable saga command delivery.
@@ -179,6 +214,9 @@ struct SagaOperation<'a> {
     commands: Vec<CommandBook>,
     /// Tracks which domains had sequence conflicts for retry logging.
     failed_domains: HashSet<String>,
+    /// Shared accumulator the builder reads on retry exhaustion to emit
+    /// per-command DLQ entries. See [`RetryExhaustionTracker`].
+    tracker: Arc<Mutex<RetryExhaustionTracker>>,
 }
 
 #[async_trait]
@@ -195,6 +233,14 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         // we only care about which domains failed THIS attempt, not previous ones.
         // The cache persists across attempts; failed_domains is per-attempt tracking.
         self.failed_domains.clear();
+
+        // Reset the shared retry-exhaustion tracker for this attempt.
+        // On retry exhaustion, the builder reads the LAST attempt's state.
+        {
+            let mut tracker = self.tracker.lock().await;
+            tracker.failed_commands.clear();
+            tracker.attempts = tracker.attempts.saturating_add(1);
+        }
 
         for command in &self.commands {
             let mut command = command.clone();
@@ -235,10 +281,19 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
                 CommandOutcome::Retryable { reason, .. } => {
                     warn!(%domain, error = %reason, "Sequence conflict, will retry with fresh state");
                     self.failed_domains.insert(domain);
+                    // Record for potential DLQ on retry exhaustion. The
+                    // builder reads `tracker.failed_commands` after
+                    // `run_with_retry` returns Err.
+                    self.tracker
+                        .lock()
+                        .await
+                        .failed_commands
+                        .push((command.clone(), reason));
                 }
-                CommandOutcome::Rejected(reason) => {
-                    error!(%domain, error = %reason, "Saga command rejected (non-retryable)");
-                    self.context.on_command_rejected(&command, &reason).await;
+                CommandOutcome::Rejected { code, message } => {
+                    error!(%domain, ?code, error = %message, "Saga command rejected (non-retryable)");
+                    self.context.on_command_rejected(&command, &message).await;
+                    publish_immediate_rejection_dlq(self.context, &command, code, &message).await;
                 }
             }
         }
@@ -266,6 +321,77 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
         self.failed_domains.clear();
 
         Ok(())
+    }
+}
+
+/// Publish a single dead-letter for an immediate-rejection saga command.
+///
+/// Called from `SagaOperation::try_execute` on the `CommandOutcome::Rejected`
+/// arm. Gates on `classify_for_dlq` defensively: with the alignment
+/// invariant between `is_retryable_status` and `CodeDlqExt::classify_for_dlq`
+/// (locked in `utils/retry.test.rs`), a `Rejected` outcome always carries
+/// a code that classifies as `Immediate`. If a future change drifts that
+/// alignment and produces a `Rejected` with a transient code, this gate
+/// skips publication rather than mistakenly DLQ-ing what should have
+/// been retried.
+async fn publish_immediate_rejection_dlq(
+    context: &dyn SagaRetryContext,
+    command: &CommandBook,
+    code: tonic::Code,
+    message: &str,
+) {
+    if !matches!(code.classify_for_dlq(), DlqTrigger::Immediate(_)) {
+        return;
+    }
+    let Some(publisher) = context.dlq_publisher() else {
+        return;
+    };
+    let dead_letter = AngzarrDeadLetter::from_saga_command_rejection(
+        command,
+        message,
+        0,     // immediate rejection — no retries attempted
+        false, // permanent failure
+        context.component_name(),
+    );
+    let domain = command.domain();
+    if let Err(e) = publisher.publish(dead_letter).await {
+        error!(%domain, error = %e, "Failed to publish saga immediate-rejection DLQ entry");
+    }
+}
+
+/// Publish dead letters for commands that exhausted the saga retry budget.
+///
+/// Called from `SagaRetryBuilder::execute` after `run_with_retry` returns
+/// Err. Reads the final attempt's failed commands from the shared
+/// tracker. Each entry is reported as `is_transient = true` (the
+/// underlying error class was transient — we just gave up retrying).
+async fn publish_retry_exhausted_dlq(
+    context: &dyn SagaRetryContext,
+    tracker: &Mutex<RetryExhaustionTracker>,
+) {
+    let Some(publisher) = context.dlq_publisher() else {
+        return;
+    };
+    let component_name = context.component_name().to_string();
+    let snapshot = {
+        let mut tracker = tracker.lock().await;
+        let attempts = tracker.attempts;
+        let commands = std::mem::take(&mut tracker.failed_commands);
+        (attempts, commands)
+    };
+    let (attempts, failed_commands) = snapshot;
+    for (command, error) in failed_commands {
+        let domain = command.domain().to_string();
+        let dead_letter = AngzarrDeadLetter::from_saga_command_rejection(
+            &command,
+            &error,
+            attempts,
+            true, // retry-exhausted: the underlying error class was transient
+            &component_name,
+        );
+        if let Err(e) = publisher.publish(dead_letter).await {
+            error!(%domain, error = %e, "Failed to publish saga retry-exhausted DLQ entry");
+        }
     }
 }
 
@@ -326,6 +452,10 @@ impl<'a> SagaRetryBuilder<'a> {
             return;
         }
 
+        let tracker = Arc::new(Mutex::new(RetryExhaustionTracker::default()));
+        let context = self.context;
+        let tracker_for_builder = tracker.clone();
+
         let operation = SagaOperation {
             context: self.context,
             executor: self.executor,
@@ -335,10 +465,12 @@ impl<'a> SagaRetryBuilder<'a> {
             sync_mode: self.sync_mode,
             commands: self.commands,
             failed_domains: HashSet::new(),
+            tracker,
         };
 
         if let Err(e) = run_with_retry(operation, self.backoff).await {
             error!(error = %e, "Saga execution failed after multiple retries");
+            publish_retry_exhausted_dlq(context, &tracker_for_builder).await;
         }
     }
 }
@@ -420,17 +552,28 @@ pub async fn orchestrate_saga(
     //
     // 2. **Traceability**: Links the command to its triggering event for debugging/audit.
     //
-    // 3. **Idempotency**: The source + source_seq form the idempotency key for
-    //    saga-produced commands, preventing duplicate processing on retry.
+    // 3. **Idempotency**: (source, source_seq, source_component, command_index)
+    //    form the idempotency key for saga-produced commands, preventing
+    //    duplicate processing on retry. source + source_seq alone identify
+    //    only the triggering event — every command of one invocation shared
+    //    the key and all but the first were swallowed as duplicates (O1).
     //
     // Stamping strategy (per spec):
-    // - Saga already set angzarr_deferred with source_seq → preserve it entirely
-    // - Saga set angzarr_deferred but source is None → fill in source Cover, keep source_seq
+    // - Saga stamped an explicit destination sequence → honor it untouched
+    //   (D-5): the command travels as a plain sequenced command and the
+    //   destination's optimistic-concurrency gate validates it, rejecting
+    //   on mismatch. The Phase-1 destination-sequence fetch is what makes
+    //   handler stamping meaningful.
+    // - Saga set angzarr_deferred → preserve its source/source_seq (fill in
+    //   source Cover if missing)
     // - Saga didn't set angzarr_deferred → use source Cover + source_max_sequence
+    // - source_component + command_index are framework provenance (the
+    //   component's registered name and the command's position in this
+    //   invocation's output) — always stamped, never handler data.
     let source_cover = ctx.source_cover().cloned();
     let source_max_seq = ctx.source_max_sequence();
 
-    for cmd in &mut commands {
+    for (command_index, cmd) in commands.iter_mut().enumerate() {
         for page in &mut cmd.pages {
             // Preserve any per-command sync_mode the saga handler set on the
             // header before we rewrite the sequence_type for angzarr_deferred
@@ -438,20 +581,21 @@ pub async fn orchestrate_saga(
             // PM canonical pattern at process_manager/mod.rs:487.
             let preserved_sync_mode = page.header.as_ref().and_then(|h| h.sync_mode);
             match page.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+                // D-5/O13: handler-stamped explicit destination sequence —
+                // honor it; the destination validates and rejects on mismatch.
+                Some(SequenceType::Sequence(_)) => {}
                 Some(SequenceType::AngzarrDeferred(existing)) => {
-                    // Saga set angzarr_deferred - fill in source if missing, preserve source_seq
-                    if existing.source.is_none() {
-                        page.header = Some(PageHeader {
-                            sync_mode: preserved_sync_mode,
-                            sequence_type: Some(SequenceType::AngzarrDeferred(
-                                AngzarrDeferredSequence {
-                                    source: source_cover.clone(),
-                                    source_seq: existing.source_seq,
-                                },
-                            )),
-                        });
-                    }
-                    // else: saga set everything, don't touch
+                    page.header = Some(PageHeader {
+                        sync_mode: preserved_sync_mode,
+                        sequence_type: Some(SequenceType::AngzarrDeferred(
+                            AngzarrDeferredSequence {
+                                source: existing.source.clone().or_else(|| source_cover.clone()),
+                                source_seq: existing.source_seq,
+                                source_component: saga_name.to_string(),
+                                command_index: command_index as u32,
+                            },
+                        )),
+                    });
                 }
                 _ => {
                     // Saga didn't set angzarr_deferred - use defaults
@@ -461,6 +605,8 @@ pub async fn orchestrate_saga(
                             AngzarrDeferredSequence {
                                 source: source_cover.clone(),
                                 source_seq: source_max_seq,
+                                source_component: saga_name.to_string(),
+                                command_index: command_index as u32,
                             },
                         )),
                     });

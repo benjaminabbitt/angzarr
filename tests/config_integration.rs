@@ -229,9 +229,16 @@ server:
   host: "localhost"
 
 storage:
-  type: "sqlite"
-  sqlite:
-    path: "/tmp/test.db"
+  backends:
+    main:
+      type: "sqlite"
+      path: "/tmp/test.db"
+  events:
+    use: main
+  snapshots:
+    use: main
+  positions:
+    use: main
 
 transport:
   type: "tcp"
@@ -243,7 +250,9 @@ transport:
 
     assert_eq!(config.server.ch_port, 1313);
     assert_eq!(config.server.host, "localhost");
-    assert_eq!(config.storage.storage_type, "sqlite");
+    assert_eq!(config.storage.events.backend, "main");
+    assert_eq!(config.storage.backends["main"].type_name(), "sqlite");
+    assert!(config.storage.validate().is_ok());
     assert_eq!(config.transport.transport_type, TransportType::Tcp);
 }
 

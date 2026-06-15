@@ -29,9 +29,9 @@ use uuid::Uuid;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::proto_ext::EventPageExt;
-use crate::storage::helpers::is_main_timeline;
+use crate::storage::helpers::{is_main_timeline, BookParts};
 use crate::storage::{
-    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+    AddMeta, AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
 };
 
 /// DynamoDB implementation of EventStore.
@@ -258,10 +258,11 @@ impl EventStore for DynamoEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
+        let correlation_id = meta.correlation_id;
+        let external_id = meta.external_id;
+        let source_info = meta.source_info;
         if events.is_empty() {
             return Ok(AddOutcome::Added {
                 first_sequence: 0,
@@ -400,6 +401,14 @@ impl EventStore for DynamoEventStore {
                     "source_seq".to_string(),
                     AttributeValue::N(info.seq.to_string()),
                 );
+                item.insert(
+                    "source_component".to_string(),
+                    AttributeValue::S(info.component.clone()),
+                );
+                item.insert(
+                    "source_command_index".to_string(),
+                    AttributeValue::N(info.command_index.to_string()),
+                );
             }
 
             // Cascade tracking: extract from EventPage for GSI queries
@@ -410,6 +419,15 @@ impl EventStore for DynamoEventStore {
 
             if let Some(ref cid) = event.cascade_id {
                 item.insert("cascade_id".to_string(), AttributeValue::S(cid.clone()));
+            }
+
+            // Parent-routing cover (Cover.ext). Replicated per row to mirror
+            // correlation_id; omitted when the write carried none.
+            if let Some(any) = meta.ext {
+                item.insert(
+                    "ext".to_string(),
+                    AttributeValue::B(prost::Message::encode_to_vec(any).into()),
+                );
             }
 
             // C-19: ConditionExpression fences the read-then-write race.
@@ -723,7 +741,7 @@ impl EventStore for DynamoEventStore {
             .map_err(|e| StorageError::Backend(format!("DynamoDB GSI query failed: {}", e)))?;
 
         // Group events by (domain, edition, root)
-        let mut events_by_root: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
+        let mut events_by_root: HashMap<(String, String, Uuid), BookParts> = HashMap::new();
 
         if let Some(items) = result.items {
             for item in items {
@@ -733,10 +751,16 @@ impl EventStore for DynamoEventStore {
                     if let Some((domain, edition, root)) = Self::parse_pk(pk) {
                         let event = EventPage::decode(blob.as_ref())
                             .map_err(StorageError::ProtobufDecode)?;
-                        events_by_root
-                            .entry((domain, edition, root))
-                            .or_default()
-                            .push(event);
+                        let entry = events_by_root.entry((domain, edition, root)).or_default();
+                        entry.pages.push(event);
+                        if entry.ext.is_none() {
+                            if let Some(AttributeValue::B(ext_blob)) = item.get("ext") {
+                                entry.ext = Some(
+                                    prost_types::Any::decode(ext_blob.as_ref())
+                                        .map_err(StorageError::ProtobufDecode)?,
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -744,7 +768,8 @@ impl EventStore for DynamoEventStore {
 
         // Build EventBooks
         let mut books = Vec::new();
-        for ((domain, edition, root), mut pages) in events_by_root {
+        for ((domain, edition, root), parts) in events_by_root {
+            let mut pages = parts.pages;
             pages.sort_by_key(Self::get_sequence);
 
             // Calculate next_sequence from pages
@@ -761,6 +786,7 @@ impl EventStore for DynamoEventStore {
                         name: edition,
                         divergences: vec![],
                     }),
+                    ext: parts.ext,
                 }),
                 pages,
                 snapshot: None,
@@ -841,20 +867,41 @@ impl EventStore for DynamoEventStore {
         }
 
         let pk = Self::pk(domain, edition, root);
+        // Component/index clauses: rows written before these attributes
+        // existed have no backfill (unlike the SQL backends' NOT NULL
+        // DEFAULT), so a lookup carrying the pre-upgrade defaults (""/0)
+        // must also accept attribute-absent rows.
+        let component_clause = if source_info.component.is_empty() {
+            "(attribute_not_exists(source_component) OR source_component = :scomp)"
+        } else {
+            "source_component = :scomp"
+        };
+        let index_clause = if source_info.command_index == 0 {
+            "(attribute_not_exists(source_command_index) OR source_command_index = :sidx)"
+        } else {
+            "source_command_index = :sidx"
+        };
+        let filter = format!(
+            "source_edition = :sed AND source_domain = :sdo \
+             AND source_root = :sro AND source_seq = :sseq \
+             AND {component_clause} AND {index_clause}"
+        );
         let result = self
             .client
             .query()
             .table_name(&self.table_name)
             .key_condition_expression("pk = :pk")
-            .filter_expression(
-                "source_edition = :sed AND source_domain = :sdo \
-                 AND source_root = :sro AND source_seq = :sseq",
-            )
+            .filter_expression(filter)
             .expression_attribute_values(":pk", AttributeValue::S(pk))
             .expression_attribute_values(":sed", AttributeValue::S(source_info.edition.clone()))
             .expression_attribute_values(":sdo", AttributeValue::S(source_info.domain.clone()))
             .expression_attribute_values(":sro", AttributeValue::S(source_info.root.to_string()))
             .expression_attribute_values(":sseq", AttributeValue::N(source_info.seq.to_string()))
+            .expression_attribute_values(":scomp", AttributeValue::S(source_info.component.clone()))
+            .expression_attribute_values(
+                ":sidx",
+                AttributeValue::N(source_info.command_index.to_string()),
+            )
             .send()
             .await
             .map_err(|e| {

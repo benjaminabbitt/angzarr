@@ -138,6 +138,7 @@ fn trigger_event() -> EventBook {
             root: None,
             correlation_id: "corr-1".to_string(),
             edition: None,
+            ext: None,
         }),
         pages: vec![],
         snapshot: None,
@@ -342,6 +343,7 @@ impl ProcessManagerContext for PmWithSyncOverride {
             root: None,
             correlation_id: "corr-1".to_string(),
             edition: None,
+            ext: None,
         };
         Ok(PmHandleResponse {
             commands: vec![CommandBook {
@@ -486,6 +488,7 @@ fn pm_book_for_root(root_bytes: Vec<u8>, first_seq: u32, last_seq: u32) -> Event
             root: Some(ProtoUuid { value: root_bytes }),
             correlation_id: "corr-1".to_string(),
             edition: None,
+            ext: None,
         }),
         pages,
         snapshot: None,
@@ -646,6 +649,7 @@ impl ProcessManagerContext for RejectionRecordingPm {
             root: None,
             correlation_id: "corr-1".to_string(),
             edition: None,
+            ext: None,
         };
         Ok(PmHandleResponse {
             commands: vec![CommandBook {
@@ -763,6 +767,7 @@ impl ProcessManagerContext for PmWithFact {
                 root: None,
                 correlation_id: "corr-1".to_string(),
                 edition: None,
+                ext: None,
             }),
             pages: vec![],
             snapshot: None,
@@ -781,6 +786,424 @@ impl ProcessManagerContext for PmWithFact {
     ) -> CommandOutcome {
         CommandOutcome::Success(CommandResponse::default())
     }
+}
+
+// ============================================================================
+// DLQ Wiring Tests (R2-15 step 5b)
+// ============================================================================
+//
+// PM has four DLQ-relevant failure sites:
+//
+// 1. PM persist retry-exhausted (`CommandOutcome::Retryable` with the
+//    persistence backoff budget gone) -> DLQ with the failed PM event
+//    book, `is_transient=true`.
+// 2. PM persist immediate-Rejected (`CommandOutcome::Rejected` from the
+//    PM-state event store) -> DLQ with the failed PM event book,
+//    `is_transient=false`.
+// 3. PM command Rejected (the dispatch loop sees a permanent rejection
+//    from the destination aggregate or transport) -> DLQ with the
+//    failed `CommandBook` + compensation via `on_command_rejected`.
+// 4. PM H-14 Decision-mode degraded (executor returned Retryable but
+//    contract requires synchronous accept/reject) -> DLQ
+//    unconditionally with the degraded reason.
+//
+// The fakes below let each scenario be exercised in isolation.
+
+use std::sync::Arc;
+
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqError, RejectionDetails};
+
+/// Captures published dead letters for assertions.
+struct CapturingDlqPublisher {
+    captured: tokio::sync::Mutex<Vec<AngzarrDeadLetter>>,
+}
+
+impl CapturingDlqPublisher {
+    fn new() -> Self {
+        Self {
+            captured: tokio::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl DeadLetterPublisher for CapturingDlqPublisher {
+    async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
+        self.captured.lock().await.push(dead_letter);
+        Ok(())
+    }
+}
+
+/// PM context whose `persist_pm_events` outcome is parameterizable.
+/// Emits exactly one PM event book per handle so the persist site fires.
+struct DlqPersistPm {
+    persist_outcome: Box<dyn Fn() -> CommandOutcome + Send + Sync>,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+}
+
+#[async_trait]
+impl ProcessManagerContext for DlqPersistPm {
+    async fn handle(
+        &self,
+        _trigger: &EventBook,
+        _pm_state: Option<&EventBook>,
+    ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
+        use crate::proto::EventPage;
+        Ok(PmHandleResponse {
+            commands: vec![],
+            process_events: vec![EventBook {
+                cover: None,
+                pages: vec![EventPage::default()],
+                snapshot: None,
+                ..Default::default()
+            }],
+            facts: vec![],
+        })
+    }
+    async fn persist_pm_events(
+        &self,
+        _process_events: &EventBook,
+        _correlation_id: &str,
+    ) -> CommandOutcome {
+        (self.persist_outcome)()
+    }
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.dlq_publisher)
+    }
+    fn component_name(&self) -> &str {
+        "pm-test"
+    }
+}
+
+/// PM context that emits one command and persists successfully. Used to
+/// exercise the command-dispatch DLQ sites — the executor decides the
+/// command outcome.
+struct DlqCommandPm {
+    rejection_count: AtomicU32,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+    decision_mode: bool,
+}
+
+impl DlqCommandPm {
+    fn new(publisher: Arc<dyn DeadLetterPublisher>, decision_mode: bool) -> Self {
+        Self {
+            rejection_count: AtomicU32::new(0),
+            dlq_publisher: publisher,
+            decision_mode,
+        }
+    }
+}
+
+#[async_trait]
+impl ProcessManagerContext for DlqCommandPm {
+    async fn handle(
+        &self,
+        _trigger: &EventBook,
+        _pm_state: Option<&EventBook>,
+    ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
+        use crate::proto::{
+            command_page::Payload as CmdPayload, page_header::SequenceType, CommandPage,
+            MergeStrategy, PageHeader,
+        };
+        let sync_mode = if self.decision_mode {
+            Some(SyncMode::Decision as i32)
+        } else {
+            None
+        };
+        let header = PageHeader {
+            sequence_type: Some(SequenceType::Sequence(0)),
+            sync_mode,
+        };
+        let page = CommandPage {
+            header: Some(header),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            payload: Some(CmdPayload::Command(prost_types::Any {
+                type_url: "test.PmCommand".to_string(),
+                value: vec![],
+            })),
+        };
+        let cover = Cover {
+            domain: "fulfillment".to_string(),
+            root: None,
+            correlation_id: "corr-1".to_string(),
+            edition: None,
+            ext: None,
+        };
+        Ok(PmHandleResponse {
+            commands: vec![CommandBook {
+                cover: Some(cover),
+                pages: vec![page],
+            }],
+            process_events: vec![],
+            facts: vec![],
+        })
+    }
+    async fn persist_pm_events(
+        &self,
+        _process_events: &EventBook,
+        _correlation_id: &str,
+    ) -> CommandOutcome {
+        CommandOutcome::Success(CommandResponse::default())
+    }
+    async fn on_command_rejected(
+        &self,
+        _command: &CommandBook,
+        _reason: &str,
+        _correlation_id: &str,
+    ) {
+        self.rejection_count.fetch_add(1, Ordering::SeqCst);
+    }
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.dlq_publisher)
+    }
+    fn component_name(&self) -> &str {
+        "pm-test"
+    }
+}
+
+/// Executor that returns a parameterized Rejected outcome.
+struct CodeRejectingExecutor {
+    code: tonic::Code,
+    message: String,
+}
+
+#[async_trait]
+impl CommandExecutor for CodeRejectingExecutor {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        CommandOutcome::Rejected {
+            code: self.code,
+            message: self.message.clone(),
+        }
+    }
+}
+
+/// PM persist retry-exhaustion publishes a dead letter for the failed
+/// event book and `is_transient=true`.
+#[tokio::test]
+async fn pm_persist_retry_exhausted_publishes_dead_letter() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqPersistPm {
+        persist_outcome: Box::new(|| CommandOutcome::Retryable {
+            reason: "Sequence conflict".to_string(),
+            current_state: None,
+        }),
+        dlq_publisher: publisher.clone(),
+    };
+    let trigger = trigger_event();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &NoOpExecutor,
+        None,
+        &trigger,
+        "pm-test",
+        "pm-test",
+        "corr-1",
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+
+    assert!(result.is_err(), "retry exhaustion must propagate Err");
+    let captured = publisher.captured.lock().await;
+    assert_eq!(
+        captured.len(),
+        1,
+        "expected one persist retry-exhausted DLQ entry"
+    );
+    let dl = &captured[0];
+    assert_eq!(dl.source_component_type, "process_manager");
+    assert_eq!(dl.source_component, "pm-test");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert!(details.is_transient, "retry-exhausted is transient");
+            assert!(
+                details.retry_count > 0,
+                "retry-exhausted reports the attempt count, got {}",
+                details.retry_count
+            );
+            assert!(details.error.contains("Sequence conflict"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// PM persist immediate-rejection publishes a dead letter for the failed
+/// event book with `retry_count=0`, `is_transient=false`.
+#[tokio::test]
+async fn pm_persist_immediate_rejection_publishes_dead_letter() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqPersistPm {
+        persist_outcome: Box::new(|| CommandOutcome::Rejected {
+            code: tonic::Code::InvalidArgument,
+            message: "schema mismatch".to_string(),
+        }),
+        dlq_publisher: publisher.clone(),
+    };
+    let trigger = trigger_event();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &NoOpExecutor,
+        None,
+        &trigger,
+        "pm-test",
+        "pm-test",
+        "corr-1",
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+
+    assert!(result.is_err(), "immediate rejection must propagate Err");
+    let captured = publisher.captured.lock().await;
+    assert_eq!(
+        captured.len(),
+        1,
+        "expected one persist immediate-rejection DLQ entry"
+    );
+    let dl = &captured[0];
+    assert_eq!(dl.source_component_type, "process_manager");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert_eq!(details.retry_count, 0, "immediate path: zero retries");
+            assert!(!details.is_transient, "immediate rejection is permanent");
+            assert!(details.error.contains("schema mismatch"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// 4xx PM command rejection publishes a dead letter immediately alongside
+/// `on_command_rejected` for compensation.
+#[tokio::test]
+async fn pm_4xx_command_rejection_publishes_dead_letter_immediately() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqCommandPm::new(publisher.clone(), false);
+    let executor = CodeRejectingExecutor {
+        code: tonic::Code::InvalidArgument,
+        message: "bad command".to_string(),
+    };
+    let trigger = trigger_event();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &executor,
+        None,
+        &trigger,
+        "pm-test",
+        "pm-test",
+        "corr-1",
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "command rejection does not fail orchestrate_pm"
+    );
+    assert_eq!(
+        ctx.rejection_count.load(Ordering::SeqCst),
+        1,
+        "compensation still runs alongside DLQ publish"
+    );
+    let captured = publisher.captured.lock().await;
+    assert_eq!(
+        captured.len(),
+        1,
+        "expected one command-rejection DLQ entry"
+    );
+    let dl = &captured[0];
+    assert_eq!(dl.source_component_type, "process_manager");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert_eq!(details.retry_count, 0);
+            assert!(!details.is_transient);
+            assert!(details.error.contains("bad command"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// H-14: a Decision-mode command whose executor returns Retryable must
+/// publish a dead letter unconditionally (no `tonic::Code` available,
+/// the contract loss IS the rejection).
+#[tokio::test]
+async fn pm_h14_decision_degraded_publishes_dead_letter() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqCommandPm::new(publisher.clone(), true);
+    let executor = AlwaysRetryableExecutor;
+    let trigger = trigger_event();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &executor,
+        None,
+        &trigger,
+        "pm-test",
+        "pm-test",
+        "corr-1",
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+
+    assert!(result.is_err(), "H-14 degraded path surfaces an Err");
+    assert_eq!(
+        ctx.rejection_count.load(Ordering::SeqCst),
+        1,
+        "compensation runs alongside the H-14 DLQ publish"
+    );
+    let captured = publisher.captured.lock().await;
+    assert_eq!(captured.len(), 1, "expected one H-14 degraded DLQ entry");
+    let dl = &captured[0];
+    assert_eq!(dl.source_component_type, "process_manager");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert!(!details.is_transient);
+            assert!(
+                details.error.contains("SYNC_MODE_DECISION"),
+                "degraded reason should name the contract that was lost, got: {}",
+                details.error
+            );
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// Successful orchestration emits no dead letters.
+#[tokio::test]
+async fn pm_2xx_success_does_not_publish() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqCommandPm::new(publisher.clone(), false);
+    let trigger = trigger_event();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &NoOpExecutor,
+        None,
+        &trigger,
+        "pm-test",
+        "pm-test",
+        "corr-1",
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let captured = publisher.captured.lock().await;
+    assert!(
+        captured.is_empty(),
+        "success path must not publish dead letters, got {} entries",
+        captured.len()
+    );
 }
 
 /// H-15 (PM side): emitting facts with no `FactExecutor` wired must fail
@@ -817,4 +1240,189 @@ async fn test_orchestrate_pm_refuses_facts_without_fact_executor() {
              missing wiring. Got: {msg}"
         );
     }
+}
+
+// ============================================================================
+// O1 + D-5/O13: provenance stamping (component + command_index) and
+// honoring handler-stamped explicit sequences
+// ============================================================================
+
+use crate::proto::{
+    command_page::Payload as CmdPayload, page_header::SequenceType, AngzarrDeferredSequence,
+    CommandPage, MergeStrategy, PageHeader,
+};
+
+/// Executor that captures each CommandBook so tests can inspect the
+/// rewritten page headers `execute_pm_commands` produced.
+struct BookCapturingExecutor {
+    seen: tokio::sync::Mutex<Vec<CommandBook>>,
+}
+
+impl BookCapturingExecutor {
+    fn new() -> Self {
+        Self {
+            seen: tokio::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl CommandExecutor for BookCapturingExecutor {
+    async fn execute(&self, command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        self.seen.lock().await.push(command);
+        CommandOutcome::Success(CommandResponse::default())
+    }
+}
+
+/// PM context that emits one command per entry in `headers`, all to the
+/// same destination, so tests can drive each arm of the stamping rewrite.
+struct PmEmittingHeaders {
+    headers: Vec<Option<PageHeader>>,
+}
+
+#[async_trait]
+impl ProcessManagerContext for PmEmittingHeaders {
+    async fn handle(
+        &self,
+        _trigger: &EventBook,
+        _pm_state: Option<&EventBook>,
+    ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let commands = self
+            .headers
+            .iter()
+            .map(|header| CommandBook {
+                cover: Some(Cover {
+                    domain: "fulfillment".to_string(),
+                    root: None,
+                    correlation_id: "corr-1".to_string(),
+                    edition: None,
+                    ext: None,
+                }),
+                pages: vec![CommandPage {
+                    header: header.clone(),
+                    merge_strategy: MergeStrategy::MergeCommutative as i32,
+                    payload: Some(CmdPayload::Command(prost_types::Any {
+                        type_url: "test.PmCommand".to_string(),
+                        value: vec![],
+                    })),
+                }],
+            })
+            .collect();
+        Ok(PmHandleResponse {
+            commands,
+            process_events: vec![],
+            facts: vec![],
+        })
+    }
+    async fn persist_pm_events(
+        &self,
+        _process_events: &EventBook,
+        _correlation_id: &str,
+    ) -> CommandOutcome {
+        CommandOutcome::Success(CommandResponse::default())
+    }
+}
+
+fn captured_deferred(book: &CommandBook) -> &AngzarrDeferredSequence {
+    match book
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+    {
+        Some(SequenceType::AngzarrDeferred(d)) => d,
+        other => panic!("expected AngzarrDeferred header, got {other:?}"),
+    }
+}
+
+/// O1: every command of one PM invocation gets the framework-stamped
+/// provenance — the PM's registered name and its position in the emitted
+/// command list. Without these, all commands of the invocation share one
+/// deferred-idempotency key and the destination swallows all but the first.
+#[tokio::test]
+async fn test_pm_stamps_component_and_command_index() {
+    let ctx = PmEmittingHeaders {
+        headers: vec![None, None],
+    };
+    let executor = BookCapturingExecutor::new();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &executor,
+        None,
+        &trigger_event(),
+        "pmg-fulfillment",
+        "fulfillment-pm",
+        "corr-1",
+        SyncMode::Async,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_pm should succeed");
+
+    let captured = executor.seen.lock().await;
+    assert_eq!(captured.len(), 2, "expected both commands through executor");
+    for (i, book) in captured.iter().enumerate() {
+        let deferred = captured_deferred(book);
+        assert_eq!(
+            deferred.source_component, "pmg-fulfillment",
+            "command {i} must carry the PM's registered name"
+        );
+        assert_eq!(
+            deferred.command_index, i as u32,
+            "command {i} must carry its position in the invocation's output"
+        );
+        let source = deferred
+            .source
+            .as_ref()
+            .expect("default arm must stamp the PM's own cover for rejection routing");
+        assert_eq!(
+            source.domain, "fulfillment-pm",
+            "rejections route back to the PM's domain"
+        );
+    }
+}
+
+/// D-5/O13: a handler-stamped explicit destination sequence is HONORED —
+/// the rewrite must not overwrite it with AngzarrDeferred. The command
+/// travels as a plain sequenced command; the destination's
+/// optimistic-concurrency gate validates it and rejects on mismatch.
+/// Pre-fix the default match arm clobbered `Sequence(n)` silently.
+#[tokio::test]
+async fn test_pm_honors_handler_stamped_explicit_sequence() {
+    let ctx = PmEmittingHeaders {
+        headers: vec![Some(PageHeader {
+            sync_mode: None,
+            sequence_type: Some(SequenceType::Sequence(9)),
+        })],
+    };
+    let executor = BookCapturingExecutor::new();
+
+    let result = orchestrate_pm(
+        &ctx,
+        &NoOpFetcher,
+        &executor,
+        None,
+        &trigger_event(),
+        "pmg-fulfillment",
+        "fulfillment-pm",
+        "corr-1",
+        SyncMode::Async,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_pm should succeed");
+
+    let captured = executor.seen.lock().await;
+    let header = captured[0]
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .expect("page should keep its header");
+    assert_eq!(
+        header.sequence_type,
+        Some(SequenceType::Sequence(9)),
+        "handler-stamped explicit sequence must travel to the destination untouched (D-5)"
+    );
 }

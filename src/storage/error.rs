@@ -20,7 +20,6 @@ pub mod errmsg {
     pub const REDIS_ERROR: &str = "Redis error: ";
     pub const NOT_IMPLEMENTED: &str = "Not implemented: ";
     pub const BACKEND_ERROR: &str = "Backend error: ";
-    pub const NATS_ERROR: &str = "NATS error: ";
     pub const UNKNOWN_TYPE: &str = "Unknown storage type: ";
     pub const MAIN_TIMELINE_PROTECTED: &str = "Main timeline is protected: ";
 }
@@ -74,10 +73,6 @@ pub enum StorageError {
     /// trait method exists; the runtime call just failed.
     #[error("{}{}", errmsg::BACKEND_ERROR, .0)]
     Backend(String),
-
-    #[cfg(feature = "nats")]
-    #[error("{}{}", errmsg::NATS_ERROR, .0)]
-    Nats(String),
 
     #[error("{}{}", errmsg::UNKNOWN_TYPE, .0)]
     UnknownType(String),

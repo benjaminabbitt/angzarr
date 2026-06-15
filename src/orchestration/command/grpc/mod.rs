@@ -88,7 +88,10 @@ impl CommandExecutor for GrpcCommandExecutor {
                     current_state,
                 }
             }
-            Err(e) => CommandOutcome::Rejected(e.message().to_string()),
+            Err(e) => CommandOutcome::Rejected {
+                code: e.code(),
+                message: e.message().to_string(),
+            },
         }
     }
 }

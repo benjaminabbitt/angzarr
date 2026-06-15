@@ -87,8 +87,19 @@ pub trait EventBus: Send + Sync {
 
     /// Start consuming events (for bus implementations that require explicit start).
     ///
-    /// Most implementations (AMQP, Kafka) start consuming automatically after subscribe.
-    /// IPC requires explicit start because it spawns a blocking reader thread.
+    /// Readiness contract (T10): when this returns `Ok`, the consumer is
+    /// ESTABLISHED — every event published afterwards is eligible for
+    /// delivery to the registered handlers. Implementations must not
+    /// return before the receiving entity exists on the broker (queue
+    /// declared + bound, subscription created) or, for log-retaining
+    /// transports, before the subscription is registered such that
+    /// retention covers the gap (Kafka: `auto.offset.reset=earliest`).
+    /// Callers may publish immediately after this resolves without a
+    /// grace period; delivery latency remains transport-dependent.
+    ///
+    /// If the broker is unreachable, implementations should wait through
+    /// their reconnect/backoff path until the first successful attach
+    /// rather than resolve early.
     ///
     /// Default implementation is a no-op for backwards compatibility.
     async fn start_consuming(&self) -> Result<()> {
@@ -139,7 +150,9 @@ pub trait EventBus: Send + Sync {
 /// - The domain matches the target's domain
 /// - AND either:
 ///   - The target has no types (matches all events from domain)
-///   - OR at least one event in the book has a type_url ending with a target type
+///   - OR at least one event in the book has a `type_url` that
+///     matches a target type per [`Target::matches_type`]
+///     (token-boundary, not substring suffix)
 ///
 /// # Example
 /// ```ignore
@@ -167,7 +180,7 @@ pub fn target_matches(book: &EventBook, target: &Target) -> bool {
     // Check if any event matches any target type
     book.pages.iter().any(|page| {
         if let Some(crate::proto::event_page::Payload::Event(event)) = &page.payload {
-            target.types.iter().any(|t| event.type_url.ends_with(t))
+            target.matches_type(&event.type_url)
         } else {
             false
         }

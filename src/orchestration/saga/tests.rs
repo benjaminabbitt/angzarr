@@ -152,7 +152,10 @@ struct RejectingExecutor;
 #[async_trait]
 impl CommandExecutor for RejectingExecutor {
     async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
-        CommandOutcome::Rejected("Business rule violation".to_string())
+        CommandOutcome::Rejected {
+            code: tonic::Code::FailedPrecondition,
+            message: "Business rule violation".to_string(),
+        }
     }
 }
 
@@ -329,6 +332,7 @@ impl CommandExecutor for RetryableWithStateExecutor {
                     }),
                     correlation_id: "corr-1".to_string(),
                     edition: None,
+                    ext: None,
                 }),
                 pages: vec![],
                 snapshot: None,
@@ -452,6 +456,7 @@ impl SagaRetryContext for SagaWithExistingDeferredAndSyncMode {
             sequence_type: Some(SequenceType::AngzarrDeferred(AngzarrDeferredSequence {
                 source: None,
                 source_seq: 7,
+                ..Default::default()
             })),
         };
         let page = CommandPage {
@@ -767,5 +772,573 @@ async fn test_orchestrate_saga_threads_sync_mode_to_context_handle() {
         *recorded,
         Some(SyncMode::Decision),
         "H-17: orchestrate_saga must thread its sync_mode argument into SagaRetryContext::handle"
+    );
+}
+
+// ============================================================================
+// DLQ Wiring Tests (R2-15 step 5a)
+// ============================================================================
+//
+// Saga has two DLQ sites:
+//
+// 1. Immediate-rejection: `CommandOutcome::Rejected` whose `tonic::Code`
+//    classifies as `DlqTrigger::Immediate` (4xx-class). No retry happens;
+//    DLQ entry is published from inside `try_execute`.
+//
+// 2. Retry-exhausted: `CommandOutcome::Retryable` (5xx-class transient
+//    or sequence-conflict FailedPrecondition) where the backoff budget
+//    is exhausted. DLQ entries are published from
+//    `SagaRetryBuilder::execute` for every command in the final
+//    attempt's failure set.
+//
+// The test fakes below capture published dead letters so each scenario
+// can assert exactly which entries were emitted.
+
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, DlqError, RejectionDetails};
+use async_trait::async_trait as test_async_trait;
+
+/// Captures published dead letters for assertions.
+struct CapturingDlqPublisher {
+    captured: AsyncMutex<Vec<AngzarrDeadLetter>>,
+}
+
+impl CapturingDlqPublisher {
+    fn new() -> Self {
+        Self {
+            captured: AsyncMutex::new(Vec::new()),
+        }
+    }
+}
+
+#[test_async_trait]
+impl DeadLetterPublisher for CapturingDlqPublisher {
+    async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
+        self.captured.lock().await.push(dead_letter);
+        Ok(())
+    }
+}
+
+/// Saga context that wires a `dlq_publisher`. All other methods are
+/// minimal — handle returns empty, source_cover returns None. The
+/// DLQ-wiring tests construct commands and feed them through
+/// `SagaRetryBuilder` directly, so the saga-handle path doesn't need
+/// to do anything.
+struct DlqAwareContext {
+    publisher: Arc<dyn DeadLetterPublisher>,
+    rejection_count: AtomicU32,
+}
+
+impl DlqAwareContext {
+    fn new(publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        Self {
+            publisher,
+            rejection_count: AtomicU32::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl SagaRetryContext for DlqAwareContext {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+        _sync_mode: SyncMode,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(SagaResponse::default())
+    }
+    async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
+        self.rejection_count.fetch_add(1, Ordering::SeqCst);
+    }
+    fn source_cover(&self) -> Option<&Cover> {
+        None
+    }
+    fn source_max_sequence(&self) -> u32 {
+        0
+    }
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.publisher)
+    }
+    fn component_name(&self) -> &str {
+        "saga-test"
+    }
+}
+
+/// Executor that always rejects with a given `tonic::Code`.
+struct CodeRejectingExecutor {
+    code: tonic::Code,
+    message: String,
+}
+
+#[async_trait]
+impl CommandExecutor for CodeRejectingExecutor {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        CommandOutcome::Rejected {
+            code: self.code,
+            message: self.message.clone(),
+        }
+    }
+}
+
+/// Executor that always returns Retryable. Forces retry-exhaustion.
+struct AlwaysRetryableExecutor {
+    reason: String,
+}
+
+#[async_trait]
+impl CommandExecutor for AlwaysRetryableExecutor {
+    async fn execute(&self, _command: CommandBook, _sync_mode: SyncMode) -> CommandOutcome {
+        CommandOutcome::Retryable {
+            reason: self.reason.clone(),
+            current_state: None,
+        }
+    }
+}
+
+/// 4xx-class command rejection publishes a dead letter immediately.
+///
+/// `InvalidArgument` is a permanent error per
+/// `CodeDlqExt::classify_for_dlq` → `Immediate`. The saga must publish
+/// a DLQ entry from inside `try_execute` (not wait for retry exhaustion)
+/// AND still invoke `on_command_rejected` for compensation. This is
+/// the R2-15 immediate-DLQ contract for sagas.
+#[tokio::test]
+async fn saga_4xx_command_rejection_publishes_dead_letter_immediately() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqAwareContext::new(publisher.clone());
+    let executor = CodeRejectingExecutor {
+        code: tonic::Code::InvalidArgument,
+        message: "schema mismatch".to_string(),
+    };
+    let commands = vec![CommandBook::default()];
+
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Simple)
+        .commands(commands)
+        .backoff(fast_backoff())
+        .execute()
+        .await;
+
+    // Compensation still runs (existing contract).
+    assert_eq!(
+        ctx.rejection_count.load(Ordering::SeqCst),
+        1,
+        "on_command_rejected must fire alongside the DLQ publish"
+    );
+
+    // Exactly one DLQ entry was published with the right shape.
+    let captured = publisher.captured.lock().await;
+    assert_eq!(
+        captured.len(),
+        1,
+        "expected one immediate-rejection DLQ entry"
+    );
+    let dl = &captured[0];
+    assert_eq!(dl.source_component, "saga-test");
+    assert_eq!(dl.source_component_type, "saga");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert_eq!(
+                details.retry_count, 0,
+                "immediate path: zero retries attempted"
+            );
+            assert!(!details.is_transient, "4xx is permanent");
+            assert!(details.error.contains("schema mismatch"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// 5xx-class transient failure retries until exhausted, then publishes DLQ.
+///
+/// `Unavailable` is transient per `classify_for_dlq` → `RetryThenDlq`.
+/// The framework's broadened `is_retryable_status` routes it into the
+/// retry loop. When the backoff budget is exhausted, the saga must
+/// publish a DLQ entry per failed command from
+/// `SagaRetryBuilder::execute`. This is the R2-15 retry-then-DLQ
+/// contract for sagas.
+///
+/// Note: because the gRPC `CommandExecutor` is what translates a
+/// `tonic::Status` into either `Retryable` or `Rejected` (via
+/// `is_retryable_status`), this test fakes the executor directly with
+/// `Retryable` to exercise the retry-exhausted DLQ path without
+/// spinning up a transport.
+#[tokio::test]
+async fn saga_5xx_command_rejection_retries_then_publishes_dead_letter() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqAwareContext::new(publisher.clone());
+    let executor = AlwaysRetryableExecutor {
+        reason: "Unavailable: broker down".to_string(),
+    };
+    let commands = vec![CommandBook::default()];
+
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Simple)
+        .commands(commands)
+        .backoff(fast_backoff())
+        .execute()
+        .await;
+
+    // No compensation: retries exhausted is NOT a permanent business
+    // rejection in the saga's mental model, so on_command_rejected is
+    // not invoked (only Rejected outcomes invoke it). Verify that.
+    assert_eq!(
+        ctx.rejection_count.load(Ordering::SeqCst),
+        0,
+        "retry exhaustion does not invoke on_command_rejected"
+    );
+
+    // Exactly one DLQ entry was published for the single command that
+    // failed on the final attempt.
+    let captured = publisher.captured.lock().await;
+    assert_eq!(captured.len(), 1, "expected one retry-exhausted DLQ entry");
+    let dl = &captured[0];
+    assert_eq!(dl.source_component, "saga-test");
+    assert_eq!(dl.source_component_type, "saga");
+    match &dl.rejection_details {
+        Some(RejectionDetails::EventProcessingFailed(details)) => {
+            assert!(
+                details.retry_count > 0,
+                "retry-exhausted path: attempts > 0, got {}",
+                details.retry_count
+            );
+            assert!(details.is_transient, "5xx is transient");
+            assert!(details.error.contains("Unavailable"));
+        }
+        other => panic!("expected EventProcessingFailed, got {other:?}"),
+    }
+}
+
+/// Successful command execution publishes no dead letter.
+///
+/// Pins the "no false positives" half of the contract: the DLQ wiring
+/// must not emit entries on the happy path. Otherwise operators would
+/// be flooded by every successful saga.
+#[tokio::test]
+async fn saga_2xx_success_does_not_publish() {
+    let publisher = Arc::new(CapturingDlqPublisher::new());
+    let ctx = DlqAwareContext::new(publisher.clone());
+    let executor = SuccessExecutor;
+    let commands = vec![CommandBook::default()];
+
+    SagaRetryBuilder::new(&ctx, &executor, "test-saga", "corr-1", SyncMode::Simple)
+        .commands(commands)
+        .backoff(fast_backoff())
+        .execute()
+        .await;
+
+    let captured = publisher.captured.lock().await;
+    assert!(
+        captured.is_empty(),
+        "success path must not publish any dead letters, got {} entries",
+        captured.len()
+    );
+}
+
+// ============================================================================
+// O1 + D-5/O13: provenance stamping (component + command_index) and
+// honoring handler-stamped explicit sequences
+// ============================================================================
+
+/// Saga context that emits one command per entry in `headers`, all to the
+/// same destination, so tests can drive each arm of the stamping rewrite.
+struct SagaEmittingHeaders {
+    headers: Vec<Option<PageHeader>>,
+    source: Option<Cover>,
+}
+
+#[async_trait]
+impl SagaRetryContext for SagaEmittingHeaders {
+    async fn handle(
+        &self,
+        _destination_sequences: HashMap<String, u32>,
+        _sync_mode: SyncMode,
+    ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let commands = self
+            .headers
+            .iter()
+            .map(|header| CommandBook {
+                cover: Some(Cover {
+                    domain: "inventory".to_string(),
+                    correlation_id: "corr-1".to_string(),
+                    ..Default::default()
+                }),
+                pages: vec![CommandPage {
+                    header: header.clone(),
+                    merge_strategy: MergeStrategy::MergeCommutative as i32,
+                    payload: Some(CmdPayload::Command(prost_types::Any {
+                        type_url: "test.SagaCommand".to_string(),
+                        value: vec![],
+                    })),
+                }],
+            })
+            .collect();
+        Ok(SagaResponse {
+            commands,
+            events: vec![],
+        })
+    }
+    async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+    fn source_cover(&self) -> Option<&Cover> {
+        self.source.as_ref()
+    }
+    fn source_max_sequence(&self) -> u32 {
+        4
+    }
+}
+
+fn orders_source_cover() -> Cover {
+    Cover {
+        domain: "orders".to_string(),
+        root: Some(crate::proto::Uuid {
+            value: uuid::Uuid::new_v4().as_bytes().to_vec(),
+        }),
+        correlation_id: "corr-1".to_string(),
+        ..Default::default()
+    }
+}
+
+fn captured_deferred(book: &CommandBook) -> &AngzarrDeferredSequence {
+    match book
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .and_then(|h| h.sequence_type.as_ref())
+    {
+        Some(SequenceType::AngzarrDeferred(d)) => d,
+        other => panic!("expected AngzarrDeferred header, got {other:?}"),
+    }
+}
+
+/// O1: every command of one invocation gets the framework-stamped
+/// provenance — the saga's registered name and its position in the emitted
+/// command list. Without these, all commands of the invocation share one
+/// deferred-idempotency key and the destination swallows all but the first.
+#[tokio::test]
+async fn test_saga_stamps_component_and_command_index() {
+    let source = orders_source_cover();
+    let ctx = SagaEmittingHeaders {
+        headers: vec![None, None],
+        source: Some(source.clone()),
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        None,
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = executor.seen.lock().await;
+    assert_eq!(captured.len(), 2, "expected both commands through executor");
+    for (i, book) in captured.iter().enumerate() {
+        let deferred = captured_deferred(book);
+        assert_eq!(
+            deferred.source_component, "saga-orders-inventory",
+            "command {i} must carry the saga's registered name"
+        );
+        assert_eq!(
+            deferred.command_index, i as u32,
+            "command {i} must carry its position in the invocation's output"
+        );
+        assert_eq!(
+            deferred.source_seq, 4,
+            "default arm must stamp source_max_sequence"
+        );
+        assert_eq!(
+            deferred.source.as_ref(),
+            Some(&source),
+            "default arm must stamp the triggering aggregate's cover"
+        );
+    }
+}
+
+/// O1: a handler-set angzarr_deferred keeps its source_seq, but component +
+/// command_index are framework provenance and are stamped regardless — a
+/// handler cannot opt back into the colliding key.
+#[tokio::test]
+async fn test_saga_stamps_component_and_index_on_handler_set_deferred() {
+    let source = orders_source_cover();
+    let ctx = SagaEmittingHeaders {
+        headers: vec![Some(PageHeader {
+            sync_mode: None,
+            sequence_type: Some(SequenceType::AngzarrDeferred(AngzarrDeferredSequence {
+                source: None,
+                source_seq: 7,
+                ..Default::default()
+            })),
+        })],
+        source: Some(source.clone()),
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        None,
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = executor.seen.lock().await;
+    let deferred = captured_deferred(&captured[0]);
+    assert_eq!(
+        deferred.source_seq, 7,
+        "handler-set source_seq must be preserved"
+    );
+    assert_eq!(deferred.source_component, "saga-orders-inventory");
+    assert_eq!(deferred.command_index, 0);
+    assert_eq!(
+        deferred.source.as_ref(),
+        Some(&source),
+        "missing source must be filled in from the triggering cover"
+    );
+}
+
+/// D-5/O13: a handler-stamped explicit destination sequence is HONORED —
+/// the rewrite must not overwrite it with AngzarrDeferred. The command
+/// travels as a plain sequenced command; the destination's
+/// optimistic-concurrency gate validates it and rejects on mismatch.
+/// Pre-fix the default match arm clobbered `Sequence(n)` silently.
+#[tokio::test]
+async fn test_saga_honors_handler_stamped_explicit_sequence() {
+    let ctx = SagaEmittingHeaders {
+        headers: vec![Some(PageHeader {
+            sync_mode: Some(SyncMode::Decision as i32),
+            sequence_type: Some(SequenceType::Sequence(12)),
+        })],
+        source: None,
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        None,
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = executor.seen.lock().await;
+    let header = captured[0]
+        .pages
+        .first()
+        .and_then(|p| p.header.as_ref())
+        .expect("page should keep its header");
+    assert_eq!(
+        header.sequence_type,
+        Some(SequenceType::Sequence(12)),
+        "handler-stamped explicit sequence must travel to the destination untouched (D-5)"
+    );
+    assert_eq!(
+        header.sync_mode,
+        Some(SyncMode::Decision as i32),
+        "untouched header keeps its sync_mode override too"
+    );
+}
+
+/// The Phase-1 destination-sequence fetch gate: when the saga declares
+/// output_domains, the orchestrator must fetch each destination's
+/// next_sequence (by correlation) and hand the populated map to handle().
+/// D-5 made this fetch load-bearing — handler-stamped explicit sequences
+/// are now honored at the destination, and they come from this map.
+/// Kills the `delete !` mutant on the `!output_domains.is_empty()` gate
+/// (inverted, the fetch only runs when there is nothing to fetch).
+#[tokio::test]
+async fn test_saga_fetches_destination_sequences_for_output_domains() {
+    struct CapturingSequencesSaga {
+        domains: Vec<String>,
+        seen: Arc<std::sync::Mutex<Option<HashMap<String, u32>>>>,
+    }
+
+    #[async_trait]
+    impl SagaRetryContext for CapturingSequencesSaga {
+        async fn handle(
+            &self,
+            destination_sequences: HashMap<String, u32>,
+            _sync_mode: SyncMode,
+        ) -> Result<SagaResponse, Box<dyn std::error::Error + Send + Sync>> {
+            *self.seen.lock().unwrap() = Some(destination_sequences);
+            Ok(SagaResponse::default())
+        }
+        async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+        fn source_cover(&self) -> Option<&Cover> {
+            None
+        }
+        fn source_max_sequence(&self) -> u32 {
+            0
+        }
+        fn output_domains(&self) -> &[String] {
+            &self.domains
+        }
+    }
+
+    struct SequenceFetcher;
+
+    #[async_trait]
+    impl crate::orchestration::destination::DestinationFetcher for SequenceFetcher {
+        async fn fetch(&self, _cover: &Cover) -> Option<EventBook> {
+            None
+        }
+        async fn fetch_by_correlation(
+            &self,
+            domain: &str,
+            _correlation_id: &str,
+        ) -> Option<EventBook> {
+            assert_eq!(domain, "inventory");
+            Some(EventBook {
+                next_sequence: 5,
+                ..Default::default()
+            })
+        }
+    }
+
+    let seen = Arc::new(std::sync::Mutex::new(None));
+    let ctx = CapturingSequencesSaga {
+        domains: vec!["inventory".to_string()],
+        seen: seen.clone(),
+    };
+    let executor = CapturingExecutor::new();
+
+    let result = orchestrate_saga(
+        &ctx,
+        &executor,
+        None,
+        Some(&SequenceFetcher),
+        None,
+        "saga-orders-inventory",
+        "corr-1",
+        None,
+        SyncMode::Simple,
+        fast_backoff(),
+    )
+    .await;
+    assert!(result.is_ok(), "orchestrate_saga should succeed");
+
+    let captured = seen.lock().unwrap().clone();
+    assert_eq!(
+        captured,
+        Some(HashMap::from([("inventory".to_string(), 5)])),
+        "handle() must receive the fetched destination sequence for every output domain"
     );
 }

@@ -18,9 +18,9 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
-use crate::storage::helpers::{assemble_event_books, is_main_timeline};
+use crate::storage::helpers::{assemble_event_books, is_main_timeline, BookParts};
 use crate::storage::schema::Events;
-use crate::storage::{AddOutcome, EventStore, Result, SourceInfo, StorageError};
+use crate::storage::{AddMeta, AddOutcome, EventStore, Result, SourceInfo, StorageError};
 
 /// Decode a BLOB column from immudb.
 ///
@@ -340,10 +340,11 @@ impl EventStore for ImmudbEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
+        let correlation_id = meta.correlation_id;
+        let external_id = meta.external_id;
+        let source_info = meta.source_info;
         if events.is_empty() {
             return Ok(AddOutcome::Added {
                 first_sequence: 0,
@@ -441,26 +442,42 @@ impl EventStore for ImmudbEventStore {
             } else {
                 format!("'{}'", external_id.replace('\'', "''"))
             };
-            let (source_edition_lit, source_domain_lit, source_root_lit, source_seq_lit) =
-                if let Some(info) = source_info.filter(|s| !s.is_empty()) {
-                    (
-                        format!("'{}'", info.edition.replace('\'', "''")),
-                        format!("'{}'", info.domain.replace('\'', "''")),
-                        format!("'{}'", info.root),
-                        info.seq.to_string(),
-                    )
-                } else {
-                    (
-                        "NULL".to_string(),
-                        "NULL".to_string(),
-                        "NULL".to_string(),
-                        "NULL".to_string(),
-                    )
-                };
+            // Parent-routing cover (Cover.ext) → BLOB hex literal, replicated
+            // per row to mirror correlation_id. NULL when the write carried none.
+            let cover_ext_lit = match meta.ext {
+                Some(any) => format!("x'{}'", hex::encode(prost::Message::encode_to_vec(any))),
+                None => "NULL".to_string(),
+            };
+            let (
+                source_edition_lit,
+                source_domain_lit,
+                source_root_lit,
+                source_seq_lit,
+                source_component_lit,
+                source_command_index_lit,
+            ) = if let Some(info) = source_info.filter(|s| !s.is_empty()) {
+                (
+                    format!("'{}'", info.edition.replace('\'', "''")),
+                    format!("'{}'", info.domain.replace('\'', "''")),
+                    format!("'{}'", info.root),
+                    info.seq.to_string(),
+                    format!("'{}'", info.component.replace('\'', "''")),
+                    info.command_index.to_string(),
+                )
+            } else {
+                (
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                    "NULL".to_string(),
+                )
+            };
 
             let query = format!(
-                "INSERT INTO events (edition, domain, root, sequence, created_at, event_data, correlation_id, external_id, source_edition, source_domain, source_root, source_seq) \
-                 VALUES ('{}', '{}', '{}', {}, CAST('{}' AS TIMESTAMP), {}, '{}', {}, {}, {}, {}, {})",
+                "INSERT INTO events (edition, domain, root, sequence, created_at, event_data, correlation_id, external_id, source_edition, source_domain, source_root, source_seq, source_component, source_command_index, ext) \
+                 VALUES ('{}', '{}', '{}', {}, CAST('{}' AS TIMESTAMP), {}, '{}', {}, {}, {}, {}, {}, {}, {}, {})",
                 edition.replace('\'', "''"),
                 domain.replace('\'', "''"),
                 root_str.replace('\'', "''"),
@@ -473,6 +490,9 @@ impl EventStore for ImmudbEventStore {
                 source_domain_lit,
                 source_root_lit,
                 source_seq_lit,
+                source_component_lit,
+                source_command_index_lit,
+                cover_ext_lit,
             );
 
             // Use raw_sql for immudb simple query mode compatibility.
@@ -618,6 +638,7 @@ impl EventStore for ImmudbEventStore {
                 Events::Edition,
                 Events::Root,
                 Events::EventData,
+                Events::Ext,
             ])
             .from(Events::Table)
             .and_where(Expr::col(Events::CorrelationId).eq(correlation_id))
@@ -628,22 +649,26 @@ impl EventStore for ImmudbEventStore {
 
         let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
-        let mut books_map = std::collections::HashMap::new();
+        let mut books_map: std::collections::HashMap<(String, String, Uuid), BookParts> =
+            std::collections::HashMap::new();
 
         for row in rows {
-            // Columns: Domain(0), Edition(1), Root(2), EventData(3)
+            // Columns: Domain(0), Edition(1), Root(2), EventData(3), Ext(4)
             let domain: String = row.get(0);
             let edition: String = row.get(1);
             let root_str: String = row.get(2);
             let event_data = decode_blob_column(&row, 3)?;
+            // NULL ext decodes to an empty Vec (see decode_blob_column).
+            let ext_bytes = decode_blob_column(&row, 4)?;
 
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map
-                .entry((domain, edition, root))
-                .or_insert_with(Vec::new)
-                .push(event);
+            let entry = books_map.entry((domain, edition, root)).or_default();
+            entry.pages.push(event);
+            if entry.ext.is_none() && !ext_bytes.is_empty() {
+                entry.ext = Some(prost_types::Any::decode(ext_bytes.as_slice())?);
+            }
         }
 
         Ok(assemble_event_books(books_map, correlation_id))
@@ -730,6 +755,8 @@ impl EventStore for ImmudbEventStore {
             .and_where(Expr::col(Events::SourceDomain).eq(source_info.domain.as_str()))
             .and_where(Expr::col(Events::SourceRoot).eq(source_info.root.to_string()))
             .and_where(Expr::col(Events::SourceSeq).eq(source_info.seq as i32))
+            .and_where(Expr::col(Events::SourceComponent).eq(source_info.component.as_str()))
+            .and_where(Expr::col(Events::SourceCommandIndex).eq(source_info.command_index as i32))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 

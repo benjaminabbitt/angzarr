@@ -22,6 +22,7 @@ fn make_cover() -> Cover {
         }),
         correlation_id: "corr-123".to_string(),
         edition: None,
+        ext: None,
     }
 }
 
@@ -251,20 +252,16 @@ fn revoked_committed_events_become_noop() {
 // ============================================================================
 //
 // Background: angzarr stamps Confirmation/Revocation/Compensate/NoOp Anys with
-// `type.angzarr.io/...` (the canonical form recorded in `type_url::*` constants
-// and in C-01's reaper fix). External producers — Python, Go, C++ — emit Anys
-// with `type.googleapis.com/...` because that is what the well-known
+// the bare canonical form `/io.angzarr.v1.X` (recorded in `type_url::*`
+// constants and in C-01's reaper fix). External producers — Python, Go, C++ —
+// emit Anys with `type.googleapis.com/...` because that is what the well-known
 // `google.protobuf.Any` documentation prescribes, and what every language's
 // `Any.Pack()` writes by default.
 //
-// Pre-fix `collect_framework_decisions` and `is_framework_event` did an exact
-// `==` against the angzarr-domain string only, so cross-language Confirmations
-// and Revocations silently fell through into the "business event" branch.
-// Two-phase visibility was effectively broken for any event book that included
-// 2PC framework events produced by non-Rust callers.
-//
-// The fix accepts BOTH prefixes; the canonical stamped form remains
-// `type.angzarr.io/...`.
+// Recognition matches the full FQN (`io.angzarr.v1.Confirmation`) regardless of
+// the resolver prefix, so cross-language Confirmations and Revocations are seen
+// by the visibility transform. What angzarr PRODUCES is always the bare
+// canonical form.
 
 fn make_confirmation_with_prefix(
     sequences: Vec<u32>,
@@ -284,7 +281,7 @@ fn make_confirmation_with_prefix(
         }),
         created_at: None,
         payload: Some(event_page::Payload::Event(prost_types::Any {
-            type_url: format!("{}angzarr.Confirmation", prefix),
+            type_url: format!("{}io.angzarr.v1.Confirmation", prefix),
             value: conf.encode_to_vec(),
         })),
         ..Default::default()
@@ -311,7 +308,7 @@ fn make_revocation_with_prefix(
         }),
         created_at: None,
         payload: Some(event_page::Payload::Event(prost_types::Any {
-            type_url: format!("{}angzarr.Revocation", prefix),
+            type_url: format!("{}io.angzarr.v1.Revocation", prefix),
             value: rev.encode_to_vec(),
         })),
         ..Default::default()
@@ -402,14 +399,15 @@ fn googleapis_prefixed_revocation_committed_event_is_recognized() {
 }
 
 #[test]
-fn angzarr_prefixed_confirmation_still_recognized_after_broadening() {
-    // Regression guard: the original (canonical) angzarr.io prefix must
-    // still be honored. This duplicates `confirmed_uncommitted_pass_through`
-    // structurally but exists as an explicit pin so a fix that accidentally
-    // strips the angzarr.io path doesn't slip through.
+fn bare_canonical_confirmation_is_recognized() {
+    // Regression guard: the bare canonical form (`/io.angzarr.v1.Confirmation`)
+    // angzarr actually stamps must be honored. This duplicates
+    // `confirmed_uncommitted_pass_through` structurally but exists as an
+    // explicit pin so a change that only recognized resolver-prefixed forms
+    // wouldn't slip through.
     let events = make_event_book(vec![
         make_event_page(1, true, "cascade-1"),
-        make_confirmation_with_prefix(vec![1], "cascade-1", 2, "type.angzarr.io/"),
+        make_confirmation_with_prefix(vec![1], "cascade-1", 2, "/"),
     ]);
 
     let result = transform_for_two_phase(&events, &TwoPhaseContext::standard());

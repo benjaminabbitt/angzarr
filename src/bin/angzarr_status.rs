@@ -22,14 +22,12 @@
 //! [grpcurl] --gRPC--------- direct ----------------> [angzarr-status]
 //! ```
 
-use std::sync::Arc;
-
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tonic_health::ServingStatus;
-use tracing::info;
+use tracing::{error, info, warn};
 
-use angzarr::dlq::NoopDeadLetterReader;
+use angzarr::dlq::init_dlq_reader;
 use angzarr::proto::status::dlq_admin_service_server::DlqAdminServiceServer;
 use angzarr::proto_reflect;
 use angzarr::status::descriptors;
@@ -81,17 +79,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_service_status("", ServingStatus::Serving)
         .await;
 
-    // Phase 1.1: wire DLQ admin with a Noop reader. Real DB-backed
-    // readers ship in P1.2; the Noop path exists to validate the
-    // gRPC surface + envelope shape end-to-end via grpcurl today.
-    // Operators see a `state.degraded` ProblemDetails per the plan's
-    // tolerance contract until a backend is configured.
-    let dlq_handler = DlqAdminHandler::new(Arc::new(NoopDeadLetterReader));
-
-    info!(
-        "angzarr-status started (DLQ admin: Noop reader — \
-         configure a DB-backed publisher to surface real entries)"
-    );
+    // R2-15 step 8: wire the DLQ admin reader from `dlq.audit` config.
+    // - audit unset -> noop reader + WARN (UI returns zero entries; the
+    //   admin gRPC surface still works for shape verification).
+    // - audit set + unreachable -> hard-fail at boot, mirrors the
+    //   publisher-side contract from steps 3-4 so operators get a loud
+    //   failure rather than a silent always-empty list.
+    let dlq_reader = init_dlq_reader(config.dlq.audit.as_ref())
+        .await
+        .map_err(|e| {
+            error!("DLQ audit reader init failed (boot abort): {}", e);
+            e
+        })?;
+    if config.dlq.audit.is_none() {
+        warn!(
+            "dlq.audit is unset; status admin DLQ listing will be empty. \
+             Set dlq.audit.storage_type + connection in config.yaml to \
+             surface published dead letters."
+        );
+    } else {
+        info!(
+            storage_type = %config.dlq.audit.as_ref().map(|a| a.storage_type.as_str()).unwrap_or(""),
+            "DLQ audit reader initialized"
+        );
+    }
+    let dlq_handler = DlqAdminHandler::new(dlq_reader);
 
     let router = Server::builder()
         .layer(grpc_trace_layer())

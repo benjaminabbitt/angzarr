@@ -30,7 +30,7 @@
 //! - TARGET_COMMAND: Optional command to spawn PM (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing
-//! - MESSAGING_TYPE: amqp, kafka, or ipc
+//! - MESSAGING_TYPE: amqp or kafka
 //! - ANGZARR_COORDINATOR_PORT: Port for CASCADE mode coordinator (default: 1360)
 
 use std::sync::Arc;
@@ -39,20 +39,21 @@ use std::time::Duration;
 use backon::Retryable;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[cfg(feature = "amqp")]
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::bus::{EventBus, EventBusMode, IpcConfig, IpcEventBus, MockEventBus};
+use angzarr::bus::{EventBus, EventBusMode, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::descriptor::parse_subscriptions;
+use angzarr::dlq::init_dlq_publisher;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
 use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::proto::process_manager_coordinator_service_server::ProcessManagerCoordinatorServiceServer;
 use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
 use angzarr::services::PmCoord;
-use angzarr::storage::init_storage;
+use angzarr::storage::{init_event_store, init_snapshot_store};
 use angzarr::transport::{connect_to_address, grpc_trace_layer, max_grpc_message_size};
 use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints};
@@ -78,8 +79,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
 
+    // R2-15 hard-fail boot: if the operator configured DLQ but the chosen
+    // backend cannot be reached, fail loudly here rather than silently
+    // dropping dead letters for the lifetime of the process. Runs before
+    // heavier init (storage, gRPC clients, bus subscriber) so the
+    // failure path is as cheap as possible.
+    let dlq_publisher = init_dlq_publisher(&bootstrap.config.dlq)
+        .await
+        .map_err(|e| {
+            error!("DLQ publisher init failed (boot abort): {}", e);
+            e
+        })?;
+    if bootstrap.config.dlq.targets.is_empty() {
+        warn!(
+            "dlq.targets is empty; dead letters will be discarded by the \
+             default noop publisher. Set dlq.targets in config.yaml to \
+             route PM persistence and command-rejection dead letters to a \
+             backend."
+        );
+    } else {
+        info!(
+            target_count = bootstrap.config.dlq.targets.len(),
+            "DLQ publisher initialized"
+        );
+    }
+
     // Initialize storage for direct PM state persistence
-    let (event_store, snapshot_store) = init_storage(&bootstrap.config.storage).await?;
+    let event_store = init_event_store(&bootstrap.config.storage).await?;
+    let snapshot_store = init_snapshot_store(&bootstrap.config.storage).await?;
     info!("PM storage initialized for direct state persistence");
 
     // Initialize event bus (publisher) for PM state events
@@ -88,10 +115,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "amqp" => {
             let amqp_config = AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_config).await?)
-        }
-        "ipc" => {
-            let ipc_config = IpcConfig::publisher(&messaging.ipc.base_path);
-            Arc::new(IpcEventBus::new(ipc_config))
         }
         _ => {
             warn!("No messaging configured for PM event publishing, using mock");
@@ -167,6 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_bus.clone(),
         bootstrap.domain.clone(), // name
         bootstrap.domain.clone(), // pm_domain
+        dlq_publisher.clone(),
     ));
 
     // Create handler with direct storage for PM state persistence
@@ -177,6 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         command_executor.clone(),
         event_store,
         event_bus,
+        dlq_publisher,
     )
     .with_fact_executor(Some(fact_executor.clone()))
     .with_targets(subscriptions);

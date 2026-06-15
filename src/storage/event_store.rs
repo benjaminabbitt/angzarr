@@ -3,6 +3,8 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use prost_types::Any;
+
 use super::Result;
 use crate::proto::EventPage;
 
@@ -10,6 +12,12 @@ use crate::proto::EventPage;
 ///
 /// Used for idempotency: if events exist with matching source info,
 /// the saga command was already processed.
+///
+/// The full key is (edition, domain, root, seq, component, command_index).
+/// The first four identify only the triggering event; component and
+/// command_index identify which emission of that trigger this is — one
+/// invocation emitting several commands at the same destination (or two
+/// components reacting to the same event) must not share a key (O1).
 #[derive(Debug, Clone, Default)]
 pub struct SourceInfo {
     /// Source edition (usually "angzarr")
@@ -20,6 +28,11 @@ pub struct SourceInfo {
     pub root: Uuid,
     /// Source event sequence that triggered the saga
     pub seq: u32,
+    /// Registered name of the producing component (saga/PM).
+    /// Empty on pre-upgrade rows/messages.
+    pub component: String,
+    /// Position of the command within the invocation's emitted command list.
+    pub command_index: u32,
 }
 
 impl SourceInfo {
@@ -29,12 +42,16 @@ impl SourceInfo {
         domain: impl Into<String>,
         root: Uuid,
         seq: u32,
+        component: impl Into<String>,
+        command_index: u32,
     ) -> Self {
         Self {
             edition: edition.into(),
             domain: domain.into(),
             root,
             seq,
+            component: component.into(),
+            command_index,
         }
     }
 
@@ -42,6 +59,25 @@ impl SourceInfo {
     pub fn is_empty(&self) -> bool {
         self.edition.is_empty() && self.domain.is_empty()
     }
+}
+
+/// Metadata bundled with an [`EventStore::add`] call.
+///
+/// Groups the book-cover fields that travel with a write so `add` keeps a small
+/// signature and new cover/metadata fields (e.g. `ext`) are additive rather than
+/// signature-breaking. Borrowed; construct with `..Default::default()` for the
+/// fields a caller doesn't set.
+#[derive(Debug, Clone, Default)]
+pub struct AddMeta<'a> {
+    /// Workflow correlation id (propagates across commands/events).
+    pub correlation_id: &'a str,
+    /// External id for fact idempotency (exactly-once), if any.
+    pub external_id: Option<&'a str>,
+    /// Saga source-event tracking for idempotency, if saga-produced.
+    pub source_info: Option<&'a SourceInfo>,
+    /// Parent-aggregate routing cover (`Cover.ext`), if present. Persisted and
+    /// reconstructed so it survives a storage round-trip.
+    pub ext: Option<&'a Any>,
 }
 
 /// Outcome of an `add()` operation.
@@ -113,7 +149,6 @@ impl AddOutcome {
 /// Implementations:
 /// - `SqliteEventStore`: SQLite storage
 /// - `PostgresEventStore`: PostgreSQL storage
-/// - `NatsEventStore`: NATS JetStream storage
 /// - `MockEventStore`: In-memory mock for testing
 #[async_trait]
 pub trait EventStore: Send + Sync {
@@ -137,16 +172,13 @@ pub trait EventStore: Send + Sync {
     /// If `source_info` is `Some(info)` where info is non-empty:
     /// - Source info is stored with each event for saga provenance tracking
     /// - Enables idempotency checking for saga-produced commands
-    #[allow(clippy::too_many_arguments)]
     async fn add(
         &self,
         domain: &str,
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome>;
 
     /// Retrieve all events for an aggregate.

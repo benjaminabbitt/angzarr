@@ -38,7 +38,12 @@ pub(crate) const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
 inventory::submit! {
     BusBackend {
-        try_create: |config, mode| Box::pin(try_create(config, mode)),
+        try_create: |config, mode| {
+            // Clone before creating the 'static future (the &MessagingConfig
+            // borrow can't cross the await boundary) — same pattern as AMQP.
+            let config = config.clone();
+            Box::pin(async move { try_create(&config, mode).await })
+        },
     }
 }
 

@@ -2,7 +2,7 @@
 //!
 //! These are pure data structures with simple methods - no async, no I/O.
 
-use super::{AddOutcome, CascadeParticipant, EventStore, SourceInfo};
+use super::{AddMeta, AddOutcome, CascadeParticipant, EventStore, SourceInfo};
 use crate::proto::{EventBook, EventPage};
 use crate::storage::{Result, StorageError};
 use async_trait::async_trait;
@@ -16,22 +16,32 @@ use uuid::Uuid;
 #[test]
 fn source_info_new_sets_all_fields() {
     let root = Uuid::new_v4();
-    let info = SourceInfo::new("angzarr", "orders", root, 42);
+    let info = SourceInfo::new("angzarr", "orders", root, 42, "saga-orders-billing", 3);
 
     assert_eq!(info.edition, "angzarr");
     assert_eq!(info.domain, "orders");
     assert_eq!(info.root, root);
     assert_eq!(info.seq, 42);
+    assert_eq!(info.component, "saga-orders-billing");
+    assert_eq!(info.command_index, 3);
 }
 
-/// SourceInfo::new accepts Into<String> for edition and domain.
+/// SourceInfo::new accepts Into<String> for edition, domain, and component.
 #[test]
 fn source_info_new_accepts_into_string() {
     let root = Uuid::new_v4();
-    let info = SourceInfo::new(String::from("v2"), String::from("inventory"), root, 1);
+    let info = SourceInfo::new(
+        String::from("v2"),
+        String::from("inventory"),
+        root,
+        1,
+        String::from("saga-inventory-restock"),
+        0,
+    );
 
     assert_eq!(info.edition, "v2");
     assert_eq!(info.domain, "inventory");
+    assert_eq!(info.component, "saga-inventory-restock");
 }
 
 /// SourceInfo::is_empty returns true when edition and domain are empty.
@@ -64,7 +74,7 @@ fn source_info_is_not_empty_when_domain_set() {
 /// SourceInfo::is_empty returns false when both are set.
 #[test]
 fn source_info_is_not_empty_when_both_set() {
-    let info = SourceInfo::new("angzarr", "orders", Uuid::new_v4(), 1);
+    let info = SourceInfo::new("angzarr", "orders", Uuid::new_v4(), 1, "saga-orders-x", 0);
     assert!(!info.is_empty());
 }
 
@@ -179,9 +189,7 @@ impl EventStore for DefaultImplStub {
         _edition: &str,
         _root: Uuid,
         _events: Vec<EventPage>,
-        _correlation_id: &str,
-        _external_id: Option<&str>,
-        _source_info: Option<&SourceInfo>,
+        _meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
         unimplemented!("not exercised in this test")
     }

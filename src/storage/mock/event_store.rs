@@ -9,9 +9,9 @@ use uuid::Uuid;
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{EventBook, EventPage};
 use crate::proto_ext::EventPageExt;
-use crate::storage::helpers::{assemble_event_books, is_main_timeline};
+use crate::storage::helpers::{assemble_event_books, is_main_timeline, BookParts};
 use crate::storage::{
-    AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
+    AddMeta, AddOutcome, CascadeParticipant, EventStore, Result, SourceInfo, StorageError,
 };
 
 /// Stored event with correlation and idempotency tracking.
@@ -20,6 +20,9 @@ struct StoredEvent {
     correlation_id: String,
     external_id: String,
     source_info: Option<SourceInfo>,
+    /// Parent-aggregate routing cover (`Cover.ext`), replicated per row to
+    /// mirror the SQL backends' per-row storage model.
+    ext: Option<prost_types::Any>,
 }
 
 /// Mock event store that stores events in memory.
@@ -61,10 +64,11 @@ impl EventStore for MockEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        correlation_id: &str,
-        external_id: Option<&str>,
-        source_info: Option<&SourceInfo>,
+        meta: &AddMeta<'_>,
     ) -> Result<AddOutcome> {
+        let correlation_id = meta.correlation_id;
+        let external_id = meta.external_id;
+        let source_info = meta.source_info;
         if *self.fail_on_add.read().await {
             return Err(StorageError::NotFound {
                 domain: domain.to_string(),
@@ -158,6 +162,7 @@ impl EventStore for MockEventStore {
                 correlation_id: correlation_id.to_string(),
                 external_id: external_id.to_string(),
                 source_info: source_info.cloned(),
+                ext: meta.ext.cloned(),
             })
             .collect();
         store.entry(key).or_default().extend(stored);
@@ -355,15 +360,18 @@ impl EventStore for MockEventStore {
         }
 
         let store = self.events.read().await;
-        let mut books_map: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
+        let mut books_map: HashMap<(String, String, Uuid), BookParts> = HashMap::new();
 
         for ((domain, edition, root), events) in store.iter() {
             for stored in events {
                 if stored.correlation_id == correlation_id {
-                    books_map
+                    let entry = books_map
                         .entry((domain.clone(), edition.clone(), *root))
-                        .or_default()
-                        .push(stored.page.clone());
+                        .or_default();
+                    entry.pages.push(stored.page.clone());
+                    if entry.ext.is_none() {
+                        entry.ext = stored.ext.clone();
+                    }
                 }
             }
         }
@@ -411,6 +419,8 @@ impl EventStore for MockEventStore {
                             && stored_source.domain == source_info.domain
                             && stored_source.root == source_info.root
                             && stored_source.seq == source_info.seq
+                            && stored_source.component == source_info.component
+                            && stored_source.command_index == source_info.command_index
                     } else {
                         false
                     }

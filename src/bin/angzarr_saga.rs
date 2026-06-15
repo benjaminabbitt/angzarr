@@ -36,7 +36,7 @@
 //! - TARGET_COMMAND: Optional command to spawn saga (embedded mode)
 //! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing (format: "domain=address,...")
-//! - MESSAGING_TYPE: amqp, kafka, or ipc
+//! - MESSAGING_TYPE: amqp or kafka
 //! - ANGZARR_COORDINATOR_PORT: Port for CASCADE mode coordinator (default: 1350)
 
 use std::sync::Arc;
@@ -51,6 +51,7 @@ use tracing::{error, info, warn};
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::{SagaCompensationConfig, STATIC_ENDPOINTS_ENV_VAR};
 use angzarr::descriptor::{parse_subscriptions, Target};
+use angzarr::dlq::init_dlq_publisher;
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::saga_coordinator_service_server::SagaCoordinatorServiceServer;
@@ -83,6 +84,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Saga sidecar requires 'messaging' configuration")?;
 
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
+
+    // R2-15 hard-fail boot: if the operator configured DLQ but the chosen
+    // backend cannot be reached, fail loudly here rather than silently
+    // dropping dead letters for the lifetime of the process. Runs before
+    // any heavier init (messaging connection, downstream gRPC, static
+    // endpoint discovery) so the failure path is as cheap as possible.
+    let dlq_publisher = init_dlq_publisher(&bootstrap.config.dlq)
+        .await
+        .map_err(|e| {
+            error!("DLQ publisher init failed (boot abort): {}", e);
+            e
+        })?;
+    if bootstrap.config.dlq.targets.is_empty() {
+        warn!(
+            "dlq.targets is empty; dead letters will be discarded by the \
+             default noop publisher. Set dlq.targets in config.yaml to \
+             route saga immediate-rejection and retry-exhausted dead \
+             letters to a backend."
+        );
+    } else {
+        info!(
+            target_count = bootstrap.config.dlq.targets.len(),
+            "DLQ publisher initialized"
+        );
+    }
 
     // Connect to saga service with retry
     let saga_addr = bootstrap.address.clone();
@@ -151,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SagaCompensationConfig::default(),
         None,
         bootstrap.domain.clone(),
+        dlq_publisher,
     ));
     let handler = SagaEventHandler::from_factory_with_validator(
         factory.clone(),

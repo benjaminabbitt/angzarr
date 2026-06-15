@@ -42,16 +42,20 @@ pub mod grpc;
 mod edition_propagation;
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
+use crate::dlq::trigger::{CodeDlqExt, DlqTrigger};
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher};
 use crate::proto::{
     page_header::SequenceType, AngzarrDeferredSequence, CommandBook, Cover, EventBook,
     Notification, PageHeader, RevocationResponse, SyncMode, Uuid as ProtoUuid,
 };
+use crate::proto_ext::CoverExt;
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -219,6 +223,26 @@ pub trait ProcessManagerContext: Send + Sync {
             "PM command rejected (no compensation path configured)"
         );
     }
+
+    /// Publisher for routing failed PM commands and persistence attempts
+    /// to the DLQ.
+    ///
+    /// Returns `None` to disable DLQ publication. Production impls
+    /// SHOULD return `Some(_)` so 4xx-class command rejections,
+    /// retry-exhausted persistence failures, and immediate persistence
+    /// rejections are operator-observable per R2-15. Test fakes that
+    /// don't exercise DLQ paths can keep the default.
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        None
+    }
+
+    /// Component name used as `source_component` on DLQ entries.
+    ///
+    /// Defaults to `"process_manager"`. Override on production impls to
+    /// identify the specific PM binary in DLQ tooling.
+    fn component_name(&self) -> &str {
+        "process_manager"
+    }
 }
 
 /// Factory for creating per-invocation PM contexts.
@@ -235,6 +259,75 @@ pub trait PMContextFactory: Send + Sync {
 
     /// The name of this process manager (used for metrics and tracing).
     fn name(&self) -> &str;
+}
+
+/// Publish a dead letter for a PM persistence failure.
+///
+/// Used by both `orchestrate_pm` persistence-rejection sites:
+/// retry-exhausted (`is_transient = true`, `retry_count = attempt`) and
+/// immediate-rejection (`is_transient = false`, `retry_count = 0`).
+/// Payload carries the failed PM event book so operators can re-attempt
+/// the intended state transition from DLQ replay tooling.
+async fn publish_pm_persist_dlq(
+    ctx: &dyn ProcessManagerContext,
+    events: &EventBook,
+    error: &str,
+    retry_count: u32,
+    is_transient: bool,
+) {
+    let Some(publisher) = ctx.dlq_publisher() else {
+        return;
+    };
+    let dead_letter = AngzarrDeadLetter::from_pm_persist_failure(
+        events,
+        error,
+        retry_count,
+        is_transient,
+        ctx.component_name(),
+    );
+    if let Err(e) = publisher.publish(dead_letter).await {
+        error!(error = %e, "Failed to publish PM persist DLQ entry");
+    }
+}
+
+/// Publish a dead letter for a PM command rejection at the dispatch loop.
+///
+/// Covers both the `CommandOutcome::Rejected` site (where the destination
+/// aggregate or transport returned a permanent error) and the H-14
+/// Decision-mode degraded-from-Retryable site (where the PM lost its
+/// synchronous accept/reject contract).
+///
+/// `gate_on_classify = true` defensively skips publication when the
+/// code's `classify_for_dlq` says transient — the alignment between
+/// `is_retryable_status` and `classify_for_dlq` makes that case
+/// impossible today, but the gate guards against future drift. The
+/// H-14 path passes `false` since it doesn't carry a `tonic::Code` and
+/// is unconditionally a permanent failure from the PM's perspective.
+async fn publish_pm_command_dlq(
+    ctx: &dyn ProcessManagerContext,
+    command: &CommandBook,
+    code: Option<tonic::Code>,
+    message: &str,
+) {
+    if let Some(c) = code {
+        if !matches!(c.classify_for_dlq(), DlqTrigger::Immediate(_)) {
+            return;
+        }
+    }
+    let Some(publisher) = ctx.dlq_publisher() else {
+        return;
+    };
+    let dead_letter = AngzarrDeadLetter::from_pm_command_rejection(
+        command,
+        message,
+        0,
+        false,
+        ctx.component_name(),
+    );
+    let domain = command.domain();
+    if let Err(e) = publisher.publish(dead_letter).await {
+        error!(%domain, error = %e, "Failed to publish PM command DLQ entry");
+    }
 }
 
 /// Full process manager orchestration with retry on sequence conflicts.
@@ -411,17 +504,24 @@ pub async fn orchestrate_pm(
                             attempt,
                             &reason,
                         );
+                        // R2-15: persist retry-exhausted -> DLQ the
+                        // failed PM event book so operators can replay.
+                        publish_pm_persist_dlq(ctx, process_events, &reason, attempt, true).await;
                         should_return_err = Some(BusError::Publish(reason));
                         break;
                     }
                 },
-                CommandOutcome::Rejected(reason) => {
+                CommandOutcome::Rejected { code, message } => {
                     crate::utils::retry::log_fatal_error(
                         &format!("pm:{pm_name}"),
                         attempt,
-                        &reason,
+                        &format!("{code:?}: {message}"),
                     );
-                    should_return_err = Some(BusError::Publish(reason));
+                    // R2-15: persist immediate-rejection -> DLQ the
+                    // failed PM event book. retry_count=0 since no
+                    // attempts were spent on this rejection.
+                    publish_pm_persist_dlq(ctx, process_events, &message, 0, false).await;
+                    should_return_err = Some(BusError::Publish(message));
                     break;
                 }
             }
@@ -559,7 +659,7 @@ async fn execute_pm_commands(
     executor: &dyn CommandExecutor,
     mut commands: Vec<CommandBook>,
     correlation_id: &str,
-    _pm_name: &str,
+    pm_name: &str,
     pm_domain: &str,
     pm_source_seq: u32,
     sync_mode: SyncMode,
@@ -579,35 +679,49 @@ async fn execute_pm_commands(
         }),
         correlation_id: correlation_id.to_string(),
         edition: None,
+        ext: None,
     };
 
     // Stamp angzarr_deferred on commands for provenance and compensation routing.
     //
+    // (source, source_seq, source_component, command_index) form the
+    // idempotency key. source + source_seq alone identify only the PM state
+    // that produced the commands — every command of one invocation shared
+    // the key and all but the first were swallowed as duplicates (O1).
+    //
     // Stamping strategy (per spec):
-    // - PM handler already set angzarr_deferred with source_seq → preserve it entirely
-    // - PM handler set angzarr_deferred but source is None → fill in PM cover, keep source_seq
+    // - PM handler stamped an explicit destination sequence → honor it
+    //   untouched (D-5): the command travels as a plain sequenced command
+    //   and the destination's optimistic-concurrency gate validates it,
+    //   rejecting on mismatch.
+    // - PM handler set angzarr_deferred → preserve its source/source_seq
+    //   (fill in PM cover if missing)
     // - PM handler didn't set angzarr_deferred → use PM cover + pm_source_seq
-    for cmd in &mut commands {
+    // - source_component + command_index are framework provenance (the
+    //   PM's registered name and the command's position in this
+    //   invocation's output) — always stamped, never handler data.
+    for (command_index, cmd) in commands.iter_mut().enumerate() {
         for page in &mut cmd.pages {
             // Preserve any per-command sync_mode the PM set on the header
             // before we rewrite the sequence_type for angzarr_deferred
             // stamping — the override would otherwise be lost.
             let preserved_sync_mode = page.header.as_ref().and_then(|h| h.sync_mode);
             match page.header.as_ref().and_then(|h| h.sequence_type.as_ref()) {
+                // D-5/O13: handler-stamped explicit destination sequence —
+                // honor it; the destination validates and rejects on mismatch.
+                Some(SequenceType::Sequence(_)) => {}
                 Some(SequenceType::AngzarrDeferred(existing)) => {
-                    // PM handler set angzarr_deferred - fill in source if missing, preserve source_seq
-                    if existing.source.is_none() {
-                        page.header = Some(PageHeader {
-                            sync_mode: preserved_sync_mode,
-                            sequence_type: Some(SequenceType::AngzarrDeferred(
-                                AngzarrDeferredSequence {
-                                    source: Some(pm_cover.clone()),
-                                    source_seq: existing.source_seq,
-                                },
-                            )),
-                        });
-                    }
-                    // else: PM handler set everything, don't touch
+                    page.header = Some(PageHeader {
+                        sync_mode: preserved_sync_mode,
+                        sequence_type: Some(SequenceType::AngzarrDeferred(
+                            AngzarrDeferredSequence {
+                                source: existing.source.clone().or_else(|| Some(pm_cover.clone())),
+                                source_seq: existing.source_seq,
+                                source_component: pm_name.to_string(),
+                                command_index: command_index as u32,
+                            },
+                        )),
+                    });
                 }
                 _ => {
                     // PM handler didn't set angzarr_deferred - use defaults
@@ -617,6 +731,8 @@ async fn execute_pm_commands(
                             AngzarrDeferredSequence {
                                 source: Some(pm_cover.clone()),
                                 source_seq: pm_source_seq,
+                                source_component: pm_name.to_string(),
+                                command_index: command_index as u32,
                             },
                         )),
                     });
@@ -689,6 +805,12 @@ async fn execute_pm_commands(
                     );
                     ctx.on_command_rejected(&command_book, &degraded, correlation_id)
                         .await;
+                    // R2-15: H-14 is a permanent failure from the PM's
+                    // perspective (contract loss); DLQ unconditionally.
+                    // No tonic::Code is available here — the original
+                    // Retryable carried only a reason string — so pass
+                    // None to skip the classify gate.
+                    publish_pm_command_dlq(ctx, &command_book, None, &degraded).await;
                     if decision_retryable_failure.is_none() {
                         decision_retryable_failure = Some(degraded);
                     }
@@ -700,14 +822,20 @@ async fn execute_pm_commands(
                     );
                 }
             }
-            CommandOutcome::Rejected(reason) => {
+            CommandOutcome::Rejected { code, message } => {
                 error!(
                     domain = %cmd_domain,
-                    error = %reason,
+                    ?code,
+                    error = %message,
                     "PM command rejected, invoking compensation"
                 );
-                ctx.on_command_rejected(&command_book, &reason, correlation_id)
+                ctx.on_command_rejected(&command_book, &message, correlation_id)
                     .await;
+                // R2-15: DLQ alongside compensation. Gate on
+                // classify_for_dlq for drift-protection (the alignment
+                // invariant says Rejected codes are Immediate, but the
+                // gate makes that explicit rather than implicit).
+                publish_pm_command_dlq(ctx, &command_book, Some(code), &message).await;
             }
         }
     }

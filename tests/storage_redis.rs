@@ -40,10 +40,16 @@ async fn start_redis() -> (testcontainers::ContainerAsync<GenericImage>, String)
         .await
         .expect("Failed to get mapped port");
 
-    let host = container
-        .get_host()
-        .await
-        .expect("Failed to get container host");
+    // See storage_postgres.rs: dind wrapper sets TESTCONTAINERS_HOST because
+    // the bridge-gateway fallback is unreachable under rootless docker.
+    let host = match std::env::var("TESTCONTAINERS_HOST") {
+        Ok(h) => h,
+        Err(_) => container
+            .get_host()
+            .await
+            .expect("Failed to get container host")
+            .to_string(),
+    };
 
     let connection_string = format!("redis://{}:{}", host, host_port);
 

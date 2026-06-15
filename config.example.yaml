@@ -2,28 +2,45 @@
 # Copy to config.yaml and customize for your environment
 #
 # Environment variable overrides: ANGZARR_<SECTION>__<KEY>
-# Example: ANGZARR_STORAGE__TYPE=postgres
+# Example: ANGZARR_SERVER__HOST=0.0.0.0
 
 # =============================================================================
 # Storage Configuration
 # =============================================================================
+# Backends are defined once in a named registry; each storage role (events /
+# snapshots / positions) references a registry entry by name. One backend can
+# serve several roles, or different backends can serve different roles.
 storage:
-  type: sqlite
-  sqlite:
-    path: ./data/events.db
-  # For in-memory SQLite, omit the path:
-  # sqlite: {}
+  backends:
+    local:
+      type: sqlite
+      path: ./data/events.db   # omit `path` for in-memory SQLite
+  events:
+    use: local
+  snapshots:
+    use: local
+  positions:
+    use: local
 
-  # PostgreSQL (production):
-  # type: postgres
-  # postgres:
-  #   uri: postgres://localhost:5432/angzarr
+  # PostgreSQL (production) — events + snapshots + positions on one backend:
+  # backends:
+  #   primary:
+  #     type: postgres
+  #     uri: postgres://localhost:5432/angzarr
+  # events:    { use: primary }
+  # snapshots: { use: primary }
+  # positions: { use: primary }
 
-  # MongoDB:
-  # type: mongodb
-  # mongodb:
-  #   uri: mongodb://localhost:27017
-  #   database: angzarr
+  # Mixed roles — append-only event ledger (ImmuDB) with a separate mutable
+  # editions store, Redis snapshots, and SQL position checkpoints:
+  # backends:
+  #   ledger:    { type: immudb, uri: postgresql://immudb:immudb@localhost:5432/defaultdb }
+  #   branches:  { type: postgres, uri: postgres://localhost:5432/angzarr }
+  #   events:    { type: composite, main: ledger, editions: branches }
+  #   cache:     { type: redis, uri: redis://localhost:6379 }
+  # events:    { use: events }
+  # snapshots: { use: cache }
+  # positions: { use: branches }
 
 # =============================================================================
 # Transport Configuration

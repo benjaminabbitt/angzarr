@@ -4,6 +4,10 @@
 //! Persists PM events directly to event store and publishes to event bus,
 //! bypassing the command pipeline (no aggregate sidecar for PM domain).
 
+#[cfg(test)]
+#[path = "mod.test.rs"]
+mod tests;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,6 +15,7 @@ use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::bus::EventBus;
+use crate::dlq::DeadLetterPublisher;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
 use crate::proto::{CommandResponse, EventBook, ProcessManagerHandleRequest};
@@ -18,6 +23,118 @@ use crate::proto_ext::{correlated_request, CoverExt};
 use crate::storage::EventStore;
 
 use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
+
+/// Persist a PM event book to the event store and publish the
+/// re-read result on the event bus.
+///
+/// Extracted from `GrpcPMContext::persist_pm_events` so tests can
+/// exercise the persist path without constructing a full
+/// `GrpcPMContext` (which requires a live
+/// `ProcessManagerServiceClient` gRPC channel even for paths that
+/// don't invoke `handle()`). Same shape as the aggregate's
+/// `publish_aggregate_sequence_mismatch_dlq` refactor.
+///
+/// Returns:
+/// - `CommandOutcome::Success` when both `event_store.add` and the
+///   subsequent `event_store.get` + `event_bus.publish` succeed.
+/// - `CommandOutcome::Retryable` when `event_store.add` returns a
+///   `SequenceConflict` (O3): another PM instance or a replay advanced
+///   this workflow concurrently. The caller's refetch-and-retry loop in
+///   `orchestrate_pm` re-fetches PM state and re-runs the handler.
+/// - `CommandOutcome::Rejected { code: Internal, ... }` for all other
+///   `event_store.add` errors (storage I/O, serialization). The caller
+///   classifies this as immediate-Rejected per R2-15 (it does NOT count
+///   toward the retry budget). The bus publish step never fails the
+///   persist outcome -- a failed publish is logged but the events ARE
+///   durably persisted.
+pub async fn persist_pm_event_book(
+    event_store: &Arc<dyn EventStore>,
+    event_bus: &Arc<dyn EventBus>,
+    pm_domain: &str,
+    process_events: &EventBook,
+    correlation_id: &str,
+) -> CommandOutcome {
+    let pm_root = process_events
+        .cover
+        .as_ref()
+        .and_then(|c| c.root.as_ref())
+        .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
+        .unwrap_or_else(uuid::Uuid::nil);
+    let edition = process_events.edition().unwrap_or_default();
+
+    // Persist directly to event store (bypasses command pipeline)
+    if let Err(e) = event_store
+        .add(
+            pm_domain,
+            edition,
+            pm_root,
+            process_events.pages.clone(),
+            &crate::storage::AddMeta {
+                correlation_id,
+                // No idempotency key / source tracking for PM events.
+                ext: process_events.cover.as_ref().and_then(|c| c.ext.as_ref()),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        // O3: a sequence conflict means another PM instance (or a replay)
+        // advanced this workflow concurrently — exactly the case
+        // orchestrate_pm's documented refetch-and-retry loop exists for.
+        // That loop only fires on `Retryable`; mapping conflicts to
+        // `Rejected` made it dead code and DLQ'd healthy concurrency.
+        if let crate::storage::StorageError::SequenceConflict { expected, actual } = e {
+            return CommandOutcome::Retryable {
+                reason: format!(
+                    "PM sequence conflict: expected {expected}, actual {actual} \
+                     (concurrent workflow update; refetch and retry)"
+                ),
+                current_state: None,
+            };
+        }
+        // Remaining add failures are server-side faults (storage I/O,
+        // serialization). The Code is metadata for downstream DLQ
+        // classification rather than a live retry signal.
+        return CommandOutcome::Rejected {
+            code: tonic::Code::Internal,
+            message: e.to_string(),
+        };
+    }
+
+    // Publish exactly the events the handler just emitted. R2-02-LIVE:
+    // pre-fix this path re-read the store via
+    // `event_store.get(pm_domain, edition, pm_root)` and published the
+    // full history, fanning out O(historical pages) on every PM update.
+    // The pages we just persisted are already in scope as
+    // `process_events.pages`; publishing those directly is correct
+    // and removes a redundant storage round-trip on the hot path.
+    //
+    // Stamp the in-flight `correlation_id` onto the published cover so
+    // downstream subscribers always see the active correlation, even
+    // if the PM service returned a cover with a stale/default value.
+    let mut cover = process_events.cover.clone();
+    if let Some(c) = cover.as_mut() {
+        c.correlation_id = correlation_id.to_string();
+    }
+    // `snapshot` defaults to None via `..Default::default()` — leaving it
+    // unset rather than explicit eliminates a no-op `delete field snapshot`
+    // mutation that cargo-mutants generates but no behavioral test could
+    // ever distinguish from `Default::default()`.
+    let publish_book = EventBook {
+        cover,
+        pages: process_events.pages.clone(),
+        ..Default::default()
+    };
+    if let Err(e) = event_bus.publish(Arc::new(publish_book)).await {
+        error!(
+            domain = %pm_domain,
+            error = %e,
+            "Failed to publish PM events"
+        );
+    }
+
+    CommandOutcome::Success(CommandResponse::default())
+}
 
 /// gRPC PM context that calls remote ProcessManager service.
 ///
@@ -27,6 +144,8 @@ pub struct GrpcPMContext {
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
     pm_domain: String,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+    component_name: String,
 }
 
 impl GrpcPMContext {
@@ -36,12 +155,16 @@ impl GrpcPMContext {
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         pm_domain: String,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
+        component_name: String,
     ) -> Self {
         Self {
             client,
             event_store,
             event_bus,
             pm_domain,
+            dlq_publisher,
+            component_name,
         }
     }
 }
@@ -103,62 +226,24 @@ impl ProcessManagerContext for GrpcPMContext {
         process_events: &EventBook,
         correlation_id: &str,
     ) -> CommandOutcome {
-        let pm_root = process_events
-            .cover
-            .as_ref()
-            .and_then(|c| c.root.as_ref())
-            .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
-            .unwrap_or_else(uuid::Uuid::nil);
-        let edition = process_events.edition().unwrap_or_default();
+        persist_pm_event_book(
+            &self.event_store,
+            &self.event_bus,
+            &self.pm_domain,
+            process_events,
+            correlation_id,
+        )
+        .await
+    }
 
-        // Persist directly to event store (bypasses command pipeline)
-        if let Err(e) = self
-            .event_store
-            .add(
-                &self.pm_domain,
-                edition,
-                pm_root,
-                process_events.pages.clone(),
-                correlation_id,
-                None, // No idempotency key for PM events
-                None, // No source tracking for PM events
-            )
-            .await
-        {
-            return CommandOutcome::Rejected(e.to_string());
-        }
+    #[crate::trivial_delegation]
+    fn dlq_publisher(&self) -> Option<&Arc<dyn DeadLetterPublisher>> {
+        Some(&self.dlq_publisher)
+    }
 
-        // Re-read persisted events for publishing
-        match self
-            .event_store
-            .get(&self.pm_domain, edition, pm_root)
-            .await
-        {
-            Ok(pages) => {
-                let full_book = EventBook {
-                    cover: process_events.cover.clone(),
-                    pages,
-                    snapshot: None,
-                    ..Default::default()
-                };
-                if let Err(e) = self.event_bus.publish(Arc::new(full_book)).await {
-                    error!(
-                        domain = %self.pm_domain,
-                        error = %e,
-                        "Failed to publish PM events"
-                    );
-                }
-            }
-            Err(e) => {
-                error!(
-                    domain = %self.pm_domain,
-                    error = %e,
-                    "Failed to re-read PM events for publishing"
-                );
-            }
-        }
-
-        CommandOutcome::Success(CommandResponse::default())
+    #[crate::trivial_delegation]
+    fn component_name(&self) -> &str {
+        &self.component_name
     }
 }
 
@@ -172,16 +257,19 @@ pub struct GrpcPMContextFactory {
     event_bus: Arc<dyn EventBus>,
     name: String,
     pm_domain: String,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
 }
 
 impl GrpcPMContextFactory {
     /// Create a new factory with gRPC client, event store, event bus, and PM domain.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         client: Arc<Mutex<ProcessManagerServiceClient<tonic::transport::Channel>>>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         name: String,
         pm_domain: String,
+        dlq_publisher: Arc<dyn DeadLetterPublisher>,
     ) -> Self {
         Self {
             client,
@@ -189,6 +277,7 @@ impl GrpcPMContextFactory {
             event_bus,
             name,
             pm_domain,
+            dlq_publisher,
         }
     }
 }
@@ -200,13 +289,17 @@ impl PMContextFactory for GrpcPMContextFactory {
             self.event_store.clone(),
             self.event_bus.clone(),
             self.pm_domain.clone(),
+            self.dlq_publisher.clone(),
+            self.name.clone(),
         ))
     }
 
+    #[crate::trivial_delegation]
     fn pm_domain(&self) -> &str {
         &self.pm_domain
     }
 
+    #[crate::trivial_delegation]
     fn name(&self) -> &str {
         &self.name
     }

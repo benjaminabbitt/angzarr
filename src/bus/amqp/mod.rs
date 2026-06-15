@@ -19,7 +19,7 @@ use lapin::{
 };
 use prost::Message;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 
 use super::config::EventBusMode;
 use super::error::{BusError, Result};
@@ -303,7 +303,9 @@ impl AmqpEventBus {
         let message_ttl_ms = self.config.message_ttl_ms;
         let max_queue_length = self.config.max_queue_length;
 
-        // Spawn consumer task with reconnection loop
+        // Spawn consumer task with reconnection loop. The oneshot reports
+        // the FIRST successful consumer setup back to this call.
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
             Self::consume_with_reconnect(
                 pool,
@@ -313,14 +315,27 @@ impl AmqpEventBus {
                 handlers,
                 message_ttl_ms,
                 max_queue_length,
+                ready_tx,
             )
             .await;
         });
+
+        // T10: `start_consuming` contract — the consumer is ESTABLISHED when
+        // this returns. Without this, queue declare + bind happen inside the
+        // spawned task, and a publish issued right after start_consuming()
+        // could be dropped for lack of a bound queue (silent loss in any
+        // service that publishes immediately after starting its subscriber).
+        // If the broker is unreachable, this waits through the reconnect
+        // backoff until the first successful attach.
+        ready_rx.await.map_err(|_| {
+            BusError::Subscribe("consumer task exited before establishing".to_string())
+        })?;
 
         Ok(())
     }
 
     /// Consumer loop with automatic reconnection and exponential backoff with jitter.
+    #[allow(clippy::too_many_arguments)]
     async fn consume_with_reconnect(
         pool: Pool,
         exchange: String,
@@ -329,9 +344,14 @@ impl AmqpEventBus {
         handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
         message_ttl_ms: Option<i32>,
         max_queue_length: Option<i32>,
+        ready_tx: tokio::sync::oneshot::Sender<()>,
     ) {
         use futures::StreamExt;
         use std::time::Duration;
+
+        // Signals the FIRST successful setup back to start_consuming (T10
+        // readiness contract). Subsequent reconnects have no one to notify.
+        let mut ready_tx = Some(ready_tx);
 
         // Exponential backoff with jitter to prevent thundering herd
         let backoff_builder = ExponentialBuilder::default()
@@ -359,6 +379,11 @@ impl AmqpEventBus {
                         routing_key = %routing_key,
                         "Consumer connected, processing messages"
                     );
+                    if let Some(tx) = ready_tx.take() {
+                        // Receiver may have been dropped (caller gave up);
+                        // consuming proceeds either way.
+                        let _ = tx.send(());
+                    }
                     // H-07: do NOT reset backoff on `setup_consumer` success
                     // — only after the stream has actually produced at
                     // least one delivery. A consumer that handshakes and
@@ -738,18 +763,48 @@ impl EventBus for AmqpEventBus {
                 .basic_publish(
                     &self.config.exchange,
                     &routing_key,
-                    BasicPublishOptions::default(),
+                    // B2: `mandatory` makes the broker RETURN unroutable
+                    // messages instead of silently discarding them. Without
+                    // it, a publish that routes to ZERO queues (no subscriber
+                    // queue bound yet — first deploy, binding race) is
+                    // confirmed as success and the event vanishes.
+                    BasicPublishOptions {
+                        mandatory: true,
+                        ..Default::default()
+                    },
                     &payload,
                     properties,
                 )
                 .await
             {
                 Ok(confirm) => match confirm.await {
-                    Ok(Confirmation::Ack(_)) => {
+                    Ok(Confirmation::Ack(None)) => {
                         debug!(
                             exchange = %self.config.exchange,
                             routing_key = %routing_key,
                             "Published event book"
+                        );
+                        return Ok(PublishResult::default());
+                    }
+                    Ok(Confirmation::Ack(Some(returned))) => {
+                        // B2: broker accepted the publish but routed it to
+                        // ZERO queues (basic.return + ack). Publishing into
+                        // the void is a legitimate topology state (an
+                        // aggregate with no downstream subscriber — the
+                        // `test_publish_only` contract), so this is NOT an
+                        // error — but it must never be SILENT: if a
+                        // subscriber was expected, this warn is the only
+                        // trace the event ever existed. Durable subscriber
+                        // queues keep messages routable across consumer
+                        // restarts; this fires only when no queue is bound
+                        // at all.
+                        warn!(
+                            exchange = %self.config.exchange,
+                            routing_key = %routing_key,
+                            reply_code = returned.reply_code,
+                            reply_text = %returned.reply_text,
+                            "Publish UNROUTABLE: no queue bound — event was \
+                             not delivered to any subscriber (B2)"
                         );
                         return Ok(PublishResult::default());
                     }
